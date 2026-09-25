@@ -15,7 +15,7 @@ createRoot(root).render(
     <ApiClientProvider client={client}>
       <MemoryRouter initialEntries={['/agents/executors/33333333-3333-4333-8333-333333333333']}>
         <LocalBackProvider><main className="h-screen bg-[color:var(--main)] text-[color:var(--tx)]">
-          <Routes><Route path="/agents/executors/:executorId" element={<ExecutorDetailContent token={null} />} /></Routes>
+          <Routes><Route path="/agents/executors/:executorId" element={<ExecutorDetailContent teamId="77777777-7777-4777-8777-777777777777" token={null} />} /></Routes>
         </main></LocalBackProvider>
       </MemoryRouter>
     </ApiClientProvider>

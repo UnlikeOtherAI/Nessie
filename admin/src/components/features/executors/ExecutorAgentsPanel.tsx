@@ -3,9 +3,8 @@ import { useSearchParams } from 'react-router-dom'
 import type {
   ExecutorAgentAccessRecord,
   ExecutorRecordResponse,
-  PreparedExecutorAccessChangeResponse,
 } from '@nessie/schemas'
-import { usePrepareExecutorAccessChange } from '../../../facades/executors/hooks'
+import { useSetExecutorAgentAccess } from '../../../facades/executors/sharing'
 import { useExecutorAgents } from '../../../facades/executors/manage'
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue'
 import { AgentAvatar } from '../../shared/AgentAvatar'
@@ -20,7 +19,6 @@ import { EXECUTOR_OPERATION_LABELS } from './executor-presentation'
 
 type ExecutorAgentsPanelProps = {
   executorId: string
-  onPrepared: (prepared: PreparedExecutorAccessChangeResponse) => void
   scopeKind: ExecutorRecordResponse['scope']['kind']
   token: string | null
 }
@@ -34,20 +32,20 @@ const AllowedCapabilities = ({ agent }: { agent: ExecutorAgentAccessRecord }) =>
 )
 
 /** The owning detail page mounts this manager-only roster after its access check. */
-export const ExecutorAgentsPanel = ({ executorId, onPrepared, scopeKind, token }: ExecutorAgentsPanelProps) => {
+export const ExecutorAgentsPanel = ({ executorId, scopeKind, token }: ExecutorAgentsPanelProps) => {
   const [searchParams, setSearchParams] = useSearchParams()
   const query = searchParams.get('executor-agent-q') ?? ''
   const roster = useExecutorAgents(executorId, useDebouncedValue(query, 200))
-  const prepare = usePrepareExecutorAccessChange()
+  const prepare = useSetExecutorAgentAccess()
   const [addOpen, setAddOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const remove = async (agentId: string) => {
     setError(null)
     try {
-      onPrepared(await prepare.mutateAsync({
-        executorId, change: { kind: 'agent_executor_access', agentId, state: 'denied' },
-      }))
+      await prepare.mutateAsync({
+        executorId, change: { agentId, state: 'denied' },
+      })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'This agent could not be removed. Try again.')
     }
@@ -142,7 +140,6 @@ export const ExecutorAgentsPanel = ({ executorId, onPrepared, scopeKind, token }
         <ExecutorAddAgentDialog
           executorId={executorId}
           onClose={() => setAddOpen(false)}
-          onPrepared={onPrepared}
           token={token}
         />
       ) : null}

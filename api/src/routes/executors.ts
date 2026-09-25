@@ -1,3 +1,6 @@
+import { ExecutorListQuerySchema } from '@nessie/schemas'
+import { listExecutorsForProject } from '@nessie/executor-manage'
+import { registerExecutorSharingRoutes } from './executor-sharing.js'
 import { notifyExecutorStatus } from './executor-status-events.js'
 import {
   confirmExecutorAccessChange,
@@ -71,6 +74,7 @@ const ledgerSigningConfigured = loadLedgerIdentitySettings() !== null
  * of the one-time pairing challenge plus its Ed25519 machine key.
  */
 export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
+  registerExecutorSharingRoutes(app, deps)
   registerExecutorPairingCodeRoutes(app, deps)
   registerExecutorSsoVerificationRoutes(app, deps)
   registerExecutorManagementReadRoutes(app, deps)
@@ -92,7 +96,10 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     await expireExecutorCodePairings(prisma, actorContext.tenant.organizationId, executorPairingAudit)
-    const executors = await listVisibleExecutors(prisma, actorContext)
+    const query = parseInput(ExecutorListQuerySchema, request.query, reply)
+    if (!query) return reply
+    const executors = query.projectId ? await listExecutorsForProject(prisma, actorContext, query.projectId)
+      : await listVisibleExecutors(prisma, actorContext)
     return createApiResponse(ExecutorRecordSchema.array().parse(executors))
   })
 
@@ -102,6 +109,10 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
     const body = parseInput(CreateExecutorBodySchema, request.body, reply)
     if (!body) return reply
     try {
+      if (body.scope.kind !== 'private') {
+        sendApiError(reply, 400, 'EXECUTOR_SCOPE_INVALID', 'Pair a personal executor, then share it from Permissions.')
+        return reply
+      }
       const created = await createExecutor(prisma, actorContext, body)
       // The daemon pairs from outside the browser, so the invitation carries the
       // API origin rather than leaving the operator to retype one. It comes from

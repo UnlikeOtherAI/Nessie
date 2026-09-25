@@ -263,7 +263,11 @@ try {
   // The machine's next report no longer carries it: the list is read again
   // while a Close waits, and the row goes without anyone reloading.
   const readsBefore = owner.state.reads
+  const refreshed = owner.page.waitForResponse((response) =>
+    response.url().endsWith(`/api/executors/${executorId}/coding-sessions`)
+      && response.request().method() === 'GET', { timeout: 30_000 })
   owner.dropClosing()
+  await refreshed
   await rowOf(list, pricing).waitFor({ state: 'detached', timeout: 30_000 })
   assert.ok(owner.state.reads > readsBefore)
   assert.equal(await list.getByTestId('executor-coding-session').count(), 2)

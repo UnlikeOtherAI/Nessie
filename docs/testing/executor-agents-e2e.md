@@ -1,9 +1,8 @@
 # Executor agent management evaluation
 
 The executor detail page's Agents tab uses `ExecutorAgentsPanel`. Its Add agent
-dialog reads eligible candidates from the server, then opens the existing access
-change review. Preparing or cancelling a change does not grant or remove access.
-The server remains the authority for visibility, eligibility and verification.
+dialog reads eligible candidates from the server and assigns the selected agent
+immediately. Remove is immediate too. The server owns visibility and eligibility.
 
 Run the durable browser evaluation from a worktree with its own available ports:
 
@@ -18,18 +17,11 @@ navigation harness's `CHROMIUM_PATH` setting when Chromium is not downloaded.
 No API process or database is needed: browser requests receive deterministic
 responses while the real components and facades run unchanged.
 
-Desktop and phone cases cover opaque cursor pagination, server search, page-size
-changes, private assignment gaps, exact capability labels, candidate selection,
-the prepare/review/confirm and cancel paths, removal, and load-error retry.
-An unavailable identity verifier must display an explanation with no password
-field and no enabled approval action. Screenshots are written to
-`e2e/screenshots/executor-agents/` and should be visually inspected.
+Desktop and phone cases cover pagination, server search, page-size changes,
+capability labels, direct addition/removal, Personal Assistant eligibility and
+load-error retry. Admin mutations create no review continuation or password
+prompt. A separately opened conversation card retains its confirmation flow.
+Screenshots are written to `e2e/screenshots/executor-agents/` and inspected.
 
-The review names the Personal Assistant through the same entitled `scope=all`
-agent directory used by candidate eligibility. A disappeared identity keeps
-approval disabled, and agent changes never request the people directory.
-
-This fixture proves the UI flow. The executor management database and HTTP
-tests prove entitlement filtering, private roster changes, grant atomicity,
-and fresh verification enforcement. It does not exercise a real UOA verifier;
-that contract remains unavailable and the product refuses protected changes.
+Database tests cover entitlement, roster/grant atomicity and revocation.
+See [executor sharing](../standards/executor-sharing.md) for the current contract.

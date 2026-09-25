@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useMemo } from 'react';
 import { useFailedWorkflowRuns } from '../../facades/workflows/hooks';
-import { useExecutorAttention } from '../../facades/executors/attention';
 import { isReactNativeWebView, requestNativeFullRefresh } from '../../lib/native-shell';
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection';
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
@@ -104,8 +103,6 @@ export const AdminSidebarNav = ({
   // W29: the nav itself answers "did anything break?" — the count is the
   // entitlement-scoped failed-runs feed the triage column reads.
   const { data: failedWorkflowRuns = [] } = useFailedWorkflowRuns();
-  const executorAttention = useExecutorAttention();
-  const executorAttentionCount = executorAttention.isSuccess ? executorAttention.data.total : 0;
   const groupsWithBadges = useMemo(
     () =>
       visibleGroups.map((group) => ({
@@ -118,17 +115,10 @@ export const AdminSidebarNav = ({
               badgeLabel: `${failedWorkflowRuns.length} failed workflow runs`,
               badgeTestId: 'nav-workflows-failed-count',
             }
-            : item.path === '/agents/executors'
-              ? {
-                ...item,
-                badgeCount: executorAttentionCount,
-                badgeLabel: `${executorAttentionCount} ${executorAttentionCount === 1 ? 'change' : 'changes'} to review`,
-                badgeTestId: 'nav-executors-attention-count',
-              }
             : item,
         ),
       })),
-    [executorAttentionCount, failedWorkflowRuns.length, visibleGroups],
+    [failedWorkflowRuns.length, visibleGroups],
   );
 
   return (

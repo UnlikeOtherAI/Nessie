@@ -1,71 +1,20 @@
 # Executor management reads and agent access
 
-The executor detail surface owns **Agents**, **Permissions**, and **Activity**.
-Its doorway is the executor list; the navigation badge points to machines whose
-latest local policy proposal awaits a decision the current person may make.
+The executor detail surface owns **Agents**, **Sessions**, **Permissions** and
+**Activity**. Its doorways are the inventory, account menu and project Executors
+tab. [Executor sharing](../standards/executor-sharing.md) is authoritative for
+direct agent assignment, people/project/team sharing and immediate signed
+capability reports. There is no permission-review badge or queue.
 
-`GET /api/executors/:executorId/agents` lists agents with an explicit private
-assignment or at least one currently allowed operation grant on that executor.
-`GET /api/executors/:executorId/agent-candidates` lists eligible tool-policy
-targets not already in that set. Both require executor management permission,
-apply the existing agent privacy boundary, exclude deleted agents, and apply
-`q` search before computing the total. Organisation ownership does not expose
-another person's private agent. Candidate eligibility matches the existing
-tool-policy target kinds: ordinary shared agents and Personal Assistants.
+Agent and candidate lists retain pagination, search and the existing private
+agent entitlement. Direct agent mutations are atomic with tool-policy changes,
+connection fences and audit. The older prepared-change machinery remains for
+conversation approvals, lifecycle confirmation and standing ticket policies;
+the admin assignment and sharing screens do not use it.
 
-Both routes accept `PaginationParams` plus `q`, return the standard `data` and
-`PaginationMeta` envelope with `total`, and use immutable creation time plus id
-for a stable keyset. Cursors are opaque to clients. Each row contains
-`agentId`, `name`, `visibility`, `assigned`, and `allowedOperationKeys`.
-`assigned` reports the explicit private roster entry; stored allowed keys do
-not assert runtime readiness. Machine status, reviewed policy, the requesting
-human, the agent's logical tool policy, and run scope remain separate gates.
-Denied-only grant history does not keep a removed agent in the current list.
-
-The prepared change `{kind: "agent_executor_access", agentId, state}` combines
-private roster membership and the existing whole-suite grant. Allow adds both;
-deny withdraws both. Project and organisation executors use the existing
-whole-suite grant alone. All writes and continuation consumption share one
-transaction. The per-agent logical tool policy update runs after continuation
-validation in that same transaction; invalid, expired, rejected, or stale
-confirmations cannot alter it. The agent policy lock also covers the read of
-grants held on other executors, so concurrent changes cannot disable a policy
-the agent still holds elsewhere. The existing authorization checks,
-per-mutation connection fences, and audit events remain in force.
-Confirmation and cancellation atomically claim the same pending continuation;
-only one can succeed. A successful cancellation prevents a delayed confirmation
-from applying, and a failed confirmation rolls its claim back with its writes.
-Failure to grant rolls the new private assignment back. Removing one agent
-does not remove another agent's grants on the same machine.
-
-Fresh verification is still required for allowing access, for activating a
-capability revision and for private roster changes, including removal. The
-lifecycle changes never require it: `revoke` and `remove` only take access
-away and must stay reachable by a manager whose sign-in has no fresh factor.
-`remove` is `revoke` plus `removedAt`, after which the list, detail, access
-and change-preparation reads treat the executor as absent.
-
-The access-change GET response adds `verificationMethod: "password" |
-"sso_code" | "unavailable"`. UOA session holders use
-`POST /api/executor-access-changes/:id/verification` with the confirmation
-token to request a code. The response contains `challengeId`, `expiresAt`, and
-`twoFactorRequired`; confirmation accepts `ssoVerification` containing that
-challenge ID, the email `code` and optional `twoFactorCode`. The API signs a
-fresh subject assertion for each server-to-server UOA request and binds the
-proof to the continuation ID, user, machine, verification nonce and subject
-digest. It never accepts a browser claim that verification succeeded. UOA
-consumes the proof once; Nessie rechecks the continuation and authorization
-revision in its normal confirmation transaction before applying the grant.
-
-`GET /api/executors/attention` returns `{total, executors}`, with one
-`{executorId, policyRevision}` per manageable machine whose absolute latest
-revision is `pending_review`. Pending pairing and revoked machines are excluded.
-Superseded pending revisions, disabled/active policies, and historical workspace
-review receipts contribute nothing. Workspace receipts have no resolved or
-actionable-state projection and therefore must not be counted as outstanding
-decisions. The summary reveals no policy contents or other people's private
-machines. The existing navigation `badgeCount` and detail `TabBar.count` render
-the summary without fetching every machine's management payload.
+GET /api/executors/attention returns an empty summary: a signed machine report
+is configuration, not an outstanding decision. Legacy clients may still read
+this endpoint.
 
 ## Conversation leases: seeing and ending them
 
@@ -150,7 +99,7 @@ open on it, and those sessions act as the person who paired it
   anyone else 404 `EXECUTOR_NOT_FOUND`, and a session the last report does not
   list as that owner's and open 404 `EXECUTOR_CODING_SESSION_NOT_FOUND`.
 
-The surface is the coding bridge's entry in the **Permissions** tab's *Local
+The surface is the coding bridge's entry in the **Sessions** tab's *Local
 apps* section: the rows, with Close for the pairing owner, "Closing…" until a
 later report drops the row, and for anyone else the sentence saying who may
 close them.

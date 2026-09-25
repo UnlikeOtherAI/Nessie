@@ -76,7 +76,7 @@ export const requireManagedExecutor = async (
   return executor
 }
 
-const nextAuthorizationRevision = async (
+export const nextAuthorizationRevision = async (
   tx: Prisma.TransactionClient,
   executorId: string,
 ): Promise<number> => {
@@ -169,12 +169,6 @@ export const setPrivateAssignmentInTransaction = async (
   input: PrivateAssignmentMutation,
 ): Promise<number> => {
   const executor = await requireManagedExecutor(tx, actorContext, input.executorId)
-  if (executor.scopeKind !== 'private') {
-    throw new ExecutorError(
-      EXECUTOR_ERROR_CODES.SCOPE_INVALID,
-      'Private assignments are valid only for private executors.',
-    )
-  }
   const existing = await tx.executorPrivateAssignment.findFirst({
     where: input.assignment.principalKind === 'user'
       ? { executorId: executor.id, principalKind: 'user', userId: input.assignment.userId }
@@ -257,12 +251,6 @@ export const removePrivateAssignmentInTransaction = async (
   input: PrivateAssignmentRemoval,
 ): Promise<number> => {
   const executor = await requireManagedExecutor(tx, actorContext, input.executorId)
-  if (executor.scopeKind !== 'private') {
-    throw new ExecutorError(
-      EXECUTOR_ERROR_CODES.SCOPE_INVALID,
-      'Private assignments are valid only for private executors.',
-    )
-  }
   const existing = await tx.executorPrivateAssignment.findFirst({
     where: input.principal.principalKind === 'user'
       ? { executorId: executor.id, principalKind: 'user', userId: input.principal.userId }

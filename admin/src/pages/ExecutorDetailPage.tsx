@@ -4,7 +4,6 @@ import type { PreparedExecutorAccessChangeResponse } from '@nessie/schemas'
 import { ExecutorDesktopCompanionPanel } from '../components/features/executors/ExecutorDesktopCompanionPanel'
 import { ExecutorDetailPanels } from '../components/features/executors/ExecutorDetailPanels'
 import { ExecutorPairingPendingNotice } from '../components/features/executors/ExecutorPairingPendingNotice'
-import { ExecutorPeopleDialog } from '../components/features/executors/ExecutorPeopleDialog'
 import { ExecutorAccessChangeDialog } from '../components/features/executors/ExecutorReviewDialogs'
 import { LocalInferenceHostStatus } from '../components/features/local-inference/LocalInferenceHostStatus'
 import { EXECUTOR_STATUS_LABELS, executorScopeSummary, executorStatusTone } from '../components/features/executors/executor-presentation'
@@ -21,11 +20,11 @@ import { useShellEnvironment } from '../providers/ShellEnvironmentProvider'
 
 /** One machine, its agent roster, current permissions and recent work. */
 export const ExecutorDetailPage = () => {
-  const { token } = useAuthSession()
-  return <ExecutorDetailContent token={token} />
+  const { token, me } = useAuthSession()
+  return <ExecutorDetailContent token={token} teamId={me?.context.teamId} />
 }
 
-export const ExecutorDetailContent = ({ token }: { token: string | null }) => {
+export const ExecutorDetailContent = ({ token, teamId }: { token: string | null; teamId?: string }) => {
   const navigate = useNavigate()
   const { executorId } = useParams<{ executorId?: string }>()
   const shell = useShellEnvironment()
@@ -36,7 +35,7 @@ export const ExecutorDetailContent = ({ token }: { token: string | null }) => {
   const localModels = useLocalInferenceHosts()
   const prepare = usePrepareExecutorAccessChange()
   const [prepared, setPrepared] = useState<PreparedExecutorAccessChangeResponse | null>(null)
-  const [panel, setPanel] = useState<'people' | 'models' | 'device' | null>(null)
+  const [panel, setPanel] = useState<'models' | 'device' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const backToList = () => void navigate('/agents/executors')
   const lifecycle = async (action: 'pause' | 'resume' | 'revoke' | 'remove') => {
@@ -58,7 +57,6 @@ export const ExecutorDetailContent = ({ token }: { token: string | null }) => {
     menu.push({ id: 'models', label: 'Local models', onSelect: () => setPanel('models') })
   }
   if (access?.canManage) {
-    if (executor.scope.kind === 'private') menu.push({ id: 'people', label: 'Manage people', onSelect: () => setPanel('people') })
     if (executor.status === 'paused') {
       menu.push({ id: 'resume', label: 'Resume executor', disabled: prepare.isPending, onSelect: () => void lifecycle('resume') })
     } else if (['online', 'offline', 'error'].includes(executor.status)) {
@@ -86,10 +84,10 @@ export const ExecutorDetailContent = ({ token }: { token: string | null }) => {
           <FormError>{error}</FormError>
           {executor.status === 'error' && executor.statusDetail ? <p className="text-sm text-[color:var(--danger-text)]" role="alert">{executor.statusDetail}</p> : null}
           {executor.status === 'pending_pairing' ? <ExecutorPairingPendingNotice /> : null}
-          <ExecutorDetailPanels accessQuery={accessQuery} executor={executor} onPrepared={setPrepared} token={token} />
+          <ExecutorDetailPanels teamId={teamId} accessQuery={accessQuery} executor={executor}
+            onPrepared={setPrepared} token={token} />
         </div>
       </div>
-      {panel === 'people' && access?.canManage && executor.scope.kind === 'private' ? <ExecutorPeopleDialog access={access} onClose={() => setPanel(null)} onPrepared={setPrepared} /> : null}
       {panel === 'models' ? <Dialog onClose={() => setPanel(null)} open title="Local models">
         <LocalInferenceHostStatus confirmInDialog
           empty={<p>No local model connection on this machine.</p>} executorId={executor.id} />

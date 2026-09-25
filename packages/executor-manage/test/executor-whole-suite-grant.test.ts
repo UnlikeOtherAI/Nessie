@@ -114,7 +114,8 @@ const transactionFake = (input: {
     },
     executorPrivateAssignment: { findFirst: async () => null },
     executorSession: { updateMany: async () => ({ count: 0 }) },
-    organizationMember: {
+    executorTeamAccess: { findUnique: async () => null },
+  organizationMember: {
       findUnique: async () => ({ deactivatedAt: null, role: 'owner' }),
     },
     projectMember: { findUnique: async () => null },

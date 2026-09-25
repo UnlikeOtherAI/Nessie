@@ -34,6 +34,7 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { issueExecutorDaemonChallenge, verifyExecutorDaemonChallenge } from '../services/executor-daemon-auth.js'
 import { sendExecutorError } from './executor-route-errors.js'
 import type { RouteDeps } from './types.js'
+import { notifyExecutorLeaseChanges } from './executor-leases.js'
 import { enqueueAttachmentThumbnail } from './uploads.js'
 
 // The signed description, ids, epoch and signature beside the base64: well
@@ -108,7 +109,8 @@ export const registerExecutorDaemonRoutes = (app: FastifyInstance, deps: RouteDe
       const body = parseInput(ExecutorDaemonDescriptorBodySchema, request.body, reply)
       if (!body) return reply
       try {
-        const result = await submitExecutorDescriptor(prisma, body)
+        const { endedLeases = [], ...result } = await submitExecutorDescriptor(prisma, body)
+        await notifyExecutorLeaseChanges(deps, request.log, endedLeases)
         await notifyExecutorStatus(deps, request.log, body.executorId)
         return createApiResponse(ExecutorDaemonDescriptorSchema.parse(result))
       } catch (error) {

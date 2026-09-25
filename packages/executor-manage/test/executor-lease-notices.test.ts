@@ -51,7 +51,7 @@ dbTest('an access change reports exactly the leases it ended, and none when it e
     const keeps = localAppsDescriptor(2)
     await world.prisma.executorCapabilityRevision.create({ data: {
       executorId: world.executorId, revision: 2, descriptor: keeps, signature: 'keeps-pair',
-      localPolicyDigest: keeps.localPolicyDigest,
+      localPolicyDigest: keeps.localPolicyDigest, reviewStatus: 'pending_review',
     } })
     const kept = await confirm(world, { kind: 'descriptor_review', revision: 2, status: 'active' })
     assert.deepEqual(kept.endedLeases, [], 'a review that keeps the pair ends nothing')

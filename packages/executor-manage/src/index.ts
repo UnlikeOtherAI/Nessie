@@ -222,3 +222,9 @@ export * from './ticket-work-session-origins.js'
 export * from './ticket-work-heartbeat-costs.js'
 export * from './executor-standing-policy-views.js'
 export * from './executor-standing-policy-agent.js'
+
+export * from './executor-sharing.js'
+
+export * from './executor-direct-access.js'
+
+export * from './executor-project-inventory.js'

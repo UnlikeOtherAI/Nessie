@@ -31,10 +31,9 @@ try {
       const respond = (body) => route.fulfill({ json: { data: body } })
       if (path.endsWith('/options')) return respond({
         organization: { id: organizationId, name: 'UnlikeOtherAI' },
-        scopes: ['private', 'project', 'organization'],
+        scopes: ['private'],
         teams: [
           { id: 'uoa-product', name: 'Product', projectIds: [projectId] },
-          { id: 'uoa-research', name: 'Research', projectIds: [] },
         ],
       })
       if (path.endsWith('/preview')) {
@@ -71,7 +70,7 @@ try {
     await page.getByLabel('Eight-digit code').fill('01234567')
     await page.screenshot({ path: resolve(output, `code-${width}.png`) })
     await page.getByRole('button', { name: 'Continue', exact: true }).click()
-    await page.getByLabel('Team', { exact: true }).selectOption('uoa-product')
+    assert.equal(await page.getByRole('combobox').count(), 0, 'Pairing uses the current team without a selector')
     assert.ok(await page.getByRole('button', { name: 'Pair machine', exact: true }).isDisabled())
     await page.getByLabel('The fingerprint matches').check()
     await page.screenshot({ path: resolve(output, `review-${width}.png`) })
@@ -92,12 +91,12 @@ try {
     await page.keyboard.press('Escape')
     assert.equal(await page.getByRole('dialog').count(), 0)
 
-    // The account menu's team doorway starts with shared access, not Only me.
+    // All doorways pair personally into the current team; sharing lives on Permissions.
     await page.goto(`${ADMIN_URL}/e2e/executor-pairing/index.html?team=1`)
     await page.getByRole('button', { name: 'Pair executor', exact: true }).click()
     await page.getByLabel('Eight-digit code').fill('01234567')
     await page.getByRole('button', { name: 'Continue', exact: true }).click()
-    assert.equal(await page.getByLabel('Who can use this machine?').inputValue(), 'project')
+    assert.equal(await page.getByRole('combobox').count(), 0)
     await page.keyboard.press('Escape')
 
     // The existing project's doorway pins its actual team and project.
@@ -105,14 +104,12 @@ try {
     await page.getByRole('button', { name: 'Pair executor', exact: true }).click()
     await page.getByLabel('Eight-digit code').fill('01234567')
     await page.getByRole('button', { name: 'Continue', exact: true }).click()
-    assert.equal(await page.getByLabel('Team', { exact: true }).inputValue(), 'uoa-product')
-    assert.ok(await page.getByLabel('Team', { exact: true }).isDisabled())
-    assert.equal(await page.getByLabel('Project', { exact: true }).inputValue(), projectId)
+    await page.getByText('UnlikeOtherAI · Product', { exact: true }).waitFor()
     await page.getByLabel('The fingerprint matches').check()
     status = 'revoked'
     await page.getByRole('button', { name: 'Pair machine', exact: true }).click()
     await page.getByText('Pairing was declined on the machine.', { exact: false }).waitFor()
-    assert.deepEqual(claims[1].scope, { kind: 'project', organizationId, projectId })
+    assert.deepEqual(claims[1].scope, { kind: 'private', organizationId })
     await page.getByRole('button', { name: 'Enter a new code', exact: true }).click()
     expired = true
     await page.getByLabel('Eight-digit code').fill('01234567')

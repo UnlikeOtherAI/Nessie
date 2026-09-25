@@ -36,7 +36,7 @@ export const executorStatusTone = (status: ExecutorStatus): PillTone => {
 }
 
 export const executorScopeLabel = (executor: ExecutorRecordResponse): string =>
-  executor.scope.kind === 'private'
+  executor.sharedWithTeam ? 'Shared with team' : executor.scope.kind === 'private'
     ? 'Private'
     : executor.scope.kind === 'project'
       ? 'Project'
@@ -53,7 +53,7 @@ export const executorScopeSummary = (executor: ExecutorRecordResponse): string =
 export const executorProfilesLabel = (executor: ExecutorRecordResponse): string =>
   executor.profiles.map((profile) => ({
     workspace_sandbox: 'Files and programs', coding_session: 'Coding', connected_browser: 'Connected browser',
-  })[profile]).join(', ') || 'Waiting for machine permissions'
+  })[profile]).join(', ') || 'Waiting for machine capabilities'
 
 export const EXECUTOR_OPERATION_LABELS: Record<ImplementedExecutorOperationKey, string> = {
   'file.list': 'Browse files',

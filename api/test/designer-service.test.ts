@@ -115,6 +115,7 @@ const fakePrisma = (overrides: { withExecutors?: boolean } = {}): PrismaClient =
   },
   executorAgentOperationGrant: { findMany: async () => [] },
   executorCapabilityRevision: { findMany: async () => [] },
+  executorTeamAccess: { findUnique: async () => null },
   executorPrivateAssignment: { findFirst: async () => null, findMany: async () => [] },
   executorSession: { findMany: async () => [] },
   organizationMember: {

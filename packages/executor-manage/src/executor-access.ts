@@ -1,3 +1,4 @@
+import { resolveExecutorSharedAccess } from './executor-shared-access.js'
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { isAdminRole, type AuthorizedActionContext } from '@nessie/schemas'
 
@@ -47,9 +48,10 @@ export const resolveExecutorHumanAccess = async (
         })
       : null,
   ])
+  const shared = await resolveExecutorSharedAccess(prisma, executor.id, userId)
   return {
     organizationRole: membership && !membership.deactivatedAt ? membership.role : null,
-    privateAssignment: privateAssignment?.role ?? 'none',
+    privateAssignment: shared.admin ? 'admin' : privateAssignment?.role ?? (shared.use ? 'use' : 'none'),
     projectRole: projectMembership?.role ?? null,
   }
 }
@@ -59,9 +61,10 @@ export const canViewExecutor = (
   access: ExecutorHumanAccess,
 ): boolean => {
   if (!access.organizationRole) return false
+  if (access.privateAssignment !== 'none') return true
   switch (executor.scopeKind) {
     case 'private':
-      return access.privateAssignment !== 'none'
+      return false
     case 'project':
       return isOrganizationManager(access.organizationRole) || access.projectRole !== null
     case 'organization':
@@ -73,9 +76,11 @@ export const canManageExecutor = (
   executor: ExecutorAccessRow,
   access: ExecutorHumanAccess,
 ): boolean => {
+  if (!access.organizationRole) return false
+  if (access.privateAssignment === 'admin') return true
   switch (executor.scopeKind) {
     case 'private':
-      return access.privateAssignment === 'admin'
+      return false
     case 'project':
       return isOrganizationManager(access.organizationRole)
         || access.projectRole === 'owner'
