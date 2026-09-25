@@ -111,12 +111,9 @@ test('inner knowledge surfaces render or publish the stage Back from one action'
   }
 })
 
-test('an inline host composes the editor, the history and the document over the browser', () => {
-  // All three are full-surface screens inline: the 46% preview column beside
-  // the browser was too small to read a document in, so an open document now
-  // covers the browser the way the editor and the history always did. The
-  // browser stays mounted underneath — covered, never unmounted — because
-  // Back must land on the same folder, scroll position and selection.
+test('an inline host delegates document placement to the active Finder view', () => {
+  // Tree keeps its hierarchy visible while Columns/List keep the established
+  // full-surface detail. Editor and history remain separate full-width stages.
   assert.match(team, /const historyOpen = Boolean\(historyPage\) && \(stacked \|\| !editorOpen\)/)
   assert.match(
     team,
@@ -126,9 +123,9 @@ test('an inline host composes the editor, the history and the document over the 
     team,
     /const browserVisible = stacked \|\| !\(editorOpen \|\| historyOpen\)/,
   )
-  assert.match(team, /const browserCovered = !stacked && documentOpen/)
-  assert.match(team, /browserCovered \? ' invisible' : ''/)
-  assert.match(team, /\{browserCovered \? \(/)
+  assert.match(team, /documentPane=\{!stacked && documentOpen \? documentPane : undefined\}/)
+  assert.match(team, /<div className="relative h-full min-h-0 w-full">\{browser\}<\/div>/)
+  assert.doesNotMatch(team, /browserCovered/)
   // The old preview column is gone, not restyled.
   assert.doesNotMatch(team, /w-\[46%\]/)
 })

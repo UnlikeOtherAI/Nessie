@@ -50,7 +50,7 @@ export const RichTextEditor = ({ onChange, placeholder, value }: RichTextEditorP
             <ToolbarButton
               label="[[ ]]"
               onClick={() => editor.chain().focus().insertContent('[[').run()}
-              title="Link page"
+              title="Link document"
             />
           )}
         />

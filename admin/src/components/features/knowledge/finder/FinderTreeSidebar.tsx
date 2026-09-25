@@ -13,6 +13,7 @@ import type { FinderRootRow } from './FinderRootColumn'
 
 type FinderTreeSidebarProps = {
   activePageId?: string
+  activeRootRowId?: string
   browseTo: (path: string[]) => void
   createFolderColumnKey: string | null
   createFolderPending: boolean
@@ -30,6 +31,7 @@ type FinderTreeSidebarProps = {
 
 export const FinderTreeSidebar = ({
   activePageId,
+  activeRootRowId,
   browseTo,
   createFolderColumnKey,
   createFolderPending,
@@ -75,8 +77,9 @@ export const FinderTreeSidebar = ({
         }
         onOpenRoot(row)
       }}
-      selected={row.kind === 'space' ? row.space.spaceId === selectedSpaceId : false}
+      selected={row.id === activeRootRowId}
       title={title}
+      tree
       variant="root"
     />
   )

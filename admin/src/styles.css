@@ -65,6 +65,7 @@
   --overlay-strong: rgba(255, 255, 255, 0.2); --scrim-weak: rgba(0, 0, 0, 0.1); --scrim: rgba(0, 0, 0, 0.2); --scrim-strong: rgba(0, 0, 0, 0.5);
   --font-family-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-family-display: var(--font-family-body);
+  --font-family-document-title: Georgia, 'Times New Roman', serif;
   --font-family-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   /* rem-relative so FontScaleProvider's root html font-size scales all type.
      0.9375rem === 15px at the default 16px root. */
@@ -2286,6 +2287,34 @@ html[data-desktop-platform='linux'] #root {
   border-left: 1px solid var(--sep);
 }
 
+.knowledge-tree-glyph {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--tx3);
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+/* Tree selection mirrors Channels: a contextual tint, never Finder's bright
+   active-column slab. The tree remains visible while the document reads in
+   the adjacent pane, so the selection is context rather than the main act. */
+.finder-row[data-finder-tree-row='true'][aria-selected='true'],
+.finder-row[data-finder-tree-row='true'][aria-selected='true'][data-column-active='true'] {
+  background: color-mix(in srgb, var(--sb-active) 20%, transparent);
+  color: var(--tx);
+}
+
+.finder-row[data-finder-tree-row='true'][aria-selected='true'] :is(
+  .finder-row-title,
+  .finder-row-icon,
+  .knowledge-tree-glyph
+) {
+  color: var(--tx);
+}
+
 .sidebar-tree-panel .admin-sec-row,
 .admin-sidebar-nav .admin-sec-row {
   align-items: center;
@@ -3360,6 +3389,18 @@ html[data-desktop-platform='linux'] #root {
   border: 1px solid var(--sep);
   border-radius: 8px;
   background: var(--main-hover);
+}
+
+.kb-document-title {
+  font-family: var(--font-family-document-title);
+  font-size: 3rem;
+  letter-spacing: -0.035em;
+}
+
+@media (min-width: 640px) {
+  .kb-document-title {
+    font-size: 4rem;
+  }
 }
 
 /* The toolbar is a size container so what it carries can depend on the room

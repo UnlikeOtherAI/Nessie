@@ -1,11 +1,8 @@
 import { lazy, Suspense, useState } from 'react'
-import { useUploadFileVersion, useUploadPageAttachment } from '../../../facades/knowledge/file-hooks'
+import { useUploadFileVersion } from '../../../facades/knowledge/file-hooks'
 import { useConvertToSpreadsheet } from '../../../facades/knowledge/spreadsheet-hooks'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
-import { firstFileOnly, useFileDrop } from '../../../hooks/useFileDrop'
 import type { UploadProgress } from '../../../lib/upload-xhr'
-import { DropZoneOverlay } from '../../shared/DropZoneOverlay'
-import { AttachmentsDrawer } from './AttachmentsDrawer'
 import { FileNodeViewer } from './FileNodeViewer'
 import { FileVersionUploadDialog } from './FileVersionUploadDialog'
 import { useKnowledge } from './KnowledgeProvider'
@@ -35,8 +32,8 @@ type KnowledgeDocumentPaneProps = {
   spaceName: string
 }
 
-// The open document or file node, with everything filed against it: its
-// attachments drawer, a new file version, and drag-and-drop onto the page.
+// The open document or file node, with everything filed against it: inline
+// attachments for readable documents/files and a new version for file nodes.
 export const KnowledgeDocumentPane = ({
   bodyQuery,
   breadcrumbPages,
@@ -57,28 +54,19 @@ export const KnowledgeDocumentPane = ({
     publishPage,
     publishPending,
   } = useKnowledge()
-  const [attachmentsOpen, setAttachmentsOpen] = useState(false)
   const [versionDialogOpen, setVersionDialogOpen] = useState(false)
-  const [attachProgress, setAttachProgress] = useState<UploadProgress | null>(null)
   const [versionProgress, setVersionProgress] = useState<UploadProgress | null>(null)
   const [versionError, setVersionError] = useState<string | null>(null)
 
   const convertToSpreadsheet = useConvertToSpreadsheet(selectedSpaceId)
-  const pageAttachmentUpload = useUploadPageAttachment(page.id)
   const fileVersionUpload = useUploadFileVersion(page.id, selectedSpaceId)
 
-  const uploadAttachment = (file: File) => {
-    setAttachmentsOpen(true)
-    setAttachProgress({ loaded: 0, total: file.size, pct: 0 })
-    pageAttachmentUpload.mutate(
-      { file, onProgress: setAttachProgress },
-      { onSettled: () => setAttachProgress(null) },
-    )
+  const showAttachments = () => {
+    document.getElementById('knowledge-page-attachments')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
-  const attachmentDrop = useFileDrop(firstFileOnly(uploadAttachment), !canWrite)
 
   return (
-    <div className="relative h-full w-full" {...attachmentDrop.dropHandlers}>
+    <div className="relative h-full w-full">
       {page.kind === 'spreadsheet' ? (
         <Suspense
           fallback={
@@ -107,7 +95,7 @@ export const KnowledgeDocumentPane = ({
               file: new File([markdown], page.title, { type: 'text/markdown' }),
             })
           }}
-          onToggleAttachments={() => setAttachmentsOpen(true)}
+          onToggleAttachments={showAttachments}
           onUploadVersion={() => setVersionDialogOpen(true)}
           page={page}
         />
@@ -127,26 +115,12 @@ export const KnowledgeDocumentPane = ({
             if (index >= 0) openPagePath(breadcrumbPages.slice(0, index + 1).map((item) => item.id))
           }}
           onPublish={() => publishPage(page.id)}
-          onToggleAttachments={() => setAttachmentsOpen(true)}
+          onToggleAttachments={showAttachments}
           page={fullPage ?? page}
           publishPending={publishPending}
           spaceName={spaceName}
         />
       )}
-      <DropZoneOverlay
-        active={attachmentDrop.isDragging}
-        label="Drop to attach to this page"
-        progressPct={attachProgress?.pct}
-        uploading={pageAttachmentUpload.isPending}
-      />
-      {attachmentsOpen ? (
-        <AttachmentsDrawer
-          canWrite={canWrite}
-          onClose={() => setAttachmentsOpen(false)}
-          open={attachmentsOpen}
-          pageId={page.id}
-        />
-      ) : null}
       {versionDialogOpen && canWrite ? (
         <FileVersionUploadDialog
           error={versionError}

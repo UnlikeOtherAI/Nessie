@@ -222,9 +222,15 @@ listed in [uploads-and-indexing.md](uploads-and-indexing.md) §4 and
 Tree is the compact recursive hierarchy view shared visually with the Channels
 sidebar. It renders only the current space's `rootPages` and `childrenOf`
 pages, with 32px folder rows, 30px leaf rows and a token-coloured guide line
-per depth. Folder clicks use the existing `browseTo` state and document clicks
-use the existing document stage; the root column remains the space selector in
-organisation scope. Tree adds no data source, navigation doorway or mutation.
+per depth. Its folder, document and spreadsheet glyphs use the same restrained
+outline language as Channels, and its selected row uses the Channels soft
+active tint. Folder clicks use the existing `browseTo` state. A document,
+spreadsheet or file click keeps the tree mounted and opens the existing detail
+stage in the right pane; Columns and List still open that stage across their
+whole browser surface. Selecting Agents also uses the right pane, so the active
+view remains Tree rather than silently rendering Columns beneath a Tree label.
+The root column remains the space selector in organisation scope. Tree adds no
+data source, navigation doorway or mutation.
 
 ### List view (`?view=list`)
 
@@ -306,7 +312,7 @@ and the project tab need no separate rules. Order is priority, high first.
 | `sort` | menu | "Sort: {Name}" | `faArrowDownWideShort` | 80 | | always, disabled (`aria-disabled`) in virtual columns with `title="Latest and Shared with me are ordered by time"` |
 | `view` | menu | "View: {Tree}" | `faSitemap` / `faColumns` / `faList` | 70 | | `split` only — on `single` a column *is* a list |
 | `needs-review` | toggle | "Needs review ({n})" | | 60 | | `agentDraftCount > 0 || needsReviewOnly` for the active space (unchanged behaviour) |
-| `sharing-settings` | button, compact | "Sharing & settings" | `faGear` | 10 | | active space `canManageAccess || canWrite`, and the space is neither personal nor a project Documents space (those have nothing to set — the read-out covers them) |
+| `sharing-settings` | button, compact | "Sharing & settings" | `faGear` | 10 | | active space `canManageAccess || canWrite`; at the space root it opens Space settings, while inside a folder it opens Folder settings for that folder |
 
 `open-agent` is **not** a toolbar action any more. When the column being
 shown is an agent's documents folder (its space has `ownerAgentId`), that
