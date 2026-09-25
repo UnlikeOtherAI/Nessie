@@ -144,9 +144,9 @@ sentence changes only if the invariant itself did.
   `scripts/ci-tests.mjs`; [testing](docs/standards/testing.md) defines the local
   verification path and preserves ordinary shared-database test ordering.
   Worker-only tests also build the real executor bridge fixture dependency.
-  The Linux desktop workflow generates Prisma and builds `@nessie/executor`
-  with its workspace dependencies before Tauri prepares the packaged runtime,
-  matching Windows.
+  The Linux desktop workflow generates Prisma, builds `@nessie/executor` with
+  its workspace dependencies, and prepares the packaged runtime before Tauri
+  builds, matching Windows.
 - **Preview fixtures stay out of production bundles.** Register the fixture
   in `admin/vite.config.ts` behind its `NESSIE_<NAME>_E2E_FIXTURE` flag, set
   that flag for a manual preview build, and list it in `@nessie/admin#build`

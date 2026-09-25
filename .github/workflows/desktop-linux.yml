@@ -89,8 +89,11 @@ jobs:
       - name: Shell tests
         run: cargo test --manifest-path desktop/src-tauri/Cargo.toml
 
+      - name: Prepare desktop executor runtime
+        run: pnpm --dir desktop run prepare:executor-runtime
+
       - name: Build desktop bundles
-        run: pnpm --filter @nessie/desktop tauri:build -- --bundles deb,appimage
+        run: pnpm --dir desktop run tauri:build:linux
 
       - name: Build the standalone executor package
         run: node executor/packaging/linux/build-deb.mjs
