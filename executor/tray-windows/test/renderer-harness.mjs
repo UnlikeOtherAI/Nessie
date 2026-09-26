@@ -49,6 +49,9 @@ try {
           }
         }
         if (['executor_describe', 'executor_console_describe', 'executor_configure'].includes(command)) return {
+          existingClaudeChannelConfiguration: { mcpServers: { nessie: {
+            command: 'node', args: ['nessie-executor.cjs', 'serve-existing-claude-channel', '--state-dir', 'pairing-1'],
+          } } },
           existingCodingSessionsEnabled: window.existingSessions[id] !== false,
           executorId: id, apiBaseUrl: 'https://api.nessie.works', commandPolicy: window.policies[id],
           policy: { operations: ['file.read'], permittedPrograms: [], revision: 1 },
@@ -103,6 +106,11 @@ try {
     await page.waitForFunction(() => document.getElementById('command-mode').value === 'all')
     assert.equal(await page.locator('#existing-coding-sessions').isChecked(), true)
     await page.screenshot({ path: join(output, `${host}-commands.png`), fullPage: true })
+    await page.locator('#claude-channel-setup summary').click()
+    assert.match(await page.locator('#claude-channel-config').textContent(), /serve-existing-claude-channel/)
+    assert.match(await page.locator('#claude-channel-setup').textContent(), /dangerously-load-development-channels/)
+    await page.screenshot({ path: join(output, `${host}-claude-setup.png`), fullPage: true })
+    await page.locator('#claude-channel-setup summary').click()
     await page.locator('#terminal-command').fill('node')
     await page.locator('#terminal-arguments').fill('/installed/gemini.js\n--debug')
     await page.getByRole('button', { name: 'Choose working folder…' }).click()

@@ -3,6 +3,9 @@ const lines = (id) => byId(id).value.split('\n').map((line) => line.trim()).filt
 
 const renderPermissions = (value) => {
   byId('existing-coding-sessions').checked = value.existingCodingSessionsEnabled !== false
+  byId('claude-channel-config').textContent = value.existingClaudeChannelConfiguration
+    ? JSON.stringify(value.existingClaudeChannelConfiguration, null, 2)
+    : 'Start this executor connection to prepare its channel configuration.'
   const folders = byId('reach-folders')
   folders.replaceChildren()
   for (const folder of value.reach.folders) {

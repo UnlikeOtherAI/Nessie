@@ -118,3 +118,15 @@ executor authorization is enough; there are no extra grants. Disabling stops
 new discovery and dispatch and keeps the original coding processes running.
 Provider behavior and Claude's experimental channel startup requirement are
 in [existing coding sessions](plans/2026-09-26-existing-coding-sessions/overview.md).
+
+The same Commands page has **Connect a Claude channel**, with the installed
+executor's exact MCP JSON and Claude startup command. `describe --json` emits
+this as `existingClaudeChannelConfiguration`. This connects Claude's native
+experimental channel; it adds no Nessie authentication or approval. Sessions
+already running without that channel stay inspectable until Claude connects it.
+
+Background discovery reuses a 60-second cache. The existing daemon heartbeat
+reports whether the connection has private-owner session access; shared
+connections do not collect existing conversation metadata. Explicit owner
+queries refresh the provider inventory. A missing or expired heartbeat receipt
+stops channel delivery. Disabling the local switch takes effect immediately.

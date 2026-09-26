@@ -240,12 +240,16 @@ test('heartbeatExecutor hands back the response\'s close instructions', async ()
   const original = executorApi.heartbeat
   const key = generateKeyPairSync('ed25519').privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64url')
   const instruction = [{ ownerKey: `sha256:${'d'.repeat(64)}`, reason: 'executor_paused' }]
-  executorApi.heartbeat = async () => ({ connectionEpoch: '4', status: 'online', codingSessionClose: instruction })
+  executorApi.heartbeat = async () => ({ connectionEpoch: '4', status: 'online', codingSessionClose: instruction,
+    existingSessionsAllowed: true })
   try {
     const state = { ...stateWith([bridgeSpec()]), connectionEpoch: '4', machinePrivateKey: key }
-    assert.deepEqual(await heartbeatExecutor(state), instruction)
+    const access: boolean[] = []
+    assert.deepEqual(await heartbeatExecutor(state, undefined, (allowed) => { access.push(allowed) }), instruction)
+    assert.deepEqual(access, [true])
     executorApi.heartbeat = async () => ({ connectionEpoch: '4', status: 'online' })
-    assert.equal(await heartbeatExecutor(state), undefined)
+    assert.equal(await heartbeatExecutor(state, undefined, (allowed) => { access.push(allowed) }), undefined)
+    assert.deepEqual(access, [true, false], 'an older or shared-scope heartbeat cannot enable native inventory')
   } finally {
     executorApi.heartbeat = original
   }

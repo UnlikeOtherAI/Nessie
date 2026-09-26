@@ -94,8 +94,7 @@ export const serveExecutor = async (
       try {
         // Closing never delays the next heartbeat: it runs beside it, serialised on its own,
         // and every heartbeat retries whatever an earlier one could not carry out.
-        const close = await heartbeatExecutor(live, localMcp.current())
-        codingBridge.connectionHealthy()
+        const close = await heartbeatExecutor(live, localMcp.current(), codingBridge.connectionHealthy)
         void codingBridge.close(close).catch(() => undefined)
       } catch (error) {
         await browserSessions.stopAll()

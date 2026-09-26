@@ -33,7 +33,7 @@ export const ExecutorSessionPage = () => {
                 {session ? ` · ${session.status.replaceAll('_', ' ')}` : ''}
               </p>
               {view.data.screen ? <>
-                <ExecutorTerminalScreen screen={view.data.screen} />
+                <ExecutorTerminalScreen screen={view.data.screen} plainText={session?.origin === 'external'} />
                 <p className="text-xs text-[color:var(--tx3)]">
                   {session?.origin === 'external' ? 'Native session overview · Experimental provider controls and delivery limits are shown above.'
                     : view.data.screen.kind === 'terminal'

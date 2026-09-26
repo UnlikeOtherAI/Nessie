@@ -36,7 +36,9 @@ const toolset = (input: {
     ...(input.withFacts === false ? {} : { codingSessions: {
       ...facts, existingSessions: input.existingSessions === false ? undefined : true,
       agents: input.agents ?? facts.agents,
-      permissionMode: { ...facts.permissionMode, ...(input.agents?.includes('terminal') ? { terminal: 'hostUser' } : {}) },
+      permissionMode: Object.fromEntries((input.agents ?? facts.agents).map((agent) => [
+        agent, agent === 'terminal' ? 'hostUser' : facts.permissionMode[agent],
+      ])),
     } }),
   }
   const binding = (id: string, operationKey: string) => ({

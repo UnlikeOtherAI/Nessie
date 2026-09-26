@@ -140,3 +140,26 @@ test('a definitive native queue rejection is failed, while secret projection pre
     assert.equal(scrubbed.recentMessages[0]?.text, 'API_KEY=<secret>')
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
+
+test('background inventory requires live private-machine authority and stops at revocation', async () => {
+  const { existingAuthorityWriter } = await import('../src/existing-session/authority.js')
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-inventory-authority-'))
+  let reads = 0
+  const manager = new ExistingSessions(directory, async () => { reads += 1; return {} })
+  const writer = existingAuthorityWriter(directory)
+  try {
+    assert.deepEqual(await manager.inventory(), [])
+    assert.equal(reads, 0, 'no provider starts before a usable private-machine heartbeat')
+    await writer(false)
+    assert.deepEqual(await manager.inventory(), [])
+    assert.equal(reads, 0, 'shared scope never starts native discovery')
+    await writer(true)
+    await manager.inventory()
+    await manager.inventory()
+    assert.equal(reads, 1)
+    await writer(false)
+    assert.deepEqual(await manager.inventory(), [])
+    await writeFile(join(directory, 'existing-session-authority.json'), JSON.stringify({ expiresAt: Date.now() - 1 }))
+    assert.deepEqual(await manager.inventory(), [])
+  } finally { await manager.close(); await rm(directory, { recursive: true, force: true }) }
+})

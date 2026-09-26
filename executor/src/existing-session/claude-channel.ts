@@ -1,15 +1,15 @@
-import { readdir, rename, unlink } from 'node:fs/promises'
-import { join } from 'node:path'
+import { unlink } from 'node:fs/promises'
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 
 import { buildAgentEnvironment } from '../coding-session/agent-env.js'
-import { ensureCodingStateDir, readJson, writeJsonAtomic } from '../coding-session/session-files.js'
+import { ensureCodingStateDir, writeJsonAtomic } from '../coding-session/session-files.js'
 import { loadExecutorState } from '../state-store.js'
 import { existingAuthorityIsLive } from './authority.js'
-import { channelInboxDir, channelRegistrationPath, channelsDir, type ChannelEvent } from './channel-files.js'
+import { channelInboxDir, channelRegistrationPath, channelsDir } from './channel-files.js'
+import { drainClaudeChannel } from './channel-delivery.js'
 import { claudeAgents, ExistingClaude } from './claude.js'
 import { findProviderProgram } from './programs.js'
 import { existingSessionsEnabled } from './settings.js'
@@ -55,30 +55,11 @@ export const serveExistingClaudeChannel = async (stateDir: string): Promise<void
         heartbeatAt: Date.now(),
       })
       else await unlink(registration).catch(() => undefined)
-      const files = (await readdir(inbox)).filter((name) => /^[a-f0-9-]+\.pending$/u.test(name)).sort().slice(0, 32)
-      const events = await Promise.all(files.map(async (name) => ({
-        path: join(inbox, name), event: await readJson<ChannelEvent>(join(inbox, name)),
-      })))
-      events.sort((left, right) => (left.event?.queuedAt ?? 0) - (right.event?.queuedAt ?? 0))
-      for (const { path, event } of events) {
-        if (!event) { await unlink(path); continue }
-        const resultPath = path.replace(/\.pending$/u, '.result')
-        const valid = enabled && event.sessionId === session.sessionId && event.incarnation === session.incarnation
-          && event.expiresAt > Date.now() && typeof event.message === 'string' && event.message.length <= 33_000
-        // Claim before writing to stdio. An interrupted write is never automatically replayed.
-        await rename(path, path.replace(/\.pending$/u, '.claimed'))
-        if (!valid) {
-          await writeJsonAtomic(resultPath, { state: 'cancelled', providerMessageId: event.commandId })
-          await unlink(path.replace(/\.pending$/u, '.claimed'))
-          continue
-        }
-        await server.notification({ method: 'notifications/claude/channel', params: {
+      await drainClaudeChannel({ stateDir, sessionId: session.sessionId, incarnation: session.incarnation!,
+        notify: async (event) => server.notification({ method: 'notifications/claude/channel', params: {
           content: event.message, meta: { source: 'Nessie', message_id: event.commandId },
-        } })
-        await writeJsonAtomic(resultPath, { state: 'written_to_transport', providerMessageId: event.commandId,
-          behavior: 'Claude received an MCP channel notification; consumption is not acknowledged.' })
-        await unlink(path.replace(/\.pending$/u, '.claimed'))
-      }
+        } }),
+      })
     } finally { running = false }
   }
   const timer = setInterval(() => { void tick().catch(stop) }, 1_000)

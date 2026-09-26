@@ -141,3 +141,14 @@ reconnection, both submenu directions, status combinations, navigation and
 empty actions. It is part of the requested Browser Suites workflow alongside
 executor pairing. Database tests cover private-assignment and membership
 boundaries; API fan-out tests cover revocation on both live lanes.
+
+
+### Existing-session heartbeat receipt
+
+A successful daemon heartbeat includes `existingSessionsAllowed`, derived from
+the executor's existing private scope. This adds no grant or authentication
+step. The local daemon records its existing authority for at most 60 seconds;
+background native session discovery and Claude channel delivery require that
+live receipt. Shared scopes, a missing field, failed connection or revoked
+connection stop these operations. The owner-only command and view routes keep
+their existing authorization checks.

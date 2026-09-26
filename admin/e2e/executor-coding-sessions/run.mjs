@@ -146,7 +146,8 @@ const openContext = async (browser, {
       delete session.ownerKey
       return respond({
         canShare: canClose && viewSession.origin !== 'external', online: true, session,
-        screen: { ansi: '\u001b[32m' + state.screen + '\u001b[0m\r\n> ', cols: 120, rows: 36,
+        screen: { ansi: viewSession.origin === 'external' ? state.screen : '\u001b[32m' + state.screen + '\u001b[0m\r\n> ',
+          cols: 120, rows: 36,
           capturedAt: iso(0), kind: viewSession.origin === 'external' ? 'activity' : 'terminal' },
       })
     }
@@ -408,6 +409,8 @@ try {
     assert.equal(await native.page.getByRole('button', { name: 'Share session', exact: true }).count(), 0)
     await native.page.reload()
     await native.page.getByRole('heading', { name: existing.title }).waitFor()
+    await native.page.getByRole('region', { name: 'Native session overview' }).waitFor()
+    assert.match(await native.page.getByTestId('executor-terminal-screen').innerText(), /Available input: Queue native input/u)
     assert.equal(await noOverflow(native.page), true)
     await native.page.screenshot({ fullPage: true, path: resolve(output, `existing-session-${width}.png`) })
     await native.page.goBack()

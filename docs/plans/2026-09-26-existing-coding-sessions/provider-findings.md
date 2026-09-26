@@ -262,3 +262,10 @@ existing heartbeat receipts, so it proves the provider adapter, not a live
 production control-plane round trip. Claude's own development-channel startup
 flag was required. Its initial startup failure was a malformed test fixture
 with no workspace; the corrected fixture connected successfully.
+
+
+Native regression testing also exposed an older Windows draft-ingest failure:
+Windows does not implement `O_NOFOLLOW`. Draft ingestion now rejects a known
+symbolic-link leaf and writes through an exclusively created sibling followed
+by rename, so replacing the leaf cannot truncate its target. The existing
+cross-platform regression checks that the outside file remains unchanged.

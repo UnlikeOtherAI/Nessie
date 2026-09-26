@@ -182,7 +182,7 @@ export const codingSessionDescriptors = (facts: ExecutorCodingSessionsFacts): To
       toolName: CODING_SESSION_TOOL_NAMES.list,
       description: `Roots, agents, your sessions: the folders coding agents may work in on this machine (${roots}), `
         + `the coding agents it offers (${facts.agents.map((agent) => CODING_AGENT_LABELS[agent]).join(', ')}), `
-        + 'and your managed and existing native sessions, with capabilities and viewer links. Existing-session tools use the exact sessionId returned here.',
+        + 'and your managed and existing native sessions, with capabilities and viewer links. Filters apply to native sessions. Existing-session tools use the exact sessionId returned here.',
       inputSchema: { additionalProperties: false, properties: { search: { type: 'string', maxLength: 200 }, provider: { type: 'string', enum: ['codex', 'claude'] },
         cursor: { type: 'string', maxLength: 1_024, description: 'Use nextCursor with nextCursorProvider from the previous result.' } }, type: 'object' },
     },

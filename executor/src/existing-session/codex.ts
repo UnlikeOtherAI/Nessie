@@ -41,7 +41,7 @@ export class ExistingCodex {
     this.nextCursor = typeof result.nextCursor === 'string' ? result.nextCursor : null
     const threads = Array.isArray(result.data) ? result.data : []
     const first = threads.map(objectOf).find((thread) => nativeIdIsValid(thread.id))
-    if (this.queueSupported === undefined && first) {
+    if (this.queueSupported !== true && first) {
       this.queueSupported = await this.rpc.call('thread/queue/list', { threadId: first.id })
         .then(() => true, () => false)
     }

@@ -1,4 +1,4 @@
-import { access, readdir } from 'node:fs/promises'
+import { access, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -20,9 +20,15 @@ export const findProviderProgram = async (
   if (provider === 'codex' && process.platform === 'win32') {
     const directory = join(home, 'AppData', 'Local', 'OpenAI', 'Codex', 'bin')
     const versions = await readdir(directory, { withFileTypes: true }).catch(() => [])
-    for (const entry of versions.filter((item) => item.isDirectory()).slice(-32).reverse()) {
-      candidates.push(join(directory, entry.name, 'codex.exe'))
-    }
+    const installed = await Promise.all(versions.filter((entry) => entry.isDirectory()).slice(0, 64)
+      .map(async (entry) => {
+        const path = join(directory, entry.name, 'codex.exe')
+        return { path, modified: await stat(path).then((info) => info.mtimeMs, () => 0) }
+      }))
+    candidates.push(...installed.sort((left, right) => right.modified - left.modified).map((entry) => entry.path))
+  }
+  if (provider === 'claude' && process.platform === 'win32') {
+    candidates.push(join(home, 'AppData', 'Roaming', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'))
   }
   const fromPath = await resolveProgramPath(provider, env)
   if (fromPath) candidates.push(fromPath)

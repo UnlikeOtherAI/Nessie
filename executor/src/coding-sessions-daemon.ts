@@ -110,7 +110,7 @@ export type CodingSessionsDaemon = {
   /** A failed poll, heartbeat or claim: closes only when the failure is definitive or has lasted. */
   connectionFailed: (reason: string, error: unknown) => Promise<void>
   /** A heartbeat the API accepted. */
-  connectionHealthy: () => void
+  connectionHealthy: (existingSessionsAllowed?: boolean) => void
   /**
    * The control plane's instructions from a heartbeat response, plus any an
    * earlier heartbeat could not carry out; anything malformed is ignored.
@@ -232,9 +232,9 @@ export const createCodingSessionsDaemon = (input: {
         await closeAll('connection_lost')
       }
     },
-    connectionHealthy: () => {
+    connectionHealthy: (existingSessionsAllowed = false) => {
       failingSince = undefined
-      void writeAuthority(true).catch(() => undefined)
+      void writeAuthority(existingSessionsAllowed).catch(() => undefined)
     },
     close: (instructions) => serially(async () => {
       if (!bridge) return

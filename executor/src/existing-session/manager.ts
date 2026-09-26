@@ -6,6 +6,7 @@ import { EXISTING_CODING_SESSION_OWNER_KEY } from '@nessie/schemas'
 import { buildAgentEnvironment } from '../coding-session/agent-env.js'
 import { CodingBridgeError } from '../coding-session/bridge-tools.js'
 import { createJsonExclusive, ensureCodingStateDir } from '../coding-session/session-files.js'
+import { existingAuthorityIsLive } from './authority.js'
 import { channelInboxDir } from './channel-files.js'
 import { ExistingClaude } from './claude.js'
 import { ExistingCodex } from './codex.js'
@@ -53,7 +54,7 @@ export class ExistingSessions {
 
   async list(fresh = false): Promise<ExistingSession[]> {
     if (!await this.enabled()) return []
-    if (!fresh && Date.now() - this.refreshedAt < 10_000) return this.rows
+    if (!fresh && Date.now() - this.refreshedAt < 60_000) return this.rows
     if (this.refreshing) return this.refreshing
     this.refreshing = (async () => {
       const providers = await this.connect()
@@ -103,6 +104,7 @@ export class ExistingSessions {
   }
 
   async inventory(): Promise<Record<string, unknown>[]> {
+    if (!await existingAuthorityIsLive(this.stateDir)) return []
     return (await this.list()).map((row) => ({ sessionId: row.sessionId, ownerKey: EXISTING_CODING_SESSION_OWNER_KEY,
       origin: 'external', title: row.title, status: row.status, agent: row.provider,
       root: 'existing', updatedAt: row.updatedAt }))
@@ -114,8 +116,8 @@ export class ExistingSessions {
       throw new CodingBridgeError('coding_session_not_found', 'Existing session is unavailable or access is disabled.')
     }
     const providers = await this.connect()
-    const result = session.provider === 'codex' && providers.codex
-      ? await providers.codex.read(session, includeText) : await providers.claude?.read(session, includeText)
+    const result = session.provider === 'codex'
+      ? await providers.codex?.read(session, includeText) : await providers.claude?.read(session, includeText)
     if (!result) throw new CodingBridgeError('coding_session_not_found', 'The provider connection is unavailable.')
     const lastDelivery = await latestExistingDelivery(this.stateDir, id)
     return { ...result, ...(lastDelivery ? { lastDelivery } : {}) }
@@ -136,12 +138,15 @@ export class ExistingSessions {
         throw new CodingBridgeError('coding_session_action_unavailable', session.capabilities.reason)
       }
       const providers = await this.connect()
-      if (session.provider === 'codex') await providers.codex?.read(session, false)
+      if (session.provider === 'codex' && !providers.codex || session.provider === 'claude' && !providers.claude) {
+        throw new CodingBridgeError('coding_session_action_unavailable', 'The native provider is unavailable.')
+      }
+      if (session.provider === 'codex') await providers.codex!.read(session, false)
       const attributed = `[Nessie · ${ownerKey.slice(7, 19)} · ${commandId}]\n${message}`
       return deliverOnce({
         stateDir: this.stateDir, commandId, ownerKey, sessionId: id, action, message, send: async (eventId) => {
         if (!await this.enabled()) return { state: 'cancelled', reason: 'Existing coding sessions were disabled.' }
-        if (action === 'queue' && providers.codex) return providers.codex.queue(session, attributed, commandId)
+        if (session.provider === 'codex') return providers.codex!.queue(session, attributed, commandId)
         const inbox = channelInboxDir(this.stateDir, id)
         await ensureCodingStateDir(inbox)
         if ((await readdir(inbox)).filter((name) => name.endsWith('.pending')).length >= 32) {

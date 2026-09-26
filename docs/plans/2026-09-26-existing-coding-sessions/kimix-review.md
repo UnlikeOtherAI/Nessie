@@ -53,3 +53,31 @@ control. It accepted the remaining experiments as explicit release gates.
 No implementation, real delivery, native installation or rendered-flow test is
 claimed by this review. A separate implementation review is required after
 those gates are met.
+
+
+## Implementation review
+
+The installed Kimix CLI independently reviewed implementation `85acfd8ae`
+against `83499af11` in a separate read-only worktree. It inspected the plan,
+executor adapters, API ownership filters, worker tools and UI. It made no
+changes. Provider consumption and native UI behavior require separate runtime
+proof; the reviewer did not claim to verify them.
+
+| Finding | Implementation disposition |
+| --- | --- |
+| Shared connections collected unusable native titles. | Background inventory now requires the existing heartbeat's private-scope receipt. Database tests cover private, project and organization scopes. |
+| Native discovery ran every 15 seconds. | Background inventory shares a 60-second cache; explicit requests refresh it. |
+| Missing Codex provider could reach Claude input handling. | Native reads and writes select their provider explicitly and reject absence. |
+| Describe hardcoded the enabled flag. | The CLI reads the persisted local switch; the synchronous projection no longer invents it. |
+| List filters did not apply to managed sessions. | The tool contract explicitly scopes filters to native inventory. |
+| One transient queue probe failure persisted forever. | Unsupported or failed probes are retried on later discovery. |
+| Delivery records and results grew indefinitely. | Receipts are capped at 4,096 without evicting deduplication records; channel results are reconciled and removed. Exhaustion rejects new work. |
+| Claude channel setup had no local doorway. | The shared console and CLI describe output provide the exact native MCP configuration. |
+| Restart notice and binary selection were misleading. | Local controls describe immediate application; Windows Codex candidates are ordered by modification time. |
+
+Follow-up checks also cover channel claim-before-write, ordered delivery,
+disabling between events, expired authority, native incarnation mismatch,
+expired input and ambiguous writes without replay. Provider output is scrubbed
+through the existing secret/path projection. Admin history navigation uses the
+real navigation providers in its browser fixture. Both native console transport
+adapters are exercised by the shared headless renderer harness.

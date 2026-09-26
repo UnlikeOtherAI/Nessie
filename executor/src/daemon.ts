@@ -89,6 +89,7 @@ export const claimExecutor = async (
 export const heartbeatExecutor = async (
   state: ExecutorLocalState,
   localMcp?: ExecutorLocalMcpReport,
+  onExistingSessionAccess?: (allowed: boolean) => void,
 ): Promise<unknown> => {
   if (!state.connectionEpoch) {
     throw new Error('Executor has not claimed a live daemon connection.')
@@ -111,6 +112,7 @@ export const heartbeatExecutor = async (
     observedAt,
     signature,
   })
+  onExistingSessionAccess?.(response.existingSessionsAllowed === true)
   return response.codingSessionClose
 }
 

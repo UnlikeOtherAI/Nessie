@@ -264,7 +264,8 @@ test('no host path, no account data and no OS user or host name reach any answer
     assert.match(all, /GH_TOKEN=<secret>/)
     const [user] = identityNames([userInfo().username])
     const [host] = identityNames([hostname()])
-    if (user && host) assert.match(all, /got '<user>@<host>\.\(none\)'/u)
+    // A login matching a host alias is redacted as <host>; either placeholder hides the user.
+    if (user && host) assert.match(all, /got '<(?:user|host)>@<host>\.\(none\)'/u)
     const names = [user, host].filter((name): name is string => name !== undefined)
     const forbidden = [
       harness.root, harness.dir, homedir(), tmpdir(), 'person@example.com', 'Private Org', 'Private Docs',

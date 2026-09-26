@@ -4,7 +4,7 @@ import type { ExecutorSessionScreen } from '@nessie/schemas'
 import '@xterm/xterm/css/xterm.css'
 
 /** One viewer for session links and the machine's session list. No input path. */
-export const ExecutorTerminalScreen = ({ screen }: { screen: ExecutorSessionScreen }) => {
+const TerminalView = ({ screen }: { screen: ExecutorSessionScreen }) => {
   const element = useRef<HTMLDivElement>(null)
   const terminal = useRef<Terminal | null>(null)
   const last = useRef<string | null>(null)
@@ -48,3 +48,14 @@ export const ExecutorTerminalScreen = ({ screen }: { screen: ExecutorSessionScre
     </div>
   )
 }
+
+
+export const ExecutorTerminalScreen = ({ screen, plainText = false }: {
+  screen: ExecutorSessionScreen
+  plainText?: boolean
+}) => plainText ? (
+  <pre className="whitespace-pre-wrap break-words rounded-lg border border-[color:var(--sep)] p-4 text-sm text-[color:var(--tx)]"
+    data-testid="executor-terminal-screen" aria-label="Native session overview" role="region">
+    {screen.ansi.trim()}
+  </pre>
+) : <TerminalView screen={screen} />

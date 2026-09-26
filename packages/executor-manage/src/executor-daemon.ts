@@ -117,6 +117,7 @@ const requireDaemonExecutor = async (
     where: { id: executorId },
     select: {
       activeConnectionEpoch: true,
+      scopeKind: true,
       id: true,
       lastSeenAt: true,
       machinePublicKey: true,
@@ -241,6 +242,7 @@ export const reportExecutorHeartbeat = async (
   },
   now = new Date(),
 ): Promise<{
+  existingSessionsAllowed: boolean
   codingSessionClose?: Array<{ ownerKey: string; reason: string; sessionId?: string }>
   connectionEpoch: string
   status: string
@@ -330,6 +332,7 @@ export const reportExecutorHeartbeat = async (
       executorId: executor.id, ...(input.localMcp === undefined ? {} : { localMcp: input.localMcp }), now,
     })
     return {
+      existingSessionsAllowed: executor.scopeKind === 'private',
       ...(codingSessionClose.length > 0 ? { codingSessionClose } : {}),
       connectionEpoch: updated.activeConnectionEpoch.toString(),
       status: updated.status,
