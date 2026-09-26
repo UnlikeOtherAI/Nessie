@@ -658,3 +658,4 @@ before writing code here.
 - Executor terminal sessions use tmux on Mac/Linux and ConPTY on Windows; agent writes send exact text or a named key; read [the session guide](docs/executor-protocol/terminal-sessions.md) for setup, sharing, agent tools and native verification.
 
 Executor sharing is direct: people receive use or admin access, projects and the current team receive use access; read [executor sharing](docs/standards/executor-sharing.md) before changing it.
+Every user-visible string must have an accurate translation for each supported language; CI must reject missing translations.
