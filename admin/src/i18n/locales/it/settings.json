@@ -385,5 +385,31 @@
         "detail": "L’accento è simile al rosso degli errori, quindi i pulsanti distruttivi sembreranno normali."
       }
     }
+  },
+  "security": {
+    "title": "Sicurezza",
+    "password": "Password",
+    "activeSessions": "Sessioni attive",
+    "sessionsDescription": "Dispositivi attualmente connessi al tuo account. Revocando una sessione disconnetti il dispositivo.",
+    "currentPassword": "Password attuale",
+    "newPassword": "Nuova password",
+    "confirmNewPassword": "Conferma nuova password",
+    "passwordMinimum": "Almeno 8 caratteri",
+    "passwordMismatch": "Le nuove password non corrispondono.",
+    "passwordChanged": "Password modificata.",
+    "passwordChangeFailed": "Impossibile modificare la password.",
+    "changePassword": "Cambia password",
+    "identityProviderPassword": "Accedi tramite un provider di identità. Gestisci la password con quel provider.",
+    "device": "Dispositivo",
+    "thisDevice": "Questo dispositivo",
+    "lastActive": "Ultima attività",
+    "action": "Azione",
+    "current": "Attuale",
+    "noSessions": "Nessuna sessione attiva.",
+    "sessionsTable": "Tabella sessioni attive",
+    "sessionRange": "{{start}}–{{end}} di {{count}}",
+    "revoke": "Revoca",
+    "revokeSessionTitle": "Revocare questa sessione?",
+    "revokeFailed": "Impossibile revocare la sessione."
   }
 }

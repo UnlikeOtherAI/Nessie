@@ -385,5 +385,31 @@
         "detail": "Votre accent est proche du rouge des erreurs ; les boutons destructifs ressembleront donc aux boutons ordinaires."
       }
     }
+  },
+  "security": {
+    "title": "Sécurité",
+    "password": "Mot de passe",
+    "activeSessions": "Sessions actives",
+    "sessionsDescription": "Appareils actuellement connectés à votre compte. Révoquer une session déconnecte l’appareil.",
+    "currentPassword": "Mot de passe actuel",
+    "newPassword": "Nouveau mot de passe",
+    "confirmNewPassword": "Confirmer le nouveau mot de passe",
+    "passwordMinimum": "8 caractères minimum",
+    "passwordMismatch": "Les nouveaux mots de passe ne correspondent pas.",
+    "passwordChanged": "Mot de passe modifié.",
+    "passwordChangeFailed": "Impossible de modifier le mot de passe.",
+    "changePassword": "Modifier le mot de passe",
+    "identityProviderPassword": "Vous vous connectez avec un fournisseur d’identité. Gérez votre mot de passe auprès de celui-ci.",
+    "device": "Appareil",
+    "thisDevice": "Cet appareil",
+    "lastActive": "Dernière activité",
+    "action": "Action",
+    "current": "Actuelle",
+    "noSessions": "Aucune session active.",
+    "sessionsTable": "Tableau des sessions actives",
+    "sessionRange": "{{start}}–{{end}} sur {{count}}",
+    "revoke": "Révoquer",
+    "revokeSessionTitle": "Révoquer cette session ?",
+    "revokeFailed": "Impossible de révoquer la session."
   }
 }

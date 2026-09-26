@@ -385,5 +385,31 @@
         "detail": "Your accent is close to the red used for errors, so destructive buttons will look like ordinary ones."
       }
     }
+  },
+  "security": {
+    "title": "Security",
+    "password": "Password",
+    "activeSessions": "Active sessions",
+    "sessionsDescription": "Devices currently signed in to your account. Revoking a session signs that device out.",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "confirmNewPassword": "Confirm new password",
+    "passwordMinimum": "At least 8 characters",
+    "passwordMismatch": "New passwords do not match.",
+    "passwordChanged": "Password changed.",
+    "passwordChangeFailed": "Failed to change password.",
+    "changePassword": "Change password",
+    "identityProviderPassword": "Your account signs in through an identity provider. Manage your password with that provider.",
+    "device": "Device",
+    "thisDevice": "This device",
+    "lastActive": "Last active",
+    "action": "Action",
+    "current": "Current",
+    "noSessions": "No active sessions.",
+    "sessionsTable": "Active sessions table",
+    "sessionRange": "{{start}}–{{end}} of {{count}}",
+    "revoke": "Revoke",
+    "revokeSessionTitle": "Revoke this session?",
+    "revokeFailed": "Failed to revoke session."
   }
 }

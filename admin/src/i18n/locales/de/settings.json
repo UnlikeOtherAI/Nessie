@@ -385,5 +385,31 @@
         "detail": "Dein Akzent ähnelt dem Rot für Fehler. Dadurch sehen destruktive Schaltflächen wie gewöhnliche aus."
       }
     }
+  },
+  "security": {
+    "title": "Sicherheit",
+    "password": "Passwort",
+    "activeSessions": "Aktive Sitzungen",
+    "sessionsDescription": "Geräte, die derzeit bei deinem Konto angemeldet sind. Wenn du eine Sitzung widerrufst, wird das Gerät abgemeldet.",
+    "currentPassword": "Aktuelles Passwort",
+    "newPassword": "Neues Passwort",
+    "confirmNewPassword": "Neues Passwort bestätigen",
+    "passwordMinimum": "Mindestens 8 Zeichen",
+    "passwordMismatch": "Die neuen Passwörter stimmen nicht überein.",
+    "passwordChanged": "Passwort geändert.",
+    "passwordChangeFailed": "Passwort konnte nicht geändert werden.",
+    "changePassword": "Passwort ändern",
+    "identityProviderPassword": "Du meldest dich über einen Identitätsanbieter an. Verwalte dein Passwort dort.",
+    "device": "Gerät",
+    "thisDevice": "Dieses Gerät",
+    "lastActive": "Zuletzt aktiv",
+    "action": "Aktion",
+    "current": "Aktuell",
+    "noSessions": "Keine aktiven Sitzungen.",
+    "sessionsTable": "Tabelle der aktiven Sitzungen",
+    "sessionRange": "{{start}}–{{end}} von {{count}}",
+    "revoke": "Widerrufen",
+    "revokeSessionTitle": "Diese Sitzung widerrufen?",
+    "revokeFailed": "Sitzung konnte nicht widerrufen werden."
   }
 }

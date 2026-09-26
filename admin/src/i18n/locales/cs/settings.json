@@ -385,5 +385,31 @@
         "detail": "Zvýraznění je podobné červené pro chyby, takže destruktivní tlačítka budou vypadat jako běžná."
       }
     }
+  },
+  "security": {
+    "title": "Zabezpečení",
+    "password": "Heslo",
+    "activeSessions": "Aktivní relace",
+    "sessionsDescription": "Zařízení aktuálně přihlášená k vašemu účtu. Zrušením relace toto zařízení odhlásíte.",
+    "currentPassword": "Současné heslo",
+    "newPassword": "Nové heslo",
+    "confirmNewPassword": "Potvrdit nové heslo",
+    "passwordMinimum": "Alespoň 8 znaků",
+    "passwordMismatch": "Nová hesla se neshodují.",
+    "passwordChanged": "Heslo bylo změněno.",
+    "passwordChangeFailed": "Heslo se nepodařilo změnit.",
+    "changePassword": "Změnit heslo",
+    "identityProviderPassword": "K účtu se přihlašujete přes poskytovatele identity. Heslo spravujte u něj.",
+    "device": "Zařízení",
+    "thisDevice": "Toto zařízení",
+    "lastActive": "Naposledy aktivní",
+    "action": "Akce",
+    "current": "Aktuální",
+    "noSessions": "Žádné aktivní relace.",
+    "sessionsTable": "Tabulka aktivních relací",
+    "sessionRange": "{{start}}–{{end}} z {{count}}",
+    "revoke": "Zrušit",
+    "revokeSessionTitle": "Zrušit tuto relaci?",
+    "revokeFailed": "Relaci se nepodařilo zrušit."
   }
 }

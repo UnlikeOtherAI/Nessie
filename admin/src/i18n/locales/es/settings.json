@@ -385,5 +385,31 @@
         "detail": "El acento se parece al rojo de los errores, así que los botones destructivos parecerán normales."
       }
     }
+  },
+  "security": {
+    "title": "Seguridad",
+    "password": "Contraseña",
+    "activeSessions": "Sesiones activas",
+    "sessionsDescription": "Dispositivos con la sesión iniciada en tu cuenta. Al revocar una sesión, se cierra la sesión de ese dispositivo.",
+    "currentPassword": "Contraseña actual",
+    "newPassword": "Nueva contraseña",
+    "confirmNewPassword": "Confirmar nueva contraseña",
+    "passwordMinimum": "Al menos 8 caracteres",
+    "passwordMismatch": "Las contraseñas nuevas no coinciden.",
+    "passwordChanged": "Se cambió la contraseña.",
+    "passwordChangeFailed": "No se pudo cambiar la contraseña.",
+    "changePassword": "Cambiar contraseña",
+    "identityProviderPassword": "Inicias sesión mediante un proveedor de identidad. Gestiona la contraseña con ese proveedor.",
+    "device": "Dispositivo",
+    "thisDevice": "Este dispositivo",
+    "lastActive": "Última actividad",
+    "action": "Acción",
+    "current": "Actual",
+    "noSessions": "No hay sesiones activas.",
+    "sessionsTable": "Tabla de sesiones activas",
+    "sessionRange": "{{start}}–{{end}} de {{count}}",
+    "revoke": "Revocar",
+    "revokeSessionTitle": "¿Revocar esta sesión?",
+    "revokeFailed": "No se pudo revocar la sesión."
   }
 }
