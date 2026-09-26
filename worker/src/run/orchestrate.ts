@@ -83,6 +83,36 @@ export const resolveSystemDmDecisions = (
 }
 
 /**
+ * A card press answers the agent that posted the card, so it wakes that agent
+ * structurally. The API writes the press as a person's reply under the card and
+ * records it on the card in the same transaction (`AgentCard.responseMessageId`,
+ * a column no client can write), which is the fact read here — never the
+ * message's words. No judgement is asked: a one-on-one judgement or an
+ * engagement decision is free to answer "only react" or "stay out", and either
+ * would leave the agent that asked waiting on an answer it never hears
+ * (docs/standards/agent-cards.md → "The press is a message").
+ */
+export const resolveCardResponseDecisions = async (
+  prisma: Pick<PrismaClient, 'agentCard'>,
+  input: { channelAgents: ChannelAgent[]; messageId: string; role: string; rootMessageId: string | null },
+): Promise<OrchestratorDecision[] | null> => {
+  // A press is always a person's, and always a reply under its card.
+  if (input.role !== 'user' || input.rootMessageId === null) return null
+  const card = await prisma.agentCard.findUnique({
+    where: { responseMessageId: input.messageId },
+    select: { agentId: true },
+  })
+  const agent = card ? input.channelAgents.find((candidate) => candidate.id === card.agentId) : undefined
+  if (!agent) return null
+  return [{
+    action: 'reply',
+    agentId: agent.id,
+    ...(agent.principalUserId ? { principalUserId: agent.principalUserId } : {}),
+    replyPlacement: 'thread',
+  }]
+}
+
+/**
  * A conversation thread is a structural address, exactly as a single-agent
  * system DM is.
  *
@@ -274,19 +304,27 @@ export const executeOrchestrateDecideJob = async (
     type: channel.type,
   }
   const topLevelTrigger = triggerMessage ? triggerMessage.rootMessageId === null : false
+  const answeredCard = triggerMessage
+    ? await resolveCardResponseDecisions(deps.prisma, {
+      channelAgents,
+      messageId: triggerMessage.id,
+      role: triggerMessage.role,
+      rootMessageId: triggerMessage.rootMessageId,
+    })
+    : null
   // One person and one agent: Jev decides how the agent answers — a reply, the
   // work done and marked, or a reaction — and whether the message goes back to
   // an earlier one. Null means there is no judgement to act on, and the room
   // answers the way it always has, below.
-  let decisions = triggerMessage && isOneOnOneAgentRoom(room, channelAgents)
+  let decisions = answeredCard ?? (triggerMessage && isOneOnOneAgentRoom(room, channelAgents)
     ? await decideOneOnOneTurn(deps, {
       agent: channelAgents[0]!,
       channel,
       payload,
       trigger: triggerMessage,
     })
-    : null
-  const judgedOneOnOne = decisions !== null
+    : null)
+  const judgedOneOnOne = answeredCard === null && decisions !== null
   decisions ??= resolveSystemDmDecisions(
     channel.systemChannelType,
     role,
