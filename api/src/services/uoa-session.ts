@@ -36,6 +36,8 @@ type UoaTokenResponse = {
 }
 
 export type UoaSessionExchange = {
+  /** Short-lived UOA bearer token; server-side only and never persisted. */
+  accessToken: string
   configUrl: string
   identity: ExternalAuthIdentity & {
     externalSubject: string
@@ -203,6 +205,7 @@ const parseUoaSessionExchange = (
     throw new Error('[uoa] token response carried an incomplete session proof')
   }
   return { accessToken, exchange: {
+    accessToken,
     configUrl,
     identity: {
       ...identity,
@@ -226,6 +229,52 @@ const uoaFetchOptions = (options?: UoaSessionHttpDeps) => ({
   ...(options?.resolveHost ? { resolveHost: options.resolveHost } : {}),
   maxRedirects: 0,
 })
+
+/** Read the ecosystem-wide locale using the fresh, server-held access token. */
+export const readUoaLocale = async (
+  accessToken: string,
+  options?: UoaSessionHttpDeps,
+): Promise<unknown> => {
+  const settings = loadUoaSettings()
+  const url = new URL(`${settings.baseUrl}/settings/me/global/locale`)
+  url.searchParams.set('domain', settings.domain)
+  const response = await safeFetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${clientHash(settings)}`,
+      'X-UOA-Access-Token': accessToken,
+    },
+    signal: AbortSignal.timeout(5_000),
+  }, uoaFetchOptions(options))
+  if (response.status === 404) return undefined
+  if (!response.ok) throw new Error(`[uoa] user locale read returned ${response.status}`)
+  const payload = await response.json() as { value?: unknown }
+  return payload.value
+}
+
+/** Replace the ecosystem-wide locale; the browser never receives this token. */
+export const writeUoaLocale = async (
+  accessToken: string,
+  locale: string,
+  options?: UoaSessionHttpDeps,
+): Promise<void> => {
+  const settings = loadUoaSettings()
+  const url = new URL(`${settings.baseUrl}/settings/me/global/locale`)
+  url.searchParams.set('domain', settings.domain)
+  const response = await safeFetch(url, {
+    method: 'PUT',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${clientHash(settings)}`,
+      'Content-Type': 'application/json',
+      'X-UOA-Access-Token': accessToken,
+    },
+    body: JSON.stringify({ value: locale }),
+    signal: AbortSignal.timeout(5_000),
+  }, uoaFetchOptions(options))
+  if (!response.ok) throw new Error(`[uoa] user locale write returned ${response.status}`)
+}
 
 const ensureStoredConfigUrl = (
   settings: UoaSettings,
