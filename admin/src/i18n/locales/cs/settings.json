@@ -648,6 +648,38 @@
         "organization": "Lidé s pozastaveným přístupem k organizaci.",
         "team": "Lidé s pozastaveným přístupem k tomuto týmu."
       }
+    },
+    "invite": {
+      "chooseTeam": "Vyberte alespoň jeden tým.",
+      "partialFailure": "Pozvání bylo odesláno do týmů {{invited}}, ale ne do týmů {{failed}}. Opakováním akci zkusíte znovu.",
+      "teamDescription": "Přidejte někoho ze své organizace nebo pozvěte nového člověka e-mailem.",
+      "organizationDescription": "Pozvěte někoho e-mailem a vyberte týmy, ke kterým se připojí.",
+      "title": "Pozvat lidi",
+      "manyPeople": "Přidáváte více lidí z jedné firmy?",
+      "setupAutomatic": "Nastavit automatický přístup do týmů",
+      "instead": "místo toho.",
+      "method": "Jak někoho přidat",
+      "organization": "Organizace",
+      "fromOrganization": "Z organizace",
+      "byEmail": "E-mailem",
+      "inviteByEmail": "Pozvat e-mailem",
+      "searchOrganization": "Hledat v organizaci",
+      "namePlaceholder": "Začněte psát jméno",
+      "searchEmpty": "Podle jména se nikoho nepodařilo najít. Zkuste pozvání e-mailem.",
+      "searchFailed": "Členy se nepodařilo vyhledat.",
+      "searching": "Vyhledávání členů…",
+      "newMember": "Nový člen",
+      "teams": "Týmy",
+      "selected": "Vybráno: {{count}}",
+      "deselectAll": "Zrušit výběr všeho",
+      "selectAll": "Vybrat vše",
+      "noTeams": "Nejsou tu žádné týmy, do kterých můžete pozvat lidi.",
+      "teamsLoadFailed": "Týmy se nepodařilo načíst.",
+      "loadingTeams": "Načítání týmů…",
+      "email": "E-mail",
+      "nameOptional": "Jméno (nepovinné)",
+      "sending": "Odesílání…",
+      "send": "Odeslat pozvání"
     }
   }
 }

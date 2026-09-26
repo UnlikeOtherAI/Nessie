@@ -648,6 +648,38 @@
         "organization": "People whose access to your organization is paused.",
         "team": "People whose access to this team is paused."
       }
+    },
+    "invite": {
+      "chooseTeam": "Choose at least one team.",
+      "partialFailure": "Invited to {{invited}}, but not to {{failed}}. Send again to retry.",
+      "teamDescription": "Add someone from your organization, or invite someone new by email.",
+      "organizationDescription": "Invite someone by email and choose the teams they’ll join.",
+      "title": "Invite people",
+      "manyPeople": "Adding lots of people from one company?",
+      "setupAutomatic": "Set up automatic team access",
+      "instead": "instead.",
+      "method": "How to add someone",
+      "organization": "Organization",
+      "fromOrganization": "From your organization",
+      "byEmail": "By email",
+      "inviteByEmail": "Invite by email",
+      "searchOrganization": "Search your organization",
+      "namePlaceholder": "Start typing a name",
+      "searchEmpty": "No one to add by that name. Try inviting them by email.",
+      "searchFailed": "Members could not be searched.",
+      "searching": "Searching members…",
+      "newMember": "The new member",
+      "teams": "Teams",
+      "selected": "{{count}} selected",
+      "deselectAll": "Deselect all",
+      "selectAll": "Select all",
+      "noTeams": "There are no teams you can invite people to.",
+      "teamsLoadFailed": "Teams could not be loaded.",
+      "loadingTeams": "Loading teams…",
+      "email": "Email",
+      "nameOptional": "Name (optional)",
+      "sending": "Sending…",
+      "send": "Send invitation"
     }
   }
 }

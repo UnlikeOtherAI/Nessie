@@ -648,6 +648,38 @@
         "organization": "Personnes dont l’accès à l’organisation est suspendu.",
         "team": "Personnes dont l’accès à l’équipe est suspendu."
       }
+    },
+    "invite": {
+      "chooseTeam": "Sélectionnez au moins une équipe.",
+      "partialFailure": "Invitation envoyée à {{invited}}, mais pas à {{failed}}. Renvoyez pour réessayer.",
+      "teamDescription": "Ajoutez une personne de votre organisation ou invitez une nouvelle personne par e-mail.",
+      "organizationDescription": "Invitez une personne par e-mail et choisissez les équipes qu’elle rejoindra.",
+      "title": "Inviter des personnes",
+      "manyPeople": "Vous ajoutez beaucoup de personnes d’une même entreprise ?",
+      "setupAutomatic": "Configurer l’accès automatique aux équipes",
+      "instead": "à la place.",
+      "method": "Comment ajouter une personne",
+      "organization": "Organisation",
+      "fromOrganization": "Depuis votre organisation",
+      "byEmail": "Par e-mail",
+      "inviteByEmail": "Inviter par e-mail",
+      "searchOrganization": "Rechercher dans votre organisation",
+      "namePlaceholder": "Saisissez un nom",
+      "searchEmpty": "Aucune personne à ajouter sous ce nom. Essayez de l’inviter par e-mail.",
+      "searchFailed": "Impossible de rechercher les membres.",
+      "searching": "Recherche des membres…",
+      "newMember": "Le nouveau membre",
+      "teams": "Équipes",
+      "selected": "{{count}} sélectionné(s)",
+      "deselectAll": "Tout désélectionner",
+      "selectAll": "Tout sélectionner",
+      "noTeams": "Aucune équipe ne permet d’inviter des personnes.",
+      "teamsLoadFailed": "Impossible de charger les équipes.",
+      "loadingTeams": "Chargement des équipes…",
+      "email": "E-mail",
+      "nameOptional": "Nom (facultatif)",
+      "sending": "Envoi…",
+      "send": "Envoyer l’invitation"
     }
   }
 }

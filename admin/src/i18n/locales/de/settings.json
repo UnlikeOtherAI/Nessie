@@ -648,6 +648,38 @@
         "organization": "Personen mit pausiertem Organisationszugriff.",
         "team": "Personen mit pausiertem Teamzugriff."
       }
+    },
+    "invite": {
+      "chooseTeam": "Wählen Sie mindestens ein Team aus.",
+      "partialFailure": "Eingeladen zu {{invited}}, aber nicht zu {{failed}}. Senden Sie erneut, um es nochmals zu versuchen.",
+      "teamDescription": "Fügen Sie jemanden aus Ihrer Organisation hinzu oder laden Sie eine neue Person per E-Mail ein.",
+      "organizationDescription": "Laden Sie jemanden per E-Mail ein und wählen Sie die Teams aus, denen die Person beitritt.",
+      "title": "Personen einladen",
+      "manyPeople": "Sie möchten viele Personen aus einem Unternehmen hinzufügen?",
+      "setupAutomatic": "Automatischen Teamzugriff einrichten",
+      "instead": "stattdessen.",
+      "method": "So fügen Sie jemanden hinzu",
+      "organization": "Organisation",
+      "fromOrganization": "Aus Ihrer Organisation",
+      "byEmail": "Per E-Mail",
+      "inviteByEmail": "Per E-Mail einladen",
+      "searchOrganization": "Organisation durchsuchen",
+      "namePlaceholder": "Namen eingeben",
+      "searchEmpty": "Niemanden mit diesem Namen gefunden. Laden Sie die Person per E-Mail ein.",
+      "searchFailed": "Mitglieder konnten nicht gesucht werden.",
+      "searching": "Mitglieder werden gesucht…",
+      "newMember": "Das neue Mitglied",
+      "teams": "Teams",
+      "selected": "{{count}} ausgewählt",
+      "deselectAll": "Alle abwählen",
+      "selectAll": "Alle auswählen",
+      "noTeams": "Es gibt keine Teams, zu denen Sie Personen einladen können.",
+      "teamsLoadFailed": "Teams konnten nicht geladen werden.",
+      "loadingTeams": "Teams werden geladen…",
+      "email": "E-Mail",
+      "nameOptional": "Name (optional)",
+      "sending": "Wird gesendet…",
+      "send": "Einladung senden"
     }
   }
 }

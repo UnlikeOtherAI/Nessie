@@ -648,6 +648,38 @@
         "organization": "Persone con accesso all’organizzazione sospeso.",
         "team": "Persone con accesso a questo team sospeso."
       }
+    },
+    "invite": {
+      "chooseTeam": "Seleziona almeno un team.",
+      "partialFailure": "Invito inviato a {{invited}}, ma non a {{failed}}. Invia di nuovo per riprovare.",
+      "teamDescription": "Aggiungi una persona della tua organizzazione oppure invita qualcuno di nuovo via email.",
+      "organizationDescription": "Invita qualcuno via email e scegli i team a cui si unirà.",
+      "title": "Invita persone",
+      "manyPeople": "Devi aggiungere molte persone della stessa azienda?",
+      "setupAutomatic": "Configura l’accesso automatico ai team",
+      "instead": "in alternativa.",
+      "method": "Come aggiungere una persona",
+      "organization": "Organizzazione",
+      "fromOrganization": "Dalla tua organizzazione",
+      "byEmail": "Via email",
+      "inviteByEmail": "Invita via email",
+      "searchOrganization": "Cerca nella tua organizzazione",
+      "namePlaceholder": "Inizia a digitare un nome",
+      "searchEmpty": "Nessuna persona da aggiungere con questo nome. Prova a invitarla via email.",
+      "searchFailed": "Impossibile cercare i membri.",
+      "searching": "Ricerca dei membri…",
+      "newMember": "Il nuovo membro",
+      "teams": "Team",
+      "selected": "{{count}} selezionati",
+      "deselectAll": "Deseleziona tutto",
+      "selectAll": "Seleziona tutto",
+      "noTeams": "Non ci sono team a cui puoi invitare persone.",
+      "teamsLoadFailed": "Impossibile caricare i team.",
+      "loadingTeams": "Caricamento dei team…",
+      "email": "Email",
+      "nameOptional": "Nome (facoltativo)",
+      "sending": "Invio…",
+      "send": "Invia invito"
     }
   }
 }
