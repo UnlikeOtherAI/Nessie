@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ExecutorDetailContent } from '../../src/pages/ExecutorDetailPage'
-import { ProjectExecutorsTab } from '../../src/pages/project/ProjectExecutorsTab'
+import { ProjectComputersSection } from '../../src/pages/project/settings/ProjectComputersSection'
 import { LocalBackProvider } from '../../src/navigation/LocalBackContext'
 import '../../src/styles.css'
 
@@ -19,7 +19,7 @@ createRoot(root).render(
         <LocalBackProvider><main className="h-screen bg-[color:var(--main)] text-[color:var(--tx)]">
           <Routes>
             <Route path="/admin/computers/:executorId" element={<ExecutorDetailContent teamId="77777777-7777-4777-8777-777777777777" token={null} />} />
-            <Route path="/project-executors" element={<ProjectExecutorsTab projectId="11111111-1111-4111-8111-111111111111" />} />
+            <Route path="/project-executors" element={<ProjectComputersSection projectId="11111111-1111-4111-8111-111111111111" />} />
           </Routes>
         </main></LocalBackProvider>
       </MemoryRouter>

@@ -19,7 +19,6 @@ import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
 import { parseChannelIdFromPath } from '../lib/channel-route'
 import { usePhoneLayout } from '../navigation/mobile-shell'
 import { useIsOwner } from '../facades/auth/hooks'
-import { ConversationInfoFlow } from '../components/features/channels/ConversationInfoFlow'
 import { type ChannelAgentParticipant, type MessageUserIdentity } from '../components/features/channels/channel-participants'
 import type { ConversationRenameDoorway } from '../components/features/channels/rename-conversation'
 import { ChatToolDock } from '../components/features/channels/tool-rail/ChatToolDock'
@@ -27,7 +26,6 @@ import { ResearchBriefHost } from '../components/features/deep-water/ResearchBri
 import { conversationRoomEyebrow } from '../components/features/agents/conversations/conversation-presentation'
 import { conversationPath } from '../components/features/agents/conversations/AgentConversationList'
 import { focusComposerState } from '../components/features/agents/conversations/conversation-intent'
-import { availableChatTools } from '../components/features/channels/tool-rail/chat-tools'
 import { ChannelOverlays } from './channels/ChannelOverlays'
 import { ChannelConversationSurface } from './channels/ChannelConversationSurface'
 import { useChannelCall } from './channels/useChannelCall'
@@ -36,6 +34,7 @@ import { useChannelTitleFavorite } from './channels/useChannelTitleFavorite'
 import { useChannelParticipants } from './channels/useChannelParticipants'
 import { useChannelChatTools } from './channels/useChannelChatTools'
 import { useChannelMessageSurface } from './channels/useChannelMessageSurface'
+import { useConversationDetails } from './channels/useConversationDetails'
 import { useTicketWorkThreadGate } from '../facades/ticket-work/hooks'
 
 export const ChannelsPage = () => {
@@ -135,7 +134,6 @@ export const ChannelsPage = () => {
         }
       : null
 
-  const [showMembersPopup, setShowMembersPopup] = useState(false)
   const [selectedMessageUser, setSelectedMessageUser] = useState<MessageUserIdentity | null>(null)
   const [selectedMessageAgent, setSelectedMessageAgent] = useState<ChannelAgentParticipant | null>(null)
 
@@ -288,6 +286,20 @@ export const ChannelsPage = () => {
     threadId,
     visibleActiveTab,
   })
+  // A conversation's Details: the pushed screen on `single`, a sheet on
+  // `split`, and the header's two doorways into it.
+  const details = useConversationDetails({
+    activeChannel,
+    agents,
+    allUsers,
+    boundAgents,
+    channelUsers,
+    chatToolAgents,
+    currentUserId: me?.user.id ?? '',
+    isPersonalAssistantConversation,
+    onOpenTool: openToolScreen,
+    threadId: messageSurface.replyThread.activeThreadId ?? null,
+  })
   if (!me) {
     return null
   }
@@ -307,7 +319,7 @@ export const ChannelsPage = () => {
           messageSurface.replyThread.isClosing ? 'overflow-hidden' : '',
         ].join(' ')}
       >
-        <ChannelConversationSurface
+        {details.screen ?? <ChannelConversationSurface
           sessionHome={sessionHome}
           activeCall={activeCall}
           activeChannel={activeChannel}
@@ -369,16 +381,13 @@ export const ChannelsPage = () => {
             if (activeChannel) messageSurface.joinChannel.mutate({ channelId: activeChannel.id })
           }}
           onOpenChatTool={openToolScreen}
-          onOpenInfo={() => {
-            if (activeChannel) void navigate(`/channels/${activeChannel.id}/info`)
-          }}
-          onOpenMembers={() => setShowMembersPopup(true)}
-          onOpenSettings={() => messageSurface.setShowChannelSettings(true)}
+          onOpenDetails={details.openDetails}
+          onOpenMembers={details.openMembers}
           onSelectMessageAgent={setSelectedMessageAgent}
           onSelectMessageUser={setSelectedMessageUser}
           onToggleSearch={messageSurface.search.toggleSearch}
           setActiveTab={setActiveTab}
-        />
+        />}
 
         <ChannelOverlays
           activeCall={activeCall}
@@ -387,7 +396,6 @@ export const ChannelsPage = () => {
           agentMap={agentMap}
           agents={agents}
           allUsers={allUsers}
-          boundAgents={boundAgents}
           channelUsers={channelUsers}
           callerCallActionError={callActionError}
           callerCallActionPending={callActionPending}
@@ -405,7 +413,6 @@ export const ChannelsPage = () => {
             state: voiceCall.state,
           }}
           startCallFailureCode={startCallFailureCode}
-          personalAssistantPresences={activeChannel?.personalAssistantPresences ?? []}
           hasRespondingAgent={messageSurface.hasRespondingAgent}
           isExternalAgentConversation={isExternalAgentActiveChannel}
           isPersonalAssistantConversation={isPersonalAssistantConversation}
@@ -422,8 +429,6 @@ export const ChannelsPage = () => {
           replyThread={messageSurface.replyThread}
           selectedMessageAgent={selectedMessageAgent}
           selectedMessageUser={selectedMessageUser}
-          showChannelSettings={messageSurface.showChannelSettings}
-          showMembersPopup={showMembersPopup}
           threadMessages={messageSurface.threadMessages}
           threadMessageHistory={{
             hasOlder: Boolean(messageSurface.hasOlderThreadMessages),
@@ -442,10 +447,8 @@ export const ChannelsPage = () => {
           threadPendingMessages={messageSurface.threadPendingMessages}
           token={token}
           onCancelOversizePaste={() => messageSurface.setOversizePaste(null)}
-          onCloseMembers={() => setShowMembersPopup(false)}
           onCloseSelectedAgent={() => setSelectedMessageAgent(null)}
           onCloseSelectedUser={() => setSelectedMessageUser(null)}
-          onCloseSettings={() => messageSurface.setShowChannelSettings(false)}
           onInsertTrimmed={(trimmed) => {
             messageSurface.setOversizePaste(null)
             messageSurface.composer.mentionRef.current?.insertText(trimmed)
@@ -457,7 +460,6 @@ export const ChannelsPage = () => {
             setSelectedMessageAgent(null)
             onSelectAgent(agentId)
           }}
-          onSelectAgent={onSelectAgent}
           onSendAsFile={messageSurface.composer.sendAsFile}
         />
         {selectedAgent ? (
@@ -476,18 +478,7 @@ export const ChannelsPage = () => {
             threadId={messageSurface.browserThreadId ?? null}
           />
         ) : null}
-        {activeChannel ? (
-          <ConversationInfoFlow
-            activeChannel={activeChannel}
-            activeThreadId={messageSurface.replyThread.activeThreadId ?? null}
-            allUsers={allUsers}
-            canAddPeople={activeChannel.viewerCanManage && activeChannel.type !== 'dm'}
-            channelUsers={channelUsers}
-            agentTools={availableChatTools(chatToolAgents, activeChannel.type === 'dm')}
-            me={me}
-            onOpenTool={openToolScreen}
-          />
-        ) : null}
+        {details.sheet}
         {messageSurface.executorLauncher.dialog}
         <Outlet />
       </section>

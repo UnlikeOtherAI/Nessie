@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   PROVIDER_LABEL,
   isSourceSyncing,
@@ -57,21 +58,31 @@ type SourcesSettingsSectionProps = {
   canAdminister: boolean
   onSaveError: (message: string) => void
   onSaved: () => void
-  onSelectSource: (sourceId: string) => void
   projectId: string
-  selectedSourceId: string
   startWithConnect: boolean
 }
 
+/**
+ * Settings › Connected tools: the Jira, Linear, Trello and GitHub work mirrored
+ * onto this project's boards. Which one is open below the list is `?source=`,
+ * linkable state (a failed sync's alert and the board's sync remedy both name
+ * it), written with `replace` so choosing a tool is never a history entry.
+ */
 export const SourcesSettingsSection = ({
   canAdminister,
   onSaveError,
   onSaved,
-  onSelectSource,
   projectId,
-  selectedSourceId,
   startWithConnect,
 }: SourcesSettingsSectionProps) => {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const selectedSourceId = searchParams.get('source') ?? ''
+  const onSelectSource = (sourceId: string) =>
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.set('source', sourceId)
+      return next
+    }, { replace: true })
   const { data: sources = [] } = useProjectSources(projectId)
   const action = useSourceAction(projectId)
   const removeSource = useDeleteProjectSource(projectId)
@@ -85,10 +96,10 @@ export const SourcesSettingsSection = ({
       <Section
         description="Work from another system, mirrored onto this project's boards as ordinary
           tasks. Agents, approvals and search treat them exactly like native work."
-        title="Sources"
+        title="Connected tools"
       >
         {sources.length === 0 ? (
-          <EmptyState title="No sources connected.">
+          <EmptyState title="No tools connected.">
             Connect Jira, Linear, Trello or GitHub to bring their work onto this
             project&rsquo;s boards.
           </EmptyState>
@@ -192,7 +203,7 @@ export const SourcesSettingsSection = ({
               onClick={() => setConnectOpen(true)}
               type="button"
             >
-              Connect a source
+              Connect a tool
             </button>
           </div>
         ) : null}

@@ -2,13 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAttentionSummary } from '../../facades/alerts/hooks'
 import { useProjectBoards, type BoardRecord } from '../../facades/boards/hooks'
-import { useDeleteProject, useProjects } from '../../facades/projects/hooks'
+import { useProjects } from '../../facades/projects/hooks'
 import type { ProjectRecord } from '../../lib/api-client'
 import { getCookie, setCookie } from '../../lib/storage'
 import { isReactNativeWebView } from '../../lib/native-shell'
 import { usePhoneLayout } from '../../navigation/mobile-shell'
 import { projectSectionIdFromPathname } from '../../navigation/project-sections'
-import { useToasts } from '../../providers/ToastProvider'
 import { ProjectRow } from './ProjectRow'
 import { ProjectsNavDialogs } from './ProjectsNavDialogs'
 import type { ProjectListId } from './ProjectSectionRows'
@@ -70,12 +69,8 @@ export const ProjectsSidebarNav = ({
   const phoneLayout = usePhoneLayout()
   const { data: projects = [] } = useProjects()
   const { data: attention } = useAttentionSummary()
-  const deleteProject = useDeleteProject()
-  const { pushToast } = useToasts()
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [editTarget, setEditTarget] = useState<ProjectRecord | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<ProjectRecord | null>(null)
   const { collapsedSections, toggleSection } = useCookieBackedSidebarSections(
     PROJECT_NAV_SECTION_IDS,
     projectNavCookieName,
@@ -174,23 +169,6 @@ export const ProjectsSidebarNav = ({
     })
   }, [persistExpandedProjectIds])
 
-  // Opening the confirm is the whole of the menu action. The mutation lives in
-  // `runDelete`, which nothing but the dialog's confirm control can reach.
-  const handleDelete = (project: ProjectRecord) => {
-    setDeleteTarget(project)
-  }
-
-  const runDelete = (project: ProjectRecord) => {
-    setDeleteTarget(null)
-    deleteProject.mutate(project.id, {
-      onError: (error) =>
-        pushToast({
-          body: error instanceof Error ? error.message : 'Failed to delete project',
-          title: 'Could not delete project',
-        }),
-    })
-  }
-
   const handleBoardCreated = (board: BoardRecord) => {
     if (!boardCreateProjectId) return
     // A board nobody can configure is not a board that was created: open the
@@ -218,8 +196,6 @@ export const ProjectsSidebarNav = ({
         knowledgeCount={attention?.knowledge.projects[project.id] ?? 0}
         listId={listId}
         onCreateBoard={setBoardCreateProjectId}
-        onDelete={handleDelete}
-        onEdit={setEditTarget}
         onToggleBoardsExpanded={toggleBoardsExpanded}
         onToggleExpanded={toggleProjectExpanded}
         onToggleStar={onToggleStar}
@@ -314,14 +290,9 @@ export const ProjectsSidebarNav = ({
         boardCreateBoards={boardCreateBoards}
         boardCreateProjectId={boardCreateProjectId}
         createOpen={createOpen}
-        deleteTarget={deleteTarget}
-        editTarget={editTarget}
         onBoardCreated={handleBoardCreated}
-        onCancelDelete={() => setDeleteTarget(null)}
         onCloseBoardCreate={() => setBoardCreateProjectId(null)}
         onCloseCreate={() => setCreateOpen(false)}
-        onCloseEdit={() => setEditTarget(null)}
-        onConfirmDelete={runDelete}
       />
     </aside>
   )

@@ -24,6 +24,7 @@ import {
 import { useIsOwner } from '../../facades/auth/hooks';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { matchesAdminRoute, matchesSettingsRoute } from '../../navigation/nav-items';
+import { projectSettingsPath } from '../../navigation/project-sections';
 import { useSidebarDms } from './useSidebarDms';
 import { useSidebarTree } from './useSidebarTree';
 import { useStarredItems } from './useStarredItems';
@@ -31,7 +32,6 @@ import { useVisibleStarredEntries } from './useVisibleStarredEntries';
 import {
   type CreateChannelTarget,
   type PreferenceStarredItem,
-  type EditProjectTarget,
   type RevealedChannel,
   type SidebarMenu,
   type StarredItem,
@@ -109,7 +109,6 @@ export const useAdminShell = () => {
   const [createChannelTarget, setCreateChannelTarget] = useState<CreateChannelTarget | null>(null);
   const [revealedChannel, setRevealedChannel] = useState<RevealedChannel | null>(null);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
-  const [editProjectTarget, setEditProjectTarget] = useState<EditProjectTarget | null>(null);
   const [sidebarMenu, setSidebarMenu] = useState<SidebarMenu>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const initialStarred = useMemo<PreferenceStarredItem[]>(
@@ -256,16 +255,20 @@ export const useAdminShell = () => {
     setCreateProjectOpen(true);
   }, []);
   const closeCreateProject = useCallback(() => setCreateProjectOpen(false), []);
-  const openEditProject = useCallback((target: EditProjectTarget) => {
+  // A project's name, picture, visibility and people are its Settings' now,
+  // not a dialog over the sidebar.
+  const openProjectSettings = useCallback((projectId: string) => {
     setSidebarMenu(null);
-    setEditProjectTarget(target);
-  }, []);
-  const closeEditProject = useCallback(() => setEditProjectTarget(null), []);
+    void navigate(projectSettingsPath(projectId));
+  }, [navigate]);
   const openMobileDrawer = useCallback(() => setMobileDrawerOpen(true), []);
   const closeMobileDrawer = useCallback(() => setMobileDrawerOpen(false), []);
 
   const navigateToProject = useCallback((projectId: string) => {
-    void navigate(`/channels/projects/${projectId}`);
+    // The one project overview. Opened from the Channels sidebar it is a push
+    // across sections, so Back returns to the conversation it left
+    // (docs/navigation/deep-links-and-headers.md §8).
+    void navigate(`/projects/${projectId}`);
   }, [navigate]);
 
   const scopedAgents = agents;
@@ -418,7 +421,6 @@ export const useAdminShell = () => {
     closeAgentDrawer,
     closeCreateChannel,
     closeCreateProject,
-    closeEditProject,
     createChannelTarget,
     createProjectOpen,
     currentChannelId,
@@ -453,7 +455,7 @@ export const useAdminShell = () => {
     openCreateChannel,
     openCreateProject,
     openPersonalAssistant,
-    openEditProject,
+    openProjectSettings,
     pathname: location.pathname,
     personalAssistantAgent,
     personalAssistantBootstrapping: personalAssistantBootstrap.isPending,
@@ -461,7 +463,6 @@ export const useAdminShell = () => {
     personalAssistantUnreadCount: personalAssistantChannel?.unreadCount ?? 0,
     projectsCollapsed,
     realtime,
-    editProjectTarget,
     scopedAgents,
     selectAgent,
     selectedAgent,

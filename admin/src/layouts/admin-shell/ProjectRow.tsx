@@ -1,9 +1,10 @@
 import { useCallback, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ProjectAvatar } from '../../components/primitives/ProjectAvatar'
 import type { ProjectRecord } from '../../lib/api-client'
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm'
+import { projectSettingsPath } from '../../navigation/project-sections'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { ProjectSectionRows, type ProjectListId } from './ProjectSectionRows'
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y'
@@ -23,8 +24,6 @@ type ProjectRowProps = {
   knowledgeCount: number
   listId: ProjectListId
   onCreateBoard: (projectId: string) => void
-  onDelete: (project: ProjectRecord) => void
-  onEdit: (project: ProjectRecord) => void
   onToggleBoardsExpanded: (projectId: string) => void
   onToggleExpanded: (projectId: string) => void
   onToggleStar: (type: StarredItem['type'], id: string) => void
@@ -36,10 +35,9 @@ type ProjectRowProps = {
 
 /**
  * One project's tile in the Projects sidebar: avatar, name, the sections
- * disclosure, the star, and the "⋯" edit/delete menu. The menu is offered on
- * every row: the list comes from `GET /api/projects`, which returns exactly the
- * projects the viewer may change (their own memberships, or every project for
- * an organisation owner or admin), so a row nobody could edit is never drawn.
+ * disclosure, the star, and the "⋯" menu, whose one row opens the project's
+ * Settings — where its name, picture, visibility and Delete now live, rather
+ * than an edit dialog and a destructive row one slip from opening the project.
  * The menu's open/closed state lives here, one row at a time, rather than
  * lifted to the list that renders every row.
  */
@@ -54,8 +52,6 @@ export const ProjectRow = ({
   knowledgeCount,
   listId,
   onCreateBoard,
-  onDelete,
-  onEdit,
   onToggleBoardsExpanded,
   onToggleExpanded,
   onToggleStar,
@@ -64,6 +60,7 @@ export const ProjectRow = ({
   showBoardSelection,
 }: ProjectRowProps) => {
   const { token } = useAuthSession()
+  const navigate = useNavigate()
   const prewarm = usePrewarm()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -86,9 +83,11 @@ export const ProjectRow = ({
     setIsMenuOpen(true)
   }
 
-  const handleDelete = () => {
+  // Settings is a section of the project: from inside the project it is a
+  // tab switch and replaces, from anywhere else it is a real push.
+  const openSettings = () => {
     closeMenu()
-    onDelete(project)
+    void navigate(projectSettingsPath(project.id), { replace: isActive })
   }
 
   return (
@@ -170,23 +169,8 @@ export const ProjectRow = ({
                       role="menu"
                       style={menuPosition}
                     >
-                      <button
-                        onClick={() => {
-                          closeMenu()
-                          onEdit(project)
-                        }}
-                        role="menuitem"
-                        type="button"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="admin-sidebar-menu-danger"
-                        onClick={handleDelete}
-                        role="menuitem"
-                        type="button"
-                      >
-                        Delete
+                      <button onClick={openSettings} role="menuitem" type="button">
+                        Project settings
                       </button>
                     </div>
                   </>,

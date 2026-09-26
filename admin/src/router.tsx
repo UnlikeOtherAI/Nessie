@@ -26,7 +26,6 @@ import {
   BillingPage,
   BoardSettingsPage,
   ChannelConversationComposePage,
-  ChannelProjectOverviewPage,
   CompanyConnectionsPage,
   ComputersPage,
   ConnectedMailPage,
@@ -50,7 +49,6 @@ import {
   PeoplePage,
   PersonalUsagePage,
   PolicyPage,
-  ProjectBoardsPage,
   ProjectDashboardPage,
   ProjectDirectoryPage,
   ProjectView,
@@ -162,10 +160,6 @@ export const router = createBrowserRouter([
       { path: '/threads', element: lazyElement(ThreadsPage, 'list') },
       { path: '/unread-messages', element: lazyElement(UnreadMessagesPage, 'list') },
       {
-        path: '/channels/projects/:projectId',
-        element: lazyElement(ChannelProjectOverviewPage, 'detail'),
-      },
-      {
         // The Channels team stays mounted when a new-message sheet opens,
         // so wider layouts retain the source conversation beneath the composer.
         path: '/channels',
@@ -198,9 +192,10 @@ export const router = createBrowserRouter([
             // Back and a deep link both resolve.
             path: ':channelId/tools/:toolId',
           },
-          // Conversation information is a route, not a transient popup: phone
-          // Back, notification deep links, tablet inspectors, and desktop all
-          // resolve the same explicit hierarchy.
+          // A conversation's Details are routes, not a transient popup: phone
+          // Back, notification deep links and every layout resolve the same
+          // hierarchy. `/info` is Details (its sections are `?section=`),
+          // `/info/members` its People section, `/add` a screen over People.
           { path: ':channelId/info' },
           { path: ':channelId/info/members' },
           { path: ':channelId/info/members/add' },
@@ -224,10 +219,6 @@ export const router = createBrowserRouter([
         element: lazyElement(ProjectView, 'board'),
       },
       {
-        path: '/projects/:projectId/boards',
-        element: lazyElement(ProjectBoardsPage, 'list'),
-      },
-      {
         path: '/projects/:projectId/boards/:boardId/settings',
         element: lazyElement(BoardSettingsPage, 'detail'),
       },
@@ -241,10 +232,6 @@ export const router = createBrowserRouter([
       },
       {
         path: '/projects/:projectId/docs',
-        element: lazyElement(ProjectView, 'board'),
-      },
-      {
-        path: '/projects/:projectId/executors',
         element: lazyElement(ProjectView, 'board'),
       },
       {

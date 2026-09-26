@@ -11,7 +11,6 @@ import { renderUnreadCount } from './SidebarRow';
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import type {
   CreateChannelTarget,
-  EditProjectTarget,
   RevealedChannel,
   SidebarAgentDm,
   SidebarGroupDm,
@@ -40,7 +39,7 @@ type SidebarNavProps = {
   onOpenCreateChannel: (target?: CreateChannelTarget) => void;
   onOpenCreateProject: () => void;
   onOpenPersonalAssistant: () => void;
-  onOpenEditProject: (target: EditProjectTarget) => void;
+  onOpenProjectSettings: (projectId: string) => void;
   onToggleStar: (type: StarredItem['type'], id: string) => void;
   personalAssistantAgent: AgentRecord | null;
   personalAssistantBootstrapping: boolean;
@@ -93,7 +92,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
     onOpenCreateChannel,
     onOpenCreateProject,
     onOpenPersonalAssistant,
-    onOpenEditProject,
+    onOpenProjectSettings,
     onToggleStar,
     personalAssistantAgent,
     personalAssistantBootstrapping,
@@ -195,7 +194,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
           onNavigateProject={onNavigateProject}
           onOpenCreateChannel={onOpenCreateChannel}
           onOpenCreateProject={onOpenCreateProject}
-          onOpenEditProject={onOpenEditProject}
+          onOpenProjectSettings={onOpenProjectSettings}
           onToggleStar={onToggleStar}
           projectsCollapsed={projectsCollapsed}
           revealedChannel={revealedChannel}

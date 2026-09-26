@@ -53,6 +53,12 @@ export type NavigationHistory = {
 export type PhoneNavigationApi = {
   // Run Back for the current location through the one resolver.
   performBack: () => void
+  // The route's own Back — its parent, popping real history when the ledger's
+  // previous entry is that parent and replacing otherwise — with no registered
+  // owner consulted. For an overlay that *is* a route's presentation (a
+  // conversation's Details sheet on `split`): its close must be the route's
+  // Back, and asking the one resolver would answer with the overlay itself.
+  performRouteBack: () => void
   performBackAction: (action: BackAction) => void
   // The one Back decision, for the current location (ledger-aware) or for a
   // named pathname (metadata only).
@@ -185,6 +191,14 @@ export const PhoneNavigationProvider = ({ children }: { children: ReactNode }) =
     return {
       performBack: () => {
         const action = resolveBackAction()
+        if (action) performBackAction(action)
+      },
+      performRouteBack: () => {
+        const action = resolveBack({
+          ledger: currentLedger(),
+          owners: null,
+          pathname: stateRef.current.location.pathname,
+        })
         if (action) performBackAction(action)
       },
       performBackAction,

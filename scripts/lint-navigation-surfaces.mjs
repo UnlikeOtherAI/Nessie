@@ -220,7 +220,6 @@ export const SHADOWED_PATHS = new Set([
   // `/channels/:channelId(?:/.*)?` (the channel detail catch-all) also
   // matches every one of these more specific channel sub-routes; each is
   // declared ahead of the catch-all.
-  '/channels/projects/:projectId',
   '/channels/new',
   '/channels/:channelId/threads/:threadId/replies/:rootMessageId',
   '/channels/:channelId/threads/:threadId',

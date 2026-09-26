@@ -1,6 +1,5 @@
 import { faCircleDot } from '@fortawesome/free-regular-svg-icons'
 import {
-  faCircleInfo,
   faGear,
   faMagnifyingGlass,
   faPhone,
@@ -58,10 +57,11 @@ interface ChannelHeaderProps {
   onCallButton: () => void
   /** Opens one of the conversation agent's tools; the caller owns the route. */
   onOpenChatTool: (tool: ChatToolId) => void
-  onOpenInfo: () => void
+  /** The conversation's Details (`/channels/:id/info`). */
+  onOpenDetails: () => void
   onJoin: () => void
+  /** Details › People (`/channels/:id/info/members`). */
   onOpenMembers: () => void
-  onOpenSettings: () => void
   onToggleRoutineRecording: () => void
   onToggleSearch: () => void
   searchOpen: boolean
@@ -100,9 +100,8 @@ export const ChannelHeader = ({
   onCallButton,
   onJoin,
   onOpenChatTool,
-  onOpenInfo,
+  onOpenDetails,
   onOpenMembers,
-  onOpenSettings,
   onToggleRoutineRecording,
   onToggleSearch,
   searchOpen,
@@ -118,7 +117,7 @@ export const ChannelHeader = ({
       ? externalAgentIdentity?.name ?? activeChannel?.label ?? 'Channels'
       : activeChannel?.label ?? 'Channels'
   const title = conversation?.title ?? roomTitle
-  const { canManageChannel, canOpenConversationInfo, shouldJoin } = channelRoomControls({
+  const { canOpenDetails, shouldJoin } = channelRoomControls({
     activeChannel,
     isPersonalAssistantConversation,
   })
@@ -153,14 +152,9 @@ export const ChannelHeader = ({
     // Directly under the star, and above the room's own controls: it acts on
     // the thing the title names, which is what this header is showing.
     ...renameConversationHeaderActions(conversationRename),
-    ...(canOpenConversationInfo ? [{
-      compact: true,
-      icon: faCircleInfo,
-      id: 'conversation-info',
-      label: 'Conversation info',
-      onSelect: onOpenInfo,
-      priority: 80,
-    } satisfies PageHeaderAction] : !isPersonalAssistantConversation ? [{
+    // A room's Members count opens Details at People; a direct message has no
+    // count to show, and its gear below is its one doorway.
+    ...(activeChannel?.type !== 'dm' && !isPersonalAssistantConversation ? [{
       icon: faUsers,
       id: 'members',
       label: `Members (${participantCount})`,
@@ -185,12 +179,14 @@ export const ChannelHeader = ({
       onOpenTool: onOpenChatTool,
       single,
     }),
-    ...(canManageChannel ? [{
+    // Details, for everyone who can open the conversation: somebody who may
+    // not change it reads it there, with who can (plan R9).
+    ...(canOpenDetails ? [{
       compact: true,
       icon: faGear,
-      id: 'settings',
-      label: 'Channel settings',
-      onSelect: onOpenSettings,
+      id: 'details',
+      label: 'Details',
+      onSelect: onOpenDetails,
       priority: 60,
     } satisfies PageHeaderAction] : []),
     ...(boundAgents.length > 0 ? [{

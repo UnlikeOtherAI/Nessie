@@ -83,11 +83,12 @@ const KNOWLEDGE_VIEW_INTENT: SurfaceIntent = {
 
 /**
  * The project tab host consumes the knowledge intents its Docs section reads,
- * plus the source-picker doorway in its Settings section. `create` belongs to
- * the boards directory, whose dialog is its own owning surface.
+ * plus two doorways into its Settings section: `connect` (the app page's
+ * hand-off to Connected tools) and `create=board` (New board, which Settings ›
+ * Boards opens).
  */
 const PROJECT_INTENT: SurfaceIntent = {
-  consume: [...KNOWLEDGE_INTENT.consume ?? [], 'connect'],
+  consume: [...KNOWLEDGE_INTENT.consume ?? [], 'connect', 'create'],
   state: [...KNOWLEDGE_INTENT.state ?? [], 'board', 'section', 'source', 'task'],
 }
 
@@ -124,21 +125,12 @@ export const SURFACES: Surface[] = [
     type: 'flow',
   },
   {
-    depth: 1,
-    identityOf: (match) => `project:${match[1]}`,
-    keyScope: () => 'projects',
-    parentOf: toChannels,
-    pattern: /^\/channels\/projects\/([^/]+)$/,
-    root: CHANNELS_ROOT,
-    section: 'channels',
-    type: 'detail',
-  },
-  {
-    depth: 4,
+    // Adding people is a screen over Details › People, and Back returns there.
+    depth: 3,
     identityOf: (match) => `channel:${match[1]}`,
     keyScope: () => 'channel',
     parentOf: (match) => ({
-      label: 'Back to members',
+      label: 'Back to People',
       pathname: `/channels/${match[1]}/info/members`,
     }),
     pattern: /^\/channels\/([^/]+)\/info\/members\/add$/,
@@ -148,28 +140,20 @@ export const SURFACES: Surface[] = [
     type: 'nested',
   },
   {
-    depth: 3,
-    identityOf: (match) => `channel:${match[1]}`,
-    keyScope: () => 'channel',
-    parentOf: (match) => ({
-      label: 'Back to channel info',
-      pathname: `/channels/${match[1]}/info`,
-    }),
-    pattern: /^\/channels\/([^/]+)\/info\/members$/,
-    root: CHANNELS_ROOT,
-    section: 'channels',
-    splitInline: true,
-    type: 'nested',
-  },
-  {
+    // A conversation's Details. `/info` holds its sections under `?section=`
+    // and `/info/members` is its People section, so the two are one screen at
+    // one depth: switching between them replaces the entry and never slides,
+    // and Back from either leaves Details for the conversation. On `split`
+    // the conversation's page draws Details itself, as a sheet over it.
     depth: 2,
     identityOf: (match) => `channel:${match[1]}`,
+    intent: { state: ['section', 'tab'] },
     keyScope: () => 'channel',
     parentOf: (match) => ({
       label: 'Back to conversation',
       pathname: `/channels/${match[1]}`,
     }),
-    pattern: /^\/channels\/([^/]+)\/info$/,
+    pattern: /^\/channels\/([^/]+)\/info(?:\/members)?$/,
     root: CHANNELS_ROOT,
     section: 'channels',
     splitInline: true,
@@ -294,32 +278,23 @@ export const SURFACES: Surface[] = [
     type: 'detail',
   },
   {
-    depth: 3,
+    // One board's settings. Reached from Settings › Boards, from the board's
+    // own Configure menu and from a board just created, so Back returns to
+    // whichever the reader came from; a cold link falls back to the project's
+    // Settings (a parent cannot name a section, so it lands on General).
+    depth: 2,
     identityOf: (match) => `project-board-settings:${match[1]}:${match[2]}`,
     intent: { state: ['tab'] },
     keyScope: () => 'project-board-settings',
+    parent: 'origin',
     parentOf: (match) => ({
-      label: 'Back to boards',
-      pathname: `/projects/${match[1]}/boards`,
+      label: 'Back to Settings',
+      pathname: `/projects/${match[1]}/settings`,
     }),
     pattern: /^\/projects\/([^/]+)\/boards\/([^/]+)\/settings$/,
     root: PROJECTS_ROOT,
     section: 'projects',
     type: 'nested',
-  },
-  {
-    depth: 2,
-    identityOf: (match) => `project-boards:${match[1]}`,
-    intent: { consume: ['create'] },
-    keyScope: () => 'project-boards',
-    parentOf: (match) => ({
-      label: 'Back to board',
-      pathname: `/projects/${match[1]}/board`,
-    }),
-    pattern: /^\/projects\/([^/]+)\/boards$/,
-    root: PROJECTS_ROOT,
-    section: 'projects',
-    type: 'detail',
   },
   {
     // The board owns its viewport and its own two-axis scrolling. Keep the
@@ -346,7 +321,7 @@ export const SURFACES: Surface[] = [
     keyScope: () => 'project',
     intent: PROJECT_INTENT,
     parentOf: toProjects,
-    pattern: /^\/projects\/([^/]+)\/(?:backlog|insights|docs|dashboards|executors|settings)$/,
+    pattern: /^\/projects\/([^/]+)\/(?:backlog|insights|docs|dashboards|settings)$/,
     root: PROJECTS_ROOT,
     section: 'projects',
     type: 'tabHost',

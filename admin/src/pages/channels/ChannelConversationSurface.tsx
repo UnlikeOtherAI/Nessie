@@ -143,9 +143,8 @@ interface ChannelConversationSurfaceProps {
   onOpenChatTool: (tool: ChatToolId) => void
   onCreateAgent: () => void
   onJoin: () => void
-  onOpenInfo: () => void
+  onOpenDetails: () => void
   onOpenMembers: () => void
-  onOpenSettings: () => void
   onSelectMessageAgent: (agent: ChannelAgentParticipant) => void
   onSelectMessageUser: Dispatch<SetStateAction<MessageUserIdentity | null>>
   onToggleSearch: () => void
@@ -212,9 +211,8 @@ export const ChannelConversationSurface = ({
   onOpenChatTool,
   onCreateAgent,
   onJoin,
-  onOpenInfo,
+  onOpenDetails,
   onOpenMembers,
-  onOpenSettings,
   onSelectMessageAgent,
   onSelectMessageUser,
   onToggleSearch,
@@ -298,9 +296,8 @@ export const ChannelConversationSurface = ({
         onCallButton={onCallButton}
         onOpenChatTool={onOpenChatTool}
         onJoin={onJoin}
-        onOpenInfo={onOpenInfo}
+        onOpenDetails={onOpenDetails}
         onOpenMembers={onOpenMembers}
-        onOpenSettings={onOpenSettings}
         onToggleRoutineRecording={() => setRecordRoutineOpen(true)}
         onToggleSearch={onToggleSearch}
         routineRecording={Boolean(recording)}

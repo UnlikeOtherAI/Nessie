@@ -12,7 +12,7 @@
  * That is deliberate — a project's rooms and its people used to have a summary
  * card each, which put Members on the screen three times (the header button,
  * the tile, the card). Each tile now carries what is in it, so the count is
- * said once.
+ * said once. People opens Settings › People, where the roster is managed.
  *
  * Pure, and separate from the component, for the reason
  * `project-dashboard-data.ts` is: the ordering and the gating are the parts
@@ -21,7 +21,11 @@
 
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 import { faChartPie, faHashtag, faUsers } from '@fortawesome/free-solid-svg-icons'
-import { projectSections, type ProjectSectionId } from '../../../navigation/project-sections'
+import {
+  projectSections,
+  projectSettingsPath,
+  type ProjectSectionId,
+} from '../../../navigation/project-sections'
 
 /** Everything a project section is, except Overview: a doorway does not link to itself. */
 export type ProjectTileSectionId = Exclude<ProjectSectionId, 'overview'>
@@ -39,7 +43,6 @@ export type ProjectTileTone =
   | 'knowledge'
   | 'rooms'
   | 'people'
-  | 'compute'
   | 'config'
 
 export type ProjectNavigationTile = {
@@ -56,8 +59,6 @@ export type ProjectNavigationTile = {
   label: string
   /** What is in there, said once: "12 open", "4 people", "updated 2h". */
   meta?: string
-  /** The members dialog, for the one doorway that is not a route. */
-  opensMembers?: true
   /** Absent when the tile has nowhere to go — a project with no channels yet. */
   to?: string
   tone: ProjectTileTone
@@ -73,9 +74,13 @@ const SECTION_COPY: Record<ProjectTileSectionId, { blurb: string; tone: ProjectT
   board: { blurb: 'Every piece of work, who holds it, what is late.', tone: 'work' },
   dashboards: { blurb: 'Live numbers from the services this project connects.', tone: 'insight' },
   docs: { blurb: 'The knowledge this project writes down and searches.', tone: 'knowledge' },
-  executors: { blurb: 'The machines this project’s agents run work on.', tone: 'compute' },
   insights: { blurb: 'Velocity, burndown and where the time goes.', tone: 'insight' },
-  settings: { blurb: 'Name, teams, boards, fields and custom work states.', tone: 'config' },
+  // Said from what Settings actually holds, section by section — the old line
+  // promised "teams" and "custom work states", which it never had.
+  settings: {
+    blurb: 'Name and visibility, people, boards, fields, connected tools and computers.',
+    tone: 'config',
+  },
 }
 
 type ProjectNavigationTilesInput = {
@@ -118,11 +123,9 @@ const sectionMeta = (
       return input.documentsUpdatedAge ? `updated ${input.documentsUpdatedAge}` : undefined
     case 'dashboards':
       return count(input.dashboards.length, 'dashboard', 'dashboards')
-    // Insights is a view of the counts beside it; Executors are an
-    // organisation-wide pool, so a project-scoped number would be invented;
-    // Settings has nothing to count.
+    // Insights is a view of the counts beside it; Settings has nothing to
+    // count.
     case 'insights':
-    case 'executors':
     case 'settings':
       return undefined
   }
@@ -174,7 +177,7 @@ export const projectNavigationTiles = (
     key: 'people',
     label: 'People',
     meta: count(input.memberCount, 'person', 'people'),
-    opensMembers: true,
+    to: projectSettingsPath(input.projectId, 'people'),
     tone: 'people',
   }
 
@@ -191,9 +194,9 @@ export const projectNavigationTiles = (
     tone: 'insight',
   }))
 
-  // Channels and People sit with the other "manage this project" doorways
-  // rather than at the top: the work is what a person came for.
-  const before = sections.findIndex((tile) => tile.key === 'executors')
+  // Channels and People sit with the other "manage this project" doorway,
+  // Settings, rather than at the top: the work is what a person came for.
+  const before = sections.findIndex((tile) => tile.key === 'settings')
   const ordered = before === -1
     ? [...sections, channels, people]
     : [...sections.slice(0, before), channels, people, ...sections.slice(before)]

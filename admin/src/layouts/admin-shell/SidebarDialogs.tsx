@@ -1,8 +1,7 @@
 import { CreateChannelDialog } from '../../components/shared/CreateChannelDialog';
 import { CreateProjectDialog } from '../../components/shared/CreateProjectDialog';
-import { EditProjectDialog } from '../../components/shared/EditProjectDialog';
 import type { ChannelRecord } from '../../lib/api-client';
-import type { CreateChannelTarget, EditProjectTarget } from './types';
+import type { CreateChannelTarget } from './types';
 
 type SidebarDialogsProps = {
   createChannelTarget: CreateChannelTarget | null;
@@ -10,8 +9,6 @@ type SidebarDialogsProps = {
   onCloseCreateChannel: () => void;
   onCloseCreateProject: () => void;
   onCreatedChannel: (channel: ChannelRecord) => void;
-  editProjectTarget: EditProjectTarget | null;
-  onCloseEditProject: () => void;
 };
 
 export const SidebarDialogs = ({
@@ -20,8 +17,6 @@ export const SidebarDialogs = ({
   onCloseCreateChannel,
   onCloseCreateProject,
   onCreatedChannel,
-  editProjectTarget,
-  onCloseEditProject,
 }: SidebarDialogsProps) => {
   return (
     <>
@@ -35,13 +30,6 @@ export const SidebarDialogs = ({
         teamId={createChannelTarget?.teamId}
       />
       <CreateProjectDialog onClose={onCloseCreateProject} open={createProjectOpen} />
-      {editProjectTarget ? (
-        <EditProjectDialog
-          onClose={onCloseEditProject}
-          open
-          project={editProjectTarget}
-        />
-      ) : null}
     </>
   );
 };

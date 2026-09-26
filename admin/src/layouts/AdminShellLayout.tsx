@@ -223,7 +223,7 @@ const AuthenticatedAdminShellLayout = () => {
       onOpenCreateChannel={shell.openCreateChannel}
       onOpenCreateProject={shell.openCreateProject}
       onOpenPersonalAssistant={() => void shell.openPersonalAssistant()}
-      onOpenEditProject={shell.openEditProject}
+      onOpenProjectSettings={shell.openProjectSettings}
       onToggleStar={shell.toggleStar}
       personalAssistantAgent={shell.personalAssistantAgent}
       personalAssistantBootstrapping={shell.personalAssistantBootstrapping}
@@ -472,8 +472,6 @@ const AuthenticatedAdminShellLayout = () => {
                   onCloseCreateChannel={shell.closeCreateChannel}
                   onCloseCreateProject={shell.closeCreateProject}
                   onCreatedChannel={shell.revealCreatedChannel}
-                  editProjectTarget={shell.editProjectTarget}
-                  onCloseEditProject={shell.closeEditProject}
                 />
 
                 <AgentDetailDrawer

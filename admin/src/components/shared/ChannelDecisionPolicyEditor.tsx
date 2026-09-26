@@ -11,11 +11,14 @@ type Props = {
   policy: ChannelDecisionPolicy
 }
 
-/** The channel's one policy editor; the settings dialog owns saving. */
+/**
+ * The channel's one policy editor; Details › How agents respond owns saving.
+ * Its words name what the policy does, never the model that evaluates it.
+ */
 export const ChannelDecisionPolicyEditor = ({ agents, errors, onChange, policy }: Props) => (
-  <section aria-label="Agent decisions" className="grid min-w-0 gap-4">
+  <section aria-label="How agents respond" className="grid min-w-0 gap-4">
     <p className="text-sm text-[color:var(--tx2)]">
-      Jev helps agents choose when to reply, acknowledge a message, or do follow-up work.
+      Agents decide for each new message whether to reply, acknowledge it, or do follow-up work.
       Set the choices that matter in this channel.
     </p>
     <label className="flex items-center gap-3 text-sm font-semibold">
@@ -24,12 +27,12 @@ export const ChannelDecisionPolicyEditor = ({ agents, errors, onChange, policy }
         onChange={(event) => onChange({ ...policy, enabled: event.target.checked })}
         type="checkbox"
       />
-      Use Jev for this channel
+      Use these decisions in this channel
     </label>
     <p className="text-xs text-[color:var(--tx3)]">
       {policy.enabled
         ? 'Saving enables these decisions for new messages. Follow-up work uses the selected agent’s existing access and approvals.'
-        : 'These choices stay saved while Jev is off. Agents use their usual response decisions.'}
+        : 'These choices stay saved while they are off. Agents use their usual response decisions.'}
     </p>
     <FormField error={errors.instructions} label="Channel guidance">
       <Textarea

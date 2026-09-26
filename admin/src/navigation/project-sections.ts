@@ -19,7 +19,6 @@ import {
   faGaugeHigh,
   faGear,
   faListCheck,
-  faServer,
   faTableColumns,
 } from '@fortawesome/free-solid-svg-icons'
 
@@ -33,7 +32,6 @@ export type ProjectSectionId =
   | 'insights'
   | 'docs'
   | 'dashboards'
-  | 'executors'
   | 'settings'
 
 export type ProjectSection = {
@@ -43,6 +41,32 @@ export type ProjectSection = {
   label: string
   to: string
 }
+
+/**
+ * The sections of a project's one Settings page, in strip order. The page
+ * reads its section from `?section=` (`useTabParam`, so an unknown value
+ * degrades to General); every doorway into Settings builds its address with
+ * `projectSettingsPath` rather than spelling the query itself.
+ */
+export const PROJECT_SETTINGS_SECTIONS = [
+  'general',
+  'people',
+  'boards',
+  'fields',
+  'sources',
+  'computers',
+] as const
+
+export type ProjectSettingsSectionId = (typeof PROJECT_SETTINGS_SECTIONS)[number]
+
+/** A project's Settings at one section; General, the default, drops the param. */
+export const projectSettingsPath = (
+  projectId: string,
+  section: ProjectSettingsSectionId = 'general',
+): string =>
+  section === 'general'
+    ? `/projects/${projectId}/settings`
+    : `/projects/${projectId}/settings?section=${section}`
 
 /** The section a project pathname is showing; the bare project route is Overview. */
 export const projectSectionIdFromPathname = (pathname: string): ProjectSectionId => {
@@ -55,7 +79,6 @@ export const projectSectionIdFromPathname = (pathname: string): ProjectSectionId
     case 'insights':
     case 'docs':
     case 'dashboards':
-    case 'executors':
     case 'settings':
       return suffix
     default:
@@ -86,9 +109,11 @@ export const projectSections = ({
     icon: BOARD_ICON,
     id: 'board',
     // Plural: the section holds every board of the project, and it says so even
-    // while a project has only one.
+    // while a project has only one. It opens the working board; the boards
+    // themselves are drawn under it, and their list with New board is
+    // Settings › Boards.
     label: withCount('Boards', assignedWorkCount),
-    to: `/projects/${projectId}/boards`,
+    to: `/projects/${projectId}/board`,
   },
   ...(isScrum
     ? ([
@@ -121,6 +146,7 @@ export const projectSections = ({
     label: 'Dashboards',
     to: `/projects/${projectId}/dashboards`,
   },
-  { icon: faServer, id: 'executors', label: 'Computers', to: `/projects/${projectId}/executors` },
+  // Computers is not a section: machines shared with the project are
+  // Settings › Computers, beside the project's other configuration.
   { icon: faGear, id: 'settings', label: 'Settings', to: `/projects/${projectId}/settings` },
 ]

@@ -42,11 +42,6 @@ export const ExecutorSessionsPage = lazy(() =>
 export const ExecutorDetailPage = lazy(() =>
   import('./pages/ExecutorDetailPage').then((m) => ({ default: m.ExecutorDetailPage })),
 )
-export const ChannelProjectOverviewPage = lazy(() =>
-  import('./pages/channels/ChannelProjectOverviewPage').then((m) => ({
-    default: m.ChannelProjectOverviewPage,
-  })),
-)
 export const ChannelConversationComposePage = lazy(() =>
   import('./pages/ChannelConversationComposePage').then((m) => ({
     default: m.ChannelConversationComposePage,
@@ -79,9 +74,6 @@ export const ProjectsIndexPage = lazy(() =>
 )
 export const ProjectView = lazy(() =>
   import('./pages/project/ProjectView').then((m) => ({ default: m.ProjectView })),
-)
-export const ProjectBoardsPage = lazy(() =>
-  import('./pages/project/ProjectBoardsPage').then((m) => ({ default: m.ProjectBoardsPage })),
 )
 export const BoardSettingsPage = lazy(() =>
   import('./pages/project/BoardSettingsPage').then((m) => ({ default: m.BoardSettingsPage })),

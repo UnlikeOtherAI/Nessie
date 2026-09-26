@@ -29,7 +29,7 @@ import { useBoardChrome } from './useBoardChrome'
 import { usePhoneLayout } from '../../navigation/mobile-shell'
 import { useTabParam } from '../../navigation/useTabParam'
 import { useRedirect } from '../../navigation/redirect'
-import { projectSectionIdFromPathname } from '../../navigation/project-sections'
+import { projectSectionIdFromPathname, projectSettingsPath } from '../../navigation/project-sections'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
 import { useCanModifyProject } from '../../facades/projects/administration'
@@ -42,7 +42,6 @@ import { ProjectBoardTab } from './ProjectBoardTab'
 import { ProjectDocsTab } from './ProjectDocsTab'
 import { ProjectInsightsTab } from './ProjectInsightsTab'
 import { ProjectDashboardsTab } from './ProjectDashboardsTab'
-import { ProjectExecutorsTab } from './ProjectExecutorsTab'
 import { ProjectSettingsPage } from './ProjectSettingsPage'
 
 export const ProjectView = () => {
@@ -117,7 +116,7 @@ export const ProjectView = () => {
   // Which section of the project is on screen, computed above the hooks that
   // depend on it. A project's sections are chosen in the Projects sidebar,
   // which draws them as the project's subpages (`navigation/project-sections.ts`).
-  // The header carries no section dropdown: two doorways to the same seven
+  // The header carries no section dropdown: two doorways to the same six
   // routes only made the reader guess which one moved them.
   const tab = projectSectionIdFromPathname(location.pathname)
   // A board is on screen: the only section whose header is the board's own.
@@ -212,7 +211,7 @@ export const ProjectView = () => {
         // A source whose health names a remedy cannot be fixed by syncing:
         // the row is the doorway to the remedy instead.
         if (remedy) {
-          void navigate(`/projects/${projectId}/settings?section=sources&source=${source.id}`)
+          void navigate(`${projectSettingsPath(projectId, 'sources')}&source=${source.id}`)
           return
         }
         sourceAction.mutate(
@@ -303,7 +302,8 @@ export const ProjectView = () => {
             ]
           : []),
         // The doorways to board administration, from the screen a person is
-        // standing on when they want them — not only from Settings.
+        // standing on when they want them — not only from Settings › Boards,
+        // which is where New board opens its dialog.
         ...(canAdminister
           ? [
               {
@@ -314,7 +314,7 @@ export const ProjectView = () => {
                   void navigate(
                     board
                       ? `/projects/${projectId}/boards/${board.id}/settings`
-                      : `/projects/${projectId}/boards`,
+                      : projectSettingsPath(projectId, 'boards'),
                   ),
               },
               { id: 'board-admin-separator', kind: 'separator' } as const,
@@ -322,7 +322,7 @@ export const ProjectView = () => {
                 icon: faPlus,
                 id: 'new-board',
                 label: 'New board…',
-                onSelect: () => void navigate(`/projects/${projectId}/boards?create=board`),
+                onSelect: () => void navigate(`${projectSettingsPath(projectId, 'boards')}&create=board`),
               },
             ]
           : []),
@@ -394,8 +394,6 @@ export const ProjectView = () => {
           <ProjectInsightsTab projectId={projectId} />
         ) : tab === 'dashboards' ? (
           <ProjectDashboardsTab projectId={projectId} />
-        ) : tab === 'executors' ? (
-          <ProjectExecutorsTab projectId={projectId} />
         ) : tab === 'overview' ? (
           <ProjectDashboard projectId={projectId} />
         ) : (

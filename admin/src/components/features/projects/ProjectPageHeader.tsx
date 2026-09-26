@@ -1,8 +1,8 @@
 import { faUsers } from '@fortawesome/free-solid-svg-icons'
-import { useCallback, useState, type ReactNode } from 'react'
+import { useCallback, type ReactNode } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import type { ProjectRecord } from '../../../lib/api-client'
-import { useCanModifyProject } from '../../../facades/projects/administration'
-import { ProjectMembersDialog } from '../../shared/ProjectMembersDialog'
+import { projectSettingsPath } from '../../../navigation/project-sections'
 import { ScreenHeader } from '../../shared/ScreenHeader'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
@@ -10,8 +10,8 @@ type ProjectPageHeaderProps = {
   /**
    * A function when the screen wants the Members doorway somewhere of its own
    * — the board puts it in Configure rather than spending a header slot on it
-   * — and pairs that with `membersAction={false}`. The dialog stays here
-   * either way, so every project route opens the same one.
+   * — and pairs that with `membersAction={false}`. Either way the doorway goes
+   * to the one place a project's people are managed: Settings › People.
    */
   actions?: PageHeaderAction[] | ((openMembers: () => void) => PageHeaderAction[])
   /** Whether this header draws its own Members action. */
@@ -31,9 +31,11 @@ type ProjectPageHeaderProps = {
 }
 
 /**
- * The one project header, used from both project entry points. In particular,
- * the Members doorway stays where it is for a channel and opens the same
- * management surface regardless of which project route the person used.
+ * The one project header. Its Members button is the doorway to Settings ›
+ * People — there is no members dialog any more, because a second place to
+ * manage the same roster is the fork AGENTS.md → "Rule zero" names. On the
+ * Settings page itself the doorway is a section switch, so it replaces the
+ * entry exactly as the section strip does, and Back still leaves the project.
  */
 export const ProjectPageHeader = ({
   actions = [],
@@ -45,9 +47,14 @@ export const ProjectPageHeader = ({
   tabs,
   title,
 }: ProjectPageHeaderProps) => {
-  const canManageMembers = useCanModifyProject(project?.id ?? null)
-  const [membersOpen, setMembersOpen] = useState(false)
-  const openMembers = useCallback(() => setMembersOpen(true), [])
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const projectId = project?.id ?? null
+  const openMembers = useCallback(() => {
+    if (!projectId) return
+    const onSettings = pathname === `/projects/${projectId}/settings`
+    void navigate(projectSettingsPath(projectId, 'people'), { replace: onSettings })
+  }, [navigate, pathname, projectId])
   const given = typeof actions === 'function' ? actions(openMembers) : actions
   const projectActions: PageHeaderAction[] = project && membersAction
     ? [
@@ -63,22 +70,13 @@ export const ProjectPageHeader = ({
     : given
 
   return (
-    <>
-      <ScreenHeader
-        actions={projectActions}
-        backLabel={backLabel}
-        onBack={onBack}
-        subtitle={subtitle}
-        tabs={tabs}
-        title={title ?? project?.name ?? 'Project'}
-      />
-      {membersOpen && project ? (
-        <ProjectMembersDialog
-          canManage={canManageMembers}
-          onClose={() => setMembersOpen(false)}
-          project={project}
-        />
-      ) : null}
-    </>
+    <ScreenHeader
+      actions={projectActions}
+      backLabel={backLabel}
+      onBack={onBack}
+      subtitle={subtitle}
+      tabs={tabs}
+      title={title ?? project?.name ?? 'Project'}
+    />
   )
 }

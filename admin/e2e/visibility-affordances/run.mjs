@@ -12,7 +12,7 @@ import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
  * A protected room is drawn with a lock, derived from `visibility` because the
  * wire carries no `locked` field; and the composer follows MEMBERSHIP, not the
  * management flag beside it. The case that matters is the third one: an
- * organisation admin who may open a protected room's settings and may not post
+ * organisation admin who may change a protected room's Details and may not post
  * in it. A unit test can assert those booleans, but only a render proves the
  * screen actually says so — the refusal has to be visible, or a person is left
  * looking at a room with no way to type in it and no reason given.
@@ -30,11 +30,11 @@ try {
   await page.locator('[data-ready="true"]').waitFor()
 
   // A member of a public room: writes and manages.
-  await assertCase(page, 'member', { join: 'hidden', manage: 'shown', post: 'shown' })
+  await assertCase(page, 'member', { join: 'hidden', manage: 'editable', post: 'shown' })
 
   // Browsing a public room: read-only, and Join is offered rather than a
   // composer that would 403.
-  await assertCase(page, 'browsing', { join: 'shown', manage: 'hidden', post: 'hidden' })
+  await assertCase(page, 'browsing', { join: 'shown', manage: 'read only', post: 'hidden' })
   assert.match(
     await page.getByTestId('browsing-refusal').innerText(),
     /Join this channel/,
@@ -42,9 +42,9 @@ try {
   )
 
   // The case the two authorities pull apart. Management is not participation:
-  // the settings are there, the composer is not, and no Join is offered because
-  // a protected room is not self-service.
-  await assertCase(page, 'admin-outside', { join: 'hidden', manage: 'shown', post: 'hidden' })
+  // the Details are editable, the composer is not there, and no Join is offered
+  // because a protected room is not self-service.
+  await assertCase(page, 'admin-outside', { join: 'hidden', manage: 'editable', post: 'hidden' })
   assert.match(
     await page.getByTestId('admin-outside-refusal').innerText(),
     /not a member of this channel/,

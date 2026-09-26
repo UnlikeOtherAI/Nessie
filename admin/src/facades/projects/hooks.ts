@@ -150,21 +150,20 @@ export const useUpdateProject = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: {
-      avatarAttachmentId: string | null
-      avatarEmoji: string | null
+    // Only the fields a caller names are sent: `PATCH /api/projects/:id`
+    // treats an absent field as unchanged, and Settings › General saves what
+    // the person actually edited rather than restating the rest.
+    mutationFn: ({ projectId, ...fields }: {
+      avatarAttachmentId?: string | null
+      avatarEmoji?: string | null
       description?: string | null
-      name: string
+      name?: string
       projectId: string
+      visibility?: 'public' | 'protected'
     }) =>
       apiClient.patch<ProjectRecord>(
-        `/api/projects/${input.projectId}`,
-        {
-          avatarAttachmentId: input.avatarAttachmentId,
-          avatarEmoji: input.avatarEmoji,
-          ...(input.description !== undefined ? { description: input.description } : {}),
-          name: input.name,
-        },
+        `/api/projects/${projectId}`,
+        Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)),
         undefined,
         ProjectRecordSchema,
       ),

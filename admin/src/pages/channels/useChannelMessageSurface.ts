@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useMemo, type Dispatch, type SetStateAction } from 'react'
 import type { Location } from 'react-router-dom'
 
 import type {
@@ -165,13 +165,11 @@ export const useChannelMessageSurface = ({
   const search = useChannelMessageSearch(activeChannel?.id, feedScroll.releasePin)
   const closeSearch = search.closeSearch
   useAlertMessageHighlight(threadMessagesFetched, search.jumpToMessage)
-  const [showChannelSettings, setShowChannelSettings] = useState(false)
   const joinChannel = useJoinChannel()
 
   useEffect(() => {
     cancelEdit()
     closeSearch()
-    setShowChannelSettings(false)
     setRenameConversationOpen(false)
     setSelectedMessageUser(null)
     setSelectedMessageAgent(null)
@@ -257,9 +255,7 @@ export const useChannelMessageSurface = ({
     replyThread,
     search,
     setOversizePaste: composer.setOversizePaste,
-    setShowChannelSettings,
     shareRestricted,
-    showChannelSettings,
     threadMessagePageCount,
     threadMessages,
     threadPendingMessages: selectPendingForRoot(pendingMessages, replyThread.openRootMessageId),

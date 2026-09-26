@@ -6,14 +6,11 @@ import type {
   CallRecord,
   ChannelRecord,
   MeResponse,
-  PersonalAssistantPresenceParticipant,
   ThreadMessageRecord,
   UserRecord,
 } from '../../lib/api-client'
 import type { MentionEntity } from '../../components/shared/MentionInput'
 import { dashboardCloseTarget } from './dashboard-close-target'
-import { ChannelMembersPopup } from '../../components/shared/ChannelMembersPopup'
-import { ChannelSettingsDialog } from '../../components/shared/ChannelSettingsDialog'
 import { OversizePasteDialog } from '../../components/shared/OversizePasteDialog'
 import {
   CallerCallDialog,
@@ -49,13 +46,11 @@ interface ChannelOverlaysProps {
   allUsers: UserRecord[]
   /** The thread on screen; the agent drawer feeds and posts into it. */
   activeThreadId: string | null
-  boundAgents: AgentRecord[]
   channelUsers: UserRecord[]
   callerCallActionError: unknown
   callerCallActionPending: boolean
   callerDialogCall: CallRecord | null
   voiceCall: VoiceCallOverlay
-  personalAssistantPresences: PersonalAssistantPresenceParticipant[]
   hasRespondingAgent: boolean
   isExternalAgentConversation: boolean
   isPersonalAssistantConversation: boolean
@@ -78,8 +73,6 @@ interface ChannelOverlaysProps {
   selectedMessageAgent: ChannelAgentParticipant | null
   selectedMessageUser: MessageUserIdentity | null
   startCallFailureCode: string | undefined
-  showChannelSettings: boolean
-  showMembersPopup: boolean
   threadMessages: ThreadMessageRecord[]
   threadMessageHistory: MessageHistoryStatus
   threadMessageLoader: OlderContentLoader
@@ -88,23 +81,21 @@ interface ChannelOverlaysProps {
   threadPendingMessages: PendingStreamMessage[]
   token: string | null
   onCancelOversizePaste: () => void
-  onCloseMembers: () => void
   onCloseSelectedAgent: () => void
   onCloseSelectedUser: () => void
-  onCloseSettings: () => void
   onInsertTrimmed: (trimmed: string) => void
   onCloseCallerDialog: () => void
   onCloseStartCallFailure: () => void
   onFinishCall: () => void
   onOpenAgentActivity: (agentId: string) => void
-  onSelectAgent: (agentId: string) => void
   onSendAsFile: (text: string) => Promise<void>
 }
 
 /**
  * Everything that layers over the channel conversation: the reply-thread panel,
- * the members popup, channel settings, the oversize-paste prompt, the call
- * caller dialog and the agent/user info drawers.
+ * the oversize-paste prompt, the call caller dialog and the agent/user info
+ * drawers. The conversation's Details are not here: they are routes, drawn by
+ * `useConversationDetails`.
  *
  * Extracted from `ChannelsPage` alongside `ChannelInfoDrawers` for the same
  * reason — the page composes ~15 hooks and was past the 500-line cap. This is
@@ -118,13 +109,11 @@ export const ChannelOverlays = ({
   agentMap,
   agents,
   allUsers,
-  boundAgents,
   channelUsers,
   callerCallActionError,
   callerCallActionPending,
   callerDialogCall,
   voiceCall,
-  personalAssistantPresences,
   hasRespondingAgent,
   isExternalAgentConversation,
   isPersonalAssistantConversation,
@@ -138,24 +127,19 @@ export const ChannelOverlays = ({
   selectedMessageAgent,
   selectedMessageUser,
   startCallFailureCode,
-  showChannelSettings,
-  showMembersPopup,
   threadMessages,
   threadMessageHistory,
   threadMessageLoader,
   threadPendingMessages,
   token,
   onCancelOversizePaste,
-  onCloseMembers,
   onCloseSelectedAgent,
   onCloseSelectedUser,
-  onCloseSettings,
   onInsertTrimmed,
   onCloseCallerDialog,
   onCloseStartCallFailure,
   onFinishCall,
   onOpenAgentActivity,
-  onSelectAgent,
   onSendAsFile,
 }: ChannelOverlaysProps) => {
   const { dashboardId } = useParams()
@@ -202,37 +186,11 @@ export const ChannelOverlays = ({
       <DashboardWorkspacePanel dashboardId={dashboardId} onClose={closeDashboard} />
     ) : null}
 
-    {showMembersPopup && activeChannel ? (
-      <ChannelMembersPopup
-        allAgents={agents}
-        allUsers={allUsers}
-        boundAgents={boundAgents}
-        channelId={activeChannel.id}
-        channelLabel={activeChannel.label}
-        channelUsers={channelUsers}
-        currentUserId={me.user.id}
-        personalAssistantPresences={personalAssistantPresences}
-        viewerCanManage={activeChannel.viewerCanManage}
-        viewerCanManageAgents={activeChannel.viewerCanManageAgents}
-        onClose={onCloseMembers}
-        onSelectAgent={onSelectAgent}
-      />
-    ) : null}
-
     <RenameConversationDialog
       conversation={renameConversation.conversation}
       onClose={renameConversation.onClose}
       open={renameConversation.open}
     />
-
-    {activeChannel ? (
-      <ChannelSettingsDialog
-        boundAgents={boundAgents}
-        channel={activeChannel}
-        onClose={onCloseSettings}
-        open={showChannelSettings}
-      />
-    ) : null}
 
     <OversizePasteDialog
       limit={CHAT_MESSAGE_MAX_CHARS}

@@ -1,16 +1,15 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { useRef, useState, type ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useProjectBoards } from '../../../facades/boards/hooks'
 import { useChannels } from '../../../facades/channels/hooks'
 import { useDashboard, useDashboards } from '../../../facades/dashboards/hooks'
 import { useProjectRecentPages } from '../../../facades/knowledge/recent-pages-hooks'
 import { useCanModifyProject } from '../../../facades/projects/administration'
-import { useProjectMembers, useProjects } from '../../../facades/projects/hooks'
+import { useProjectMembers } from '../../../facades/projects/hooks'
 import { useTasks } from '../../../facades/tasks/hooks'
 import { ScaledDashboard } from '../dashboards/ScaledDashboard'
 import { SkeletonBlock } from '../../primitives/Skeleton'
-import { ProjectMembersDialog } from '../../shared/ProjectMembersDialog'
 import {
   RECENT_PAGE_LIMIT,
   backlogTaskCount,
@@ -33,16 +32,15 @@ type ProjectNavigationTilesProps = {
  *
  * Which doorways, in what order, and what each one says is
  * `project-navigation-tiles.ts` — derived from the same `projectSections` list
- * the sidebar draws, so the two cannot drift. This file is the rendering, the
- * reads behind the counts, and the one piece of state: People has no section of
- * its own, so it opens the dialog the header's Members button opens.
+ * the sidebar draws, so the two cannot drift. This file is the rendering and the
+ * reads behind the counts. People has no section of its own and opens Settings ›
+ * People, where the header's Members button goes too.
  *
  * Every read here is one the page already makes — the Work column reads the
  * same tasks, the Documents column the same pages, and the channel list is the
  * shell's own — so the counts cost no extra request.
  */
 export const ProjectNavigationTiles = ({ className, projectId }: ProjectNavigationTilesProps) => {
-  const { data: projects = [] } = useProjects()
   const { data: boards = [] } = useProjectBoards(projectId)
   const { data: members = [] } = useProjectMembers(projectId)
   const { data: channels = [] } = useChannels()
@@ -50,9 +48,7 @@ export const ProjectNavigationTiles = ({ className, projectId }: ProjectNavigati
   const { data: pages = [] } = useProjectRecentPages(projectId, RECENT_PAGE_LIMIT)
   const { data: dashboards = [] } = useDashboards(projectId)
   const canManageMembers = useCanModifyProject(projectId)
-  const [membersOpen, setMembersOpen] = useState(false)
 
-  const project = projects.find((candidate) => candidate.id === projectId)
   const isScrum = boards.some((board) => board.style === 'scrum')
   const tiles = projectNavigationTiles({
     backlogCount: isScrum ? backlogTaskCount(tasks) : 0,
@@ -67,20 +63,9 @@ export const ProjectNavigationTiles = ({ className, projectId }: ProjectNavigati
   })
 
   return (
-    <>
-      <nav aria-label="Project sections" className={['project-nav-grid', className ?? ''].join(' ')}>
-        {tiles.map((tile) => (
-          <Tile key={tile.key} onOpenMembers={() => setMembersOpen(true)} tile={tile} />
-        ))}
-      </nav>
-      {membersOpen && project ? (
-        <ProjectMembersDialog
-          canManage={canManageMembers}
-          onClose={() => setMembersOpen(false)}
-          project={project}
-        />
-      ) : null}
-    </>
+    <nav aria-label="Project sections" className={['project-nav-grid', className ?? ''].join(' ')}>
+      {tiles.map((tile) => <Tile key={tile.key} tile={tile} />)}
+    </nav>
   )
 }
 
@@ -145,13 +130,7 @@ const DashboardTile = ({ tile }: { tile: ProjectNavigationTile }) => {
   )
 }
 
-const Tile = ({
-  onOpenMembers,
-  tile,
-}: {
-  onOpenMembers: () => void
-  tile: ProjectNavigationTile
-}) => {
+const Tile = ({ tile }: { tile: ProjectNavigationTile }) => {
   if (tile.dashboardId) return <DashboardTile tile={tile} />
 
   const body: ReactNode = (
@@ -172,13 +151,6 @@ const Tile = ({
       <Link className="project-nav-tile" data-tone={tile.tone} to={tile.to}>
         {body}
       </Link>
-    )
-  }
-  if (tile.opensMembers) {
-    return (
-      <button className="project-nav-tile" data-tone={tile.tone} onClick={onOpenMembers} type="button">
-        {body}
-      </button>
     )
   }
   // Nowhere to go yet — a project with no channels. The tile stays in the grid

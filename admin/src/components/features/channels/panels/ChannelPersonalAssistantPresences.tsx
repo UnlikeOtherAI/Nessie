@@ -27,8 +27,17 @@ export const ChannelPersonalAssistantPresences = ({
 }) => {
   const addPersonalAssistant = useAddPersonalAssistantPresence()
   const removePersonalAssistant = useRemovePersonalAssistantPresence()
+  // `POST /api/channels/:id/personal-assistant` resolves the channel through
+  // `getChannelIfMember`, so somebody reading a room they have not joined is
+  // answered 404: the offer is made to members only (a direct message's
+  // participants always are). This is the membership the room already
+  // reports, not a second reading of an authority rule.
+  const viewerIsMember = activeChannel?.type === 'dm' || activeChannel?.viewerIsMember === true
   const canManage = Boolean(
-    activeChannel && !activeChannel.systemChannelType && !isPersonalAssistantConversation,
+    activeChannel
+      && !activeChannel.systemChannelType
+      && !isPersonalAssistantConversation
+      && viewerIsMember,
   )
   const hasMine = presences.some((presence) => presence.principalUserId === currentUserId)
 

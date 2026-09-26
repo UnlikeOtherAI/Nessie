@@ -20,6 +20,8 @@ import {
 import { formErrorMessage } from '../../facades/forms/form-errors'
 import { useCanModifyProject } from '../../facades/projects/administration'
 import { useProjects } from '../../facades/projects/hooks'
+import { usePhoneNavigation } from '../../layouts/admin-shell/PhoneNavigationProvider'
+import { projectSettingsPath } from '../../navigation/project-sections'
 import { useTabParam } from '../../navigation/useTabParam'
 import { BoardColumnsEditor, type BindableState } from './settings/BoardColumnsEditor'
 import { BoardWatchersEditor } from './settings/BoardWatchersEditor'
@@ -85,7 +87,9 @@ const BoardGeneralSettings = ({
       },
       {
         onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not delete board')),
-        onSuccess: () => void navigate(`/projects/${projectId}/boards`),
+        // The deleted board's settings are gone: replace the entry with the
+        // board list rather than leaving a Back that lands on nothing.
+        onSuccess: () => void navigate(projectSettingsPath(projectId, 'boards'), { replace: true }),
       },
     )
   }
@@ -168,7 +172,7 @@ const BoardGeneralSettings = ({
 /** Settings for one board: each concern has one URL-backed tab instead of one long editor. */
 export const BoardSettingsPage = () => {
   const { boardId, projectId } = useParams<{ boardId: string; projectId: string }>()
-  const navigate = useNavigate()
+  const navigation = usePhoneNavigation()
   const { data: projects = [] } = useProjects()
   const boardsQuery = useProjectBoards(projectId)
   const canAdminister = useCanModifyProject(projectId ?? '')
@@ -220,8 +224,11 @@ export const BoardSettingsPage = () => {
           primary: true,
           priority: 100,
         }] : []}
-        backLabel="Back to boards"
-        onBack={() => void navigate(`/projects/${projectId}/boards`)}
+        // Reached from Settings › Boards, the board's Configure menu and a new
+        // board, so Back is the reader's real predecessor (`parent: 'origin'`)
+        // and only a cold link falls back to the board list.
+        backLabel="Back"
+        onBack={() => navigation?.back({ fallback: projectSettingsPath(projectId, 'boards') })}
         project={project}
         subtitle={project?.name}
         tabs={board ? (

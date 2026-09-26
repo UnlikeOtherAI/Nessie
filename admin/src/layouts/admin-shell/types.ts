@@ -10,7 +10,6 @@ export type CreateChannelTarget = {
   scope?: 'standalone'
   teamId?: string
 }
-export type EditProjectTarget = ProjectRecord
 // The channel a create just produced, so the section holding it can open. The
 // channel id rather than the project id alone: it changes on every create, so
 // the sidebar hears about the second channel added to the same project.

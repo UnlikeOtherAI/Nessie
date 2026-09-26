@@ -72,7 +72,7 @@ export const ChannelDecisionQuestionEditor = ({
             />
           </FormField>
           <p className="text-xs text-[color:var(--tx3)]">
-            Jev chooses one outcome. Include an outcome that needs no further work.
+            One outcome is chosen for each message. Include an outcome that needs no further work.
           </p>
           {errors[`${path}.options`] ? <p className="text-sm text-[color:var(--danger-text)]" role="alert">
             {errors[`${path}.options`]}

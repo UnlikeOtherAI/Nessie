@@ -867,7 +867,6 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
 .project-nav-tile[data-tone='knowledge'] { --tile: var(--warning); }
 .project-nav-tile[data-tone='rooms'] { --tile: var(--info); }
 .project-nav-tile[data-tone='people'] { --tile: var(--success); }
-.project-nav-tile[data-tone='compute'] { --tile: var(--lnk); }
 /* Settings is the one doorway a person is not here to walk through, so it is
    the one tile that does not compete for the eye. */
 .project-nav-tile[data-tone='config'] { --tile: var(--tx3); }

@@ -141,6 +141,8 @@ export const useUpdateChannel = () => {
       topic?: string | null
       description?: string | null
       decisionPolicy?: ChannelDecisionPolicy | null
+      // A standard room's only; the server refuses it on a direct message.
+      visibility?: 'public' | 'protected'
     }) => {
       const { channelId, ...body } = input
       return apiClient.patch<ChannelRecord>(
@@ -168,6 +170,24 @@ export const useArchiveChannel = () => {
         undefined,
         ChannelRecordSchema,
       ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
+    },
+  })
+}
+
+/**
+ * `DELETE /api/channels/:channelId` — a soft delete (`deletedAt` with
+ * `archivedAt`), gated by `canModifyChannel`. Unlike archiving, nothing in the
+ * admin brings a deleted channel back; the old settings dialog's Delete only
+ * archived, so this is the first caller of the route.
+ */
+export const useDeleteChannel = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (channelId: string) => apiClient.delete<void>(`/api/channels/${channelId}`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },

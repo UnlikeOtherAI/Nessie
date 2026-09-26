@@ -1,10 +1,18 @@
 import type { ChannelRecord } from '../../../lib/api-client'
 
 export type ChannelRoomControls = {
-  /** The settings gear: shown only to people the server lets change the room. */
+  /**
+   * Whether this reader may change the room — Details' General, Agents'
+   * placement aside, How agents respond — rather than read it. The server's
+   * `canModifyChannel` (`viewerCanManage`), and only on a room.
+   */
   canManageChannel: boolean
-  /** A direct message opens its info panel instead of room settings. */
-  canOpenConversationInfo: boolean
+  /**
+   * Whether the header's gear opens Details: every conversation but the
+   * Personal Assistant's own home, which has nothing to show there. A reader
+   * who may not change a room still opens it, read-only (plan R9).
+   */
+  canOpenDetails: boolean
   /** A public room the viewer has not joined offers Join. */
   shouldJoin: boolean
   /**
@@ -27,9 +35,9 @@ export type ChannelRoomControls = {
 
 /**
  * Which room controls the channel header offers. Kept out of the component so
- * the rule reads without a DOM: the gear is a doorway to changes, so it follows
- * `viewerCanManage` (the server's `canModifyChannel`) rather than the channel's
- * type — an unjoined public channel is readable, not manageable.
+ * the rule reads without a DOM. Whether Details can change a room follows
+ * `viewerCanManage` (the server's `canModifyChannel`) rather than the
+ * channel's type — an unjoined public channel is readable, not manageable.
  */
 export const channelRoomControls = (input: {
   activeChannel:
@@ -55,9 +63,7 @@ export const channelRoomControls = (input: {
   )
   return {
     canManageChannel: isRoom && activeChannel?.viewerCanManage === true,
-    canOpenConversationInfo: Boolean(
-      activeChannel && activeChannel.type === 'dm' && !isPersonalAssistantConversation,
-    ),
+    canOpenDetails: Boolean(activeChannel) && !isPersonalAssistantConversation,
     canPost: Boolean(activeChannel) && viewerIsMember,
     postRefusal: !activeChannel || viewerIsMember
       ? null

@@ -14,6 +14,14 @@ const agentActionBtnClass = [
 ].join(' ')
 
 /**
+ * Who may place or remove an agent, said on the control that needs it. The
+ * binding routes take organisation owner or admin standing, which is narrower
+ * than being in the channel, so a control somebody could use with that
+ * standing stays on screen, disabled, rather than disappearing (plan R9).
+ */
+const PLACEMENT_REASON = 'Only an organisation owner or admin can add or remove agents here'
+
+/**
  * A global agent is app-provided, so it can be placed here but never copied:
  * `cloneAgent` refuses a `systemManaged` source, and a button whose only
  * outcome is a 404 is worse than no button. The scope comes from the shared
@@ -30,10 +38,11 @@ const GlobalAgentPill = () => (
 type CurrentAgentRowProps = {
   agent: AgentRecord
   /**
-   * `ChannelRecord.viewerCanManageAgents` — the organisation owner role, which
-   * `DELETE /api/agents/:agentId/bindings/:channelId` requires. Only the
-   * removal is gated: everyone in the channel may see which agents are in it,
-   * and copying one is its own, wider permission.
+   * `ChannelRecord.viewerCanManageAgents` — organisation owner or admin
+   * standing, which `DELETE /api/agents/:agentId/bindings/:channelId` requires.
+   * Only the removal is gated, and without the standing it is shown disabled:
+   * everyone in the channel may see which agents are in it, and copying one is
+   * its own, wider permission.
    */
   canUnbind: boolean
   channelId: string
@@ -92,18 +101,17 @@ export const CurrentAgentRow = ({
         >
           <ViewIcon />
         </button>
-        {canUnbind ? (
-          <button
-            className={`${actionBtnClass} text-[color:var(--tx3)] hover:bg-[color:var(--danger-soft)] hover:text-[color:var(--danger-text)]`}
-            data-testid="channel-agent-remove"
-            disabled={unbindPending}
-            onClick={() => onUnbind(agent.id, channelId)}
-            title="Remove from channel"
-            type="button"
-          >
-            <CloseIcon className="h-3.5 w-3.5" />
-          </button>
-        ) : null}
+        <button
+          aria-label={`Remove ${agent.name} from channel`}
+          className={`${actionBtnClass} text-[color:var(--tx3)] hover:bg-[color:var(--danger-soft)] hover:text-[color:var(--danger-text)] disabled:opacity-40`}
+          data-testid="channel-agent-remove"
+          disabled={!canUnbind || unbindPending}
+          onClick={() => onUnbind(agent.id, channelId)}
+          title={canUnbind ? 'Remove from channel' : PLACEMENT_REASON}
+          type="button"
+        >
+          <CloseIcon className="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
   )
@@ -169,10 +177,11 @@ export const CurrentPersonalAssistantRow = ({
 type AvailableAgentRowProps = {
   agent: AgentRecord
   /**
-   * `ChannelRecord.viewerCanManageAgents` — the organisation owner role, which
-   * `POST /api/agents/:agentId/bindings` requires. Without it the row stays,
-   * because the agent is worth seeing and copying it is a wider permission;
-   * only the "Add" button goes, since pressing it answered 403.
+   * `ChannelRecord.viewerCanManageAgents` — organisation owner or admin
+   * standing, which `POST /api/agents/:agentId/bindings` requires. Without it
+   * the row stays, because the agent is worth seeing and copying it is a wider
+   * permission, and "Add" is shown disabled with who can use it rather than
+   * pressed into a 403.
    */
   canBind: boolean
   channelId: string
@@ -218,21 +227,21 @@ export const AvailableAgentRow = ({
             <CloneIcon />
           </button>
         )}
-        {canBind ? (
-          <button
-            className={[
-              actionBtnClass,
-              'border border-[color:var(--accent)]/30 text-[color:var(--thinking)]',
-              'hover:bg-[color:var(--accent-soft)]',
-            ].join(' ')}
-            data-testid="channel-agent-add"
-            disabled={bindPending}
-            onClick={() => onBind(agent.id, channelId)}
-            type="button"
-          >
-            Add
-          </button>
-        ) : null}
+        <button
+          aria-label={`Add ${agent.name} to channel`}
+          className={[
+            actionBtnClass,
+            'border border-[color:var(--accent)]/30 text-[color:var(--thinking)]',
+            'hover:bg-[color:var(--accent-soft)] disabled:opacity-40',
+          ].join(' ')}
+          data-testid="channel-agent-add"
+          disabled={!canBind || bindPending}
+          onClick={() => onBind(agent.id, channelId)}
+          title={canBind ? undefined : PLACEMENT_REASON}
+          type="button"
+        >
+          Add
+        </button>
       </div>
     </div>
   )

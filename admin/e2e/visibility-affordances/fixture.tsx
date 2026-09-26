@@ -24,7 +24,9 @@ import '../../src/styles.css'
  *    sits beside a project's name. A public room gets neither.
  * 2. **Management is not participation.** `channelRoomControls` decides the
  *    composer on membership alone, so an organisation admin administering a
- *    room they never joined is shown the settings and told they cannot post.
+ *    room they never joined opens its Details able to change them, and is told
+ *    they cannot post. Everyone who can open a room opens its Details; who may
+ *    change them is the question drawn here.
  *    The awkward middle case — may change the room, may not speak in it — is
  *    the one worth being able to look at.
  *
@@ -98,7 +100,7 @@ const Row = ({ item }: { item: Case }) => {
       <p className="text-xs text-[color:var(--tx3)]">{item.note}</p>
       <div className="flex flex-wrap gap-2 text-xs">
         <span data-testid={`${item.id}-manage`}>
-          Settings: {controls.canManageChannel ? 'shown' : 'hidden'}
+          Details: {controls.canManageChannel ? 'editable' : 'read only'}
         </span>
         <span data-testid={`${item.id}-join`}>
           Join: {controls.shouldJoin ? 'shown' : 'hidden'}
