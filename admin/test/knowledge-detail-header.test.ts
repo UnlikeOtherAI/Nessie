@@ -14,22 +14,26 @@ test('Tree detail omits its redundant Back while other Finder views retain it', 
   assert.match(pane, /<SpreadsheetPane[\s\S]*?onBack=\{detailBack\}/)
 })
 
-test('file detail has a compact action cluster and keeps Download primary', () => {
+test('file detail follows conversation detail with section tabs and keeps Download primary', () => {
   const file = source('../src/components/features/knowledge/FileNodeViewer.tsx')
   const actions = file.slice(file.indexOf('const headerActions'), file.indexOf('\n  ]', file.indexOf('const headerActions')))
 
-  assert.match(actions, /id: 'attachments'[\s\S]*?title: 'Show attachments'/)
+  assert.match(file, /<TabBar ariaLabel="File sections"/)
+  assert.match(file, /label: 'Preview'[\s\S]*?label: 'Attachments'[\s\S]*?label: 'Comments'/)
+  assert.doesNotMatch(actions, /id: 'attachments'/)
   assert.match(actions, /id: 'history'[\s\S]*?title: 'Version history'/)
   assert.match(actions, /id: 'upload-version'[\s\S]*?title: 'Upload new version'/)
   assert.match(actions, /id: 'download'[\s\S]*?primary: true/)
   assert.doesNotMatch(file, /<h1/)
 })
 
-test('document detail uses the same compact action cluster and keeps Publish primary', () => {
+test('document detail follows conversation detail with section tabs and keeps Publish primary', () => {
   const preview = source('../src/components/features/knowledge/PagePreview.tsx')
   const actions = preview.slice(preview.indexOf('const headerActions'), preview.indexOf('\n  ]', preview.indexOf('const headerActions')))
 
-  assert.match(actions, /id: 'attachments'[\s\S]*?title: 'Show attachments'/)
+  assert.match(preview, /<TabBar ariaLabel="Document sections"/)
+  assert.match(preview, /label: 'Content'[\s\S]*?label: 'Attachments'[\s\S]*?label: 'Comments'/)
+  assert.doesNotMatch(actions, /id: 'attachments'/)
   assert.match(actions, /id: 'history'[\s\S]*?title: 'Version history'/)
   assert.match(actions, /id: 'publish'[\s\S]*?primary: true/)
 })
