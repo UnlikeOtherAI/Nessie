@@ -546,7 +546,72 @@ _(the phase writes its task list and as-built notes here)_
 
 ### Phase 5: project and conversation settings
 
-_(the phase writes its task list and as-built notes here)_
+Plan §6.5, §6.6, §8.7, §10.7. Ports 5488/5489, database `nessie_p5`.
+
+**Routes.**
+
+- `/channels/projects/:projectId` is deleted (row, registry row,
+  `ChannelProjectOverviewPage`); the Channels sidebar's project rows open
+  `/projects/:projectId`. **Channels-origin Back:** no `parent: 'origin'`. The
+  overview keeps its declared parent (the Projects list) for a cold link; a
+  push from the Channels sidebar crosses sections, so §8's origin rule seeds
+  the channel beneath it and Back pops there, labelled "Back". `'origin'`
+  would also send Back from a project reached from another project to that
+  project rather than the list, which nobody asked for.
+- `/projects/:projectId/executors` is deleted with its section; its list is
+  Settings › Computers.
+- `/projects/:projectId/boards` (the board directory) is deleted; its list is
+  Settings › Boards, `?create=board` moving with it as a consumed intent. The
+  sidebar's Boards row and the Overview's Boards tile open the working board.
+  `/projects/:projectId/boards/:boardId/settings` is unchanged in content and
+  becomes `parent: 'origin'` (reached from Settings › Boards, the board's
+  Configure menu and a new board), falling back to Settings on a cold link.
+- `/projects/:projectId/settings?section=` `general` (default) · `people` ·
+  `boards` · `fields` · `sources` (labelled Connected tools) · `computers`.
+  The legacy `?section=labels` / `?section=boards&board=` redirects go.
+- The conversation's three routes stay: `/channels/:id/info` is Details
+  (`?section=` `general` · `agents` · `notifications` · `responses` ·
+  `automations`), `/channels/:id/info/members` is Details › People, and
+  `/channels/:id/info/members/add` adds people. `/info` and `/info/members`
+  are one identity at depth 2 (a section switch replaces, never animates);
+  `/add` is depth 3 under People.
+
+**Components.** `components/features/channels/details/`: `ConversationDetails`
+(on `single` the pushed screen itself, in place of the conversation; on
+`split` a right `Sheet` over it, whose every close is the route's own Back
+through a new `PhoneNavigationApi.performRouteBack`), a pure
+`detailsSections` (a room gets all six; a direct message General, People and
+Notifications; the Personal Assistant's home none), and one file per section:
+General (name, topic, description, visibility with its consequence said
+before saving, Archive, Delete; a direct message's facts and its tool and
+Files doorways), People (roster, remove, Add people, the one line on who
+places agents), Agents (placed and available agents, the Personal Assistant
+presences), Notifications (mute), How agents respond (the policy editor
+whole), Automations (`ChannelAutomationsPanel`). The gear ("Details", every
+conversation but the assistant's home) and the Members count open it; a
+control needing more standing is shown disabled with who can change it (R9).
+Deleted: `ConversationInfoFlow`, `ChannelSettingsDialog`,
+`ChannelMembersPopup`, `MemberManagementPopup`, `ProjectMembersDialog`,
+`EditProjectDialog`, `ProjectBoardsPage`, `ProjectExecutorsTab`, the two
+legacy settings redirects. Project settings sections live in
+`pages/project/settings/`; the header's Members and the Overview's People
+tile open Settings › People; the sidebars' Edit / Rename & icon open Settings
+and Delete moves to Settings › General.
+
+**API.** `PATCH /api/projects/:id` already takes `visibility`: a route test
+pins a member's change, an outsider's 404 and a refused `private`. The admin
+gains `useDeleteChannel` (the existing `DELETE /api/channels/:id`, which the
+old dialog's Delete never called — it archived). The worker's policy notice
+names Details › How agents respond.
+
+**Order.** Project routes and Settings; the overview route; Details and its
+routes; unit tests; the four owned browser suites plus `channel-decisions`
+and a new overlay-layer case; docs; gates, screenshots, review.
+
+**Left as today.** Projects have no archive (delete is a soft delete with no
+restore), so the section offers Delete only. Muted conversations on Your
+settings › Notifications are phase 6's page. The agent and person info
+drawers stay as they are (phase 2 links them to the agent page).
 
 ### Phase 6: Usage and limits, Advanced, the deletions, Alerts
 
