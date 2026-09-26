@@ -220,8 +220,8 @@ export const CreateSecretDialog = ({
           // Where Project would have been: this one is theirs alone, and a
           // project's is someone else's to save, so they know whom to ask.
           <p className="text-sm text-[color:var(--tx3)]">
-            Saved as your own secret. Only an organisation owner can save
-            a {withheld.map((scope) => SECRET_SCOPE_LABEL[scope].toLowerCase()).join(' or ')} secret.
+            Saved as your own key. Only an organisation owner can save
+            a {withheld.map((scope) => SECRET_SCOPE_LABEL[scope].toLowerCase()).join(' or ')} key.
           </p>
         ) : null}
 

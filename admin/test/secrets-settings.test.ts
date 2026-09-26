@@ -704,7 +704,7 @@ test('an organisation owner may pick Project, and is then asked which project', 
   }
 })
 
-test('anyone else is offered their own secret only, and told who saves a project’s', async () => {
+test('anyone else is offered their own key only, and told who saves a project’s', async () => {
   const restoreDom = installDom()
   const container = dom.window.document.createElement('div')
   dom.window.document.body.appendChild(container)
@@ -717,7 +717,7 @@ test('anyone else is offered their own secret only, and told who saves a project
     assert.equal(pickers().length, 0)
     assert.match(
       dom.window.document.body.textContent ?? '',
-      /Saved as your own secret\. Only an organisation owner can save a project secret\./,
+      /Saved as your own key\. Only an organisation owner can save a project key\./,
     )
   } finally {
     await act(async () => root.unmount())

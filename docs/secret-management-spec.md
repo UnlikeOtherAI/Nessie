@@ -220,7 +220,7 @@ them. A team's scope is named in the address and never taken from the team the
 owner happens to be working in; a team's page links to it from its Overrides
 tab.
 
-"New secret" offers only what the viewer's role may write.
+"Add a key" offers only what the viewer's role may write.
 
 - **The rule.** `secretCreationScopes` filters the page's
   `SECRET_CREATION_SCOPES` through `secretScopeWritable`
@@ -228,13 +228,13 @@ tab.
   `canManageSecretScope`, which stays the authority. Personal is anyone's;
   every level above it is an organisation owner's alone, admins included, so
   the role comes from `useIsOwner`.
-- **A member or an admin** on their own page is offered their own secret only.
+- **A member or an admin** on their own page is offered their own key only.
   In place of the Scope picker, a line says that only an organisation owner
-  can save a project secret, so they know whom to ask instead of saving one
+  can save a project key, so they know whom to ask instead of saving one
   for themselves.
 - **Why.** The form used to offer Project to everyone, and the server then
   refused their save with `403 SECRET_SCOPE_DENIED`.
-- **A page with nothing left to write** offers no "New secret" at all. Keys
+- **A page with nothing left to write** offers no "Add a key" at all. Keys
   never reaches that state: it refuses anyone but an organisation owner at
   every scope and points them at Saved keys, so a non-owner who opens an upper
   level by its address sees the refusal, not an empty page.
