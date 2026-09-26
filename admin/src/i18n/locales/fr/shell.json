@@ -197,5 +197,15 @@
     "organizationExample": "par ex. acme",
     "teamExample": "par ex. design",
     "explanation": "L’adresse web de cet élément. Vous pourrez la modifier plus tard."
+  },
+  "teamSwitch": {
+    "unknown": "Impossible de confirmer si le passage à {{target}} a abouti. Vérifiez votre connexion et actualisez la page avant de réessayer.",
+    "reauthenticate": "Le passage à {{target}} n’a pas pu être terminé. Reconnectez-vous lorsque vous souhaiterez continuer.",
+    "currentTeam": "votre équipe actuelle",
+    "base": "Impossible de passer à {{target}}. Vous êtes toujours dans {{current}}.",
+    "verification": "Cette équipe exige une nouvelle vérification de connexion.",
+    "conflict": "Une autre mise à jour de session s’est terminée en premier. Réessayez.",
+    "signInUoa": "Connectez-vous avec UnlikeOtherAI pour l’ouvrir.",
+    "unlinked": "Cette équipe n’est pas liée à UnlikeOtherAI et ne peut pas être ouverte. Une nouvelle connexion n’y changera rien. Un administrateur doit la recréer dans UnlikeOtherAI."
   }
 }

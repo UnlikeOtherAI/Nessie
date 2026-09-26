@@ -1,6 +1,6 @@
 import { AuthSessionApiError, type SessionPayload } from '@nessie/client-core'
 import { activeTeam, type Team } from '../../lib/teams'
-import { teamSwitchFailureMessage } from './team-switch-message'
+import { teamSwitchFailureMessage, type TeamSwitchTranslator } from './team-switch-message'
 
 export type TeamSwitchRecoveryResult =
   // Proof of the target team is missing or no longer renewable — the
@@ -53,6 +53,7 @@ export const recoverTeamSwitchFailure = async (input: {
   error: unknown
   reconcileSession: () => Promise<SessionPayload | null>
   targetTeam: Team
+  translate?: TeamSwitchTranslator
 }): Promise<TeamSwitchRecoveryResult> => {
   const code = input.error instanceof AuthSessionApiError
     ? input.error.code
@@ -70,6 +71,7 @@ export const recoverTeamSwitchFailure = async (input: {
       message: teamSwitchFailureMessage({
         state: 'unknown',
         targetTeam: input.targetTeam.label,
+        translate: input.translate,
       }),
       outcome: 'failed',
     }
@@ -80,6 +82,7 @@ export const recoverTeamSwitchFailure = async (input: {
       message: teamSwitchFailureMessage({
         state: 'reauthenticate',
         targetTeam: input.targetTeam.label,
+        translate: input.translate,
       }),
       outcome: 'failed',
     }
@@ -95,6 +98,7 @@ export const recoverTeamSwitchFailure = async (input: {
       message: teamSwitchFailureMessage({
         state: 'unknown',
         targetTeam: input.targetTeam.label,
+        translate: input.translate,
       }),
       outcome: 'failed',
     }
@@ -105,6 +109,7 @@ export const recoverTeamSwitchFailure = async (input: {
       code,
       currentTeam: reconciledTeam.label,
       targetTeam: input.targetTeam.label,
+      translate: input.translate,
     }),
     outcome: 'failed',
   }

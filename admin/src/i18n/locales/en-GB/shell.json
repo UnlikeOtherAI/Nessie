@@ -197,5 +197,15 @@
     "organizationExample": "e.g. acme",
     "teamExample": "e.g. design",
     "explanation": "The web address for this. You can change it later."
+  },
+  "teamSwitch": {
+    "unknown": "Couldn’t confirm whether the switch to {{target}} completed. Check your connection and refresh before trying again.",
+    "reauthenticate": "Couldn’t finish switching to {{target}}. Sign in again when you’re ready to continue.",
+    "currentTeam": "your current team",
+    "base": "Couldn’t switch to {{target}}. You’re still in {{current}}.",
+    "verification": "This team requires another sign-in verification.",
+    "conflict": "Another session update finished first. Try again.",
+    "signInUoa": "Sign in with UnlikeOtherAI to open it.",
+    "unlinked": "It is not linked to UnlikeOtherAI, so it cannot be opened — signing in again will not help. An administrator has to recreate it through UnlikeOtherAI."
   }
 }

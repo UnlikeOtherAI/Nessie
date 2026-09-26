@@ -197,5 +197,15 @@
     "organizationExample": "z. B. acme",
     "teamExample": "z. B. design",
     "explanation": "Die Webadresse dafür. Sie können sie später ändern."
+  },
+  "teamSwitch": {
+    "unknown": "Es konnte nicht bestätigt werden, ob der Wechsel zu {{target}} abgeschlossen wurde. Prüfen Sie Ihre Verbindung und laden Sie die Seite vor einem erneuten Versuch neu.",
+    "reauthenticate": "Der Wechsel zu {{target}} konnte nicht abgeschlossen werden. Melden Sie sich erneut an, wenn Sie fortfahren möchten.",
+    "currentTeam": "Ihrem aktuellen Team",
+    "base": "Wechsel zu {{target}} fehlgeschlagen. Sie sind noch in {{current}}.",
+    "verification": "Für dieses Team ist eine weitere Anmeldebestätigung erforderlich.",
+    "conflict": "Eine andere Sitzungsaktualisierung wurde zuerst abgeschlossen. Versuchen Sie es erneut.",
+    "signInUoa": "Melden Sie sich mit UnlikeOtherAI an, um es zu öffnen.",
+    "unlinked": "Dieses Team ist nicht mit UnlikeOtherAI verknüpft und kann daher nicht geöffnet werden. Eine erneute Anmeldung hilft nicht. Ein Administrator muss es über UnlikeOtherAI neu erstellen."
   }
 }

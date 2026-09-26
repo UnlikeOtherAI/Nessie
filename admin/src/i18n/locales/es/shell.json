@@ -197,5 +197,15 @@
     "organizationExample": "p. ej., acme",
     "teamExample": "p. ej., equipo",
     "explanation": "La dirección web de este elemento. Puedes cambiarla más adelante."
+  },
+  "teamSwitch": {
+    "unknown": "No se pudo confirmar si se completó el cambio a {{target}}. Comprueba la conexión y actualiza la página antes de volver a intentarlo.",
+    "reauthenticate": "No se pudo completar el cambio a {{target}}. Inicia sesión de nuevo cuando quieras continuar.",
+    "currentTeam": "tu equipo actual",
+    "base": "No se pudo cambiar a {{target}}. Sigues en {{current}}.",
+    "verification": "Este equipo requiere otra verificación de inicio de sesión.",
+    "conflict": "Otra actualización de sesión terminó primero. Inténtalo de nuevo.",
+    "signInUoa": "Inicia sesión con UnlikeOtherAI para abrirlo.",
+    "unlinked": "Este equipo no está vinculado a UnlikeOtherAI y no se puede abrir. Iniciar sesión de nuevo no ayudará. Un administrador debe volver a crearlo mediante UnlikeOtherAI."
   }
 }

@@ -173,6 +173,7 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
         error,
         reconcileSession,
         targetTeam: team,
+        translate: (key, values) => t(key, values),
       })
       if (recovery.outcome === 'switched') {
         // The switch had in fact landed. It is the same arrival as the happy
@@ -203,12 +204,14 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
             setSwitchError(teamSwitchFailureMessage({
               state: 'reauthenticate',
               targetTeam: team.label,
+              translate: (key, values) => t(key, values),
             }))
           }
         } else {
           setSwitchError(teamSwitchFailureMessage({
             state: 'reauthenticate',
             targetTeam: team.label,
+            translate: (key, values) => t(key, values),
           }))
         }
       } else {

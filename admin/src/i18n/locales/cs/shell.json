@@ -197,5 +197,15 @@
     "organizationExample": "např. acme",
     "teamExample": "např. design",
     "explanation": "Webová adresa této položky. Později ji můžete změnit."
+  },
+  "teamSwitch": {
+    "unknown": "Nepodařilo se ověřit, zda se přepnutí na {{target}} dokončilo. Zkontrolujte připojení a před dalším pokusem stránku obnovte.",
+    "reauthenticate": "Přepnutí na {{target}} se nepodařilo dokončit. Až budete chtít pokračovat, přihlaste se znovu.",
+    "currentTeam": "váš současný tým",
+    "base": "Nepodařilo se přepnout na {{target}}. Stále máte otevřený tým {{current}}.",
+    "verification": "Tento tým vyžaduje další ověření při přihlášení.",
+    "conflict": "Jiná aktualizace relace se dokončila dříve. Zkuste to znovu.",
+    "signInUoa": "Chcete-li ho otevřít, přihlaste se přes UnlikeOtherAI.",
+    "unlinked": "Tým není propojen s UnlikeOtherAI, takže ho nelze otevřít. Opětovné přihlášení nepomůže. Správce ho musí znovu vytvořit přes UnlikeOtherAI."
   }
 }

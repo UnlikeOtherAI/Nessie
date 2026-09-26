@@ -197,5 +197,15 @@
     "organizationExample": "ad es. acme",
     "teamExample": "ad es. design",
     "explanation": "L’indirizzo web di questo elemento. Potrai modificarlo in seguito."
+  },
+  "teamSwitch": {
+    "unknown": "Impossibile confermare se il passaggio a {{target}} sia stato completato. Controlla la connessione e aggiorna la pagina prima di riprovare.",
+    "reauthenticate": "Impossibile completare il passaggio a {{target}}. Accedi di nuovo quando vuoi continuare.",
+    "currentTeam": "team attuale",
+    "base": "Impossibile passare a {{target}}. Sei ancora nel {{current}}.",
+    "verification": "Questo team richiede un’ulteriore verifica dell’accesso.",
+    "conflict": "Un altro aggiornamento della sessione è terminato prima. Riprova.",
+    "signInUoa": "Accedi con UnlikeOtherAI per aprirlo.",
+    "unlinked": "Questo team non è collegato a UnlikeOtherAI e non può essere aperto. Accedere di nuovo non servirà. Un amministratore deve ricrearlo tramite UnlikeOtherAI."
   }
 }
