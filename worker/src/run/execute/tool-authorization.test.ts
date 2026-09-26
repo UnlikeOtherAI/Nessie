@@ -126,6 +126,8 @@ const fakePrisma = (): FakePrisma => {
     updateMany: async () => ({ count: 1 }),
   }
   const prisma = {
+    // The run's trigger answered no card, so it has no prepared call to run.
+    agentCard: { findUnique: async () => null },
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({
       $executeRaw: async () => 1,
       approvalRequest,

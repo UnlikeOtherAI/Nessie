@@ -58,6 +58,17 @@ export const orgPath = (team: Pick<UoaRosterTeam, 'externalOrgId'>): string =>
 export const teamPath = (team: UoaRosterTeam): string =>
   `${orgPath(team)}/teams/${encodeURIComponent(team.externalTeamId)}`
 
+/** Restate a runtime `/org/*` failure in the roster's own error vocabulary. */
+export const toRosterError = (error: unknown): unknown => {
+  if (error instanceof UoaOrgRequestRejectedError) {
+    return new UoaRosterRejectedError(error.message, error.statusCode, error.upstreamCode)
+  }
+  if (error instanceof UoaOrgRequestUnavailableError) {
+    return new UoaRosterUnavailableError(error.message)
+  }
+  return error
+}
+
 /**
  * One `/org/*` call. The domain hash authenticates Nessie; a caller that has a
  * live UOA session also supplies its short-lived subject assertion so UOA can
@@ -77,13 +88,7 @@ export const rosterRequest = async (
       sourceDomain: settings.domain,
     }, path, init, deps)
   } catch (error) {
-    if (error instanceof UoaOrgRequestRejectedError) {
-      throw new UoaRosterRejectedError(error.message, error.statusCode, error.upstreamCode)
-    }
-    if (error instanceof UoaOrgRequestUnavailableError) {
-      throw new UoaRosterUnavailableError(error.message)
-    }
-    throw error
+    throw toRosterError(error)
   }
 }
 

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client'
-import { AgentCardMessageMetadataSchema, type AgentCardSpec } from '@nessie/schemas'
+import { AgentCardMessageMetadataSchema, type AgentCardSpec, type PreparedCardActions } from '@nessie/schemas'
 import { renderAgentCardPlainText } from '@nessie/team-admin'
 
 import { createAgentMessage } from '../execute/agent-message.js'
@@ -65,6 +65,11 @@ export const postAgentCard = async (
       record: { grantId: string; mode: 'temporary'; origins: string[]; service: string }
     }>
     respondentUserIds: string[]
+    /**
+     * The tool call each prepared button stands for (`card_post` `prepared`),
+     * stored beside the spec and never in it: the spec is what viewers see.
+     */
+    preparedActions?: PreparedCardActions
   },
 ): Promise<{ cardId: string; messageId: string }> => {
   const created = await context.prisma.$transaction(async (tx) => {
@@ -92,6 +97,9 @@ export const postAgentCard = async (
         expiresAt: browserLogin?.expiresAt ?? input.expiresAt,
         messageId: message.id,
         organizationId: context.channel.organizationId,
+        ...(input.preparedActions
+          ? { preparedActions: input.preparedActions as unknown as Prisma.InputJsonValue }
+          : {}),
         respondentUserIds: input.respondentUserIds,
         runId: context.run.id,
         spec: input.card as unknown as Prisma.InputJsonValue,

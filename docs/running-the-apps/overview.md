@@ -6,9 +6,10 @@ require a publisher-verified release on macOS, Windows, or Linux. The mobile
 WebView shell needs Apple Developer signing to run on a physical device.
 
 For public desktop and Android downloads, see
-[Publishing direct downloads](../releasing.md). The release workflow owns the
-signed macOS and Windows installers, Linux packages, the Android APK, and their
-checksums; iOS remains an App Store delivery.
+[Publishing direct downloads](../releasing.md). The Android APK is currently an
+Android-only GitHub prerelease; the `v*` workflow builds future signed macOS and
+Windows installers, Linux packages, and Android APKs together. iOS remains an
+App Store delivery.
 
 ## Table of Contents
 

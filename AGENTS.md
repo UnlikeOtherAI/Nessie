@@ -68,6 +68,7 @@ It is the only way, and adding a second one is the defect Rule zero names.
   changing deployment automation.
 - Local dev runs with hot reload via `pnpm dev` (root) — API (nodemon) + admin (Vite HMR) in parallel, on this worktree's ports (5454/5455 by default; see "Ports"). (Defaults moved from 5554/5555 to dodge an Android emulator squatting on those ports; production internal port stays 5554.) Admin and API source edits reload automatically; **do not hand-build the admin to see changes.** The repo sits on a macOS data-volume path where fsevents is dead, so watchers must poll: Vite `server.watch.usePolling` and `nodemon --legacy-watch`. Don't remove these.
 - **Build:** Install a release on the named device.
+- **Android releases use local Gradle signing, including in GitHub Actions; never use Expo Cloud for Android builds.** Keep the app signing key outside Git and follow [mobile builds](docs/running-the-apps/mobile.md#android) and [release signing](docs/standards/build-and-release.md#android-signing). iOS distribution awaits the approved Apple account.
 - Rebuild the worker (`pnpm --filter @nessie/worker build`) after every turn where worker code changed: in local mode the API runs the worker embedded from its built `dist`, so source edits don't take effect until rebuilt. The dev API watches `worker/dist`, so a rebuild auto-restarts the embedded worker.
 - `pnpm --filter @nessie/admin build` is for production/CI bundles only, not the dev loop.
 - **Member-management browser fixture builds:** manual fixture builds explicitly enable its preview entry; ordinary bundles omit it. Read [`docs/testing/member-management-e2e.md`](docs/testing/member-management-e2e.md) before changing that evaluation or its build cache inputs.
@@ -352,6 +353,8 @@ when one changes, the same turn updates it, not this section.
   before writing code here.
 - **Agent chat cards.** One card system with a closed block vocabulary; the
   press is claimed once by a conditional UPDATE and writes a real user message.
+  A button may carry a prepared tool call that its answer runs, once, before any
+  model turn.
   Read [`docs/standards/agent-cards.md`](docs/standards/agent-cards.md)
   before writing code here.
 - **A board owns its tickets and its columns.** A project has many `Board`s,

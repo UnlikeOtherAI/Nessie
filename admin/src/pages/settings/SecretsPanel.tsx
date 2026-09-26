@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react'
 import { DEFAULT_PAGE_LIMIT } from '@nessie/schemas'
 
-import { CreateSecretDialog } from '../../components/features/settings/CreateSecretDialog'
+import {
+  CreateSecretDialog,
+  secretCreationScopes,
+} from '../../components/features/settings/CreateSecretDialog'
 import {
   resolveSecretRows,
   secretMatchesTab,
@@ -13,6 +16,7 @@ import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
 import { PaginationFooter } from '../../components/shared/PaginationFooter'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { TabBar, type TabBarItem } from '../../components/primitives/TabBar'
+import { useIsOwner } from '../../facades/auth/hooks'
 import { useProjects } from '../../facades/projects/hooks'
 import {
   useCreateSecret,
@@ -137,6 +141,10 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
   const [pageByTab, setPageByTab] = useState<Record<SecretsTab, number>>({ active: 0, revoked: 0 })
   const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_LIMIT)
   const copy = COPY[scope]
+  const viewerIsOwner = useIsOwner()
+  // Nothing this viewer may write here means no "New secret" at all: the
+  // upper pages are owner doorways, but their addresses still open for anyone.
+  const canCreate = secretCreationScopes(scope, { viewerIsOwner }).length > 0
   // The level this page writes into. Personal needs none — the API binds a
   // personal secret to the caller — and a project secret names its own.
   const pageScopeId = scope === 'team'
@@ -180,7 +188,7 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
 
   return (
     <SettingsPanel
-      actions={[
+      actions={canCreate ? [
         {
           id: 'new-secret',
           label: 'New secret',
@@ -191,7 +199,7 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
           primary: true,
           priority: 100,
         } satisfies PageHeaderAction,
-      ]}
+      ] : []}
       eyebrow={copy.eyebrow}
       footer={
         // Always visible, as on Agents: an empty or single-page tab keeps its
@@ -252,19 +260,22 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
           />
         </section>
       </div>
-      <CreateSecretDialog
-        onClose={() => setCreateOpen(false)}
-        onCreate={(input) => createSecret.mutateAsync(input)}
-        onSaved={() => {
-          setCreateOpen(false)
-          setFeedback({ kind: 'success', message: 'Saved to the vault. Nessie retained only its metadata.' })
-        }}
-        open={createOpen}
-        pageScope={scope}
-        pending={createSecret.isPending}
-        projects={projects}
-        scopeId={pageScopeId}
-      />
+      {canCreate ? (
+        <CreateSecretDialog
+          onClose={() => setCreateOpen(false)}
+          onCreate={(input) => createSecret.mutateAsync(input)}
+          onSaved={() => {
+            setCreateOpen(false)
+            setFeedback({ kind: 'success', message: 'Saved to the vault. Nessie retained only its metadata.' })
+          }}
+          open={createOpen}
+          pageScope={scope}
+          pending={createSecret.isPending}
+          projects={projects}
+          scopeId={pageScopeId}
+          viewerIsOwner={viewerIsOwner}
+        />
+      ) : null}
       <ConfirmDialog
         body="Anything still using this secret reference will stop working."
         confirmLabel="Revoke secret"

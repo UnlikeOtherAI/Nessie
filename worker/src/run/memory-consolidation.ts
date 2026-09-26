@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import {
   consolidateRunMemories,
   deriveMemoryConsolidationInferenceOrigin,
+  gateCandidateExtraction,
   parseAndVerifyMemoryConsolidationJobPayload,
   type CaptureConfig,
   type ConsolidationCandidateExtractor,
@@ -80,9 +81,14 @@ export const executeRunMemoryConsolidationJob = async (
   payload: unknown,
 ): Promise<void> => {
   const parsed = parseAndVerifyMemoryConsolidationJobPayload(payload)
-  const extractCandidates = deps.candidateExtractor ?? createMemoryCandidateExtractor(
-    { ledgerIdentity: deps.ledgerIdentity, prisma: deps.prisma },
-    { origin: parsed.origin },
+  // Jev first: a run whose conversation holds nothing durable skips the call.
+  const extractCandidates = gateCandidateExtraction(
+    deps.captureConfig.decisionClient,
+    parsed.origin,
+    deps.candidateExtractor ?? createMemoryCandidateExtractor(
+      { ledgerIdentity: deps.ledgerIdentity, prisma: deps.prisma },
+      { origin: parsed.origin },
+    ),
   )
   const result = await consolidateRunMemories(parsed, {
     ...deps.captureConfig,

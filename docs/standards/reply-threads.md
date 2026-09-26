@@ -166,6 +166,13 @@ from `decideOneOnOneTurn`):
   messages above the immediate exchange (the two newest are skipped, because
   that is where a reply already sits; at most twelve are offered), and which.
   Never asked for a message inside a reply thread.
+- **offer_answer / offer_exact** — asked only when the message right above is
+  the agent's own open card with prepared buttons that this person may answer:
+  which button the words take, and whether they take it exactly as offered.
+  Both at 0.95 or more resolve the card with this message as its answer, and
+  the run executes that button's prepared call before the model is asked
+  anything ([agent-cards.md](agent-cards.md) → "A prepared button runs its
+  call").
 - **reference** — how the answer points there: `mention`, in the main chat and
   in words; `link`, in the main chat with `metadata.messageRef` drawn as a chip
   that jumps to the earlier message (`MessageRefChip`, resolved from the

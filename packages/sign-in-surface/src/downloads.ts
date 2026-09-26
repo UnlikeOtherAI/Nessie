@@ -11,17 +11,23 @@ export const LATEST_RELEASE_DOWNLOAD_BASE =
  * somebody verifying a checksum or after an older build needs to be able to get
  * there, and nobody else should be sent there to find a download at all.
  */
-export const LATEST_RELEASE_PAGE =
-  'https://github.com/UnlikeOtherAI/Nessie/releases/latest'
+export const RELEASES_PAGE =
+  'https://github.com/UnlikeOtherAI/Nessie/releases'
 
 export type AppDownload = {
   asset: string
   detail: string
   label: string
+  releaseTag?: string
 }
 
 export const APP_DOWNLOADS = {
-  android: { asset: 'Nessie-Android.apk', detail: 'APK', label: 'Android' },
+  android: {
+    asset: 'Nessie-Android.apk',
+    detail: 'GitHub APK',
+    label: 'Android',
+    releaseTag: 'android-v0.1.2-4',
+  },
   linux: { asset: 'Nessie-Linux.AppImage', detail: 'AppImage', label: 'Linux' },
   macAppleSilicon: { asset: 'Nessie-macOS-Apple-Silicon.dmg', detail: 'Apple silicon', label: 'Mac' },
   macIntel: { asset: 'Nessie-macOS-Intel.dmg', detail: 'Intel', label: 'Mac' },
@@ -47,4 +53,6 @@ export const EXECUTOR_DOWNLOADS = {
 } as const satisfies Record<string, AppDownload>
 
 export const downloadUrl = (download: AppDownload): string =>
-  `${LATEST_RELEASE_DOWNLOAD_BASE}/${download.asset}`
+  download.releaseTag
+    ? `${RELEASES_PAGE}/download/${download.releaseTag}/${download.asset}`
+    : `${LATEST_RELEASE_DOWNLOAD_BASE}/${download.asset}`

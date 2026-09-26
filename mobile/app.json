@@ -31,7 +31,7 @@
       }
     },
     "android": {
-      "package": "com.km.nessie",
+      "package": "com.unlikeotherai.nessie",
       "versionCode": 4,
       "predictiveBackGestureEnabled": true,
       "adaptiveIcon": {
@@ -66,6 +66,7 @@
       "expo-notifications",
       "react-native-bottom-tabs",
       "expo-web-browser",
+      "./plugins/with-android-release-signing",
       [
         "./plugins/with-light-app-icon",
         {

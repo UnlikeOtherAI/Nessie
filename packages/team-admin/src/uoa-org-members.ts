@@ -20,7 +20,7 @@ import {
   parseOrgMembers,
   parseUoaInvitations,
   parseUoaPaginationMeta,
-  UoaRosterIdentityError,
+  requireOrgSessionIdentity,
   type UoaRosterListQuery,
   type UoaRosterPage,
 } from './uoa-org-roster.js'
@@ -72,22 +72,13 @@ export const withUoaOrgRosterSubjectAssertion = (
   identity: UoaSessionIdentity | undefined,
   deps: UoaRosterDeps = {},
 ): UoaRosterDeps => {
-  if (!identity || identity.tokenVersion === null || identity.organizationId !== orgId) {
-    throw new UoaRosterIdentityError(
-      'A current UnlikeOtherAI session for this organisation is required.',
-    )
-  }
+  const assertionIdentity = requireOrgSessionIdentity(orgId, identity)
   const settings = delegatedSettings()
   return {
     ...deps,
     subjectAssertion: createUoaSubjectAssertion(
       settings,
-      {
-        organizationId: identity.organizationId,
-        subject: identity.subject,
-        teamId: identity.teamId,
-        tokenVersion: identity.tokenVersion,
-      },
+      assertionIdentity,
       `${settings.authBaseUrl}/org`,
     ),
   }

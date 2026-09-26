@@ -35,12 +35,19 @@ type ActiveConnection = {
 
 let active: ActiveConnection | null = null
 
+// Where the stream resumes. Owned by the stream rather than by a subscriber: a
+// resume has to pick up where the socket stopped, not where the newest
+// subscriber attached. It also outlives one connection, because a renewed
+// access token reopens the stream (the bearer travels as a header) roughly
+// every half hour; reopening from nothing had the hub replay the user's whole
+// retained backlog, up to 5,000 events, each refetching its queries at once.
+// The hub filters replay to the connecting user's own scopes, so a carried
+// cursor only skips events already delivered. Signing out clears it.
+let lastEventId = ''
+
 const openConnection = (token: string): ActiveConnection => {
   let cancelled = false
   let controller: AbortController | null = null
-  // Owned by the connection rather than by a subscriber: a resume has to pick
-  // up where the socket stopped, not where the newest subscriber attached.
-  let lastEventId = ''
 
   const attempt = async (): Promise<StreamAttemptOutcome> => {
     const connection: EventStreamConnection = {
@@ -70,7 +77,9 @@ const openConnection = (token: string): ActiveConnection => {
 
       try {
         await readSseStream(response.body, async (frame) => {
-          if (frame.id) {
+          // A stopped connection may still flush a frame its successor has
+          // already replayed; it must not move the shared cursor back.
+          if (frame.id && !cancelled) {
             lastEventId = frame.id
           }
           await fanout.deliver(frame, connection)
@@ -119,12 +128,39 @@ const stopConnection = (): void => {
 }
 
 /**
- * Attach to the shared event stream for as long as `enabled` holds.
+ * Join the shared stream as one subscriber and return the leave function.
  *
  * The first subscriber opens the connection and the last one to leave closes
- * it; a rotated token reopens it, because the bearer travels as a request
- * header. `onFrame` is read through a ref, so a subscriber may rebuild its
- * handler every render without churning the socket.
+ * it; a rotated token reopens it, resuming after the last event it delivered,
+ * because the bearer travels as a request header.
+ */
+export const attachEventStream = (
+  token: string,
+  listener: EventStreamListener,
+): (() => void) => {
+  const unsubscribe = fanout.subscribe(listener)
+  if (active?.token !== token) {
+    stopConnection()
+    active = openConnection(token)
+  }
+
+  return () => {
+    unsubscribe()
+    if (fanout.size() === 0) {
+      stopConnection()
+    }
+  }
+}
+
+/** Signed out: the next session, whoever it belongs to, starts afresh. */
+export const forgetEventStreamPosition = (): void => {
+  lastEventId = ''
+}
+
+/**
+ * Attach to the shared event stream for as long as `enabled` holds.
+ * `onFrame` is read through a ref, so a subscriber may rebuild its handler
+ * every render without churning the socket.
  */
 export const useEventStream = (input: {
   enabled: boolean
@@ -135,23 +171,17 @@ export const useEventStream = (input: {
   latestOnFrame.current = input.onFrame
 
   useEffect(() => {
-    if (!input.enabled || !token) {
+    if (!token) {
+      forgetEventStreamPosition()
+      return
+    }
+    if (!input.enabled) {
       return
     }
 
-    const unsubscribe = fanout.subscribe(
+    return attachEventStream(
+      token,
       (frame, connection) => latestOnFrame.current(frame, connection),
     )
-    if (active?.token !== token) {
-      stopConnection()
-      active = openConnection(token)
-    }
-
-    return () => {
-      unsubscribe()
-      if (fanout.size() === 0) {
-        stopConnection()
-      }
-    }
   }, [input.enabled, token])
 }

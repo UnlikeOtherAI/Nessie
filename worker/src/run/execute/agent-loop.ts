@@ -37,6 +37,7 @@ import type { RunInference } from './run-inference.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
 import { recordToolEnd } from './tool-events.js'
 import { createToolEffectLedger, externalDispatchPredicate } from './tool-effect-ledger.js'
+import { claimPreparedCardCall, recordPreparedCardOutcome } from './prepared-card-call.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 import { persistCurrentRunBasis, runReplyIsRestricted } from './agent-message.js'
 import {
@@ -436,7 +437,10 @@ export const runExecutionAgentLoop = async (
     runId: context.run.id,
   }, { executeTool: executeMainTool, prepareTool: prepareMainTool })
 
+  // A pressed card button's prepared call runs before the model is asked anything.
+  const prepared = input.resumeState ? null : await claimPreparedCardCall(deps.prisma, payload, context)
   const loopResult = await runAgenticLoop({
+    ...(prepared ? { preparedToolCalls: [prepared.call] } : {}),
     reviewCompletion: (messages, outputText) =>
       reviewFollowUp(input.inference.runUtility, messages, outputText, input.invocationSink, input.inference.decide),
     budget: input.budget,
@@ -614,6 +618,7 @@ export const runExecutionAgentLoop = async (
     tools: mainToolDefs,
   })
 
+  if (prepared) await recordPreparedCardOutcome(deps.prisma, prepared, { ...loopResult, runId: context.run.id })
   // Main-loop, delegate and compaction invocations were all accumulated into
   // the shared sink, which backs loopResult.invocations — nothing to append.
   return loopResult

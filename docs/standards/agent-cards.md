@@ -161,8 +161,9 @@ this standard, not an exception to it.
   *structural* orchestrator path — never content matching, and never a
   judgement. `resolveCardResponseDecisions` (`worker/src/run/orchestrate.ts`)
   reads `AgentCard.responseMessageId`, the column the press transaction writes
-  and no client can, and answers with a threaded reply by the card's agent
-  before a one-on-one judgement, the engagement decision or a channel policy is
+  and no client can, and answers with a reply by the card's agent — threaded
+  under the card, or in the main chat for a typed answer — before a one-on-one
+  judgement, the engagement decision or a channel policy is
   asked. A judgement asked first is free to answer a press with a reaction or
   with nothing — a one-on-one judgement may well read "Allow" as a thank-you —
   and the agent that asked would never hear the answer. The press's realtime announcement is scoped by the destination,
@@ -287,6 +288,52 @@ this standard, not an exception to it.
     `worker/test/db/standing-policy-prepare-tool.test.ts`,
     `packages/team-admin/test/standing-policy-db.test.ts` and
     `packages/team-admin/test/standing-policy-card.test.ts`.
+- **A prepared button runs its call.** When the agent already knows every
+  argument of what a button means — "Book Friday 14:00" is `room_book` with
+  a day, a room and a time — it passes `card_post` `prepared`:
+  `{"<actionKey>": {"tool", "arguments"}}`. The calls are stored on
+  `AgentCard.preparedActions`, beside the spec and never in it: the spec is
+  what every viewer receives, and the arguments can carry more than the card
+  shows. They are refused at post time, where the agent can still fix them,
+  when they could not make the decision whole: a button that is a doorway
+  (`href`), a card with input or secret fields (what the person types could
+  never reach the arguments), a card that waits (a parked run is resumed to
+  carry on its own work), another `card_post`, or arguments over 16 KB.
+  - **The answer's run executes it before asking the model anything.** The
+    run whose trigger answered the card (`AgentCard.responseMessageId`) and
+    belongs to the card's agent claims the call once on
+    `AgentCard.preparedExecution` (`claimPreparedCardCall`,
+    `worker/src/run/execute/prepared-card-call.ts`), and the loop enters it
+    exactly as it re-enters a crashed batch: the assistant turn that asks for
+    it is the agent's own from the post, and the call goes through the same
+    authorization, approval gates, effect ledger and tool events as any
+    other (`preparedToolCalls`, `worker/src/run/agentic-loop.ts`). When
+    every call succeeds the model is never asked; the run ends marking the
+    answer ✅ (`preparedCompleted` → `markedDone`). A failure, a refusal or
+    an approval gate continues into the ordinary loop, where the model reads
+    the call as its own and its result, and explains or carries on. A
+    restarted run, a second run on the same answer, or a run answering
+    several queued messages never repeats it; only the claiming run, back
+    after a crash, re-enters it, under a call id stable per card so the
+    effect ledger answers from its record.
+  - **Later runs see what happened.** The card's note in the transcript names
+    what each prepared button runs and, once pressed, whether the call ran
+    and succeeded or the agent took over (`buildAgentCardStateNote`).
+  - **A typed answer can take a button, in a one-on-one room.** When the
+    message right above a person's top-level message is the room agent's own
+    open, unexpired, non-waiting card with prepared buttons, the person may
+    answer it, and the card message carries no disclosure restriction (a typed
+    answer does not inherit the card's basis the way a press does), the
+    one-on-one Jev evaluation also asks which button the words take and
+    whether exactly as offered. Both at 0.95 or more
+    (`OFFER_ANSWER_MINIMUM_PROBABILITY`) claim the card with the typed
+    message as its answer — the same conditional UPDATE a press makes, so a
+    press racing the words has one winner — publish `card.updated`, and
+    start a reply in the main chat, which then runs the call as above
+    (`orchestrate-card-answer.ts`). A changed detail ("Friday, but at
+    three"), doubt, or anything else leaves the card open and the message to
+    an ordinary run. `resolveCardResponseDecisions` wakes the agent for such
+    an answer too, answered in the main chat because the message is top-level.
 - **Every card goes through one door.** `postAgentCard`
   (`worker/src/run/pa-tools/agent-card-post.ts`) is the only place the worker
   writes an `AgentCard` row: `card_post`, the executor review card and

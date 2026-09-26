@@ -4,7 +4,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { readDeviceColour, writeDeviceColour } from './colour-cookie'
-import { deviceColours, docsUrl, hero, heroTabs, signInUrl, type DeviceColour } from './content'
+import { androidDownloadUrl, deviceColours, docsUrl, hero, heroTabs, signInUrl, type DeviceColour } from './content'
 import { DeviceView } from './desktop3d'
 import { Button } from './ui'
 
@@ -143,6 +143,7 @@ export function Hero() {
           <div className="n-actions">
             <Button href={signInUrl}>Get started</Button>
             <Button ghost href={docsUrl} icon={faGithub}>Open source</Button>
+            <Button ghost href={androidDownloadUrl}>Download Android</Button>
           </div>
         </div>
         <div className={expanded ? 'n-hero-visual n-hero-visual-away' : 'n-hero-visual'} id="product">

@@ -4,7 +4,6 @@ import {
   UoaRosterIdentityError,
   UoaRosterRejectedError,
   UoaRosterUnavailableError,
-  withUoaOrgRosterSubjectAssertion,
   type UoaRosterDeps,
 } from '@nessie/team-admin'
 
@@ -19,7 +18,8 @@ export type UoaRequestAuthorization =
  * A local access JWT is not proof of current UOA membership. The signed
  * /org/me path rechecks credential epoch, organisation status and the active
  * team's membership before returning its live organisation role. Nothing is
- * persisted or reused across requests, including upstream failures.
+ * persisted or reused across requests, including upstream failures; concurrent
+ * requests of one session only share the read already in flight.
  */
 export const authorizeUoaRequest = async (
   organizationId: string,
@@ -27,10 +27,7 @@ export const authorizeUoaRequest = async (
   deps: UoaRosterDeps = {},
 ): Promise<UoaRequestAuthorization> => {
   try {
-    const current = await readUoaOrganizationRoleContext(
-      organizationId,
-      withUoaOrgRosterSubjectAssertion(organizationId, identity, deps),
-    )
+    const current = await readUoaOrganizationRoleContext(organizationId, identity, deps)
     const role = mapUoaMemberRole(current.role)
     return role ? { status: 'allowed', role } : { status: 'forbidden' }
   } catch (error) {
