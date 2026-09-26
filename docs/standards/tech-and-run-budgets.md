@@ -256,6 +256,14 @@ summary and points here; **this file is the rule**.
     sure "no reasoning" skips the reasoning extraction. Anything unsure, and any
     failure, extracts exactly as before. The API's and the worker's capture
     configs carry the same Ledger decision client as the orchestrator.
+    A finished run's memory consolidation is gated the same way: its
+    candidate extraction, a generative call over the run's conversation
+    after every completed run, is skipped when Jev is sure (0.9,
+    `CONSOLIDATION_GATE_MINIMUM_PROBABILITY`) the conversation holds nothing
+    durable (`gateCandidateExtraction`, wired in
+    `worker/src/run/memory-consolidation.ts`). Only a conversation Jev can
+    read whole, under 18 KB as the extraction sees it, is judged; a longer
+    one, doubt or a failure extracts as before.
 
   - MCP tool descriptors are name-sorted with exposed names allocated in a
     fixed order, so the tool array is byte-identical across iterations and the

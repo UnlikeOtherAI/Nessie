@@ -241,22 +241,23 @@ column 0. The pathname owns that split even while the selection state updates,
 so the root instance never pushes the destination as a hidden stage underneath
 the real route. Wider layouts still compose the root and detail columns side by
 side.
-its four inner screens are stages — `knowledge:folder` (11, a folder browsed
-beyond the space root), `knowledge:document` (12, the open document or file),
-`knowledge:history` (13) and `knowledge:editor` (14, `swipeable={false}` for
-as long as it is open, because `PageEditor` holds its draft in its own state
-and publishes no dirty signal). Each keeps the label and the one-level unwind
-the single registration used to carry, and the priorities stay
-`LOCAL_BACK_PRIORITY`. `animate-kb-view-slide` and its keyframes are deleted:
+its inner stages are `knowledge:document` (12, the open document or file) and
+`knowledge:editor` (14, `swipeable={false}` for as long as it is open, because
+`PageEditor` holds its draft in its own state and publishes no dirty signal).
+Version history is a `Dialog` over the document, matching the file-version
+upload modal and using the overlay's Back registration. `knowledge:folder` is
+retired because the Finder's columns own their stages. The remaining stages
+keep their labels, one-level unwind and `LOCAL_BACK_PRIORITY` values.
+`animate-kb-view-slide` and its keyframes are deleted:
 the stack owns the motion, and `phone-navigation-transition.test.ts` pins the
 name out of `admin/src` entirely. Which stages are open is derived from the
 provider's own state, and the composition follows the host rather than a
 breakpoint (`useNestedStageHosted`): a stack shows every open stage as its own
 layer, with the space's root listing kept in the route layer beneath an open
 folder — the screen it was pushed over — while an inline host renders only the
-deepest pane, exactly the desktop columns, full-width document, history and
-editor of before. Pinned by `knowledge-local-back.test.ts` and the
-three-layer unwind case in `nested-stage-viewport.test.ts`.
+deepest pane, exactly the desktop columns, full-width document and editor of
+before. Pinned by `knowledge-local-back.test.ts`; the generic three-layer
+unwind case in `nested-stage-viewport.test.ts` still covers stage behavior.
 
 When a document's immediate parent is a folder, its Back removes only the
 document from the drill path and restores that folder browser (including its

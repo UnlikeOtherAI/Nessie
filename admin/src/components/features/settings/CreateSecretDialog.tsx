@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent } from 'react'
 import type { SecretScopeType } from '@nessie/schemas'
 
 import type { ProjectRecord } from '../../../lib/api-client'
+import { secretScopeWritable } from '../../../lib/secret-scopes'
 import type { CreateSecretInput } from '../../../facades/secrets/hooks'
 import { SECRET_SCOPE_LABEL, type SecretPageScope } from './SecretMetadataTable'
 import { toFormErrors } from '../../../facades/forms/form-errors'
@@ -22,6 +23,8 @@ type CreateSecretDialogProps = {
   projects: ProjectRecord[]
   /** The organisation or team the page is standing in. Unused at personal scope. */
   scopeId: string
+  /** From `useIsOwner`: every scope above personal is an organisation owner's alone. */
+  viewerIsOwner: boolean
 }
 
 /** The scopes each page may create into. A page never writes above its own level. */
@@ -30,6 +33,17 @@ export const SECRET_CREATION_SCOPES: Record<SecretPageScope, readonly SecretScop
   personal: ['personal', 'project'],
   team: ['team'],
 }
+
+/**
+ * The scopes this viewer may create into from `pageScope`: the page's own,
+ * less any their role may not write. Empty means the page has nothing for them
+ * to create, so it offers no "New secret" at all.
+ */
+export const secretCreationScopes = (
+  pageScope: SecretPageScope,
+  viewer: { viewerIsOwner: boolean },
+): readonly SecretScopeType[] =>
+  SECRET_CREATION_SCOPES[pageScope].filter((scope) => secretScopeWritable(scope, viewer))
 
 type SecretFormValues = {
   locked: boolean
@@ -90,9 +104,11 @@ const lockLabel: Partial<Record<SecretScopeType, string>> = {
  *
  * A level never offers a scope above its own: Keys at the organisation's scope
  * writes organisation secrets, at a team's scope that team's, and Saved keys a
- * person's own (or a project's). That is why there is no scope picker on Keys
- * — the scope switch *is* the scope, which is also why the organisation's
- * table dropped the Scope column.
+ * person's own (or, for an organisation owner, a project's). That is why there
+ * is no scope picker on Keys — the scope switch *is* the scope, which is also
+ * why the organisation's table dropped the Scope column. Nor does it offer a
+ * scope the viewer's role may not write (`secretCreationScopes`); the page
+ * renders this dialog only when at least one is left.
  */
 export const CreateSecretDialog = ({
   onClose,
@@ -103,8 +119,11 @@ export const CreateSecretDialog = ({
   pending,
   projects,
   scopeId: pageScopeId,
+  viewerIsOwner,
 }: CreateSecretDialogProps) => {
-  const scopes = SECRET_CREATION_SCOPES[pageScope]
+  const scopes = secretCreationScopes(pageScope, { viewerIsOwner })
+  // What this page writes but the viewer may not, said where the choice would be.
+  const withheld = SECRET_CREATION_SCOPES[pageScope].filter((scope) => !scopes.includes(scope))
   const defaultScope = scopes[0] as SecretScopeType
   const [name, setName] = useState('')
   const [value, setValue] = useState('')
@@ -197,6 +216,13 @@ export const CreateSecretDialog = ({
               ))}
             </Select>
           </FormField>
+        ) : withheld.length > 0 ? (
+          // Where Project would have been: this one is theirs alone, and a
+          // project's is someone else's to save, so they know whom to ask.
+          <p className="text-sm text-[color:var(--tx3)]">
+            Saved as your own secret. Only an organisation owner can save
+            a {withheld.map((scope) => SECRET_SCOPE_LABEL[scope].toLowerCase()).join(' or ')} secret.
+          </p>
         ) : null}
 
         {scopeType === 'project' ? (

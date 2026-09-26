@@ -21,6 +21,12 @@ const ciWorkflow = await readWorkflow(
 const releaseWorkflow = await readWorkflow(
   resolve(repositoryDirectory, ".github/workflows/desktop-windows.yml"),
 );
+const edgeWorkflow = await readWorkflow(
+  resolve(repositoryDirectory, ".github/workflows/windows-edge.yml"),
+);
+const directDownloadWorkflow = await readWorkflow(
+  resolve(repositoryDirectory, ".github/workflows/release.yml"),
+);
 const desktopInstallerSmoke = await readFile(
   resolve(repositoryDirectory, "desktop/scripts/windows-installer-smoke.ps1"),
   "utf8",
@@ -191,10 +197,18 @@ test("the release gives Tauri an argument-safe Artifact Signing command", () => 
   );
 });
 
+// PowerShell's EnhancedKeyUsageList items carry the OID as a string ObjectId
+// and have no Value, so both `$_.Value` and `$_.ObjectId.Value` read blanks and
+// fail every correctly signed file. The OID collection is the certificate's own
+// EKU extension, whose Oid items do have Value.
 test("the release reads EKU values from the Oid collection", () => {
   const signatureVerification = stepBlock(releaseWorkflow, "Verify signatures");
-  assert.match(signatureVerification, /ForEach-Object \{ \$_\.Value \}/);
-  assert.doesNotMatch(signatureVerification, /\$_\.ObjectId\.Value/);
+  assert.match(signatureVerification, /X509EnhancedKeyUsageExtension/);
+  assert.match(
+    signatureVerification,
+    /ForEach-Object \{ \$_\.EnhancedKeyUsages \} \|\n\s+ForEach-Object \{ \$_\.Value \}/,
+  );
+  assert.doesNotMatch(signatureVerification, /EnhancedKeyUsageList \|/);
 });
 
 test(
@@ -228,6 +242,46 @@ test(
     }
   },
 );
+
+// The managed identity trusts exactly two environments, so the expression that
+// decides which one a build joins is the whole signing boundary: a release tag
+// behind a release owner's approval, main itself without one, nothing else.
+test("only a release tag or main itself can reach the signing identity", () => {
+  const build = jobBlock(releaseWorkflow, "build");
+  const environment = /\n    environment: >-\n((?: {6}.+\n)+)/.exec(`\n${build}`);
+  assert.ok(environment, "the build job chooses its environment");
+  assert.equal(
+    environment[1].replace(/\s+/g, " ").trim(),
+    "${{ (startsWith(github.ref, 'refs/tags/v') && inputs.source_ref == github.ref && "
+      + "'direct-download-release') || "
+      + "(github.ref == 'refs/heads/main' && inputs.source_ref == '' && 'windows-signing') || '' }}",
+  );
+  assert.match(releaseWorkflow, /\npermissions:\n {2}contents: read\n {2}id-token: write\n/);
+  // The source ref reaches PowerShell as data, never spliced into the script.
+  const resolveSigning = stepBlock(build, "Resolve signing configuration");
+  assert.match(resolveSigning, /NESSIE_SOURCE_REF: \$\{\{ inputs\.source_ref \}\}/);
+  assert.doesNotMatch(resolveSigning.split("run: |")[1], /\$\{\{ inputs\./);
+  assert.doesNotMatch(releaseWorkflow, /secrets\.(WINDOWS_SIGN|AZURE_)|AZURE_CLIENT_SECRET/);
+});
+
+test("main's edge builds and release tags must be signed", () => {
+  const edgeBuild = jobBlock(edgeWorkflow, "build");
+  assert.match(edgeBuild, /uses: \.\/\.github\/workflows\/desktop-windows\.yml/);
+  assert.match(edgeBuild, /require_signed_release: true/);
+  assert.match(edgeBuild, /id-token: write/);
+  // A cancelling group would restart a forty-minute build on every merge.
+  assert.match(edgeWorkflow, /\nconcurrency:\n {2}group: windows-edge\n {2}cancel-in-progress: false\n/);
+  assert.match(jobBlock(directDownloadWorkflow, "windows"), /require_signed_release: true/);
+});
+
+test("a published Windows build names its commit and versions", () => {
+  const build = jobBlock(releaseWorkflow, "build");
+  assert.match(stepBlock(build, "Resolve build versions"), /release-components\.mjs version executor/);
+  assert.match(stepBlock(build, "Build the desktop bundles"), /version = \$env:NESSIE_DESKTOP_VERSION/);
+  assert.match(stepBlock(build, "Collect artifacts"), /artifacts\/build-info\.json/);
+  // The checkout is the commit the run was started for, not the branch tip.
+  assert.doesNotMatch(releaseWorkflow, /inputs\.source_ref \|\| github\.ref \}\}/);
+});
 
 test("shared installer smoke scripts propagate install and uninstall failures", () => {
   for (const smoke of [desktopInstallerSmoke, executorInstallerSmoke]) {

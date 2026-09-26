@@ -156,10 +156,11 @@ close it, focus is trapped and restored via the shared `useModalA11y`, the body
 scroll is locked while it is open, and Escape stops propagating so one keypress
 cannot also close the reply panel underneath.
 
-PDFs open in an `<iframe>` whose blob MIME is pinned to `application/pdf`. That
-pin is not cosmetic: a blob URL inherits the admin origin, so trusting the
-server-echoed content type would let an uploaded `text/html` named `x.pdf`
-execute scripts in the session.
+PDFs render in the shared canvas-based `PdfPreview`, including in desktop
+WebViews whose embedded PDF viewer can show an empty `<iframe>`. The viewer
+draws one page at a time and offers page controls and the existing Download
+action. The fetched blob MIME remains pinned to `application/pdf`; uploaded
+bytes are passed as data to PDF.js and never run as page scripts.
 
 Signed URLs stay out of scope. Auth is bearer-only, so `<img src>` cannot carry
 credentials and the blob/object-URL approach stands. With immutable cache headers

@@ -3,7 +3,8 @@ name: Desktop (Windows)
 # Builds the Windows desktop artifacts and the standalone executor package,
 # signs every trusted release through Azure Artifact Signing, and proves they
 # install. The release boundary fails closed; unsigned output is development
-# output and can never be published by the release workflow.
+# output and can never be published by the release workflow. windows-edge.yml
+# calls it for each merge to main that changes a Windows download.
 on:
   workflow_call:
     inputs:
@@ -76,10 +77,12 @@ jobs:
     name: Guest kernel
     runs-on: ubuntu-latest
     steps:
+      # The exact commit the run was started for, never whatever the branch has
+      # moved on to since: windows-edge.yml publishes the build as that commit's.
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_ref || github.ref }}
+          ref: ${{ inputs.source_ref || github.sha }}
 
       - name: Toolchain
         run: |
@@ -119,17 +122,24 @@ jobs:
     name: Build, sign, and install smoke
     runs-on: windows-latest
     needs: guest-kernel
-    # The environment both requires release-owner approval and fixes the GitHub
-    # OIDC subject trusted by the Azure managed identity.
-    environment: direct-download-release
+    # The environment fixes the GitHub OIDC subject the Azure managed identity
+    # trusts, so it is the signing boundary. A release tag signs in
+    # direct-download-release, behind a release owner's approval; main itself
+    # (windows-edge.yml's build of a merge, or a manual run) signs in
+    # windows-signing, which deploys only from main and needs no approval; any
+    # other source joins no environment and cannot sign.
+    environment: >-
+      ${{ (startsWith(github.ref, 'refs/tags/v') && inputs.source_ref == github.ref &&
+      'direct-download-release') ||
+      (github.ref == 'refs/heads/main' && inputs.source_ref == '' && 'windows-signing') || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_ref || github.ref }}
-          # lint:migrations compares the delivery ref against main, so a manual
-          # source-ref build needs the full repository history rather than the
-          # checkout action's default one-commit fetch.
+          ref: ${{ inputs.source_ref || github.sha }}
+          # lint:migrations compares the delivery ref against main, and build
+          # numbers count main's history, so the build needs the full
+          # repository history rather than the checkout action's one commit.
           fetch-depth: 0
 
       - name: Setup pnpm
@@ -214,13 +224,26 @@ jobs:
           name: guest-kernel-${{ github.sha }}
           path: guest-kernel
 
-      - name: Resolve release version
+      # A release tag names the executor package's version, as it always has.
+      # Every other build takes MAJOR.MINOR from each component's manifest and
+      # main's first-parent commit count as its build number
+      # (scripts/release-components.mjs), so each installs over the one before
+      # it: Windows Installer refuses to upgrade a package to its own version.
+      - name: Resolve build versions
         shell: pwsh
         run: |
           if ($env:GITHUB_REF_TYPE -eq 'tag') {
-            $version = $env:GITHUB_REF_NAME -replace '^(desktop-)?v', ''
-            "NESSIE_EXECUTOR_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+            $executor = $env:GITHUB_REF_NAME -replace '^(desktop-)?v', ''
+            $desktop = (Get-Content desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          } else {
+            $executor = node scripts/release-components.mjs version executor
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $desktop = node scripts/release-components.mjs version desktop
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+          "NESSIE_EXECUTOR_VERSION=$executor" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "NESSIE_DESKTOP_VERSION=$desktop" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Nessie Desktop $desktop, Nessie Executor $executor"
 
       # Every Rust crate this platform ships, including the two that are new
       # here. The shared provenance crate is tested on its own because both
@@ -262,13 +285,16 @@ jobs:
             throw 'VBScript is unavailable, so WiX cannot validate the MSI on this runner.'
           }
 
-      # Release tags and an exact-main manual verification fail closed unless
-      # the repository's Artifact Signing OIDC configuration is complete.
+      # Release tags and main itself — windows-edge.yml's build of a merge or a
+      # manual run — fail closed unless the repository's Artifact Signing OIDC
+      # configuration is complete. The source ref reaches the script as data,
+      # never spliced into it.
       - name: Resolve signing configuration
         id: signing
         shell: pwsh
         env:
           NESSIE_REQUIRE_SIGNED_RELEASE: ${{ inputs.require_signed_release }}
+          NESSIE_SOURCE_REF: ${{ inputs.source_ref }}
           AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
           AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
@@ -278,12 +304,11 @@ jobs:
           $releaseSource = `
             $env:GITHUB_REF_TYPE -eq 'tag' -and `
             $env:GITHUB_REF_NAME -match '^v[0-9]+\.[0-9]+\.[0-9]+$' -and `
-            '${{ inputs.source_ref }}' -eq $env:GITHUB_REF
+            $env:NESSIE_SOURCE_REF -eq $env:GITHUB_REF
           $release = $releaseSource -and $env:NESSIE_REQUIRE_SIGNED_RELEASE -eq 'true'
           $trustedMainVerification = `
-            $env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and `
             $env:GITHUB_REF -eq 'refs/heads/main' -and `
-            -not '${{ inputs.source_ref }}'
+            -not $env:NESSIE_SOURCE_REF
           if ($env:NESSIE_REQUIRE_SIGNED_RELEASE -eq 'true' -and -not $release -and -not $trustedMainVerification) {
             throw 'Signing was requested for a source that is not an exact release tag or the current main branch.'
           }
@@ -356,6 +381,12 @@ jobs:
             }
             $arguments += @('--features', 'direct-updater', '--config', 'src-tauri/tauri.direct-updater.conf.json')
           }
+          # The version resolved above: main's builds are numbered so each one
+          # installs over the one before it.
+          $versionPath = Join-Path $env:RUNNER_TEMP 'nessie-tauri-version.json'
+          Set-Content -LiteralPath $versionPath -Encoding utf8NoBOM `
+            -Value (@{ version = $env:NESSIE_DESKTOP_VERSION } | ConvertTo-Json -Compress)
+          $arguments += @('--config', $versionPath)
           if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
             $env:NESSIE_WINDOWS_SIGN_COMMAND = $env:WINDOWS_SIGN_COMMAND
             $configPath = Join-Path $env:RUNNER_TEMP 'nessie-tauri-windows-signing.json'
@@ -467,6 +498,16 @@ jobs:
           Get-ChildItem $executorPayload -Include *.exe -Recurse -File | ForEach-Object {
             Copy-Item $_.FullName (Join-Path artifacts/executor-payload $_.Name)
           }
+          # What this build is, for whoever publishes it: the commit it was
+          # built from, the version stamped into each component, and the run.
+          @{
+            commit = (git rev-parse HEAD)
+            desktopVersion = $env:NESSIE_DESKTOP_VERSION
+            executorVersion = $env:NESSIE_EXECUTOR_VERSION
+            signed = '${{ steps.signing.outputs.signed }}' -eq 'true'
+            builtAt = (Get-Date).ToUniversalTime().ToString('o')
+            run = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          } | ConvertTo-Json | Out-File -FilePath artifacts/build-info.json -Encoding utf8
           Get-ChildItem artifacts -Recurse -File | Format-Table Name, Length
 
       # When a publisher is configured this proves every artifact has its valid
@@ -487,8 +528,14 @@ jobs:
             ForEach-Object {
             $signature = Get-AuthenticodeSignature $_.FullName
             $subject = $signature.SignerCertificate.Subject
+            # The OIDs straight from the certificate's EKU extension. PowerShell's
+            # `EnhancedKeyUsageList` is a display wrapper whose items carry the
+            # OID as a string `ObjectId` and have no `Value`, so reading `.Value`
+            # there yields blanks and fails every file.
             $ekus = @(
-              $signature.SignerCertificate.EnhancedKeyUsageList |
+              $signature.SignerCertificate.Extensions |
+                Where-Object { $_ -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension] } |
+                ForEach-Object { $_.EnhancedKeyUsages } |
                 ForEach-Object { $_.Value }
             )
             Write-Host "$($_.Name): $($signature.Status) $subject $($ekus -join ',')"
@@ -567,7 +614,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_ref || github.ref }}
+          ref: ${{ inputs.source_ref || github.sha }}
 
       - name: Hyper-V is present and usable by this runner
         shell: pwsh

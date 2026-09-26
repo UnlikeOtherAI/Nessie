@@ -40,6 +40,23 @@ pub struct WindowsSignatureFacts {
     pub trusted: bool,
 }
 
+/// Whether a pinned value names one Artifact Signing certificate profile. Arc
+/// `1` directly under `1.3.6.1.4.1.311.97.` is the service's own type arc:
+/// `…97.1.0` is carried by every Public Trust certificate — Node's own
+/// `node.exe` carries it — and `…97.1.3.1.` and `…97.1.4.1.` are Private Trust,
+/// so a pin beneath it would admit every other subscriber's releases.
+fn names_a_certificate_profile(value: &str) -> bool {
+    let Some(arcs) = value.strip_prefix("1.3.6.1.4.1.311.97.") else {
+        return false;
+    };
+    let arcs: Vec<&str> = arcs.split('.').collect();
+    arcs.len() >= 2
+        && arcs[0] != "1"
+        && arcs
+            .iter()
+            .all(|arc| !arc.is_empty() && arc.bytes().all(|byte| byte.is_ascii_digit()))
+}
+
 /// The whole Windows decision, as a pure function of the pinned profile EKU and
 /// what verification found. `facts` is `None` when the check could not run at
 /// all, which is never treated as a pass.
@@ -49,12 +66,7 @@ pub fn decide_release_signature(
 ) -> Result<(), String> {
     let expected = pinned
         .map(str::trim)
-        .filter(|value| {
-            value.starts_with("1.3.6.1.4.1.311.97.")
-                && value.split('.').all(|arc| {
-                    !arc.is_empty() && arc.bytes().all(|byte| byte.is_ascii_digit())
-                })
-        })
+        .filter(|value| names_a_certificate_profile(value))
         .ok_or_else(|| UNPINNED_REASON.to_owned())?;
     let facts = facts.ok_or_else(|| UNVERIFIABLE_REASON.to_owned())?;
     if !facts.trusted {
@@ -112,6 +124,13 @@ mod tests {
             Some("1.3.6.1.5.5.7.3.3"),
             Some("1.3.6.1.4.1.311.97.not-an-oid"),
             Some("1.3.6.1.4.1.311.97."),
+            Some("1.3.6.1.4.1.311.97.178939473"),
+            Some("1.3.6.1.4.1.311.97.178939473..894157712"),
+            // The service's own type arc names no profile: the Public Trust
+            // marker and the two Private Trust arcs.
+            Some("1.3.6.1.4.1.311.97.1.0"),
+            Some("1.3.6.1.4.1.311.97.1.3.1.29433.35007.34545.16815"),
+            Some("1.3.6.1.4.1.311.97.1.4.1.29433.35007.34545.16815"),
         ] {
             assert_eq!(
                 decide_release_signature(pinned, signed_by(PINNED)),
@@ -119,6 +138,26 @@ mod tests {
                 "pinned {pinned:?} must not authorize executor controls",
             );
         }
+    }
+
+    /// Every Artifact Signing Public Trust certificate carries the service's
+    /// marker EKU beside its own profile's, so pinned by mistake it would pass
+    /// any subscriber's release. It is refused as a pin, never matched.
+    #[test]
+    fn the_shared_public_trust_marker_is_no_pin() {
+        let marker = "1.3.6.1.4.1.311.97.1.0";
+        let another_subscriber = Some(WindowsSignatureFacts {
+            signer_enhanced_key_usages: Some(vec![
+                marker.to_owned(),
+                "1.3.6.1.5.5.7.3.3".to_owned(),
+                "1.3.6.1.4.1.311.97.368317130.201670760.425010060.754072028".to_owned(),
+            ]),
+            trusted: true,
+        });
+        assert_eq!(
+            decide_release_signature(Some(marker), another_subscriber),
+            Err(UNPINNED_REASON.to_owned()),
+        );
     }
 
     /// The whole reason the signer certificate is read at all: `WinVerifyTrust`
