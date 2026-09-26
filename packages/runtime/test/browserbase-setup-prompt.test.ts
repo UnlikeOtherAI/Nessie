@@ -70,7 +70,7 @@ test('a grant never waits for the account', () => {
 
 test('an agent whose toolset is fixed is not sent to enable a tool on itself', () => {
   // The Designer quoted "the owner must enable `browser_login_request` at
-  // Agents → Tools" — about its OWN toolset, which no owner can change — to a
+  // the Tool registry" — about its OWN toolset, which no owner can change — to a
   // person asking about the agent it was building.
   const fixed = buildBrowserbaseSetupPrompt({
     canGrantBrowserTools: true,
@@ -83,15 +83,15 @@ test('an agent whose toolset is fixed is not sent to enable a tool on itself', (
     fixed,
     /For an agent a person builds it is an ordinary browser tool, granted with `agent_tool_access_set`/,
   )
-  assert.doesNotMatch(fixed, /enable `browser_login_request` at Agents → Tools/)
+  assert.doesNotMatch(fixed, /enable `browser_login_request` at Admin › Advanced › Tool registry/)
   assert.match(fixed, /Do not substitute card_post, prose, or a fabricated permission card/)
 
   // The Personal Assistant: same fixed toolset, no grant verb of its own.
   const assistant = buildBrowserbaseSetupPrompt({ hasCardTool: true, ownToolsetFixed: true })
   assert.match(assistant, /granted from that agent's Tools tab like the rest/)
-  assert.doesNotMatch(assistant, /enable `browser_login_request` at Agents → Tools/)
+  assert.doesNotMatch(assistant, /enable `browser_login_request` at Admin › Advanced › Tool registry/)
 
   // An ordinary agent's owner CAN enable it, so that door is still named.
   const ordinary = buildBrowserbaseSetupPrompt({ hasCardTool: true })
-  assert.match(ordinary, /enable `browser_login_request` at Agents → Tools/)
+  assert.match(ordinary, /enable `browser_login_request` at Admin › Advanced › Tool registry/)
 })

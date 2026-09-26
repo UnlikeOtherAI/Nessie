@@ -9,7 +9,7 @@ import {
  *
  * Two sources, exactly as the model picker composes them
  * (`listAgentModelOptionsForUser`): the deployment's Ledger catalogue, and the
- * plans this person linked under Settings → Connected accounts — a personal
+ * plans this person linked under Your settings › Connected accounts — a personal
  * model connection, which is not a connector and appears in no connector
  * list. The Designer used to be handed the Ledger catalogue alone, so a person
  * who had just linked Kimi and asked for it was told, truthfully for what the
@@ -74,7 +74,7 @@ const ownPlansSection = (plans: AgentModelOption[]): string[] => {
       .join(', ')
     return [
       'This person has linked no plan of their own. A person links one — '
-      + `${providers} — under Settings → Connected accounts (/settings/connections), `
+      + `${providers} — under Your settings › Connected accounts (/settings/accounts), `
       + 'and it then appears here for the agents they own. The key or sign-in goes '
       + 'only into that settings form, never into this chat.',
     ]

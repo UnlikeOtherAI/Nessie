@@ -508,7 +508,7 @@ forbidden: a new tool is in the Designer's knowledge the deploy it ships.
 **Models are the picker's list, both halves of it.** The home-DM face reads
 `listAgentModelOptionsForUser` — the deployment's Ledger catalogue minus the
 pairs the organisation or team switched off, plus the plans the person linked
-under Settings → Connected accounts — exactly as `GET /api/agents/models`
+under Your settings › Connected accounts — exactly as `GET /api/agents/models`
 does; it used to read `listLedgerAgentModels` alone, which is how a person
 who had just linked Kimi was told no such connector existed. The section
 (`global-agent-model-catalogue.ts`) keeps the two apart: the deployment list

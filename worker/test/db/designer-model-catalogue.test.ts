@@ -201,7 +201,7 @@ runDatabaseTest('agent_create puts an agent on the named one of two linked accou
     name: 'Pirate',
     provider: 'subscription/kimi',
   })
-  const agentId = /\]\(\/agents\/([0-9a-f-]{36})\)/.exec(created.outputPreview)?.[1]
+  const agentId = /\]\(\/admin\/agents\/([0-9a-f-]{36})\)/.exec(created.outputPreview)?.[1]
   assert.ok(agentId, created.outputPreview)
   const agent = await prisma.agent.findUniqueOrThrow({
     where: { id: agentId },
