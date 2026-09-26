@@ -59,8 +59,27 @@ try {
     `${ADMIN_URL}${path}${path.includes('?') ? '&' : '?'}view=tree`,
     { timeout: 120_000, waitUntil: 'domcontentloaded' },
   )
+  const frostedSurface = async (locator) => locator.evaluate((element) => {
+    const styles = getComputedStyle(element)
+    const alpha = styles.backgroundColor.match(/(?:\/|,)\s*(0?\.\d+)\s*\)$/u)
+    return { alpha: alpha ? Number(alpha[1]) : null, blur: styles.backdropFilter }
+  })
 
   await go('/knowledge-base')
+  await page.getByRole('button', { name: 'Create new' }).first().click()
+  const createMenu = page.getByRole('menu', { name: 'Create' })
+  await createMenu.waitFor()
+  const createSurface = await frostedSurface(createMenu)
+  assert.deepEqual(createSurface, { alpha: 0.7, blur: 'blur(20px) saturate(1.2)' },
+    'Create menu has the shared 70%-opaque frosted surface')
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Account menu' }).first().click()
+  const accountMenu = page.getByRole('menu', { name: 'Account menu' })
+  await accountMenu.waitFor()
+  assert.deepEqual(await frostedSurface(accountMenu), createSurface,
+    'account and Create menus share the same surface')
+  await page.screenshot({ path: '/private/tmp/nessie-account-menu-frosted.png', fullPage: true })
+  await page.keyboard.press('Escape')
   await row('virtual:agents').click()
   await page.waitForURL(/\/knowledge-base\/agents\?view=tree/)
   assert.equal(new URL(page.url()).searchParams.get('view'), 'tree')
@@ -131,6 +150,8 @@ try {
   assert.ok(fileBar.bottom <= fileBar.viewport && fileBar.bottom > fileBar.viewport - 80,
     `file actions float at the pane bottom: ${JSON.stringify(fileBar)}`)
   assert.notEqual(fileBar.blur, 'none', 'file actions use a frosted backdrop')
+  assert.deepEqual(await frostedSurface(fileActions), { alpha: 0.7, blur: 'blur(20px) saturate(1.2)' },
+    'the detail action bar matches the frosted menus')
   await page.waitForTimeout(250)
   await page.screenshot({ path: '/private/tmp/nessie-knowledge-image-tree.png', fullPage: true })
   await fileActions.getByRole('button', { name: 'History' }).click()
