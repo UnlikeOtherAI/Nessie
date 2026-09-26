@@ -21,6 +21,12 @@ const ciWorkflow = await readWorkflow(
 const releaseWorkflow = await readWorkflow(
   resolve(repositoryDirectory, ".github/workflows/desktop-windows.yml"),
 );
+const edgeWorkflow = await readWorkflow(
+  resolve(repositoryDirectory, ".github/workflows/windows-edge.yml"),
+);
+const directDownloadWorkflow = await readWorkflow(
+  resolve(repositoryDirectory, ".github/workflows/release.yml"),
+);
 const desktopInstallerSmoke = await readFile(
   resolve(repositoryDirectory, "desktop/scripts/windows-installer-smoke.ps1"),
   "utf8",
@@ -209,6 +215,53 @@ test(
     }
   },
 );
+
+// The signing identity trusts the windows-signing environment alone, so the
+// expression that decides who joins it is the whole signing boundary.
+test("only a build of main itself or its exact release tag can reach the signing identity", () => {
+  const build = jobBlock(releaseWorkflow, "build");
+  const environment = /\n    environment: >-\n((?: {6}.+\n)+)/.exec(`\n${build}`);
+  assert.ok(environment, "the build job joins an environment");
+  const expression = environment[1].replace(/\s+/g, " ").trim();
+  assert.equal(
+    expression,
+    "${{ ((github.ref == 'refs/heads/main' && inputs.source_ref == '') || "
+      + "(startsWith(github.ref, 'refs/tags/v') && inputs.source_ref == github.ref)) && "
+      + "'windows-signing' || '' }}",
+  );
+  assert.match(build, /\n {6}id-token: write\n/);
+  // A branch cannot supply a source to sign: the ref reaches PowerShell as
+  // data, never spliced into the script.
+  const resolveSigning = stepBlock(build, "Resolve signing");
+  assert.match(resolveSigning, /NESSIE_SOURCE_REF: \$\{\{ inputs\.source_ref \}\}/);
+  assert.doesNotMatch(resolveSigning.split("run: |")[1], /\$\{\{ inputs\./);
+});
+
+test("Windows signing stores no credential and goes through the committed signer", () => {
+  assert.doesNotMatch(releaseWorkflow, /secrets\.(WINDOWS_SIGN|AZURE_)/);
+  assert.doesNotMatch(releaseWorkflow, /AZURE_CLIENT_SECRET|THUMBPRINT/);
+  const build = jobBlock(releaseWorkflow, "build");
+  assert.match(
+    stepBlock(build, "Prepare Artifact Signing"),
+    /& executor\/packaging\/windows\/signing\/sign\.ps1 -Prepare/,
+  );
+  assert.match(
+    stepBlock(build, "Sign the executor package"),
+    /& executor\/packaging\/windows\/signing\/sign\.ps1 \$_\.FullName/,
+  );
+  assert.match(stepBlock(build, "Verify signatures"), /\$publisher\.profileEku/);
+});
+
+test("main's edge builds and release tags must be signed", () => {
+  const edgeBuild = jobBlock(edgeWorkflow, "build");
+  assert.match(edgeBuild, /require_signed_release: true/);
+  assert.match(edgeBuild, /id-token: write/);
+  // A cancelling group would restart a forty-minute build on every merge.
+  assert.match(edgeWorkflow, /\nconcurrency:\n {2}group: windows-edge\n {2}cancel-in-progress: false\n/);
+  const releaseWindows = jobBlock(directDownloadWorkflow, "windows");
+  assert.match(releaseWindows, /require_signed_release: true/);
+  assert.match(releaseWindows, /id-token: write/);
+});
 
 test("shared installer smoke scripts propagate install and uninstall failures", () => {
   for (const smoke of [desktopInstallerSmoke, executorInstallerSmoke]) {

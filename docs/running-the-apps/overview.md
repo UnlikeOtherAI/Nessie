@@ -213,8 +213,9 @@ step: its executor controls will intentionally remain unavailable.
 Every platform pins its own publisher this way, because a runtime hash manifest
 alone is a self-attestation: whoever can rewrite the binary can rewrite the
 manifest beside it. macOS pins a Developer ID team through
-`NESSIE_DESKTOP_SIGNING_TEAM_ID`; Windows pins an Authenticode certificate
-through `NESSIE_DESKTOP_WINDOWS_SIGNER_THUMBPRINT` (see **Windows Desktop**);
+`NESSIE_DESKTOP_SIGNING_TEAM_ID`; Windows pins its Azure Artifact Signing
+certificate profile's EKU through `NESSIE_WINDOWS_PUBLISHER_EKU` (see
+**Windows Desktop**);
 Linux has no in-process signature to read, so its trust root is the package
 manager — a root-owned runtime under `/usr/lib` or `/usr/share` that only an
 administrator can produce (see **Linux Desktop**).

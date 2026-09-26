@@ -114,8 +114,9 @@ pipe, and lives while the app runs. Behind it:
   `std::env::current_exe()` (Authenticode validity and chain), then the
   signer certificate read from the verification state — WinVerifyTrust alone
   answers "trusted", not "by whom" — pinned to the publisher compiled into the
-  release via `option_env!("NESSIE_DESKTOP_WINDOWS_SIGNER_THUMBPRINT")`, the
-  analogue of `NESSIE_DESKTOP_SIGNING_TEAM_ID`. The packaged-runtime hash
+  release via `option_env!("NESSIE_WINDOWS_PUBLISHER_EKU")` — the Azure
+  Artifact Signing certificate-profile EKU, since the certificate itself renews
+  daily — the analogue of `NESSIE_DESKTOP_SIGNING_TEAM_ID`. The packaged-runtime hash
   manifest stays as the second check.
 - **Owner-only state is a DACL.** `state-store.ts` and `daemon-lease.ts`
   prove privacy with POSIX mode bits (`mode & 0o077`) and `process.getuid()`;
@@ -407,3 +408,10 @@ third-party documentation:**
   Azure Artifact Signing recommended, verification as a CI gate.
 - **Phase 1's "no visible terminal in development" was a non-issue.** Removed.
 - **"CI validates" had no CI.** Named the workflow and its smokes.
+- **Signing shipped as Azure Artifact Signing, pinned by profile EKU
+  (2026-09-26).** The certificate renews daily and is valid for 72 hours, so the
+  planned leaf-thumbprint pin would have made a desktop and a service built on
+  different days refuse each other. The pin is now the `NessiePublicTrust`
+  profile's EKU, which every certificate that profile issues carries; signing is
+  keyless through the `windows-signing` environment's GitHub OIDC token. See
+  [windows-desktop.md](../running-the-apps/windows-desktop.md#releases-and-how-they-are-signed).

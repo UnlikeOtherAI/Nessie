@@ -150,7 +150,11 @@ sentence changes only if the invariant itself did.
   Worker-only tests also build the real executor bridge fixture dependency.
   The Linux desktop workflow generates Prisma, builds `@nessie/executor` with
   its workspace dependencies, and prepares the packaged runtime before Tauri
-  builds, matching Windows.
+  builds, matching Windows. A merge to `main` that changes what the desktop or
+  the executor is built from is signed (keyless Azure Artifact Signing) and
+  republished to that component's rolling `desktop-edge` / `executor-edge`
+  pre-release by `windows-edge.yml`; unchanged components are left alone —
+  [build and release](docs/standards/build-and-release.md).
 - **Preview fixtures stay out of production bundles.** Register the fixture
   in `admin/vite.config.ts` behind its `NESSIE_<NAME>_E2E_FIXTURE` flag, set
   that flag for a manual preview build, and list it in `@nessie/admin#build`

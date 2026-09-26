@@ -5,13 +5,12 @@
 //! rewrite the manifest — so the trust root has to be something the operating
 //! system holds and a user cannot forge. On Windows, `integrity.rs` also pins
 //! the manifest's exact runtime hashes inside this signed application. macOS
-//! reads `codesign` and a pinned
-//! Developer ID team, Windows reads Authenticode and a pinned publisher
-//! thumbprint — the same decision the executor service and tray make, so it is
-//! taken from `nessie-windows-provenance` rather than restated here — and
-//! Linux, which has no in-process signature to read, reads the package
-//! manager's own evidence: a root-owned tree only an administrator can lay
-//! down.
+//! reads `codesign` and a pinned Developer ID team, Windows reads Authenticode
+//! and a pinned Artifact Signing certificate-profile EKU — the same decision the
+//! executor service and tray make, so it is taken from
+//! `nessie-windows-provenance` rather than restated here — and Linux, which has
+//! no in-process signature to read, reads the package manager's own evidence: a
+//! root-owned tree only an administrator can lay down.
 
 #[cfg(all(not(debug_assertions), target_os = "linux"))]
 use std::fs;
@@ -22,11 +21,11 @@ use tauri::AppHandle;
 #[cfg(all(not(debug_assertions), target_os = "macos"))]
 const PRODUCTION_SIGNING_TEAM_ID: Option<&str> = option_env!("NESSIE_DESKTOP_SIGNING_TEAM_ID");
 
-/// The Windows analogue of the pinned Developer ID team: the SHA-1 thumbprint
-/// of the certificate the release is signed with, compiled into the build.
+/// The Windows analogue of the pinned Developer ID team: the Azure Artifact
+/// Signing certificate-profile EKU the release is signed under, compiled into
+/// the build. It outlives the daily-renewed certificates a thumbprint would name.
 #[cfg(all(not(debug_assertions), target_os = "windows"))]
-const PRODUCTION_WINDOWS_SIGNER_THUMBPRINT: Option<&str> =
-    option_env!("NESSIE_DESKTOP_WINDOWS_SIGNER_THUMBPRINT");
+const PRODUCTION_WINDOWS_PUBLISHER_EKU: Option<&str> = option_env!("NESSIE_WINDOWS_PUBLISHER_EKU");
 
 #[cfg(any(test, all(not(debug_assertions), target_os = "linux")))]
 pub(crate) const PACKAGE_INSTALL_REASON: &str =
@@ -109,7 +108,8 @@ pub(super) fn require_release_signature(
 /// Windows binds executor controls to Authenticode plus a pinned publisher.
 /// `WinVerifyTrust` alone answers only "trusted", never "by whom" — any valid
 /// code-signing certificate passes it — so the signer read out of the
-/// verification state is compared to the thumbprint compiled into the release.
+/// verification state must carry the certificate-profile EKU compiled into the
+/// release.
 #[cfg(all(not(debug_assertions), target_os = "windows"))]
 pub(super) fn require_release_signature(
     _app: &AppHandle,
@@ -117,7 +117,7 @@ pub(super) fn require_release_signature(
     _packaged: &[String],
 ) -> Result<(), String> {
     let _ = resource_dir;
-    nessie_windows_provenance::require_release_signature(PRODUCTION_WINDOWS_SIGNER_THUMBPRINT)
+    nessie_windows_provenance::require_release_signature(PRODUCTION_WINDOWS_PUBLISHER_EKU)
 }
 
 #[cfg(all(not(debug_assertions), not(any(
