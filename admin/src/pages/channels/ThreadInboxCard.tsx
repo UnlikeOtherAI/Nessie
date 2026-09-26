@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import type {
   AgentRecord,
@@ -54,6 +55,7 @@ export const ThreadInboxCard = ({
   users,
   onOpen,
 }: ThreadInboxCardProps) => {
+  const { t } = useTranslation('channels')
   const channel = channels.find((entry) => entry.id === activity.channelId) ?? null
   const rootQuery = useThreadMessage(activity.threadId, activity.rootMessageId)
   const repliesQuery = useThreadReplies(activity.threadId, activity.rootMessageId)
@@ -143,8 +145,8 @@ export const ThreadInboxCard = ({
             {channelContextLabel(channel ?? undefined, activity.channelLabel)}
           </div>
           <div className="mt-0.5 text-xs text-[color:var(--tx3)]">
-            {activity.replyCount} {activity.replyCount === 1 ? 'reply' : 'replies'}
-            {activity.unread ? ' · New activity' : ''}
+            {t('threadInbox.replyCount', { count: activity.replyCount })}
+            {activity.unread ? ` · ${t('threadInbox.newActivity')}` : ''}
           </div>
         </button>
         <div className="flex flex-shrink-0 items-center gap-2">
@@ -159,7 +161,7 @@ export const ThreadInboxCard = ({
               })}
               type="button"
             >
-              {markRead.isPending ? 'Marking read…' : 'Mark read'}
+              {markRead.isPending ? t('threadInbox.markingRead') : t('threadInbox.markRead')}
             </button>
           ) : null}
           <button
@@ -167,7 +169,7 @@ export const ThreadInboxCard = ({
             onClick={onOpen}
             type="button"
           >
-            Open thread
+            {t('threadInbox.openThread')}
           </button>
         </div>
       </div>
@@ -177,7 +179,7 @@ export const ThreadInboxCard = ({
       ) : null}
       {hasFailed ? (
         <div className="p-5 text-sm text-[color:var(--danger-text)]">
-          This conversation could not be loaded. Open it to try again.
+          {t('threadInbox.loadError')}
         </div>
       ) : null}
       {!isLoading && !hasFailed ? (
@@ -211,7 +213,7 @@ export const ThreadInboxCard = ({
           />
           {inboxMessages.hiddenReplyCount > 0 ? (
             <button
-              aria-label={`Open ${inboxMessages.hiddenReplyCount} earlier ${inboxMessages.hiddenReplyCount === 1 ? 'reply' : 'replies'}`}
+              aria-label={t('threadInbox.openEarlierReplies', { count: inboxMessages.hiddenReplyCount })}
               className="group flex w-full items-center gap-3 px-5 py-3 text-[color:var(--tx3)] outline-none transition-colors hover:text-[color:var(--lnk)] focus-visible:rounded focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               onClick={onOpen}
               type="button"
@@ -230,7 +232,7 @@ export const ThreadInboxCard = ({
                 >
                   <path d="m1 2 4 8 4-8 4 8 4-8 4 8" />
                 </svg>
-                {inboxMessages.hiddenReplyCount} earlier {inboxMessages.hiddenReplyCount === 1 ? 'reply' : 'replies'}
+                {t('threadInbox.earlierReplies', { count: inboxMessages.hiddenReplyCount })}
               </span>
               <span aria-hidden="true" className="h-px flex-1 bg-[color:var(--sep)]" />
             </button>
@@ -269,7 +271,7 @@ export const ThreadInboxCard = ({
               onChange={(event) => setAlsoSendToChannel(event.target.checked)}
               type="checkbox"
             />
-            Also send to {channelContextLabel(channel ?? undefined, activity.channelLabel)}
+            {t('threadInbox.alsoSendTo', { channel: channelContextLabel(channel ?? undefined, activity.channelLabel) })}
           </label>
           <ChannelComposer
             attachments={composer.attachments}
@@ -281,7 +283,7 @@ export const ThreadInboxCard = ({
             mentionRef={composer.mentionRef}
             message={composer.message}
             pendingAgentInvites={composer.pendingAgentInvites}
-            placeholder="Reply to thread"
+            placeholder={t('thread.replyPlaceholder')}
             onChangeMessage={composer.setMessage}
             onDismissPendingAgent={composer.dismissPendingAgent}
             onDismissSecretCapture={composer.dismissSecretCapture}

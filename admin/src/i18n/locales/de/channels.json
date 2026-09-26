@@ -191,5 +191,28 @@
     "agentWork": "Aufgabe für den Agent",
     "workPlaceholder": "Halte die Entscheidung, ihre Begründung und den Nachrichtenlink im Entscheidungsprotokoll des Projekts fest.",
     "addOutcome": "Ergebnis hinzufügen"
+  },
+  "threadInbox": {
+    "replyCount_one": "{{count}} Antwort",
+    "replyCount_few": "{{count}} Antworten",
+    "replyCount_many": "{{count}} Antworten",
+    "replyCount_other": "{{count}} Antworten",
+    "earlierReplies_one": "{{count}} frühere Antwort",
+    "earlierReplies_few": "{{count}} frühere Antworten",
+    "earlierReplies_many": "{{count}} frühere Antworten",
+    "earlierReplies_other": "{{count}} frühere Antworten",
+    "openEarlierReplies_one": "{{count}} frühere Antwort öffnen",
+    "openEarlierReplies_few": "{{count}} frühere Antworten öffnen",
+    "openEarlierReplies_many": "{{count}} frühere Antworten öffnen",
+    "openEarlierReplies_other": "{{count}} frühere Antworten öffnen",
+    "newActivity": "Neue Aktivität",
+    "markingRead": "Wird als gelesen markiert…",
+    "markRead": "Als gelesen markieren",
+    "openThread": "Thread öffnen",
+    "loadError": "Diese Unterhaltung konnte nicht geladen werden. Öffne sie erneut, um es noch einmal zu versuchen.",
+    "alsoSendTo": "Auch an {{channel}} senden",
+    "replyCount": "{{count}} Antworten",
+    "earlierReplies": "{{count}} frühere Antworten",
+    "openEarlierReplies": "{{count}} frühere Antworten öffnen"
   }
 }

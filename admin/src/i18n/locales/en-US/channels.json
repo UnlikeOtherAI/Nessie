@@ -191,5 +191,28 @@
     "agentWork": "Work for the agent",
     "workPlaceholder": "Record the decision, its reasoning, and the message link in the project's decision log.",
     "addOutcome": "Add outcome"
+  },
+  "threadInbox": {
+    "replyCount_one": "{{count}} reply",
+    "replyCount_few": "{{count}} replies",
+    "replyCount_many": "{{count}} replies",
+    "replyCount_other": "{{count}} replies",
+    "earlierReplies_one": "{{count}} earlier reply",
+    "earlierReplies_few": "{{count}} earlier replies",
+    "earlierReplies_many": "{{count}} earlier replies",
+    "earlierReplies_other": "{{count}} earlier replies",
+    "openEarlierReplies_one": "Open {{count}} earlier reply",
+    "openEarlierReplies_few": "Open {{count}} earlier replies",
+    "openEarlierReplies_many": "Open {{count}} earlier replies",
+    "openEarlierReplies_other": "Open {{count}} earlier replies",
+    "newActivity": "New activity",
+    "markingRead": "Marking read…",
+    "markRead": "Mark read",
+    "openThread": "Open thread",
+    "loadError": "This conversation could not be loaded. Open it to try again.",
+    "alsoSendTo": "Also send to {{channel}}",
+    "replyCount": "{{count}} replies",
+    "earlierReplies": "{{count}} earlier replies",
+    "openEarlierReplies": "Open {{count}} earlier replies"
   }
 }

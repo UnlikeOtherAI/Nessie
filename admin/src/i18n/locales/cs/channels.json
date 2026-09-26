@@ -191,5 +191,28 @@
     "agentWork": "Práce pro agenta",
     "workPlaceholder": "Zaznamenejte rozhodnutí, jeho zdůvodnění a odkaz na zprávu do projektového záznamu rozhodnutí.",
     "addOutcome": "Přidat výsledek"
+  },
+  "threadInbox": {
+    "replyCount_one": "{{count}} odpověď",
+    "replyCount_few": "{{count}} odpovědi",
+    "replyCount_many": "{{count}} odpovědi",
+    "replyCount_other": "{{count}} odpovědí",
+    "earlierReplies_one": "{{count}} starší odpověď",
+    "earlierReplies_few": "{{count}} starší odpovědi",
+    "earlierReplies_many": "{{count}} starších odpovědí",
+    "earlierReplies_other": "{{count}} starších odpovědí",
+    "openEarlierReplies_one": "Otevřít {{count}} starší odpověď",
+    "openEarlierReplies_few": "Otevřít {{count}} starší odpovědi",
+    "openEarlierReplies_many": "Otevřít {{count}} starších odpovědí",
+    "openEarlierReplies_other": "Otevřít {{count}} starších odpovědí",
+    "newActivity": "Nová aktivita",
+    "markingRead": "Označuje se jako přečtené…",
+    "markRead": "Označit jako přečtené",
+    "openThread": "Otevřít vlákno",
+    "loadError": "Konverzaci se nepodařilo načíst. Zkuste ji znovu otevřít.",
+    "alsoSendTo": "Poslat také do {{channel}}",
+    "replyCount": "{{count}} odpovědí",
+    "earlierReplies": "{{count}} starších odpovědí",
+    "openEarlierReplies": "Otevřít {{count}} starších odpovědí"
   }
 }

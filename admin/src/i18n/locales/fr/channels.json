@@ -191,5 +191,28 @@
     "agentWork": "Travail demandé à l’agent",
     "workPlaceholder": "Consignez la décision, son raisonnement et le lien du message dans le journal des décisions du projet.",
     "addOutcome": "Ajouter un résultat"
+  },
+  "threadInbox": {
+    "replyCount_one": "{{count}} réponse",
+    "replyCount_few": "{{count}} réponses",
+    "replyCount_many": "{{count}} réponses",
+    "replyCount_other": "{{count}} réponses",
+    "earlierReplies_one": "{{count}} réponse précédente",
+    "earlierReplies_few": "{{count}} réponses précédentes",
+    "earlierReplies_many": "{{count}} réponses précédentes",
+    "earlierReplies_other": "{{count}} réponses précédentes",
+    "openEarlierReplies_one": "Ouvrir {{count}} réponse précédente",
+    "openEarlierReplies_few": "Ouvrir {{count}} réponses précédentes",
+    "openEarlierReplies_many": "Ouvrir {{count}} réponses précédentes",
+    "openEarlierReplies_other": "Ouvrir {{count}} réponses précédentes",
+    "newActivity": "Nouvelle activité",
+    "markingRead": "Marquage comme lu…",
+    "markRead": "Marquer comme lu",
+    "openThread": "Ouvrir le fil",
+    "loadError": "Impossible de charger cette conversation. Ouvrez-la pour réessayer.",
+    "alsoSendTo": "Envoyer aussi dans {{channel}}",
+    "replyCount": "{{count}} réponses",
+    "earlierReplies": "{{count}} réponses précédentes",
+    "openEarlierReplies": "Ouvrir {{count}} réponses précédentes"
   }
 }

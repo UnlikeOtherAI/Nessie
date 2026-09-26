@@ -191,5 +191,28 @@
     "agentWork": "Attività per l’agente",
     "workPlaceholder": "Registra la decisione, il motivo e il link al messaggio nel registro delle decisioni del progetto.",
     "addOutcome": "Aggiungi esito"
+  },
+  "threadInbox": {
+    "replyCount_one": "{{count}} risposta",
+    "replyCount_few": "{{count}} risposte",
+    "replyCount_many": "{{count}} risposte",
+    "replyCount_other": "{{count}} risposte",
+    "earlierReplies_one": "{{count}} risposta precedente",
+    "earlierReplies_few": "{{count}} risposte precedenti",
+    "earlierReplies_many": "{{count}} risposte precedenti",
+    "earlierReplies_other": "{{count}} risposte precedenti",
+    "openEarlierReplies_one": "Apri {{count}} risposta precedente",
+    "openEarlierReplies_few": "Apri {{count}} risposte precedenti",
+    "openEarlierReplies_many": "Apri {{count}} risposte precedenti",
+    "openEarlierReplies_other": "Apri {{count}} risposte precedenti",
+    "newActivity": "Nuova attività",
+    "markingRead": "Contrassegnando come letto…",
+    "markRead": "Segna come letto",
+    "openThread": "Apri thread",
+    "loadError": "Impossibile caricare questa conversazione. Aprila per riprovare.",
+    "alsoSendTo": "Invia anche a {{channel}}",
+    "replyCount": "{{count}} risposte",
+    "earlierReplies": "{{count}} risposte precedenti",
+    "openEarlierReplies": "Apri {{count}} risposte precedenti"
   }
 }

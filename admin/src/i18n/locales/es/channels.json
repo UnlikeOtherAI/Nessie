@@ -191,5 +191,28 @@
     "agentWork": "Tarea para el agente",
     "workPlaceholder": "Registra la decisión, sus motivos y el enlace al mensaje en el registro de decisiones del proyecto.",
     "addOutcome": "Añadir resultado"
+  },
+  "threadInbox": {
+    "replyCount_one": "{{count}} respuesta",
+    "replyCount_few": "{{count}} respuestas",
+    "replyCount_many": "{{count}} respuestas",
+    "replyCount_other": "{{count}} respuestas",
+    "earlierReplies_one": "{{count}} respuesta anterior",
+    "earlierReplies_few": "{{count}} respuestas anteriores",
+    "earlierReplies_many": "{{count}} respuestas anteriores",
+    "earlierReplies_other": "{{count}} respuestas anteriores",
+    "openEarlierReplies_one": "Abrir {{count}} respuesta anterior",
+    "openEarlierReplies_few": "Abrir {{count}} respuestas anteriores",
+    "openEarlierReplies_many": "Abrir {{count}} respuestas anteriores",
+    "openEarlierReplies_other": "Abrir {{count}} respuestas anteriores",
+    "newActivity": "Actividad nueva",
+    "markingRead": "Marcando como leído…",
+    "markRead": "Marcar como leído",
+    "openThread": "Abrir hilo",
+    "loadError": "No se pudo cargar esta conversación. Ábrela para volver a intentarlo.",
+    "alsoSendTo": "Enviar también a {{channel}}",
+    "replyCount": "{{count}} respuestas",
+    "earlierReplies": "{{count}} respuestas anteriores",
+    "openEarlierReplies": "Abrir {{count}} respuestas anteriores"
   }
 }
