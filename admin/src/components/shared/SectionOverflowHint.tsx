@@ -16,10 +16,8 @@ type SectionOverflowHintProps = {
   className?: string
   /** How many rows are not shown. Renders nothing at zero. */
   count: number
-  /** A caller-localized full sentence when the noun has locale-specific plural forms. */
-  label?: string
-  /** The word for what is being counted, e.g. `'agent'`. Pluralised with `s`. */
-  noun: string
+  /** Caller-localized full sentence, including the locale's plural form. */
+  label: string
   /** Opens the full list. Without one the hint is a plain, unclickable line. */
   onShowAll?: () => void
 }
@@ -28,18 +26,16 @@ export const SectionOverflowHint = ({
   className,
   count,
   label,
-  noun,
   onShowAll,
 }: SectionOverflowHintProps) => {
   if (count <= 0) return null
 
-  const text = label ?? `…and ${count} more ${noun}${count === 1 ? '' : 's'}`
   const classes = ['px-3 py-2 text-xs text-[color:var(--tx3)]', className ?? '']
     .filter(Boolean)
     .join(' ')
 
   if (!onShowAll) {
-    return <div className={classes}>{text}</div>
+    return <div className={classes}>{label}</div>
   }
 
   return (
@@ -48,7 +44,7 @@ export const SectionOverflowHint = ({
       onClick={onShowAll}
       type="button"
     >
-      {text}
+      {label}
     </button>
   )
 }

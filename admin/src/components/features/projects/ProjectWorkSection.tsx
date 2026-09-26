@@ -207,7 +207,6 @@ export const ProjectWorkSection = ({ className, projectId }: ProjectWorkSectionP
       <SectionOverflowHint
         count={queue.matched - queue.tasks.length}
         label={t('projectWork.moreTickets', { count: queue.matched - queue.tasks.length })}
-        noun="ticket"
       />
     </DashboardSectionCard>
   )
