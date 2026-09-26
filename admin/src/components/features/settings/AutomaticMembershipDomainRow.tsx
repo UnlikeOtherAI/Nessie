@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import type {
   AutomaticMembershipDomainRecord,
   AutomaticMembershipDomainStatus,
@@ -17,14 +18,6 @@ import { Switch } from '../../primitives/Switch'
 import { AutomaticMembershipDnsPanel } from './AutomaticMembershipDnsPanel'
 import { AutomaticMembershipReconcileStatus } from './AutomaticMembershipReconcileStatus'
 import { AutomaticMembershipTeamPicker } from './AutomaticMembershipTeamPicker'
-
-const STATUS_LABEL: Record<AutomaticMembershipDomainStatus, string> = {
-  active: 'On',
-  pending: 'Waiting for DNS',
-  revoked: 'Released',
-  suspended: 'Paused',
-  verified: 'Verified — not on yet',
-}
 
 const STATUS_TONE: Record<AutomaticMembershipDomainStatus, PillTone> = {
   active: 'success',
@@ -67,6 +60,7 @@ export const AutomaticMembershipDomainRow = ({
   scope,
   teamOptions,
 }: Props) => {
+  const { t } = useTranslation('settings')
   const highlightedRuleRef = useRef<HTMLDivElement>(null)
   const needsReauthorization = domain.rules.filter(
     (rule) => rule.health === 'needs_reauthorization',
@@ -87,19 +81,19 @@ export const AutomaticMembershipDomainRow = ({
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h3 className="truncate font-medium text-[color:var(--tx)]">{domain.domain}</h3>
           <Pill radius="chip" size="sm" tone={STATUS_TONE[domain.status]} uppercase={false}>
-            {STATUS_LABEL[domain.status]}
+            {t(`automaticMembership.domainStatuses.${domain.status}`)}
           </Pill>
         </div>
         {canManageDomains && (domain.status === 'active' || domain.status === 'verified'
           || domain.status === 'suspended') ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-[color:var(--tx3)]">
-                {domain.status === 'active' ? 'Adding people' : 'Not adding people'}
+                {t(domain.status === 'active' ? 'automaticMembership.addingPeople' : 'automaticMembership.notAddingPeople')}
               </span>
               <Switch
                 checked={domain.status === 'active'}
                 disabled={pending}
-                label={`Add people from ${domain.domain} automatically`}
+                label={t('automaticMembership.addFromDomain', { domain: domain.domain })}
                 onChange={(checked) =>
                   actions.onSetStatus(domain.id, checked ? 'active' : 'suspended')}
               />
@@ -109,8 +103,7 @@ export const AutomaticMembershipDomainRow = ({
 
       {domain.status === 'suspended' ? (
         <Notice role="status" size="sm" tone="warning">
-          Paused. Nobody is being added, and nobody has been removed — people who already
-          have access keep it.
+          {t('automaticMembership.pausedNotice')}
         </Notice>
       ) : null}
 
@@ -118,9 +111,7 @@ export const AutomaticMembershipDomainRow = ({
         <Notice role="status" size="sm" tone="warning">
           <div className="grid gap-2">
             <span>
-              {`UnlikeOtherAI no longer accepts the administrator who set `
-                + `${needsReauthorization.length === 1 ? 'this rule' : 'these rules'} up, so nobody `
-                + `new is being added. Nobody has lost access.`}
+              {t('automaticMembership.reauthorizationNeeded', { count: needsReauthorization.length })}
             </span>
             {needsReauthorization.map((rule) => (
               <div
@@ -135,7 +126,7 @@ export const AutomaticMembershipDomainRow = ({
                   onClick={() => actions.onReauthorize(rule.id)}
                   type="button"
                 >
-                  {`Re-authorize ${rule.teamName}`}
+                  {t('automaticMembership.reauthorizeTeam', { team: rule.teamName })}
                 </button>
               </div>
             ))}
@@ -168,17 +159,17 @@ export const AutomaticMembershipDomainRow = ({
             <Switch
               checked={attached}
               disabled={!canManageRules || pending}
-              label={`Add people from ${domain.domain} to this team`}
+              label={t('automaticMembership.addToTeam', { domain: domain.domain })}
               onChange={(checked) => actions.onToggleTeam(domain.id, checked)}
             />
             <span className="text-sm font-medium text-[color:var(--tx)]">
-              Add people from this domain to this team
+              {t('automaticMembership.addDomainToTeam')}
             </span>
           </div>
           <p className="text-xs text-[color:var(--tx3)]">
             {attached
-              ? 'People signing in with this domain are added to this team as members.'
-              : 'This team is not included yet.'}
+              ? t('automaticMembership.domainWillAdd')
+              : t('automaticMembership.teamNotIncluded')}
           </p>
         </div>
       )}
@@ -201,7 +192,7 @@ export const AutomaticMembershipDomainRow = ({
               onClick={() => actions.onReconcile(domain.id)}
               type="button"
             >
-              Add people who are already here
+              {t('automaticMembership.addExistingPeople')}
             </button>
           </div>
         )
@@ -215,7 +206,7 @@ export const AutomaticMembershipDomainRow = ({
             onClick={() => actions.onRevoke(domain)}
             type="button"
           >
-            Remove domain
+            {t('automaticMembership.removeDomain')}
           </button>
         </footer>
       ) : null}

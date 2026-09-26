@@ -9,6 +9,7 @@
  */
 
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type {
   AutomaticMembershipRuleRecord,
   AutomaticMembershipTeamOption,
@@ -38,6 +39,7 @@ export const AutomaticMembershipTeamPicker = ({
   pending,
   rules,
 }: Props) => {
+  const { t } = useTranslation('settings')
   const selectedFromServer = rules.map((rule) => rule.teamId)
   // Re-sync when the server's answer changes — after a save, or after another
   // administrator edits the same domain. Adjusting state during render against
@@ -62,8 +64,8 @@ export const AutomaticMembershipTeamPicker = ({
 
   if (options.length === 0) {
     return (
-      <EmptyState title="No teams yet">
-        Create a team before setting up automatic access.
+      <EmptyState title={t('automaticMembership.noTeamsYet')}>
+        {t('automaticMembership.createTeamFirst')}
       </EmptyState>
     )
   }
@@ -72,7 +74,7 @@ export const AutomaticMembershipTeamPicker = ({
     <div className="grid gap-3">
       <fieldset className="grid gap-2" disabled={disabled}>
         <legend className="text-xs uppercase tracking-wide text-[color:var(--tx3)]">
-          Teams to add people to
+          {t('automaticMembership.teamsToAddPeople')}
         </legend>
         {/* No second frame: the domain card is already a bordered box, and
             docs/standards/design-system.md forbids nesting one inside another.
@@ -99,7 +101,7 @@ export const AutomaticMembershipTeamPicker = ({
             onClick={() => onSave(selected)}
             type="button"
           >
-            {pending ? 'Saving…' : 'Save teams'}
+            {pending ? t('common.saving') : t('automaticMembership.saveTeams')}
           </button>
           <button
             className="admin-button admin-button-secondary admin-button-sm"
@@ -107,7 +109,7 @@ export const AutomaticMembershipTeamPicker = ({
             onClick={() => setSelection({ ids: selectedFromServer, key: serverKey })}
             type="button"
           >
-            Discard
+            {t('automaticMembership.discard')}
           </button>
         </FormActions>
       ) : null}

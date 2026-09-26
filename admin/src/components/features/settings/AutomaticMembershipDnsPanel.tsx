@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { AutomaticMembershipDomainRecord } from '@nessie/schemas'
 
 import { Notice } from '../../primitives/Notice'
@@ -20,6 +21,7 @@ type Props = {
 }
 
 const Row = ({ label, value }: { label: string; value: string }) => {
+  const { t } = useTranslation('settings')
   const [copied, setCopied] = useState(false)
   const resetTimer = useRef<number | null>(null)
 
@@ -51,7 +53,7 @@ const Row = ({ label, value }: { label: string; value: string }) => {
           onClick={() => void copy()}
           type="button"
         >
-          {copied ? 'Copied' : `Copy ${label.toLowerCase()}`}
+          {copied ? t('automaticMembership.copied') : t('automaticMembership.copy', { label: label.toLowerCase() })}
         </button>
       </dd>
     </div>
@@ -65,22 +67,21 @@ export const AutomaticMembershipDnsPanel = ({
   onVerify,
   pending,
 }: Props) => {
+  const { t } = useTranslation('settings')
   const waitingForSecond = domain.status === 'pending' && Boolean(domain.firstSeenAt)
 
   return (
     <div className="grid gap-3 border-t border-[color:var(--border)] pt-3">
       <p className="text-sm text-[color:var(--tx2)]">
-        Add this TXT record to your DNS, then check it. We need to see it twice, at least ten
-        minutes apart, before switching anything on — one lookup is not proof. Check again
-        yourself after the wait; nothing re-checks an unproven domain on its own.
+        {t('automaticMembership.dnsInstructions')}
       </p>
       <dl className="grid gap-2">
-        <Row label="Name" value={domain.recordName} />
-        {domain.recordValue ? <Row label="Value" value={domain.recordValue} /> : null}
+        <Row label={t('automaticMembership.name')} value={domain.recordName} />
+        {domain.recordValue ? <Row label={t('automaticMembership.value')} value={domain.recordValue} /> : null}
       </dl>
       {waitingForSecond ? (
         <Notice role="status" size="sm" tone="info">
-          Found once. Check again in about ten minutes to confirm it.
+          {t('automaticMembership.foundOnce')}
         </Notice>
       ) : null}
       {domain.lastCheckOutcome && domain.lastCheckOutcome !== 'match' && domain.lastCheckDetail ? (
@@ -96,7 +97,7 @@ export const AutomaticMembershipDnsPanel = ({
             onClick={onVerify}
             type="button"
           >
-            {pending ? 'Checking…' : 'Check DNS now'}
+            {pending ? t('automaticMembership.checking') : t('automaticMembership.checkDns')}
           </button>
           <button
             className="admin-button admin-button-secondary admin-button-sm"
@@ -104,7 +105,7 @@ export const AutomaticMembershipDnsPanel = ({
             onClick={onRotate}
             type="button"
           >
-            Issue a new record
+            {t('automaticMembership.issueRecord')}
           </button>
         </div>
       ) : null}

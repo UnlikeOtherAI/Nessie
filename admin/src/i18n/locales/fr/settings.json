@@ -731,5 +731,51 @@
       "member": "Membre",
       "owner": "Propriétaire"
     }
+  },
+  "automaticMembership": {
+    "copied": "Copié",
+    "copy": "Copier {{label}}",
+    "dnsInstructions": "Ajoutez cet enregistrement TXT à votre DNS, puis vérifiez-le. Nous devons le voir deux fois à au moins dix minutes d’intervalle avant toute activation ; une seule vérification ne suffit pas. Relancez vous-même la vérification après ce délai : une domaine non confirmé n’est pas vérifié à nouveau automatiquement.",
+    "name": "Nom",
+    "value": "Valeur",
+    "foundOnce": "Trouvé une fois. Vérifiez à nouveau dans une dizaine de minutes.",
+    "checking": "Vérification…",
+    "checkDns": "Vérifier le DNS",
+    "issueRecord": "Émettre un nouvel enregistrement",
+    "noTeamsYet": "Aucune équipe",
+    "createTeamFirst": "Créez une équipe avant de configurer l’accès automatique.",
+    "teamsToAddPeople": "Équipes auxquelles ajouter des personnes",
+    "saveTeams": "Enregistrer les équipes",
+    "discard": "Annuler",
+    "runStatuses": {
+      "cancelled": "Arrêté",
+      "completed": "Terminé",
+      "failed": "Arrêté prématurément",
+      "queued": "Démarrage",
+      "running": "Ajout de personnes",
+      "superseded": "Remplacé par une exécution plus récente"
+    },
+    "runSummary": "Vérifiés : {{scanned}} · correspondances : {{matched}} · ajoutés : {{granted}} · avaient déjà accès : {{skipped}} · échecs : {{failed}}",
+    "stopAdding": "Arrêter les ajouts",
+    "runAgain": "Relancer",
+    "domainStatuses": {
+      "active": "Activé",
+      "pending": "En attente du DNS",
+      "revoked": "Libéré",
+      "suspended": "En pause",
+      "verified": "Vérifié — pas encore activé"
+    },
+    "addingPeople": "Ajout de personnes",
+    "notAddingPeople": "Aucun ajout",
+    "addFromDomain": "Ajouter automatiquement les personnes de {{domain}}",
+    "pausedNotice": "En pause. Personne n’est ajouté ni supprimé ; les personnes ayant déjà accès le conservent.",
+    "reauthorizationNeeded": "UnlikeOtherAI n’accepte plus l’administrateur à l’origine de {{count}} règle(s). Aucun nouvel accès n’est accordé et personne ne perd le sien.",
+    "reauthorizeTeam": "Réautoriser {{team}}",
+    "addToTeam": "Ajouter les personnes de {{domain}} à cette équipe",
+    "addDomainToTeam": "Ajouter les personnes de ce domaine à cette équipe",
+    "domainWillAdd": "Les personnes qui se connectent avec ce domaine seront ajoutées à cette équipe.",
+    "teamNotIncluded": "Cette équipe n’est pas encore incluse.",
+    "addExistingPeople": "Ajouter les personnes déjà présentes",
+    "removeDomain": "Supprimer le domaine"
   }
 }

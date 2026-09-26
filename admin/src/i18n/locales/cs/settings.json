@@ -731,5 +731,51 @@
       "member": "Člen",
       "owner": "Vlastník"
     }
+  },
+  "automaticMembership": {
+    "copied": "Zkopírováno",
+    "copy": "Kopírovat {{label}}",
+    "dnsInstructions": "Přidejte tento TXT záznam do DNS a poté ho ověřte. Než cokoli zapneme, musíme ho najít dvakrát s odstupem alespoň deseti minut — jediné vyhledání není důkaz. Po uplynutí doby kontrolu spusťte znovu; neověřená doména se sama znovu nekontroluje.",
+    "name": "Název",
+    "value": "Hodnota",
+    "foundOnce": "Záznam jsme našli jednou. Za přibližně deset minut kontrolu zopakujte.",
+    "checking": "Ověřování…",
+    "checkDns": "Zkontrolovat DNS",
+    "issueRecord": "Vydat nový záznam",
+    "noTeamsYet": "Zatím žádné týmy",
+    "createTeamFirst": "Než nastavíte automatický přístup, vytvořte tým.",
+    "teamsToAddPeople": "Týmy, do kterých přidávat lidi",
+    "saveTeams": "Uložit týmy",
+    "discard": "Zahodit změny",
+    "runStatuses": {
+      "cancelled": "Zastaveno",
+      "completed": "Dokončeno",
+      "failed": "Předčasně zastaveno",
+      "queued": "Spouští se",
+      "running": "Přidávání lidí",
+      "superseded": "Nahrazeno novějším během"
+    },
+    "runSummary": "Zkontrolováno: {{scanned}} · odpovídá: {{matched}} · přidáno: {{granted}} · přístup už mají: {{skipped}} · selhalo: {{failed}}",
+    "stopAdding": "Zastavit přidávání",
+    "runAgain": "Spustit znovu",
+    "domainStatuses": {
+      "active": "Zapnuto",
+      "pending": "Čeká se na DNS",
+      "revoked": "Uvolněno",
+      "suspended": "Pozastaveno",
+      "verified": "Ověřeno — zatím vypnuto"
+    },
+    "addingPeople": "Přidávání lidí",
+    "notAddingPeople": "Lidé se nepřidávají",
+    "addFromDomain": "Automaticky přidávat lidi z domény {{domain}}",
+    "pausedNotice": "Pozastaveno. Nikdo se nepřidává ani neodebírá; lidé, kteří už přístup mají, si ho ponechají.",
+    "reauthorizationNeeded": "UnlikeOtherAI už nepřijímá správce, který nastavil {{count}} pravidel. Nikdo nový se nepřidává a nikdo nepřišel o přístup.",
+    "reauthorizeTeam": "Znovu autorizovat {{team}}",
+    "addToTeam": "Přidávat lidi z domény {{domain}} do tohoto týmu",
+    "addDomainToTeam": "Přidávat lidi z této domény do tohoto týmu",
+    "domainWillAdd": "Lidé, kteří se přihlásí s touto doménou, budou do týmu přidáni jako členové.",
+    "teamNotIncluded": "Tento tým zatím není zahrnut.",
+    "addExistingPeople": "Přidat lidi, kteří už sem patří",
+    "removeDomain": "Odebrat doménu"
   }
 }

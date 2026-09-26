@@ -731,5 +731,51 @@
       "member": "Membro",
       "owner": "Proprietario"
     }
+  },
+  "automaticMembership": {
+    "copied": "Copiato",
+    "copy": "Copia {{label}}",
+    "dnsInstructions": "Aggiungi questo record TXT al DNS e poi verificalo. Per attivare l’accesso dobbiamo trovarlo due volte, a distanza di almeno dieci minuti: una sola verifica non basta. Ripeti la verifica dopo l’attesa; i domini non verificati non vengono controllati di nuovo automaticamente.",
+    "name": "Nome",
+    "value": "Valore",
+    "foundOnce": "Trovato una volta. Verifica di nuovo tra circa dieci minuti.",
+    "checking": "Verifica…",
+    "checkDns": "Verifica DNS ora",
+    "issueRecord": "Emetti un nuovo record",
+    "noTeamsYet": "Nessun team",
+    "createTeamFirst": "Crea un team prima di configurare l’accesso automatico.",
+    "teamsToAddPeople": "Team a cui aggiungere persone",
+    "saveTeams": "Salva team",
+    "discard": "Scarta",
+    "runStatuses": {
+      "cancelled": "Interrotto",
+      "completed": "Completato",
+      "failed": "Interrotto prima del termine",
+      "queued": "Avvio",
+      "running": "Aggiunta persone",
+      "superseded": "Sostituito da un’esecuzione più recente"
+    },
+    "runSummary": "Verificati: {{scanned}} · corrispondenti: {{matched}} · aggiunti: {{granted}} · avevano già accesso: {{skipped}} · non riusciti: {{failed}}",
+    "stopAdding": "Interrompi aggiunte",
+    "runAgain": "Esegui di nuovo",
+    "domainStatuses": {
+      "active": "Attivo",
+      "pending": "In attesa del DNS",
+      "revoked": "Rilasciato",
+      "suspended": "In pausa",
+      "verified": "Verificato — non ancora attivo"
+    },
+    "addingPeople": "Aggiunta persone",
+    "notAddingPeople": "Nessuna aggiunta",
+    "addFromDomain": "Aggiungi automaticamente persone da {{domain}}",
+    "pausedNotice": "In pausa. Nessuno viene aggiunto o rimosso; chi ha già accesso lo mantiene.",
+    "reauthorizationNeeded": "UnlikeOtherAI non accetta più l’amministratore che ha configurato {{count}} regole. Non verranno aggiunte nuove persone e nessuno perderà l’accesso.",
+    "reauthorizeTeam": "Autorizza di nuovo {{team}}",
+    "addToTeam": "Aggiungi persone da {{domain}} a questo team",
+    "addDomainToTeam": "Aggiungi persone da questo dominio al team",
+    "domainWillAdd": "Chi accede con questo dominio viene aggiunto al team come membro.",
+    "teamNotIncluded": "Questo team non è ancora incluso.",
+    "addExistingPeople": "Aggiungi le persone già presenti",
+    "removeDomain": "Rimuovi dominio"
   }
 }

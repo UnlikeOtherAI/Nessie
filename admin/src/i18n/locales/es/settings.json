@@ -731,5 +731,51 @@
       "member": "Miembro",
       "owner": "Propietario"
     }
+  },
+  "automaticMembership": {
+    "copied": "Copiado",
+    "copy": "Copiar {{label}}",
+    "dnsInstructions": "Añade este registro TXT a tu DNS y compruébalo. Debemos encontrarlo dos veces, con al menos diez minutos de diferencia, antes de activar nada: una sola consulta no es una prueba. Vuelve a comprobarlo después de esperar; los dominios no verificados no se revisan automáticamente.",
+    "name": "Nombre",
+    "value": "Valor",
+    "foundOnce": "Encontrado una vez. Vuelve a comprobarlo dentro de unos diez minutos.",
+    "checking": "Comprobando…",
+    "checkDns": "Comprobar DNS ahora",
+    "issueRecord": "Emitir un registro nuevo",
+    "noTeamsYet": "Aún no hay equipos",
+    "createTeamFirst": "Crea un equipo antes de configurar el acceso automático.",
+    "teamsToAddPeople": "Equipos a los que añadir personas",
+    "saveTeams": "Guardar equipos",
+    "discard": "Descartar",
+    "runStatuses": {
+      "cancelled": "Detenido",
+      "completed": "Finalizado",
+      "failed": "Detenido antes de tiempo",
+      "queued": "Iniciando",
+      "running": "Añadiendo personas",
+      "superseded": "Sustituido por una ejecución más reciente"
+    },
+    "runSummary": "Comprobados: {{scanned}} · coinciden: {{matched}} · añadidos: {{granted}} · ya tenían acceso: {{skipped}} · fallidos: {{failed}}",
+    "stopAdding": "Detener las adiciones",
+    "runAgain": "Volver a ejecutar",
+    "domainStatuses": {
+      "active": "Activo",
+      "pending": "Esperando DNS",
+      "revoked": "Liberado",
+      "suspended": "En pausa",
+      "verified": "Verificado — aún no activo"
+    },
+    "addingPeople": "Añadiendo personas",
+    "notAddingPeople": "No se añaden personas",
+    "addFromDomain": "Añadir automáticamente personas de {{domain}}",
+    "pausedNotice": "En pausa. No se añade ni elimina a nadie; quienes ya tienen acceso lo conservan.",
+    "reauthorizationNeeded": "UnlikeOtherAI ya no acepta al administrador que configuró {{count}} regla(s). No se añadirán personas nuevas ni nadie perderá acceso.",
+    "reauthorizeTeam": "Volver a autorizar {{team}}",
+    "addToTeam": "Añadir personas de {{domain}} a este equipo",
+    "addDomainToTeam": "Añadir personas de este dominio al equipo",
+    "domainWillAdd": "Las personas que inicien sesión con este dominio se añadirán al equipo como miembros.",
+    "teamNotIncluded": "Este equipo aún no está incluido.",
+    "addExistingPeople": "Añadir personas que ya pertenecen",
+    "removeDomain": "Eliminar dominio"
   }
 }

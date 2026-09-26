@@ -731,5 +731,51 @@
       "member": "Member",
       "owner": "Owner"
     }
+  },
+  "automaticMembership": {
+    "copied": "Copied",
+    "copy": "Copy {{label}}",
+    "dnsInstructions": "Add this TXT record to your DNS, then check it. We need to see it twice, at least ten minutes apart, before switching anything on — one lookup is not proof. Check again yourself after the wait; nothing re-checks an unproven domain on its own.",
+    "name": "Name",
+    "value": "Value",
+    "foundOnce": "Found once. Check again in about ten minutes to confirm it.",
+    "checking": "Checking…",
+    "checkDns": "Check DNS now",
+    "issueRecord": "Issue a new record",
+    "noTeamsYet": "No teams yet",
+    "createTeamFirst": "Create a team before setting up automatic access.",
+    "teamsToAddPeople": "Teams to add people to",
+    "saveTeams": "Save teams",
+    "discard": "Discard",
+    "runStatuses": {
+      "cancelled": "Stopped",
+      "completed": "Finished",
+      "failed": "Stopped early",
+      "queued": "Starting",
+      "running": "Adding people",
+      "superseded": "Replaced by a newer run"
+    },
+    "runSummary": "Checked: {{scanned}} · matched: {{matched}} · added: {{granted}} · already had access: {{skipped}} · failed: {{failed}}",
+    "stopAdding": "Stop adding",
+    "runAgain": "Run again",
+    "domainStatuses": {
+      "active": "On",
+      "pending": "Waiting for DNS",
+      "revoked": "Released",
+      "suspended": "Paused",
+      "verified": "Verified — not on yet"
+    },
+    "addingPeople": "Adding people",
+    "notAddingPeople": "Not adding people",
+    "addFromDomain": "Add people from {{domain}} automatically",
+    "pausedNotice": "Paused. Nobody is being added, and nobody has been removed — people who already have access keep it.",
+    "reauthorizationNeeded": "UnlikeOtherAI no longer accepts the administrator who set up {{count}} rule(s), so nobody new is being added. Nobody has lost access.",
+    "reauthorizeTeam": "Re-authorize {{team}}",
+    "addToTeam": "Add people from {{domain}} to this team",
+    "addDomainToTeam": "Add people from this domain to this team",
+    "domainWillAdd": "People signing in with this domain are added to this team as members.",
+    "teamNotIncluded": "This team is not included yet.",
+    "addExistingPeople": "Add people who are already here",
+    "removeDomain": "Remove domain"
   }
 }

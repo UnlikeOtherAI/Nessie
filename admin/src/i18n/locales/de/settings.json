@@ -731,5 +731,51 @@
       "member": "Mitglied",
       "owner": "Eigentümer"
     }
+  },
+  "automaticMembership": {
+    "copied": "Kopiert",
+    "copy": "{{label}} kopieren",
+    "dnsInstructions": "Fügen Sie diesen TXT-Eintrag zu Ihrem DNS hinzu und prüfen Sie ihn anschließend. Er muss zweimal im Abstand von mindestens zehn Minuten gefunden werden, bevor etwas aktiviert wird. Eine einzelne Abfrage ist kein Nachweis. Prüfen Sie nach der Wartezeit erneut; eine unbestätigte Domain wird nicht automatisch erneut geprüft.",
+    "name": "Name",
+    "value": "Wert",
+    "foundOnce": "Einmal gefunden. Prüfen Sie in etwa zehn Minuten erneut.",
+    "checking": "Wird geprüft…",
+    "checkDns": "DNS jetzt prüfen",
+    "issueRecord": "Neuen Eintrag ausstellen",
+    "noTeamsYet": "Noch keine Teams",
+    "createTeamFirst": "Erstellen Sie ein Team, bevor Sie den automatischen Zugriff einrichten.",
+    "teamsToAddPeople": "Teams, denen Personen hinzugefügt werden",
+    "saveTeams": "Teams speichern",
+    "discard": "Verwerfen",
+    "runStatuses": {
+      "cancelled": "Gestoppt",
+      "completed": "Abgeschlossen",
+      "failed": "Vorzeitig gestoppt",
+      "queued": "Wird gestartet",
+      "running": "Personen werden hinzugefügt",
+      "superseded": "Durch einen neueren Lauf ersetzt"
+    },
+    "runSummary": "Geprüft: {{scanned}} · passend: {{matched}} · hinzugefügt: {{granted}} · hatten bereits Zugriff: {{skipped}} · fehlgeschlagen: {{failed}}",
+    "stopAdding": "Hinzufügen stoppen",
+    "runAgain": "Erneut ausführen",
+    "domainStatuses": {
+      "active": "Ein",
+      "pending": "Wartet auf DNS",
+      "revoked": "Freigegeben",
+      "suspended": "Pausiert",
+      "verified": "Bestätigt — noch nicht aktiv"
+    },
+    "addingPeople": "Personen werden hinzugefügt",
+    "notAddingPeople": "Keine Personen werden hinzugefügt",
+    "addFromDomain": "Personen von {{domain}} automatisch hinzufügen",
+    "pausedNotice": "Pausiert. Niemand wird hinzugefügt oder entfernt. Personen mit bestehendem Zugriff behalten ihn.",
+    "reauthorizationNeeded": "UnlikeOtherAI akzeptiert die Verwaltungsperson, die {{count}} Regel(n) eingerichtet hat, nicht mehr. Es werden keine neuen Personen hinzugefügt und niemand verliert den Zugriff.",
+    "reauthorizeTeam": "{{team}} erneut autorisieren",
+    "addToTeam": "Personen von {{domain}} zu diesem Team hinzufügen",
+    "addDomainToTeam": "Personen von dieser Domain zum Team hinzufügen",
+    "domainWillAdd": "Personen, die sich mit dieser Domain anmelden, werden als Mitglieder zu diesem Team hinzugefügt.",
+    "teamNotIncluded": "Dieses Team ist noch nicht enthalten.",
+    "addExistingPeople": "Bereits vorhandene Personen hinzufügen",
+    "removeDomain": "Domain entfernen"
   }
 }
