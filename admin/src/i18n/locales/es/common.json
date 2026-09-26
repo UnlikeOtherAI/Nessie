@@ -50,5 +50,49 @@
   "header": {
     "moreActions": "Más acciones de la página",
     "backFrom": "Volver desde {{title}}"
+  },
+  "cancel": "Cancelar",
+  "save": "Guardar",
+  "saving": "Guardando…",
+  "resizeColumn": "Cambiar tamaño de la columna",
+  "reaction": {
+    "add": "Añadir reacción con emoji"
+  },
+  "crop": {
+    "editImage": "Editar imagen",
+    "descriptionCircle": "Arrastra para recolocar la imagen y usa la rueda o el control deslizante para acercar. Se guardará el contenido del círculo.",
+    "descriptionRounded": "Arrastra para recolocar la imagen y usa la rueda o el control deslizante para acercar. Se guardará el contenido del cuadrado redondeado.",
+    "zoom": "Zoom"
+  },
+  "formatting": {
+    "label": "Formato",
+    "bold": "Negrita",
+    "italic": "Cursiva",
+    "heading": "Encabezado {{level}}",
+    "bulletList": "Lista con viñetas",
+    "numberedList": "Lista numerada",
+    "quote": "Cita",
+    "inlineCode": "Código en línea",
+    "codeBlock": "Bloque de código",
+    "link": "Enlace",
+    "linkUrl": "URL del enlace",
+    "image": "Imagen"
+  },
+  "colourFor": "{{label}}: {{colour}}",
+  "hexColour": "Color hexadecimal",
+  "invalidHexColour": "Usa # y seis dígitos hexadecimales.",
+  "colourNames": {
+    "grey": "Gris",
+    "red": "Rojo",
+    "orange": "Naranja",
+    "amber": "Ámbar",
+    "yellow": "Amarillo",
+    "green": "Verde",
+    "teal": "Verde azulado",
+    "blue": "Azul",
+    "indigo": "Índigo",
+    "violet": "Violeta",
+    "pink": "Rosa",
+    "brown": "Marrón"
   }
 }

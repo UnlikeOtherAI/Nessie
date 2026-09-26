@@ -50,5 +50,49 @@
   "header": {
     "moreActions": "Další akce stránky",
     "backFrom": "Zpět z {{title}}"
+  },
+  "cancel": "Zrušit",
+  "save": "Uložit",
+  "saving": "Ukládání…",
+  "resizeColumn": "Změnit šířku sloupce",
+  "reaction": {
+    "add": "Přidat reakci emoji"
+  },
+  "crop": {
+    "editImage": "Upravit obrázek",
+    "descriptionCircle": "Přetáhněte obrázek pro změnu polohy a kolečkem nebo posuvníkem upravte přiblížení. Uloží se obsah kruhu.",
+    "descriptionRounded": "Přetáhněte obrázek pro změnu polohy a kolečkem nebo posuvníkem upravte přiblížení. Uloží se obsah zaobleného čtverce.",
+    "zoom": "Přiblížení"
+  },
+  "formatting": {
+    "label": "Formátování",
+    "bold": "Tučné",
+    "italic": "Kurzíva",
+    "heading": "Nadpis {{level}}",
+    "bulletList": "Seznam s odrážkami",
+    "numberedList": "Číslovaný seznam",
+    "quote": "Citace",
+    "inlineCode": "Kód v řádku",
+    "codeBlock": "Blok kódu",
+    "link": "Odkaz",
+    "linkUrl": "URL odkazu",
+    "image": "Obrázek"
+  },
+  "colourFor": "{{label}}: {{colour}}",
+  "hexColour": "Hexadecimální barva",
+  "invalidHexColour": "Zadejte # a šest hexadecimálních číslic.",
+  "colourNames": {
+    "grey": "Šedá",
+    "red": "Červená",
+    "orange": "Oranžová",
+    "amber": "Jantarová",
+    "yellow": "Žlutá",
+    "green": "Zelená",
+    "teal": "Tyrkysová",
+    "blue": "Modrá",
+    "indigo": "Indigová",
+    "violet": "Fialová",
+    "pink": "Růžová",
+    "brown": "Hnědá"
   }
 }

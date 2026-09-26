@@ -50,5 +50,49 @@
   "header": {
     "moreActions": "Weitere Seitenaktionen",
     "backFrom": "Zurück von {{title}}"
+  },
+  "cancel": "Abbrechen",
+  "save": "Speichern",
+  "saving": "Wird gespeichert…",
+  "resizeColumn": "Spaltenbreite ändern",
+  "reaction": {
+    "add": "Emoji-Reaktion hinzufügen"
+  },
+  "crop": {
+    "editImage": "Bild bearbeiten",
+    "descriptionCircle": "Ziehe das Bild an die gewünschte Stelle und zoome mit dem Mausrad oder Regler. Der Kreis wird gespeichert.",
+    "descriptionRounded": "Ziehe das Bild an die gewünschte Stelle und zoome mit dem Mausrad oder Regler. Das abgerundete Quadrat wird gespeichert.",
+    "zoom": "Zoom"
+  },
+  "formatting": {
+    "label": "Formatierung",
+    "bold": "Fett",
+    "italic": "Kursiv",
+    "heading": "Überschrift {{level}}",
+    "bulletList": "Aufzählung",
+    "numberedList": "Nummerierte Liste",
+    "quote": "Zitat",
+    "inlineCode": "Code im Text",
+    "codeBlock": "Codeblock",
+    "link": "Link",
+    "linkUrl": "Link-URL",
+    "image": "Bild"
+  },
+  "colourFor": "{{label}}: {{colour}}",
+  "hexColour": "Hex-Farbe",
+  "invalidHexColour": "Verwende # und sechs Hex-Ziffern.",
+  "colourNames": {
+    "grey": "Grau",
+    "red": "Rot",
+    "orange": "Orange",
+    "amber": "Bernstein",
+    "yellow": "Gelb",
+    "green": "Grün",
+    "teal": "Türkis",
+    "blue": "Blau",
+    "indigo": "Indigo",
+    "violet": "Violett",
+    "pink": "Rosa",
+    "brown": "Braun"
   }
 }

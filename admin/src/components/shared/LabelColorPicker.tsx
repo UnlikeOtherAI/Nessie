@@ -1,20 +1,16 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { LABEL_PALETTE, LabelColorSchema } from '@nessie/schemas'
+import { useTranslation } from 'react-i18next'
 import { Popover } from '../overlays/Popover'
 import { Input } from './FormControls'
 
-/** The palette's names, in `LABEL_PALETTE` order, for the swatches' accessible names. */
-export const LABEL_PALETTE_NAMES = [
-  'Grey', 'Red', 'Orange', 'Amber', 'Yellow', 'Green',
-  'Teal', 'Blue', 'Indigo', 'Violet', 'Pink', 'Brown',
+/** Semantic palette IDs, in `LABEL_PALETTE` order. */
+const LABEL_PALETTE_IDS = [
+  'grey', 'red', 'orange', 'amber', 'yellow', 'green',
+  'teal', 'blue', 'indigo', 'violet', 'pink', 'brown',
 ] as const
 
 const swatchStyle = (color: string) => ({ '--label': color }) as CSSProperties
-
-export const labelColorName = (color: string): string => {
-  const index = LABEL_PALETTE.findIndex((entry) => entry === color.toLowerCase())
-  return index === -1 ? color.toLowerCase() : (LABEL_PALETTE_NAMES[index] ?? color)
-}
 
 type LabelColorPickerProps = {
   disabled?: boolean
@@ -32,10 +28,16 @@ type LabelColorPickerProps = {
  * Colours are data painted through `--label`; no class carries one.
  */
 export const LabelColorPicker = ({ disabled = false, label, onChange, value }: LabelColorPickerProps) => {
+  const { t } = useTranslation('common')
   const anchorRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState(value)
   const [invalid, setInvalid] = useState(false)
+  const colorName = (color: string): string => {
+    const index = LABEL_PALETTE.findIndex((entry) => entry === color.toLowerCase())
+    const id = LABEL_PALETTE_IDS[index]
+    return id ? t(`colourNames.${id}`) : color.toLowerCase()
+  }
   useEffect(() => {
     setDraft(value)
     setInvalid(false)
@@ -62,7 +64,7 @@ export const LabelColorPicker = ({ disabled = false, label, onChange, value }: L
       <button
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-label={`${label}: ${labelColorName(value)}`}
+        aria-label={t('colourFor', { label, colour: colorName(value) })}
         className="admin-label-swatch-button"
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}
@@ -82,9 +84,9 @@ export const LabelColorPicker = ({ disabled = false, label, onChange, value }: L
         role="dialog"
       >
         <div className="admin-label-color-grid">
-          {LABEL_PALETTE.map((color, index) => (
+          {LABEL_PALETTE.map((color) => (
             <button
-              aria-label={LABEL_PALETTE_NAMES[index]}
+              aria-label={colorName(color)}
               aria-pressed={color === value.toLowerCase()}
               className="admin-label-swatch-button"
               key={color}
@@ -98,7 +100,7 @@ export const LabelColorPicker = ({ disabled = false, label, onChange, value }: L
         </div>
         <Input
           aria-invalid={invalid || undefined}
-          aria-label="Hex colour"
+          aria-label={t('hexColour')}
           className="mt-2"
           mono
           onChange={(event) => {
@@ -117,7 +119,7 @@ export const LabelColorPicker = ({ disabled = false, label, onChange, value }: L
         />
         {invalid ? (
           <p className="mt-1 text-xs text-[color:var(--danger-text)]" role="alert">
-            Use # and six hex digits.
+            {t('invalidHexColour')}
           </p>
         ) : null}
       </Popover>

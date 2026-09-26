@@ -6,6 +6,7 @@ import {
   type PointerEvent,
   type ReactNode,
 } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useScrollMemory } from '../../../hooks/useScrollMemory'
 import { PhoneBackButton } from '../../../navigation/PhoneBackButton'
 import { PhoneNavigationButton } from '../../../navigation/PhoneNavigationButton'
@@ -43,6 +44,7 @@ export type ColumnResizeConfig = {
 // width; touch-none keeps the drag from being stolen by the browser's scroll
 // gesture on touch devices.
 export const BrowserColumnResizeHandle = ({ max, min, onResize, width }: ColumnResizeConfig) => {
+  const { t } = useTranslation('common')
   // Tears down an in-progress drag's window listeners + body styles if the
   // column unmounts mid-drag (e.g. the browser opens/closes a deeper column).
   const cleanup = useRef<(() => void) | null>(null)
@@ -102,7 +104,7 @@ export const BrowserColumnResizeHandle = ({ max, min, onResize, width }: ColumnR
 
   return (
     <div
-      aria-label="Resize column"
+      aria-label={t('resizeColumn')}
       aria-orientation="vertical"
       aria-valuemax={max}
       aria-valuemin={min}

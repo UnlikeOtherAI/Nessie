@@ -50,5 +50,49 @@
   "header": {
     "moreActions": "Altre azioni della pagina",
     "backFrom": "Indietro da {{title}}"
+  },
+  "cancel": "Annulla",
+  "save": "Salva",
+  "saving": "Salvataggio…",
+  "resizeColumn": "Ridimensiona colonna",
+  "reaction": {
+    "add": "Aggiungi reazione emoji"
+  },
+  "crop": {
+    "editImage": "Modifica immagine",
+    "descriptionCircle": "Trascina per riposizionare e usa la rotellina o il cursore per ingrandire. Verrà salvata l’area circolare.",
+    "descriptionRounded": "Trascina per riposizionare e usa la rotellina o il cursore per ingrandire. Verrà salvata l’area quadrata con angoli arrotondati.",
+    "zoom": "Zoom"
+  },
+  "formatting": {
+    "label": "Formattazione",
+    "bold": "Grassetto",
+    "italic": "Corsivo",
+    "heading": "Titolo {{level}}",
+    "bulletList": "Elenco puntato",
+    "numberedList": "Elenco numerato",
+    "quote": "Citazione",
+    "inlineCode": "Codice in linea",
+    "codeBlock": "Blocco di codice",
+    "link": "Collegamento",
+    "linkUrl": "URL del collegamento",
+    "image": "Immagine"
+  },
+  "colourFor": "{{label}}: {{colour}}",
+  "hexColour": "Colore esadecimale",
+  "invalidHexColour": "Usa # e sei cifre esadecimali.",
+  "colourNames": {
+    "grey": "Grigio",
+    "red": "Rosso",
+    "orange": "Arancione",
+    "amber": "Ambra",
+    "yellow": "Giallo",
+    "green": "Verde",
+    "teal": "Verde acqua",
+    "blue": "Blu",
+    "indigo": "Indaco",
+    "violet": "Viola",
+    "pink": "Rosa",
+    "brown": "Marrone"
   }
 }

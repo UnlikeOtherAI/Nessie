@@ -6,6 +6,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Editor } from '@tiptap/react'
 import {
   faBold,
@@ -71,6 +72,7 @@ const isModK = (event: KeyboardEvent) =>
 // and no theming. Enter applies (clearing the link on an empty URL), Escape
 // cancels without touching the editor's link mark.
 const LinkToolbarButton = ({ editor, shortcut }: { editor: Editor; shortcut: boolean }) => {
+  const { t } = useTranslation('common')
   const anchorRef = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [open, setOpen] = useState(false)
@@ -130,19 +132,19 @@ const LinkToolbarButton = ({ editor, shortcut }: { editor: Editor; shortcut: boo
         label={<FontAwesomeIcon className="h-4 w-4" icon={faLink} />}
         onClick={openPopover}
         ref={anchorRef}
-        title="Link"
+        title={t('formatting.link')}
       />
       <Popover
         anchorRef={anchorRef}
         className="rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-2 shadow-lg"
-        label="Link URL"
+        label={t('formatting.linkUrl')}
         onClose={() => setOpen(false)}
         open={open}
         placement="bottom-start"
         role="dialog"
       >
         <input
-          aria-label="Link URL"
+          aria-label={t('formatting.linkUrl')}
           className="admin-input w-64"
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onInputKeyDown}
@@ -157,10 +159,11 @@ const LinkToolbarButton = ({ editor, shortcut }: { editor: Editor; shortcut: boo
 
 /** The picker behind the Image button; several files insert in order. */
 const ImageToolbarButton = ({ onPickImages }: { onPickImages: (files: File[]) => void }) => {
+  const { t } = useTranslation('common')
   const inputRef = useRef<HTMLInputElement>(null)
   return (
     <>
-      <ToolbarButton label={<FontAwesomeIcon icon={faImage} />} onClick={() => inputRef.current?.click()} title="Image" />
+      <ToolbarButton label={<FontAwesomeIcon icon={faImage} />} onClick={() => inputRef.current?.click()} title={t('formatting.image')} />
       <input
         accept="image/*"
         aria-hidden="true"
@@ -206,19 +209,21 @@ export const RichTextToolbar = ({
   linkShortcut = false,
   onPickImages,
   trailing,
-}: RichTextToolbarProps) => (
-  <div aria-label="Formatting" className={className} role="toolbar">
+}: RichTextToolbarProps) => {
+  const { t } = useTranslation('common')
+  return (
+  <div aria-label={t('formatting.label')} className={className} role="toolbar">
     <ToolbarButton
       active={editor.isActive('bold')}
       label={<FontAwesomeIcon className="h-4 w-4" icon={faBold} />}
       onClick={() => editor.chain().focus().toggleBold().run()}
-      title="Bold"
+      title={t('formatting.bold')}
     />
     <ToolbarButton
       active={editor.isActive('italic')}
       label={<FontAwesomeIcon className="h-4 w-4" icon={faItalic} />}
       onClick={() => editor.chain().focus().toggleItalic().run()}
-      title="Italic"
+      title={t('formatting.italic')}
     />
     <ToolbarDivider />
     {headingLevels.map((level) => (
@@ -232,7 +237,7 @@ export const RichTextToolbar = ({
           </>
         )}
         onClick={() => editor.chain().focus().toggleHeading({ level }).run()}
-        title={`Heading ${level}`}
+        title={t('formatting.heading', { level })}
       />
     ))}
     <ToolbarDivider />
@@ -240,35 +245,36 @@ export const RichTextToolbar = ({
       active={editor.isActive('bulletList')}
       label={<FontAwesomeIcon className="h-4 w-4" icon={faListUl} />}
       onClick={() => editor.chain().focus().toggleBulletList().run()}
-      title="Bullet list"
+      title={t('formatting.bulletList')}
     />
     <ToolbarButton
       active={editor.isActive('orderedList')}
       label={<FontAwesomeIcon className="h-4 w-4" icon={faListOl} />}
       onClick={() => editor.chain().focus().toggleOrderedList().run()}
-      title="Numbered list"
+      title={t('formatting.numberedList')}
     />
     <ToolbarButton
       active={editor.isActive('blockquote')}
       label={<FontAwesomeIcon className="h-4 w-4" icon={faQuoteLeft} />}
       onClick={() => editor.chain().focus().toggleBlockquote().run()}
-      title="Quote"
+      title={t('formatting.quote')}
     />
     <ToolbarDivider />
     <ToolbarButton
       active={editor.isActive('code')}
       label={<FontAwesomeIcon className="h-4 w-4" icon={faCode} />}
       onClick={() => editor.chain().focus().toggleCode().run()}
-      title="Inline code"
+      title={t('formatting.inlineCode')}
     />
     <ToolbarButton
       active={editor.isActive('codeBlock')}
       label={<FontAwesomeIcon className="h-4 w-4" icon={faFileCode} />}
       onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-      title="Code block"
+      title={t('formatting.codeBlock')}
     />
     <LinkToolbarButton editor={editor} shortcut={linkShortcut} />
     {onPickImages ? <ImageToolbarButton onPickImages={onPickImages} /> : null}
     {trailing}
   </div>
-)
+  )
+}

@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type ReactNode } from 'react'
 import { faFaceSmile } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { useTranslation } from 'react-i18next'
 import { Popover } from '../overlays/Popover'
 import { EmojiPickerPanel } from './EmojiPickerPanel'
 
@@ -26,8 +27,10 @@ export const EmojiReactionButton = ({
   className = 'admin-msg-action-button',
   icon,
   onSelect,
-  title = 'Add emoji reaction',
+  title,
 }: EmojiReactionButtonProps) => {
+  const { t } = useTranslation('common')
+  const label = title ?? t('reaction.add')
   const pickerId = useId()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
@@ -43,11 +46,11 @@ export const EmojiReactionButton = ({
         aria-controls={open ? pickerId : undefined}
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-label="Add emoji reaction"
+        aria-label={label}
         className={className}
         onClick={() => setOpen((current) => !current)}
         ref={triggerRef}
-        title={title}
+        title={label}
         type="button"
       >
         {icon ?? <FontAwesomeIcon icon={faFaceSmile} />}
@@ -56,7 +59,7 @@ export const EmojiReactionButton = ({
         anchorRef={triggerRef}
         className="admin-msg-emoji-menu"
         id={pickerId}
-        label={title}
+        label={label}
         onClose={() => setOpen(false)}
         open={open}
         role="menu"

@@ -50,5 +50,49 @@
   "header": {
     "moreActions": "Autres actions de la page",
     "backFrom": "Retour depuis {{title}}"
+  },
+  "cancel": "Annuler",
+  "save": "Enregistrer",
+  "saving": "Enregistrement…",
+  "resizeColumn": "Redimensionner la colonne",
+  "reaction": {
+    "add": "Ajouter une réaction emoji"
+  },
+  "crop": {
+    "editImage": "Modifier l’image",
+    "descriptionCircle": "Faites glisser l’image pour la repositionner et utilisez la molette ou le curseur pour zoomer. Le cercle sera enregistré.",
+    "descriptionRounded": "Faites glisser l’image pour la repositionner et utilisez la molette ou le curseur pour zoomer. Le carré arrondi sera enregistré.",
+    "zoom": "Zoom"
+  },
+  "formatting": {
+    "label": "Mise en forme",
+    "bold": "Gras",
+    "italic": "Italique",
+    "heading": "Titre {{level}}",
+    "bulletList": "Liste à puces",
+    "numberedList": "Liste numérotée",
+    "quote": "Citation",
+    "inlineCode": "Code en ligne",
+    "codeBlock": "Bloc de code",
+    "link": "Lien",
+    "linkUrl": "URL du lien",
+    "image": "Image"
+  },
+  "colourFor": "{{label}} : {{colour}}",
+  "hexColour": "Couleur hexadécimale",
+  "invalidHexColour": "Utilisez # suivi de six chiffres hexadécimaux.",
+  "colourNames": {
+    "grey": "Gris",
+    "red": "Rouge",
+    "orange": "Orange",
+    "amber": "Ambre",
+    "yellow": "Jaune",
+    "green": "Vert",
+    "teal": "Turquoise",
+    "blue": "Bleu",
+    "indigo": "Indigo",
+    "violet": "Violet",
+    "pink": "Rose",
+    "brown": "Marron"
   }
 }

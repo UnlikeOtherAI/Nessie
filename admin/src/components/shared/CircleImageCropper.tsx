@@ -5,6 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Dialog } from './Dialog'
 import { identityTileRadius } from '../../lib/identity-shape'
 
@@ -44,11 +45,12 @@ export const CircleImageCropper = ({
   busy = false,
   onCancel,
   onSave,
-  title = 'Edit image',
-  description = 'Drag to reposition, scroll or use the slider to zoom. The circle is what gets saved.',
-  saveLabel = 'Save',
+  title,
+  description,
+  saveLabel,
   shape = 'circle',
 }: CircleImageCropperProps) => {
+  const { t } = useTranslation('common')
   const imgRef = useRef<HTMLImageElement | null>(null)
   const [url, setUrl] = useState<string | null>(null)
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
@@ -149,7 +151,13 @@ export const CircleImageCropper = ({
   }
 
   return (
-    <Dialog description={description} dismissDisabled={busy} onClose={onCancel} open title={title}>
+    <Dialog
+      description={description ?? t(shape === 'circle' ? 'crop.descriptionCircle' : 'crop.descriptionRounded')}
+      dismissDisabled={busy}
+      onClose={onCancel}
+      open
+      title={title ?? t('crop.editImage')}
+    >
       <div className="flex justify-center">
         <div
           className="relative overflow-hidden rounded-xl bg-[color:var(--main)]"
@@ -196,7 +204,7 @@ export const CircleImageCropper = ({
       </div>
 
       <label className="mt-4 flex items-center gap-3">
-        <span className="text-xs text-[color:var(--tx3)]">Zoom</span>
+        <span className="text-xs text-[color:var(--tx3)]">{t('crop.zoom')}</span>
         <input
           className="flex-1 accent-[color:var(--accent)]"
           disabled={!natural}
@@ -216,7 +224,7 @@ export const CircleImageCropper = ({
           onClick={onCancel}
           type="button"
         >
-          Cancel
+          {t('cancel')}
         </button>
         <button
           className="admin-button admin-button-primary"
@@ -224,7 +232,7 @@ export const CircleImageCropper = ({
           onClick={handleSave}
           type="button"
         >
-          {busy ? 'Saving…' : saveLabel}
+          {busy ? t('saving') : saveLabel ?? t('save')}
         </button>
       </div>
     </Dialog>

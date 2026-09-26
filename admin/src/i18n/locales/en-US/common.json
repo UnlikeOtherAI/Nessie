@@ -50,5 +50,49 @@
   "header": {
     "moreActions": "More page actions",
     "backFrom": "Back from {{title}}"
+  },
+  "cancel": "Cancel",
+  "save": "Save",
+  "saving": "Saving…",
+  "resizeColumn": "Resize column",
+  "reaction": {
+    "add": "Add emoji reaction"
+  },
+  "crop": {
+    "editImage": "Edit image",
+    "descriptionCircle": "Drag to reposition, scroll or use the slider to zoom. The circle is what gets saved.",
+    "descriptionRounded": "Drag to reposition, scroll or use the slider to zoom. The rounded square is what gets saved.",
+    "zoom": "Zoom"
+  },
+  "formatting": {
+    "label": "Formatting",
+    "bold": "Bold",
+    "italic": "Italic",
+    "heading": "Heading {{level}}",
+    "bulletList": "Bullet list",
+    "numberedList": "Numbered list",
+    "quote": "Quote",
+    "inlineCode": "Inline code",
+    "codeBlock": "Code block",
+    "link": "Link",
+    "linkUrl": "Link URL",
+    "image": "Image"
+  },
+  "colourFor": "{{label}}: {{colour}}",
+  "hexColour": "Hex color",
+  "invalidHexColour": "Use # and six hex digits.",
+  "colourNames": {
+    "grey": "Gray",
+    "red": "Red",
+    "orange": "Orange",
+    "amber": "Amber",
+    "yellow": "Yellow",
+    "green": "Green",
+    "teal": "Teal",
+    "blue": "Blue",
+    "indigo": "Indigo",
+    "violet": "Violet",
+    "pink": "Pink",
+    "brown": "Brown"
   }
 }
