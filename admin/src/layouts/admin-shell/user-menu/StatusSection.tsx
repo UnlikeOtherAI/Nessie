@@ -1,17 +1,11 @@
 import { Link } from 'react-router-dom'
-import { faCircleXmark, faPenToSquare } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { CircleX, SquarePen } from 'lucide-react'
 import { Pill } from '../../../components/primitives/Pill'
 import {
   useActivateStatus,
   useClearActiveStatus,
   useStatuses,
 } from '../../../facades/statuses/hooks'
-
-const rowClassName = [
-  'flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left',
-  'text-sm text-[color:var(--tx)] transition-colors hover:bg-[color:var(--overlay-weak)]',
-].join(' ')
 
 // Status block in the account menu: lists the user's statuses (tap to activate),
 // surfaces a clear action when one is active, and links to the full editor. With
@@ -26,12 +20,10 @@ export const StatusSection = ({ onClose }: { onClose: () => void }) => {
 
   return (
     <div>
-      <div className="px-2 pb-0.5 pt-1 text-xs font-medium text-[color:var(--tx3)]">Status</div>
-
       {statuses.length === 0 ? (
-        <Link className={rowClassName} onClick={onClose} to="/settings/status">
-          <span className="text-[color:var(--tx2)]">Set up a status</span>
-          <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--tx3)]" icon={faPenToSquare} />
+        <Link className="admin-account-menu-row" onClick={onClose} to="/settings/status">
+          <SquarePen aria-hidden="true" strokeWidth={2} />
+          <span>Set up a status</span>
         </Link>
       ) : (
         <div className="max-h-44 overflow-y-auto">
@@ -39,10 +31,7 @@ export const StatusSection = ({ onClose }: { onClose: () => void }) => {
             const isActive = status.id === activeStatus?.id
             return (
               <button
-                className={[
-                  rowClassName,
-                  isActive ? 'bg-[color:var(--overlay-weak)]' : '',
-                ].join(' ')}
+                className={`admin-account-menu-row ${isActive ? 'bg-[color:var(--overlay-weak)]' : ''}`}
                 disabled={pending}
                 key={status.id}
                 onClick={() => {
@@ -50,8 +39,8 @@ export const StatusSection = ({ onClose }: { onClose: () => void }) => {
                 }}
                 type="button"
               >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span aria-hidden className="w-5 text-center">
+                <span className="flex min-w-0 flex-1 items-center gap-2.5">
+                  <span aria-hidden className="w-3.5 text-center">
                     {status.emoji ?? '💬'}
                   </span>
                   <span className="truncate">{status.label}</span>
@@ -69,20 +58,20 @@ export const StatusSection = ({ onClose }: { onClose: () => void }) => {
 
       {activeStatus && (
         <button
-          className={rowClassName}
+          className="admin-account-menu-row"
           disabled={pending}
           onClick={() => clear.mutate()}
           type="button"
         >
-          <span className="text-[color:var(--tx2)]">Clear status</span>
-          <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--tx3)]" icon={faCircleXmark} />
+          <CircleX aria-hidden="true" strokeWidth={2} />
+          <span>Clear status</span>
         </button>
       )}
 
       {statuses.length > 0 && (
-        <Link className={rowClassName} onClick={onClose} to="/settings/status">
-          <span className="text-[color:var(--tx2)]">Edit statuses</span>
-          <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--tx3)]" icon={faPenToSquare} />
+        <Link className="admin-account-menu-row" onClick={onClose} to="/settings/status">
+          <SquarePen aria-hidden="true" strokeWidth={2} />
+          <span>Edit statuses</span>
         </Link>
       )}
     </div>

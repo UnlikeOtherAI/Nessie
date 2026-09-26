@@ -65,6 +65,8 @@ type PageHeaderActionBase = {
   barIcon?: ScreenBarIconName
   compact?: boolean
   disabled?: boolean
+  /** Keeps a stateful label from changing the action row's measured width. */
+  fixedWidth?: string
   form?: string
   icon?: IconDefinition
   outlineIcon?: LucideIcon

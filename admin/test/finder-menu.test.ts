@@ -335,6 +335,7 @@ test('New offers exactly the kinds this build can actually make', () => {
     NEW_FILE_TYPES.map((type) => type.label),
     ['Document', 'Spreadsheet', 'Spreadsheet from a file…', 'Upload…'],
   )
+  assert.ok(NEW_FILE_TYPES.every((type) => Boolean(type.outlineIcon)))
 })
 
 test('a New kind invokes the doorway it names and nothing else', () => {

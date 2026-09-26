@@ -20,6 +20,7 @@ plan against the code.
 - [Sidebar, menus and roots](#sidebar-menus-and-roots)
 - [Phase 1: structure](#phase-1-structure)
 - [Later phases](#later-phases)
+- [Phases 2 to 6 in parallel](#phases-2-to-6-in-parallel)
 - [Verification of a phase](#verification-of-a-phase)
 
 ## Rules for every task
@@ -261,7 +262,9 @@ is retitled Computers), `/knowledge-base/*`, `/documents/*`, `/mail/*`,
   keys, Usage (only when the billing capability read says it is available),
   Security.
 - **Avatar menu:** Availability · Status · Your settings · Send feedback ·
-  Sign out. The Executors rows and Debug leave the menu.
+  Sign out. The Executors rows and Debug leave the menu. The panel shares the
+  Channels project menu's border, radius, surface, shadow and 32px row rhythm;
+  action icons sit on the left as 14px outline glyphs with a 2px stroke.
 - **Roots.** `/admin` and `/settings` are `contextualList` roots: on a phone
   the list is the page; on desktop each redirects to its first page. Back from
   a Your settings page returns to where the person came from (`parent:
@@ -481,6 +484,75 @@ enums to sentences belongs to phase 2.
    project overview route with the Channels-origin Back decided.
 6. Usage and limits split (Telemetry and Model pricing to Advanced); the
    deletions in the plan's §9; Alerts on every shell.
+
+## Phases 2 to 6 in parallel
+
+Phases 2 to 6 are built at the same time, one agent, worktree, branch and
+pull request each, all from `main` after phase 1 (`f2e2176a1`). The rules
+for every task above apply; these are the additions.
+
+| Phase | Branch | Ports (API / admin) | Database |
+|---|---|---|---|
+| 2 The Agents group | `feat/admin-overhaul-p2` | 5482 / 5483 | `nessie_p2` |
+| 3 Overview, the roster, Security | `feat/admin-overhaul-p3` | 5484 / 5485 | `nessie_p3` |
+| 4 Accounts | `feat/admin-overhaul-p4` | 5486 / 5487 | `nessie_p4` |
+| 5 Project and conversation settings | `feat/admin-overhaul-p5` | 5488 / 5489 | `nessie_p5` |
+| 6 Usage and limits, Advanced, the deletions, Alerts | `feat/admin-overhaul-p6` | 5490 / 5491 | `nessie_p6` |
+
+**Ownership.** Each phase owns the pages, components, API routes, tests,
+browser suites and docs of its area and edits nothing another phase owns; a
+change needed in another phase's file is named in the report and routed by
+the orchestrator. Shared files (`router.tsx`, the surface registries, the
+Admin sidebar items, `AGENTS.md`, `CLAUDE.md`, this document) take each
+phase's own rows and sections only.
+
+- Phase 2: the agent page and list, the Apps catalogue and app page, the
+  computer page and list, Automations, the status-sentence helper.
+- Phase 3: Overview, People and the roster (the people read model), Security's
+  audit log, the "still using this model" read.
+- Phase 4: the accounts read model and grant write, Connected accounts and
+  Company connections lists, the Integrations pages
+  (`/admin/apps/integrations/:slug`), Check access, Used in.
+- Phase 5: the project Settings page and single overview route, the
+  conversation Details panel.
+- Phase 6: Usage and limits with Telemetry and Model pricing under Advanced,
+  the §9 deletions no other phase owns, Alerts on every shell.
+
+**Boundaries decided up front.** The Integrations shelf on the Apps
+catalogue (phase 2) links to `/admin/apps/integrations/<slug>` with the slugs
+`google-workspace`, `microsoft-365`, `slack`, `jira`, `linear`, `github`,
+`trello`, `deep-water`, `cloud-browser`, `local-ai`, which phase 4 builds. The
+shared "Allow" grant component and Check access are phase 4's; phase 2 keeps
+today's per-object panels and mounts phase 4's after both land. The agent
+page's own §9 deletions are phase 2's; the Statuses fields, seats section,
+Compare plans, tool grant switch and `/api/triggers/upcoming` are phase 6's.
+Admin still lands on Agents; Overview is the first row of the Organisation
+group. Decisions still owed (plan §12) are not taken by any phase.
+
+**Landing.** Each phase merges `origin/main` before its final gates and
+whenever another phase has landed; each pull request is reviewed
+independently (a kimix review against the merged tree, as in phase 1) and
+merged on green; the next phase to land merges `main` again first.
+
+### Phase 2: the Agents group
+
+_(the phase writes its task list and as-built notes here)_
+
+### Phase 3: Overview, the roster, Security
+
+_(the phase writes its task list and as-built notes here)_
+
+### Phase 4: accounts
+
+_(the phase writes its task list and as-built notes here)_
+
+### Phase 5: project and conversation settings
+
+_(the phase writes its task list and as-built notes here)_
+
+### Phase 6: Usage and limits, Advanced, the deletions, Alerts
+
+_(the phase writes its task list and as-built notes here)_
 
 ## Verification of a phase
 
