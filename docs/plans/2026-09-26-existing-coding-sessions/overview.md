@@ -3,6 +3,17 @@
 Status: researched implementation plan; no production feature implemented.
 Research date: 2026-09-26. Nessie base: `abd544dbd99ede1d9615fc782e1cc52e1fb552d1`.
 
+## Table of Contents
+
+- [Outcome](#outcome)
+- [Scope from the brief](#keep-from-the-supplied-brief)
+- [Existing code](#existing-code-and-the-required-seam)
+- [Provider decisions](#provider-decisions)
+- [Identity, policy and delivery](#identity-policy-and-delivery)
+- [Home and doorways](#home-and-doorways)
+- [Delivery sequence and gates](#delivery-sequence-and-gates)
+- [Provider findings](provider-findings.md)
+
 ## Outcome
 
 From a Nessie conversation, the machine's pairing owner can ask their agent
