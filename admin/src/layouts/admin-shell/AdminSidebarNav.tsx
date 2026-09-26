@@ -11,6 +11,7 @@ import {
   isAdminNavItemVisible,
 } from './admin-nav-items';
 import type { AdminNavGroup, AdminNavGroupId, AdminNavViewer } from './admin-nav-items';
+import { useTranslation } from 'react-i18next';
 
 // Re-exported so existing call sites (e.g. `admin/test/*-nav-*.test.ts`,
 // which import the nav table straight from this file) keep working without
@@ -39,14 +40,45 @@ const AdminNavSection = ({
   pathname,
   viewer,
 }: AdminNavSectionProps) => {
+  const { t } = useTranslation('shell');
   const sectionId = `admin-nav-${group.id}`;
+  const headings: Record<AdminNavGroupId, string> = {
+    agents: t('adminNav.groups.agents'),
+    user: t('adminNav.groups.user'),
+    team: t('adminNav.groups.team'),
+    organization: t('adminNav.groups.organization'),
+    governance: t('adminNav.groups.governance'),
+    platform: t('adminNav.groups.platform'),
+  };
+  const labels: Record<string, string> = {
+    Agents: t('adminNav.items.agents'),
+    Workflows: t('adminNav.items.workflows'),
+    'Task Sets': t('adminNav.items.taskSets'),
+    Triggers: t('adminNav.items.triggers'),
+    Tools: t('adminNav.items.tools'),
+    Executors: t('adminNav.items.executors'),
+    Apps: t('adminNav.items.apps'),
+    Settings: t('adminNav.items.settings'),
+    Secrets: t('adminNav.items.secrets'),
+    'Connected accounts': t('adminNav.items.connectedAccounts'),
+    'Paired agents': t('adminNav.items.pairedAgents'),
+    Statuses: t('adminNav.items.statuses'),
+    Models: t('adminNav.items.models'),
+    Members: t('adminNav.items.members'),
+    'Credits & billing': t('adminNav.items.creditsBilling'),
+    Health: t('adminNav.items.health'),
+    'Push credentials': t('adminNav.items.pushCredentials'),
+    'Audit log': t('adminNav.items.auditLog'),
+    Policy: t('adminNav.items.policy'),
+    'Operational usage': t('adminNav.items.operationalUsage'),
+  };
 
   return (
     <SidebarMenuSection
       id={sectionId}
       isCollapsed={isCollapsed}
       onToggle={() => onToggle(group.id)}
-      title={group.heading}
+      title={headings[group.id]}
     >
       {group.items
         .filter((item) => isAdminNavItemVisible(item, viewer))
@@ -60,7 +92,7 @@ const AdminNavSection = ({
               to={item.path}
             >
               {item.icon}
-              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              <span className="min-w-0 flex-1 truncate">{labels[item.label]}</span>
               {item.badgeCount ? (
                 <span
                   className="rounded-full bg-[color:var(--danger-soft)] px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--danger-text)]"
@@ -86,6 +118,7 @@ export const AdminSidebarNav = ({
   isSuperAdmin,
   isUoaSession,
 }: AdminSidebarNavProps) => {
+  const { t } = useTranslation('shell');
   const nativeTouchShell = isReactNativeWebView();
   const viewer = useMemo<AdminNavViewer>(
     () => ({ canManageOrganization, isAdmin, isOwner, isSuperAdmin, isUoaSession }),
@@ -112,13 +145,13 @@ export const AdminSidebarNav = ({
             ? {
               ...item,
               badgeCount: failedWorkflowRuns.length,
-              badgeLabel: `${failedWorkflowRuns.length} failed workflow runs`,
+              badgeLabel: t('adminNav.failedWorkflowRuns', { total: failedWorkflowRuns.length }),
               badgeTestId: 'nav-workflows-failed-count',
             }
             : item,
         ),
       })),
-    [failedWorkflowRuns.length, visibleGroups],
+    [failedWorkflowRuns.length, t, visibleGroups],
   );
 
   return (
@@ -154,7 +187,7 @@ export const AdminSidebarNav = ({
                   strokeLinejoin="round"
                 />
               </svg>
-              <span className="min-w-0 flex-1 truncate">Full refresh</span>
+              <span className="min-w-0 flex-1 truncate">{t('adminNav.fullRefresh')}</span>
             </button>
           </div>
         ) : null}

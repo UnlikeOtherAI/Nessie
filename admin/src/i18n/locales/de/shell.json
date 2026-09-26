@@ -30,5 +30,52 @@
     "agentDescription": "Privaten oder gemeinsamen Agenten erstellen",
     "new": "Neu erstellen",
     "tooltipDescription": "Nachricht, Kanal, Projekt oder Agenten erstellen."
+  },
+  "alerts": {
+    "title": "Benachrichtigungen",
+    "markAllRead": "Alle als gelesen markieren",
+    "empty": "Noch keine Benachrichtigungen"
+  },
+  "recentChannels": {
+    "title": "Zuletzt besuchte Kanäle",
+    "empty": "Keine zuletzt besuchten Kanäle"
+  },
+  "history": {
+    "back": "Zurück",
+    "forward": "Vorwärts"
+  },
+  "adminNav": {
+    "groups": {
+      "agents": "Agenten",
+      "user": "Benutzer",
+      "team": "Team",
+      "organization": "Organisation",
+      "governance": "Governance",
+      "platform": "Plattform"
+    },
+    "items": {
+      "agents": "Agenten",
+      "workflows": "Workflows",
+      "taskSets": "Aufgabensätze",
+      "triggers": "Auslöser",
+      "tools": "Werkzeuge",
+      "executors": "Executors",
+      "apps": "Apps",
+      "settings": "Einstellungen",
+      "secrets": "Geheimnisse",
+      "connectedAccounts": "Verbundene Konten",
+      "pairedAgents": "Gekoppelte Agenten",
+      "statuses": "Status",
+      "models": "Modelle",
+      "members": "Mitglieder",
+      "creditsBilling": "Guthaben und Abrechnung",
+      "health": "Systemzustand",
+      "pushCredentials": "Push-Zugangsdaten",
+      "auditLog": "Auditprotokoll",
+      "policy": "Richtlinien",
+      "operationalUsage": "Betriebsnutzung"
+    },
+    "fullRefresh": "Vollständig neu laden",
+    "failedWorkflowRuns": "Fehlgeschlagene Workflow-Ausführungen: {{total}}"
   }
 }

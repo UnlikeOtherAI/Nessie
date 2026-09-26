@@ -30,5 +30,52 @@
     "agentDescription": "Vytvořit soukromého nebo sdíleného agenta",
     "new": "Vytvořit nový",
     "tooltipDescription": "Vytvořit zprávu, kanál, projekt nebo agenta."
+  },
+  "alerts": {
+    "title": "Upozornění",
+    "markAllRead": "Označit vše jako přečtené",
+    "empty": "Zatím žádná upozornění"
+  },
+  "recentChannels": {
+    "title": "Nedávné kanály",
+    "empty": "Žádné nedávné kanály"
+  },
+  "history": {
+    "back": "Zpět",
+    "forward": "Vpřed"
+  },
+  "adminNav": {
+    "groups": {
+      "agents": "Agenti",
+      "user": "Uživatel",
+      "team": "Tým",
+      "organization": "Organizace",
+      "governance": "Řízení",
+      "platform": "Platforma"
+    },
+    "items": {
+      "agents": "Agenti",
+      "workflows": "Pracovní postupy",
+      "taskSets": "Sady úkolů",
+      "triggers": "Spouštěče",
+      "tools": "Nástroje",
+      "executors": "Executors",
+      "apps": "Aplikace",
+      "settings": "Nastavení",
+      "secrets": "Tajné údaje",
+      "connectedAccounts": "Připojené účty",
+      "pairedAgents": "Spárovaní agenti",
+      "statuses": "Stavy",
+      "models": "Modely",
+      "members": "Členové",
+      "creditsBilling": "Kredity a fakturace",
+      "health": "Stav systému",
+      "pushCredentials": "Přístupové údaje pro push oznámení",
+      "auditLog": "Protokol auditu",
+      "policy": "Zásady",
+      "operationalUsage": "Provozní využití"
+    },
+    "fullRefresh": "Úplně obnovit",
+    "failedWorkflowRuns": "Neúspěšné běhy pracovních postupů: {{total}}"
   }
 }

@@ -30,5 +30,52 @@
     "agentDescription": "Crear un agente privado o compartido",
     "new": "Crear nuevo",
     "tooltipDescription": "Crear un mensaje, un canal, un proyecto o un agente."
+  },
+  "alerts": {
+    "title": "Alertas",
+    "markAllRead": "Marcar todo como leído",
+    "empty": "Aún no hay alertas"
+  },
+  "recentChannels": {
+    "title": "Canales recientes",
+    "empty": "No hay canales recientes"
+  },
+  "history": {
+    "back": "Atrás",
+    "forward": "Adelante"
+  },
+  "adminNav": {
+    "groups": {
+      "agents": "Agentes",
+      "user": "Usuario",
+      "team": "Equipo",
+      "organization": "Organización",
+      "governance": "Gobernanza",
+      "platform": "Plataforma"
+    },
+    "items": {
+      "agents": "Agentes",
+      "workflows": "Flujos de trabajo",
+      "taskSets": "Conjuntos de tareas",
+      "triggers": "Disparadores",
+      "tools": "Herramientas",
+      "executors": "Ejecutores",
+      "apps": "Aplicaciones",
+      "settings": "Configuración",
+      "secrets": "Secretos",
+      "connectedAccounts": "Cuentas conectadas",
+      "pairedAgents": "Agentes vinculados",
+      "statuses": "Estados",
+      "models": "Modelos",
+      "members": "Miembros",
+      "creditsBilling": "Créditos y facturación",
+      "health": "Estado del sistema",
+      "pushCredentials": "Credenciales push",
+      "auditLog": "Registro de auditoría",
+      "policy": "Políticas",
+      "operationalUsage": "Uso operativo"
+    },
+    "fullRefresh": "Recargar por completo",
+    "failedWorkflowRuns": "Ejecuciones fallidas de flujos de trabajo: {{total}}"
   }
 }

@@ -14,6 +14,7 @@ import {
   type UserAlertRecord,
 } from '../../facades/alerts/hooks'
 import { useAcceptTeamInvitation } from '../../facades/team/invitations'
+import { useTranslation } from 'react-i18next'
 
 const DROPDOWN_ALERT_COUNT = 8
 
@@ -32,6 +33,7 @@ const Bell = () => (
 // recent alerts. Channel-derived alert frames invalidate immediately while the
 // private categories use the shared short refresh interval.
 export const AlertsBell = () => {
+  const { t } = useTranslation('shell')
   const { focusModeEnabled } = useFocusMode()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -67,11 +69,11 @@ export const AlertsBell = () => {
       <button
         aria-expanded={open}
         aria-haspopup="menu"
-        aria-label="Alerts"
+        aria-label={t('alerts.title')}
         className="admin-topbar-btn relative"
         onClick={() => setOpen((value) => !value)}
         ref={triggerRef}
-        title="Alerts"
+        title={t('alerts.title')}
         type="button"
       >
         <Bell />
@@ -84,7 +86,7 @@ export const AlertsBell = () => {
       <Popover
         anchorRef={triggerRef}
         className="admin-topbar-menu max-h-96 overflow-y-auto"
-        label="Alerts"
+        label={t('alerts.title')}
         onClose={() => setOpen(false)}
         open={open}
         placement="bottom-end"
@@ -92,18 +94,18 @@ export const AlertsBell = () => {
         style={{ width: 320 }}
       >
         <div className="flex items-center justify-between px-2 py-1">
-          <SectionLabel as="span">Alerts</SectionLabel>
+          <SectionLabel as="span">{t('alerts.title')}</SectionLabel>
           <button
             className="text-xs text-[color:var(--accent)] disabled:cursor-default disabled:text-[color:var(--tx3)]"
             disabled={unreadCount === 0 || markRead.isPending}
             onClick={() => markRead.mutate({ all: true })}
             type="button"
           >
-            Mark all read
+            {t('alerts.markAllRead')}
           </button>
         </div>
         {alerts.length === 0 ? (
-          <p className="px-3 py-2 text-xs text-[color:var(--tx3)]">No alerts yet</p>
+          <p className="px-3 py-2 text-xs text-[color:var(--tx3)]">{t('alerts.empty')}</p>
         ) : (
           alerts.map((alert) => {
             const invite = alert.metadata

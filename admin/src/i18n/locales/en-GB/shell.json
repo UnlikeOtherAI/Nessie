@@ -30,5 +30,52 @@
     "agentDescription": "Create a private or shared agent",
     "new": "Create new",
     "tooltipDescription": "Start a message, channel, project, or agent."
+  },
+  "alerts": {
+    "title": "Alerts",
+    "markAllRead": "Mark all read",
+    "empty": "No alerts yet"
+  },
+  "recentChannels": {
+    "title": "Recent channels",
+    "empty": "No recent channels"
+  },
+  "history": {
+    "back": "Back",
+    "forward": "Forward"
+  },
+  "adminNav": {
+    "groups": {
+      "agents": "Agents",
+      "user": "User",
+      "team": "Team",
+      "organization": "Organisation",
+      "governance": "Governance",
+      "platform": "Platform"
+    },
+    "items": {
+      "agents": "Agents",
+      "workflows": "Workflows",
+      "taskSets": "Task Sets",
+      "triggers": "Triggers",
+      "tools": "Tools",
+      "executors": "Executors",
+      "apps": "Apps",
+      "settings": "Settings",
+      "secrets": "Secrets",
+      "connectedAccounts": "Connected accounts",
+      "pairedAgents": "Paired agents",
+      "statuses": "Statuses",
+      "models": "Models",
+      "members": "Members",
+      "creditsBilling": "Credits & billing",
+      "health": "Health",
+      "pushCredentials": "Push credentials",
+      "auditLog": "Audit log",
+      "policy": "Policy",
+      "operationalUsage": "Operational usage"
+    },
+    "fullRefresh": "Full refresh",
+    "failedWorkflowRuns": "Failed workflow runs: {{total}}"
   }
 }

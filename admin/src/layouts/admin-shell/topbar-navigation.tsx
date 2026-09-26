@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useChannels } from '../../facades/channels/hooks'
 import { recordRecentChannel, useRecentChannels } from './useRecentChannels'
 import { useTransientMenu } from './TransientMenuContext'
+import { useTranslation } from 'react-i18next'
 
 export const useRecordRecentChannelVisits = () => {
   const location = useLocation()
@@ -25,6 +26,7 @@ type RecentChannelsControlProps = {
 export const RecentChannelsControl = ({
   buttonClassName = 'admin-topbar-btn',
 }: RecentChannelsControlProps): React.JSX.Element => {
+  const { t } = useTranslation('shell')
   const { close, isOpen: open, toggle } = useTransientMenu()
   const ref = useRef<HTMLDivElement>(null)
 
@@ -40,10 +42,10 @@ export const RecentChannelsControl = ({
   return (
     <div className="relative" ref={ref}>
       <button
-        aria-label="Recent channels"
+        aria-label={t('recentChannels.title')}
         className={buttonClassName}
         onClick={toggle}
-        title="Recent channels"
+        title={t('recentChannels.title')}
         type="button"
       >
         <svg fill="none" height="22" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" width="22">
@@ -69,13 +71,14 @@ export const RecentChannelsMenu = ({
   onSelect,
   style,
 }: RecentChannelsMenuProps) => {
+  const { t } = useTranslation('shell')
   const navigate = useNavigate()
   const recents = useRecentChannels()
 
   return (
     <div className={className} style={style}>
       {recents.length === 0 ? (
-        empty ?? <p className="px-3 py-2 text-xs text-[color:var(--tx3)]">No recent channels</p>
+        empty ?? <p className="px-3 py-2 text-xs text-[color:var(--tx3)]">{t('recentChannels.empty')}</p>
       ) : (
         recents.map((channel) => (
           <button
