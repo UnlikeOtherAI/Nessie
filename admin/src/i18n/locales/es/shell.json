@@ -131,5 +131,28 @@
     "loadError": "No se pudieron cargar los tableros.",
     "retry": "Reintentar",
     "emptyBoards": "Todavía no hay tableros."
+  },
+  "window": {
+    "controls": "Controles de la ventana",
+    "closeWindow": "Cerrar ventana",
+    "close": "Cerrar",
+    "minimiseWindow": "Minimizar ventana",
+    "minimise": "Minimizar",
+    "restoreWindow": "Restaurar ventana",
+    "maximiseWindow": "Maximizar ventana",
+    "restoreLayouts": "Restaurar — pasa el cursor para ver las disposiciones",
+    "maximiseLayouts": "Maximizar — pasa el cursor para ver las disposiciones",
+    "layouts": "Disposiciones de ventanas",
+    "moveResize": "Mover y cambiar tamaño",
+    "fillArrange": "Rellenar y organizar",
+    "bottomHalf": "Mitad inferior",
+    "fillScreen": "Llenar pantalla",
+    "leftHalf": "Mitad izquierda",
+    "leftThird": "Tercio izquierdo",
+    "middleThird": "Tercio central",
+    "rightHalf": "Mitad derecha",
+    "rightThird": "Tercio derecho",
+    "topHalf": "Mitad superior",
+    "fullScreen": "Pantalla completa"
   }
 }

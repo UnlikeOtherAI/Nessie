@@ -23,30 +23,29 @@ export type WindowLayoutBounds = {
 }
 
 export type WindowLayoutOption = {
-  label: string
   layout: WindowLayout
 }
 
 export const windowLayoutSections: ReadonlyArray<{
-  label: string
+  id: 'moveResize' | 'fillArrange'
   options: ReadonlyArray<WindowLayoutOption>
 }> = [
   {
-    label: 'Move & resize',
+    id: 'moveResize',
     options: [
-      { label: 'Left half', layout: 'left-half' },
-      { label: 'Right half', layout: 'right-half' },
-      { label: 'Top half', layout: 'top-half' },
-      { label: 'Bottom half', layout: 'bottom-half' },
+      { layout: 'left-half' },
+      { layout: 'right-half' },
+      { layout: 'top-half' },
+      { layout: 'bottom-half' },
     ],
   },
   {
-    label: 'Fill & arrange',
+    id: 'fillArrange',
     options: [
-      { label: 'Fill screen', layout: 'fill' },
-      { label: 'Left third', layout: 'left-third' },
-      { label: 'Middle third', layout: 'middle-third' },
-      { label: 'Right third', layout: 'right-third' },
+      { layout: 'fill' },
+      { layout: 'left-third' },
+      { layout: 'middle-third' },
+      { layout: 'right-third' },
     ],
   },
 ]

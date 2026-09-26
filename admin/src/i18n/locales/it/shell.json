@@ -131,5 +131,28 @@
     "loadError": "Impossibile caricare le bacheche.",
     "retry": "Riprova",
     "emptyBoards": "Non ci sono ancora bacheche."
+  },
+  "window": {
+    "controls": "Controlli finestra",
+    "closeWindow": "Chiudi finestra",
+    "close": "Chiudi",
+    "minimiseWindow": "Riduci a icona la finestra",
+    "minimise": "Riduci a icona",
+    "restoreWindow": "Ripristina finestra",
+    "maximiseWindow": "Ingrandisci finestra",
+    "restoreLayouts": "Ripristina — passa sopra per i layout",
+    "maximiseLayouts": "Ingrandisci — passa sopra per i layout",
+    "layouts": "Layout delle finestre",
+    "moveResize": "Sposta e ridimensiona",
+    "fillArrange": "Riempi e disponi",
+    "bottomHalf": "Metà inferiore",
+    "fillScreen": "Riempi schermo",
+    "leftHalf": "Metà sinistra",
+    "leftThird": "Terzo sinistro",
+    "middleThird": "Terzo centrale",
+    "rightHalf": "Metà destra",
+    "rightThird": "Terzo destro",
+    "topHalf": "Metà superiore",
+    "fullScreen": "Schermo intero"
   }
 }

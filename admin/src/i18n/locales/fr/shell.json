@@ -131,5 +131,28 @@
     "loadError": "Impossible de charger les tableaux.",
     "retry": "Réessayer",
     "emptyBoards": "Il n’y a pas encore de tableaux."
+  },
+  "window": {
+    "controls": "Commandes de la fenêtre",
+    "closeWindow": "Fermer la fenêtre",
+    "close": "Fermer",
+    "minimiseWindow": "Réduire la fenêtre",
+    "minimise": "Réduire",
+    "restoreWindow": "Restaurer la fenêtre",
+    "maximiseWindow": "Agrandir la fenêtre",
+    "restoreLayouts": "Restaurer — survolez pour voir les dispositions",
+    "maximiseLayouts": "Agrandir — survolez pour voir les dispositions",
+    "layouts": "Dispositions de fenêtre",
+    "moveResize": "Déplacer et redimensionner",
+    "fillArrange": "Remplir et organiser",
+    "bottomHalf": "Moitié inférieure",
+    "fillScreen": "Remplir l’écran",
+    "leftHalf": "Moitié gauche",
+    "leftThird": "Tiers gauche",
+    "middleThird": "Tiers central",
+    "rightHalf": "Moitié droite",
+    "rightThird": "Tiers droit",
+    "topHalf": "Moitié supérieure",
+    "fullScreen": "Plein écran"
   }
 }

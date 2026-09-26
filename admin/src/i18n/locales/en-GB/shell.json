@@ -131,5 +131,28 @@
     "loadError": "Could not load boards.",
     "retry": "Retry",
     "emptyBoards": "There are no boards yet."
+  },
+  "window": {
+    "controls": "Window controls",
+    "closeWindow": "Close window",
+    "close": "Close",
+    "minimiseWindow": "Minimise window",
+    "minimise": "Minimise",
+    "restoreWindow": "Restore window",
+    "maximiseWindow": "Maximise window",
+    "restoreLayouts": "Restore — hover for layouts",
+    "maximiseLayouts": "Maximise — hover for layouts",
+    "layouts": "Window layouts",
+    "moveResize": "Move and resize",
+    "fillArrange": "Fill and arrange",
+    "bottomHalf": "Bottom half",
+    "fillScreen": "Fill screen",
+    "leftHalf": "Left half",
+    "leftThird": "Left third",
+    "middleThird": "Middle third",
+    "rightHalf": "Right half",
+    "rightThird": "Right third",
+    "topHalf": "Top half",
+    "fullScreen": "Full screen"
   }
 }

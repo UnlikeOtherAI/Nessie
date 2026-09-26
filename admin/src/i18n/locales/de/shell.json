@@ -131,5 +131,28 @@
     "loadError": "Boards konnten nicht geladen werden.",
     "retry": "Erneut versuchen",
     "emptyBoards": "Es gibt noch keine Boards."
+  },
+  "window": {
+    "controls": "Fenstersteuerung",
+    "closeWindow": "Fenster schließen",
+    "close": "Schließen",
+    "minimiseWindow": "Fenster minimieren",
+    "minimise": "Minimieren",
+    "restoreWindow": "Fenster wiederherstellen",
+    "maximiseWindow": "Fenster maximieren",
+    "restoreLayouts": "Wiederherstellen — für Layouts darüberfahren",
+    "maximiseLayouts": "Maximieren — für Layouts darüberfahren",
+    "layouts": "Fensterlayouts",
+    "moveResize": "Verschieben und Größe ändern",
+    "fillArrange": "Ausfüllen und anordnen",
+    "bottomHalf": "Untere Hälfte",
+    "fillScreen": "Bildschirm ausfüllen",
+    "leftHalf": "Linke Hälfte",
+    "leftThird": "Linkes Drittel",
+    "middleThird": "Mittleres Drittel",
+    "rightHalf": "Rechte Hälfte",
+    "rightThird": "Rechtes Drittel",
+    "topHalf": "Obere Hälfte",
+    "fullScreen": "Vollbild"
   }
 }

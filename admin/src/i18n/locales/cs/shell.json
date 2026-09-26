@@ -131,5 +131,28 @@
     "loadError": "Nástěnky se nepodařilo načíst.",
     "retry": "Zkusit znovu",
     "emptyBoards": "Zatím tu nejsou žádné nástěnky."
+  },
+  "window": {
+    "controls": "Ovládání okna",
+    "closeWindow": "Zavřít okno",
+    "close": "Zavřít",
+    "minimiseWindow": "Minimalizovat okno",
+    "minimise": "Minimalizovat",
+    "restoreWindow": "Obnovit okno",
+    "maximiseWindow": "Maximalizovat okno",
+    "restoreLayouts": "Obnovit — najetím zobrazíte rozložení",
+    "maximiseLayouts": "Maximalizovat — najetím zobrazíte rozložení",
+    "layouts": "Rozložení oken",
+    "moveResize": "Přesunout a změnit velikost",
+    "fillArrange": "Vyplnit a uspořádat",
+    "bottomHalf": "Dolní polovina",
+    "fillScreen": "Vyplnit obrazovku",
+    "leftHalf": "Levá polovina",
+    "leftThird": "Levá třetina",
+    "middleThird": "Prostřední třetina",
+    "rightHalf": "Pravá polovina",
+    "rightThird": "Pravá třetina",
+    "topHalf": "Horní polovina",
+    "fullScreen": "Celá obrazovka"
   }
 }
