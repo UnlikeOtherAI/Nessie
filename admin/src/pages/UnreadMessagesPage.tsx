@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 import { EmptyState } from '../components/shared/EmptyState'
 import { PageBody } from '../components/shared/PageBody'
@@ -6,16 +7,8 @@ import { QueryState } from '../components/shared/QueryState'
 import { Row, RowList } from '../components/shared/RowList'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { Pill } from '../components/primitives/Pill'
-import { formatRelativeTime } from '../components/features/workflows/presentation'
+import { formatRelativeTime } from '../i18n/formatters'
 import { useUnreadDirectMessages } from '../facades/threads/unread-direct-messages'
-
-const previewFor = (item: {
-  latestMessage: { content: string; deleted?: true; restricted?: true }
-}): string => {
-  if (item.latestMessage.restricted) return 'A message you cannot read'
-  if (item.latestMessage.deleted) return 'Message deleted'
-  return item.latestMessage.content || 'New message'
-}
 
 const MessageIcon = () => (
   <span
@@ -30,26 +23,34 @@ const MessageIcon = () => (
 )
 
 export const UnreadMessagesPage = () => {
+  const { t, i18n } = useTranslation('inbox')
   const navigate = useNavigate()
   const unreadMessages = useUnreadDirectMessages()
   const items = unreadMessages.data ?? []
+  const previewFor = (item: {
+    latestMessage: { content: string; deleted?: true; restricted?: true }
+  }): string => {
+    if (item.latestMessage.restricted) return t('unread.restricted')
+    if (item.latestMessage.deleted) return t('unread.deleted')
+    return item.latestMessage.content || t('unread.newMessage')
+  }
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <ScreenHeader title="Unread messages" />
+      <ScreenHeader title={t('unread.title')} />
       <PageBody>
         <QueryState
-          errorLabel="Unread messages could not be loaded."
-          loadingLabel="Loading unread messages…"
+          errorLabel={t('unread.loadError')}
+          loadingLabel={t('unread.loading')}
           query={unreadMessages}
         >
           {() => (
             items.length === 0 ? (
-              <EmptyState title="You are all caught up">
-                Nothing here needs your attention right now.
+              <EmptyState title={t('unread.allCaughtUp')}>
+                {t('unread.emptyDescription')}
               </EmptyState>
             ) : (
-              <RowList label="Unread messages">
+              <RowList label={t('unread.title')}>
                 {items.map((item) => (
                   <Row
                     key={item.channelId}
@@ -60,7 +61,10 @@ export const UnreadMessagesPage = () => {
                     trailing={
                       <span className="flex flex-col items-end gap-1">
                         <span className="text-xs text-[color:var(--tx3)]">
-                          {formatRelativeTime(item.latestMessage.createdAt) ?? 'now'}
+                          {formatRelativeTime(
+                            item.latestMessage.createdAt,
+                            i18n.resolvedLanguage ?? i18n.language,
+                          )}
                         </span>
                         <Pill height="control" radius="capsule" size="sm" tone="accent">
                           {item.unreadCount}

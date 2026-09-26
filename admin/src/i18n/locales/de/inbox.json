@@ -1,0 +1,60 @@
+{
+  "alerts": {
+    "title": "Benachrichtigungen",
+    "showAll": "Alle anzeigen",
+    "unreadOnly": "Nur ungelesene",
+    "unreadOnlyCount": "Nur ungelesene ({{count}})",
+    "markAllRead": "Alle als gelesen markieren",
+    "noUnread": "Keine ungelesenen Benachrichtigungen",
+    "empty": "Noch keine Benachrichtigungen",
+    "loadError": "Benachrichtigungen konnten nicht geladen werden.",
+    "loading": "Benachrichtigungen werden geladen…"
+  },
+  "unread": {
+    "title": "Ungelesene Nachrichten",
+    "restricted": "Eine Nachricht, die du nicht lesen kannst",
+    "deleted": "Nachricht gelöscht",
+    "newMessage": "Neue Nachricht",
+    "loadError": "Ungelesene Nachrichten konnten nicht geladen werden.",
+    "loading": "Ungelesene Nachrichten werden geladen…",
+    "allCaughtUp": "Du bist auf dem neuesten Stand",
+    "emptyDescription": "Im Moment ist hier nichts, das deine Aufmerksamkeit braucht."
+  },
+  "threads": {
+    "title": "Threads",
+    "unreadOnly": "Nur ungelesene",
+    "unreadOnlyDescription": "Nur Threads mit ungelesenen Antworten anzeigen",
+    "loading": "Threads werden geladen…",
+    "loadError": "Threads konnten nicht geladen werden. Versuche es erneut.",
+    "noUnread": "Keine ungelesenen Threads",
+    "empty": "Noch keine Thread-Aktivität",
+    "loadMore": "Weitere Threads laden"
+  },
+  "alertRow": {
+    "someone": "Jemand",
+    "teamInvitation": "Du wurdest in ein Team eingeladen",
+    "invitedBy": "{{name}} hat dich zu {{target}} eingeladen",
+    "invitedTo": "Du bist zu {{target}} eingeladen",
+    "triggerStopped": "Eine geplante Aufgabe wird nicht mehr ausgeführt",
+    "ticketTrigger": "Ein Ticket-Auslöser",
+    "machineAccess": "{{trigger}} benötigt Zugriff auf einen Computer: Richte ihn im Bereich „Computerzugriff“ oder im Agent Designer ein",
+    "automaticAccessTeam": "Der automatische Zugriff auf {{team}} muss erneut autorisiert werden",
+    "automaticAccess": "Der automatische Zugriff muss erneut autorisiert werden",
+    "boardSourceStopped": "Eine Board-Quelle wird nicht mehr synchronisiert",
+    "ollamaAttention": "Deine lokale Ollama-Verbindung braucht Aufmerksamkeit",
+    "watchedTicketChanged": "Ein von dir beobachtetes Ticket wurde geändert",
+    "workflowFailed": "Ein Workflow-Lauf ist fehlgeschlagen",
+    "taskSetAttention": "Ein Aufgabensatz braucht Aufmerksamkeit",
+    "approvalBy": "{{actor}} benötigt deine Freigabe",
+    "agentApproval": "Ein Agent benötigt deine Freigabe",
+    "taskAssigned": "{{actor}} hat dir Arbeit zugewiesen",
+    "knowledgePublished": "{{actor}} hat Wissen für dich veröffentlicht",
+    "documentShared": "{{actor}} hat ein Dokument mit dir geteilt",
+    "missedCallIn": "Verpasster Anruf von {{actor}} in {{channel}}",
+    "missedCall": "Verpasster Anruf von {{actor}}",
+    "mentionedIn": "{{actor}} hat dich in {{channel}} erwähnt",
+    "mentioned": "{{actor}} hat dich erwähnt",
+    "accepting": "Wird angenommen…",
+    "accept": "Annehmen"
+  }
+}

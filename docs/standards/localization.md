@@ -51,6 +51,8 @@ imports the shared `i18n` singleton and calls
 `{{name}}` form; plurals use i18next's locale-aware suffixes such as `_one`,
 `_other`, `_few`, and `_many`, with the `count` option. Keep interpolation
 variables consistent across translations.
+Format dates and relative times with the active locale through `Intl`;
+`admin/src/i18n/formatters.ts` provides the shared short relative-time form.
 
 All user-visible application text belongs in catalogs: navigation, forms,
 validation, empty/loading/error states, dialogs, notifications and accessible

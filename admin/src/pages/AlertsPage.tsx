@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { AlertRow } from '../components/shared/AlertRow'
 import { PageBody } from '../components/shared/PageBody'
@@ -18,6 +19,7 @@ import { alertKeys } from '../facades/alerts/keys'
 import { usePagedList } from '../facades/pagination/usePagedList'
 
 export const AlertsPage = () => {
+  const { t } = useTranslation('inbox')
   const navigate = useNavigate()
   const [unreadOnly, setUnreadOnly] = useState(false)
   const summary = useAttentionSummary()
@@ -38,7 +40,11 @@ export const AlertsPage = () => {
   const headerActions: PageHeaderAction[] = [
     {
       id: 'unread-only',
-      label: unreadOnly ? 'Show all' : `Unread only${unreadCount > 0 ? ` (${unreadCount})` : ''}`,
+      label: unreadOnly
+        ? t('alerts.showAll')
+        : unreadCount > 0
+          ? t('alerts.unreadOnlyCount', { count: unreadCount })
+          : t('alerts.unreadOnly'),
       onSelect: () => setUnreadOnly((value) => !value),
       priority: 80,
       selected: unreadOnly,
@@ -46,7 +52,7 @@ export const AlertsPage = () => {
     {
       disabled: unreadCount === 0 || markRead.isPending,
       id: 'mark-all-read',
-      label: 'Mark all read',
+      label: t('alerts.markAllRead'),
       onSelect: () => markRead.mutate({ all: true }),
       priority: 60,
     },
@@ -64,19 +70,19 @@ export const AlertsPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <ScreenHeader actions={headerActions} title="Alerts" />
+      <ScreenHeader actions={headerActions} title={t('alerts.title')} />
 
       <PageBody>
         <QueryState
-          emptyLabel={unreadOnly ? 'No unread alerts' : 'No alerts yet'}
-          errorLabel="Alerts could not be loaded."
+          emptyLabel={unreadOnly ? t('alerts.noUnread') : t('alerts.empty')}
+          errorLabel={t('alerts.loadError')}
           isEmpty={rows.items.length === 0}
-          loadingLabel="Loading alerts…"
+          loadingLabel={t('alerts.loading')}
           query={rows.query}
         >
           {() => (
             <>
-              <RowList label="Alerts">
+              <RowList label={t('alerts.title')}>
                 {rows.items.map((alert) => {
                   const invite = alert.metadata
                   const accepting = acceptInvitation.isPending

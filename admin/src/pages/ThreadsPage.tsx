@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels } from '../facades/channels/hooks'
@@ -11,6 +12,7 @@ import { ThreadInboxCard } from './channels/ThreadInboxCard'
 import { useThreadInboxUnreadOnly } from './thread-inbox-filter'
 
 export const ThreadsPage = () => {
+  const { t } = useTranslation('inbox')
   const navigate = useNavigate()
   const { me, token } = useAuthSession()
   const { toggleUnreadOnly, unreadOnly } = useThreadInboxUnreadOnly()
@@ -23,10 +25,10 @@ export const ThreadsPage = () => {
     checked: unreadOnly,
     id: 'unread-only',
     kind: 'toggle',
-    label: 'Unread only',
+    label: t('threads.unreadOnly'),
     onChange: toggleUnreadOnly,
     priority: 80,
-    title: 'Show only threads with unread replies',
+    title: t('threads.unreadOnlyDescription'),
   }]
 
   // The inbox is no conversation of its own: a research card here opens its
@@ -34,13 +36,13 @@ export const ThreadsPage = () => {
   return (
     <ResearchBriefHost origin={null}>
       <section className="flex h-full min-h-0 flex-col">
-        <ScreenHeader actions={headerActions} title="Threads" />
+        <ScreenHeader actions={headerActions} title={t('threads.title')} />
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {activity.isLoading ? <div className="py-8 text-center text-[color:var(--tx3)]">Loading threads…</div> : null}
-          {activity.isError ? <div className="py-8 text-center text-[color:var(--danger-text)]">Threads could not be loaded. Try again.</div> : null}
+          {activity.isLoading ? <div className="py-8 text-center text-[color:var(--tx3)]">{t('threads.loading')}</div> : null}
+          {activity.isError ? <div className="py-8 text-center text-[color:var(--danger-text)]">{t('threads.loadError')}</div> : null}
           {!activity.isLoading && !activity.isError && items.length === 0 ? (
             <div className="py-8 text-center text-[color:var(--tx3)]">
-              {unreadOnly ? 'No unread threads' : 'No thread activity yet'}
+              {unreadOnly ? t('threads.noUnread') : t('threads.empty')}
             </div>
           ) : null}
           <div className="grid gap-5">
@@ -70,7 +72,7 @@ export const ThreadsPage = () => {
                 onClick={() => void activity.fetchNextPage()}
                 type="button"
               >
-                {activity.isFetchingNextPage ? 'Loading threads…' : 'Load more threads'}
+                {activity.isFetchingNextPage ? t('threads.loading') : t('threads.loadMore')}
               </button>
             </div>
           ) : null}

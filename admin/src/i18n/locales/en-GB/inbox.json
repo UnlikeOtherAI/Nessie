@@ -1,0 +1,60 @@
+{
+  "alerts": {
+    "title": "Alerts",
+    "showAll": "Show all",
+    "unreadOnly": "Unread only",
+    "unreadOnlyCount": "Unread only ({{count}})",
+    "markAllRead": "Mark all read",
+    "noUnread": "No unread alerts",
+    "empty": "No alerts yet",
+    "loadError": "Alerts could not be loaded.",
+    "loading": "Loading alerts…"
+  },
+  "unread": {
+    "title": "Unread messages",
+    "restricted": "A message you cannot read",
+    "deleted": "Message deleted",
+    "newMessage": "New message",
+    "loadError": "Unread messages could not be loaded.",
+    "loading": "Loading unread messages…",
+    "allCaughtUp": "You are all caught up",
+    "emptyDescription": "Nothing here needs your attention right now."
+  },
+  "threads": {
+    "title": "Threads",
+    "unreadOnly": "Unread only",
+    "unreadOnlyDescription": "Show only threads with unread replies",
+    "loading": "Loading threads…",
+    "loadError": "Threads could not be loaded. Try again.",
+    "noUnread": "No unread threads",
+    "empty": "No thread activity yet",
+    "loadMore": "Load more threads"
+  },
+  "alertRow": {
+    "someone": "Someone",
+    "teamInvitation": "You’ve been invited to a team",
+    "invitedBy": "{{name}} invited you to {{target}}",
+    "invitedTo": "You’re invited to {{target}}",
+    "triggerStopped": "A scheduled task stopped running",
+    "ticketTrigger": "A ticket trigger",
+    "machineAccess": "{{trigger}} needs machine access: set it up from its Machine access section, or with the Agent Designer",
+    "automaticAccessTeam": "Automatic access to {{team}} needs reauthorization",
+    "automaticAccess": "Automatic access needs reauthorization",
+    "boardSourceStopped": "A board source stopped syncing",
+    "ollamaAttention": "Your local Ollama connection needs attention",
+    "watchedTicketChanged": "A ticket you watch changed",
+    "workflowFailed": "A workflow run failed",
+    "taskSetAttention": "A task set needs attention",
+    "approvalBy": "{{actor}} needs your approval",
+    "agentApproval": "An agent needs your approval",
+    "taskAssigned": "{{actor}} assigned work to you",
+    "knowledgePublished": "{{actor}} published knowledge for you",
+    "documentShared": "{{actor}} shared a document with you",
+    "missedCallIn": "Missed call from {{actor}} in {{channel}}",
+    "missedCall": "Missed call from {{actor}}",
+    "mentionedIn": "{{actor}} mentioned you in {{channel}}",
+    "mentioned": "{{actor}} mentioned you",
+    "accepting": "Accepting…",
+    "accept": "Accept"
+  }
+}

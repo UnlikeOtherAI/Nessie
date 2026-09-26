@@ -1,0 +1,60 @@
+{
+  "alerts": {
+    "title": "Upozornění",
+    "showAll": "Zobrazit vše",
+    "unreadOnly": "Pouze nepřečtené",
+    "unreadOnlyCount": "Pouze nepřečtené ({{count}})",
+    "markAllRead": "Označit vše jako přečtené",
+    "noUnread": "Žádná nepřečtená upozornění",
+    "empty": "Zatím žádná upozornění",
+    "loadError": "Upozornění se nepodařilo načíst.",
+    "loading": "Načítání upozornění…"
+  },
+  "unread": {
+    "title": "Nepřečtené zprávy",
+    "restricted": "Zpráva, kterou nemůžete číst",
+    "deleted": "Zpráva byla smazána",
+    "newMessage": "Nová zpráva",
+    "loadError": "Nepřečtené zprávy se nepodařilo načíst.",
+    "loading": "Načítání nepřečtených zpráv…",
+    "allCaughtUp": "Máte vše vyřízené",
+    "emptyDescription": "Nic tu teď nevyžaduje vaši pozornost."
+  },
+  "threads": {
+    "title": "Vlákna",
+    "unreadOnly": "Pouze nepřečtené",
+    "unreadOnlyDescription": "Zobrazit jen vlákna s nepřečtenými odpověďmi",
+    "loading": "Načítání vláken…",
+    "loadError": "Vlákna se nepodařilo načíst. Zkuste to znovu.",
+    "noUnread": "Žádná nepřečtená vlákna",
+    "empty": "Zatím žádná aktivita ve vláknech",
+    "loadMore": "Načíst další vlákna"
+  },
+  "alertRow": {
+    "someone": "Někdo",
+    "teamInvitation": "Pozvánka do týmu",
+    "invitedBy": "Pozvánka do {{target}} od {{name}}",
+    "invitedTo": "Pozvánka do {{target}}",
+    "triggerStopped": "Naplánovaný úkol se přestal spouštět",
+    "ticketTrigger": "Spouštěč úkolů",
+    "machineAccess": "{{trigger}} potřebuje přístup k počítači: nastavte ho v části Přístup k počítači nebo v Návrháři agentů",
+    "automaticAccessTeam": "Automatický přístup pro tým {{team}} vyžaduje nové oprávnění",
+    "automaticAccess": "Automatický přístup vyžaduje nové oprávnění",
+    "boardSourceStopped": "Zdroj nástěnky se přestal synchronizovat",
+    "ollamaAttention": "Vaše místní připojení k Ollamě vyžaduje pozornost",
+    "watchedTicketChanged": "Úkol, který sledujete, se změnil",
+    "workflowFailed": "Běh pracovního postupu selhal",
+    "taskSetAttention": "Sada úkolů vyžaduje pozornost",
+    "approvalBy": "{{actor}} potřebuje vaše schválení",
+    "agentApproval": "Agent potřebuje vaše schválení",
+    "taskAssigned": "Máte přidělenou práci od {{actor}}",
+    "knowledgePublished": "Pro vás byly zveřejněny znalosti od {{actor}}",
+    "documentShared": "Máte sdílený dokument od {{actor}}",
+    "missedCallIn": "Zmeškaný hovor od {{actor}} v {{channel}}",
+    "missedCall": "Zmeškaný hovor od {{actor}}",
+    "mentionedIn": "Máte zmínku od {{actor}} v {{channel}}",
+    "mentioned": "Máte zmínku od {{actor}}",
+    "accepting": "Přijímání…",
+    "accept": "Přijmout"
+  }
+}

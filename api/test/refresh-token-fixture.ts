@@ -3,7 +3,6 @@ import type { UoaSessionIdentity } from '@nessie/schemas'
 
 import {
   consumeRefreshToken,
-  hashRefreshToken,
   issueRefreshToken,
 } from '../src/services/refresh-token.js'
 
@@ -353,6 +352,7 @@ export type RefreshCallback = NonNullable<
 >
 
 export const defaultUoaRefresh = (now: Date): RefreshCallback => async (input) => ({
+  accessToken: 'uoa-access-token',
   identity: input.teamSwitch
     ? { ...input.expectedIdentity, ...input.teamSwitch }
     : input.expectedIdentity,

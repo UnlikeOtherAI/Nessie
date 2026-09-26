@@ -1,0 +1,60 @@
+{
+  "alerts": {
+    "title": "Avvisi",
+    "showAll": "Mostra tutti",
+    "unreadOnly": "Solo non letti",
+    "unreadOnlyCount": "Solo non letti ({{count}})",
+    "markAllRead": "Segna tutti come letti",
+    "noUnread": "Nessun avviso non letto",
+    "empty": "Nessun avviso per ora",
+    "loadError": "Impossibile caricare gli avvisi.",
+    "loading": "Caricamento avvisi…"
+  },
+  "unread": {
+    "title": "Messaggi non letti",
+    "restricted": "Un messaggio che non puoi leggere",
+    "deleted": "Messaggio eliminato",
+    "newMessage": "Nuovo messaggio",
+    "loadError": "Impossibile caricare i messaggi non letti.",
+    "loading": "Caricamento messaggi non letti…",
+    "allCaughtUp": "Sei in pari",
+    "emptyDescription": "Al momento non c’è nulla che richieda la tua attenzione."
+  },
+  "threads": {
+    "title": "Discussioni",
+    "unreadOnly": "Solo non lette",
+    "unreadOnlyDescription": "Mostra solo le discussioni con risposte non lette",
+    "loading": "Caricamento discussioni…",
+    "loadError": "Impossibile caricare le discussioni. Riprova.",
+    "noUnread": "Nessuna discussione non letta",
+    "empty": "Nessuna attività nelle discussioni",
+    "loadMore": "Carica altre discussioni"
+  },
+  "alertRow": {
+    "someone": "Qualcuno",
+    "teamInvitation": "Hai ricevuto un invito a un team",
+    "invitedBy": "{{name}} ti ha invitato a {{target}}",
+    "invitedTo": "Sei stato invitato a {{target}}",
+    "triggerStopped": "Un’attività pianificata ha smesso di essere eseguita",
+    "ticketTrigger": "Un trigger dei ticket",
+    "machineAccess": "{{trigger}} richiede l’accesso a un computer: configuralo nella sezione Accesso al computer o nel Designer degli agenti",
+    "automaticAccessTeam": "L’accesso automatico a {{team}} richiede una nuova autorizzazione",
+    "automaticAccess": "L’accesso automatico richiede una nuova autorizzazione",
+    "boardSourceStopped": "Una fonte della bacheca ha smesso di sincronizzarsi",
+    "ollamaAttention": "La tua connessione Ollama locale richiede attenzione",
+    "watchedTicketChanged": "Un ticket che segui è cambiato",
+    "workflowFailed": "Un’esecuzione del flusso di lavoro non è riuscita",
+    "taskSetAttention": "Un insieme di attività richiede attenzione",
+    "approvalBy": "{{actor}} richiede la tua approvazione",
+    "agentApproval": "Un agente richiede la tua approvazione",
+    "taskAssigned": "{{actor}} ti ha assegnato del lavoro",
+    "knowledgePublished": "{{actor}} ha pubblicato contenuti per te",
+    "documentShared": "{{actor}} ha condiviso un documento con te",
+    "missedCallIn": "Chiamata persa da {{actor}} in {{channel}}",
+    "missedCall": "Chiamata persa da {{actor}}",
+    "mentionedIn": "{{actor}} ti ha menzionato in {{channel}}",
+    "mentioned": "{{actor}} ti ha menzionato",
+    "accepting": "Accettazione…",
+    "accept": "Accetta"
+  }
+}

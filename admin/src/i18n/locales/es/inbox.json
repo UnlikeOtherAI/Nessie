@@ -1,0 +1,60 @@
+{
+  "alerts": {
+    "title": "Alertas",
+    "showAll": "Mostrar todo",
+    "unreadOnly": "Solo no leídas",
+    "unreadOnlyCount": "Solo no leídas ({{count}})",
+    "markAllRead": "Marcar todo como leído",
+    "noUnread": "No hay alertas sin leer",
+    "empty": "Aún no hay alertas",
+    "loadError": "No se pudieron cargar las alertas.",
+    "loading": "Cargando alertas…"
+  },
+  "unread": {
+    "title": "Mensajes no leídos",
+    "restricted": "Un mensaje que no puedes leer",
+    "deleted": "Mensaje eliminado",
+    "newMessage": "Mensaje nuevo",
+    "loadError": "No se pudieron cargar los mensajes no leídos.",
+    "loading": "Cargando mensajes no leídos…",
+    "allCaughtUp": "Estás al día",
+    "emptyDescription": "Ahora mismo no hay nada que requiera tu atención."
+  },
+  "threads": {
+    "title": "Hilos",
+    "unreadOnly": "Solo no leídos",
+    "unreadOnlyDescription": "Mostrar solo hilos con respuestas sin leer",
+    "loading": "Cargando hilos…",
+    "loadError": "No se pudieron cargar los hilos. Inténtalo de nuevo.",
+    "noUnread": "No hay hilos sin leer",
+    "empty": "Aún no hay actividad en los hilos",
+    "loadMore": "Cargar más hilos"
+  },
+  "alertRow": {
+    "someone": "Alguien",
+    "teamInvitation": "Te han invitado a un equipo",
+    "invitedBy": "{{name}} te ha invitado a {{target}}",
+    "invitedTo": "Te han invitado a {{target}}",
+    "triggerStopped": "Una tarea programada dejó de ejecutarse",
+    "ticketTrigger": "Un disparador de tickets",
+    "machineAccess": "{{trigger}} necesita acceso al equipo: configúralo en Acceso al equipo o en el Diseñador de agentes",
+    "automaticAccessTeam": "El acceso automático a {{team}} necesita una nueva autorización",
+    "automaticAccess": "El acceso automático necesita una nueva autorización",
+    "boardSourceStopped": "Una fuente del tablero dejó de sincronizarse",
+    "ollamaAttention": "Tu conexión local de Ollama necesita atención",
+    "watchedTicketChanged": "Ha cambiado un ticket que sigues",
+    "workflowFailed": "Falló una ejecución del flujo de trabajo",
+    "taskSetAttention": "Un conjunto de tareas necesita atención",
+    "approvalBy": "{{actor}} necesita tu aprobación",
+    "agentApproval": "Un agente necesita tu aprobación",
+    "taskAssigned": "{{actor}} te asignó trabajo",
+    "knowledgePublished": "{{actor}} publicó información para ti",
+    "documentShared": "{{actor}} compartió un documento contigo",
+    "missedCallIn": "Llamada perdida de {{actor}} en {{channel}}",
+    "missedCall": "Llamada perdida de {{actor}}",
+    "mentionedIn": "{{actor}} te mencionó en {{channel}}",
+    "mentioned": "{{actor}} te mencionó",
+    "accepting": "Aceptando…",
+    "accept": "Aceptar"
+  }
+}

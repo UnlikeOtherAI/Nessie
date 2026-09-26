@@ -67,6 +67,57 @@ test('active refresh rotates local and encrypted upstream credentials atomically
   )
 })
 
+test('UOA locale is synced after refresh commit and returned to the caller', async () => {
+  const { fake, rawToken } = await createFixture()
+  const now = new Date()
+  const result = await consumeRefreshToken(fake.asClient(), {
+    authSecret: AUTH_SECRET,
+    advanceUoaSessionBinding: async () => undefined,
+    localeToWrite: 'cs',
+    rawToken,
+    refreshUoaSession: defaultUoaRefresh(now),
+    syncUoaLocale: async ({ accessToken, localeToWrite }) => {
+      assert.equal(fake.activeTransactions, 0)
+      assert.ok(fake.findByHash(hashRefreshToken(rawToken))?.revokedAt)
+      assert.equal(accessToken, 'uoa-access-token')
+      assert.equal(localeToWrite, 'cs')
+      return { locale: 'cs' }
+    },
+    ttlSeconds: TTL_SECONDS,
+    now,
+  })
+
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.equal(result.locale, 'cs')
+  assert.equal(result.localeWriteFailed, undefined)
+  assert.notEqual(result.rawToken, rawToken)
+})
+
+test('failed UOA locale write preserves the committed refresh', async () => {
+  const { fake, rawToken } = await createFixture()
+  const now = new Date()
+  const result = await consumeRefreshToken(fake.asClient(), {
+    authSecret: AUTH_SECRET,
+    advanceUoaSessionBinding: async () => undefined,
+    localeToWrite: 'fr',
+    rawToken,
+    refreshUoaSession: defaultUoaRefresh(now),
+    syncUoaLocale: async () => {
+      assert.equal(fake.activeTransactions, 0)
+      throw new Error('UOA settings unavailable')
+    },
+    ttlSeconds: TTL_SECONDS,
+    now,
+  })
+
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.equal(result.localeWriteFailed, true)
+  assert.notEqual(result.rawToken, rawToken)
+  assert.ok(fake.findByHash(hashRefreshToken(result.rawToken)))
+})
+
 test('simultaneous refreshes converge on the same local and UOA successor', async () => {
   const { fake, rawToken } = await createFixture()
   const now = new Date()

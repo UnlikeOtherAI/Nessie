@@ -1,30 +1,7 @@
 import type { UserAlertRecord } from '../../facades/alerts/hooks'
 import { teamInvitationLabel } from '../../lib/team-invitation-label'
-
-const formatRelativeTime = (value: string): string => {
-  const timestamp = Date.parse(value)
-  if (!Number.isFinite(timestamp)) {
-    return ''
-  }
-
-  const deltaMs = Date.now() - timestamp
-  const minutes = Math.floor(deltaMs / 60_000)
-  if (minutes < 1) {
-    return 'just now'
-  }
-  if (minutes < 60) {
-    return `${minutes}m ago`
-  }
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) {
-    return `${hours}h ago`
-  }
-  const days = Math.floor(hours / 24)
-  if (days < 7) {
-    return `${days}d ago`
-  }
-  return new Date(timestamp).toLocaleDateString()
-}
+import { useTranslation } from 'react-i18next'
+import { formatRelativeTime } from '../../i18n/formatters'
 
 // Shared inner content of one alert row (unread dot, mention text, relative
 // timestamp). The wrapping container differs per surface: the top-bar bell
@@ -38,57 +15,59 @@ type AlertRowProps = {
   onOpen?: () => void
 }
 
-const describeAlert = (alert: UserAlertRecord): string => {
-  const actor = alert.actorDisplayName ?? 'Someone'
+const describeAlert = (
+  alert: UserAlertRecord,
+  translate: (key: string, options?: Record<string, string>) => string,
+): string => {
+  const actor = alert.actorDisplayName ?? translate('alertRow.someone')
   if (alert.kind === 'team_invitation') {
-    if (!alert.metadata) return 'You’ve been invited to a team'
+    if (!alert.metadata) return translate('alertRow.teamInvitation')
     // The organisation is part of the name, not decoration: this row is often
     // the only place a cross-organisation invitation is offered, and "General"
     // on its own does not say which organisation invited you.
     const target = teamInvitationLabel(alert.metadata)
     return alert.metadata.invitedBy
-      ? `${alert.metadata.invitedBy} invited you to ${target}`
-      : `You’re invited to ${target}`
+      ? translate('alertRow.invitedBy', { name: alert.metadata.invitedBy, target })
+      : translate('alertRow.invitedTo', { target })
   }
   if (alert.kind === 'trigger_health') {
     // No actor: nobody did this, a schedule stopped being able to run.
-    return 'A scheduled task stopped running'
+    return translate('alertRow.triggerStopped')
   }
   if (alert.kind === 'trigger_machine_access') {
     // An agent set this trigger up for the reader, who is its author; its
     // machines are the one thing no agent may set up. The link opens the
     // trigger's Machine access section, where they do.
-    const trigger = alert.triggerName ?? 'A ticket trigger'
-    return `${trigger} needs machine access: set it up from its Machine access section, `
-      + 'or with the Agent Designer'
+    const trigger = alert.triggerName ?? translate('alertRow.ticketTrigger')
+    return translate('alertRow.machineAccess', { trigger })
   }
   if (alert.kind === 'automatic_membership_health') {
     const team = alert.automaticMembershipRuleTeamName
     return team
-      ? `Automatic access to ${team} needs reauthorization`
-      : 'Automatic access needs reauthorization'
+      ? translate('alertRow.automaticAccessTeam', { team })
+      : translate('alertRow.automaticAccess')
   }
   if (alert.kind === 'board_source_health') {
     // Also no actor, and deliberately without the provider's name: what is
     // wrong belongs on the source's own page, where the remedy is a button.
-    return 'A board source stopped syncing'
+    return translate('alertRow.boardSourceStopped')
   }
   if (alert.kind === 'local_inference_health') {
     // No host label, model name or failure detail travels through the bell:
     // that data names a private computer and belongs only on its owner-only
     // recovery surface.
-    return 'Your local Ollama connection needs attention'
+    return translate('alertRow.ollamaAttention')
   }
   if (alert.kind === 'board_ticket_changed') {
     // Deliberately without the ticket's title: this reaches a lock screen, and
     // the title is exactly what must not travel there. The row opens the card.
-    return 'A ticket you watch changed'
+    return translate('alertRow.watchedTicketChanged')
   }
   if (alert.kind === 'workflow_run_failed') {
-    return 'A workflow run failed'
+    return translate('alertRow.workflowFailed')
   }
   if (alert.kind === 'task_set_health') {
-    return 'A task set needs attention'
+    return translate('alertRow.taskSetAttention')
   }
   if (alert.kind === 'approval_requested') {
     // Deliberately generic: the alert body reaches a lock screen, and what is
@@ -98,20 +77,24 @@ const describeAlert = (alert: UserAlertRecord): string => {
     // as the reader themselves, so "Someone needs your approval" would be both
     // vague and, read literally, wrong.
     return alert.actorDisplayName
-      ? `${alert.actorDisplayName} needs your approval`
-      : 'An agent needs your approval'
+      ? translate('alertRow.approvalBy', { actor: alert.actorDisplayName })
+      : translate('alertRow.agentApproval')
   }
-  if (alert.kind === 'task_assigned') return `${actor} assigned work to you`
-  if (alert.kind === 'knowledge_published') return `${actor} published knowledge for you`
+  if (alert.kind === 'task_assigned') return translate('alertRow.taskAssigned', { actor })
+  if (alert.kind === 'knowledge_published') return translate('alertRow.knowledgePublished', { actor })
   // Deliberately without the document's title: this row reaches a bell a
   // colleague may be looking over, and the title of somebody's private
   // document is exactly what a one-line summary must not carry. The row opens
   // it, and Shared with me lists it.
-  if (alert.kind === 'knowledge_shared') return `${actor} shared a document with you`
+  if (alert.kind === 'knowledge_shared') return translate('alertRow.documentShared', { actor })
   if (alert.kind === 'call_missed') {
-    return `Missed call from ${actor}${alert.channelLabel ? ` in ${alert.channelLabel}` : ''}`
+    return alert.channelLabel
+      ? translate('alertRow.missedCallIn', { actor, channel: alert.channelLabel })
+      : translate('alertRow.missedCall', { actor })
   }
-  return `${actor} mentioned you${alert.channelLabel ? ` in ${alert.channelLabel}` : ''}`
+  return alert.channelLabel
+    ? translate('alertRow.mentionedIn', { actor, channel: alert.channelLabel })
+    : translate('alertRow.mentioned', { actor })
 }
 
 export const AlertRow = ({
@@ -122,9 +105,10 @@ export const AlertRow = ({
   onAcceptInvitation,
   onOpen,
 }: AlertRowProps) => {
+  const { t, i18n } = useTranslation('inbox')
   const unread = alert.readAt === null
   const invite = alert.kind === 'team_invitation' ? alert.metadata : null
-  const description = describeAlert(alert)
+  const description = describeAlert(alert, t)
 
   return (
     <div className={['flex w-full flex-wrap items-center gap-2', className ?? ''].join(' ')}>
@@ -149,7 +133,7 @@ export const AlertRow = ({
           {description}
         </span>
         <span className="shrink-0 text-xs font-normal text-[color:var(--tx3)]">
-          {formatRelativeTime(alert.createdAt)}
+          {formatRelativeTime(alert.createdAt, i18n.resolvedLanguage ?? i18n.language)}
         </span>
       </button>
       {invite && onAcceptInvitation ? (
@@ -159,7 +143,7 @@ export const AlertRow = ({
           onClick={onAcceptInvitation}
           type="button"
         >
-          {accepting ? 'Accepting…' : 'Accept'}
+          {accepting ? t('alertRow.accepting') : t('alertRow.accept')}
         </button>
       ) : null}
       {acceptError ? (
