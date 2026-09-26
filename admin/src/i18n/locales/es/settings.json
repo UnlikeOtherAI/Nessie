@@ -730,6 +730,17 @@
       "admin": "Administrador",
       "member": "Miembro",
       "owner": "Propietario"
+    },
+    "feedback": {
+      "yourTeam": "tu equipo",
+      "invitationSentBody": "{{email}} tiene una invitación para {{teams}}.",
+      "invitationSent": "Invitación enviada",
+      "invitationResentBody": "Hemos vuelto a enviar un correo a {{who}}.",
+      "invitationResent": "Invitación reenviada",
+      "invitationCancelledBody": "Puedes volver a invitar a {{who}} cuando quieras.",
+      "invitationCancelled": "Invitación cancelada",
+      "memberAddedBody": "{{name}} ahora forma parte de {{team}}.",
+      "memberAdded": "Miembro añadido"
     }
   },
   "automaticMembership": {

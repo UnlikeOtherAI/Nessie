@@ -46,8 +46,8 @@ export const MemberInvitationDetailsDialog = ({ invitation, canManage, onClose, 
         ...(scope === 'organization' ? { teamId: invitation.team?.id } : {}),
       })
       pushToast(action === 'resend'
-        ? invitationResentToast(recipient)
-        : invitationCancelledToast(recipient))
+        ? invitationResentToast(recipient, t)
+        : invitationCancelledToast(recipient, t))
       onClose()
     } catch (caught) {
       setError(formErrorMessage(caught, t('members.invitationDetails.updateFailed')))

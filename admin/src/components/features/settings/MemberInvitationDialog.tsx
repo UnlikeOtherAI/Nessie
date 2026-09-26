@@ -34,7 +34,7 @@ type MemberInvitationDialogProps = {
 
 /** One invite dialog for both roster scopes; only teams can add an existing person. */
 export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitationDialogProps) => {
-  const { t } = useTranslation('settings')
+  const { t, i18n } = useTranslation('settings')
   const { me, token } = useAuthSession()
   const { pushToast } = useToasts()
   const [, setSearchParams] = useSearchParams()
@@ -112,6 +112,8 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
       pushToast(invitationSentToast(
         address,
         scope === 'organization' ? invitedNames : currentTeam ? [currentTeam] : [],
+        i18n.resolvedLanguage ?? i18n.language,
+        t,
       ))
       onClose()
       return
@@ -121,7 +123,8 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
     // so a retry cannot re-send the invitations that went out.
     setTargetIds(failedTeamIds)
     setTargetError(t('members.invite.partialFailure', {
-      invited: joinNames(invitedNames), failed: joinNames(failedTeamIds.map(nameOf)),
+      invited: joinNames(invitedNames, i18n.resolvedLanguage ?? i18n.language),
+      failed: joinNames(failedTeamIds.map(nameOf), i18n.resolvedLanguage ?? i18n.language),
     }))
   }
 
@@ -153,7 +156,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
   const addCandidate = async (uoaSub: string, candidateName: string) => {
     const result = await addCandidateForm.submit({ uoaSub })
     if (!result) return
-    pushToast(memberAddedToast(candidateName, activeTeam(me)?.label))
+    pushToast(memberAddedToast(candidateName, activeTeam(me)?.label, t))
     onClose()
   }
 

@@ -730,6 +730,17 @@
       "admin": "Správce",
       "member": "Člen",
       "owner": "Vlastník"
+    },
+    "feedback": {
+      "yourTeam": "váš tým",
+      "invitationSentBody": "Adresa {{email}} byla pozvána do týmů: {{teams}}.",
+      "invitationSent": "Pozvání odesláno",
+      "invitationResentBody": "Pozvání pro {{who}} jsme odeslali znovu.",
+      "invitationResent": "Pozvání odesláno znovu",
+      "invitationCancelledBody": "Osobu {{who}} můžete kdykoli pozvat znovu.",
+      "invitationCancelled": "Pozvání zrušeno",
+      "memberAddedBody": "{{name}} je nyní v týmu {{team}}.",
+      "memberAdded": "Člen přidán"
     }
   },
   "automaticMembership": {
