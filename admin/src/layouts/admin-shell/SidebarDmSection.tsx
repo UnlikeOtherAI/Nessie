@@ -15,6 +15,9 @@ import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import { SidebarPlusIcon } from './SidebarPlusIcon';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
+import { SidebarAgentSessions } from './SidebarAgentSessions';
+import { useLocation } from 'react-router-dom';
+import { parseThreadIdFromPath } from '../../lib/channel-route';
 import type {
   SidebarAgentDm,
   SidebarGroupDm,
@@ -91,6 +94,8 @@ export const SidebarDmSection = ({
   const prewarm = usePrewarm();
   const getPresence = usePresenceLookup();
   const nativeTouchShell = isReactNativeWebView();
+  const { pathname } = useLocation();
+  const selectedSessionId = parseThreadIdFromPath(pathname);
   const avatarSize = nativeTouchShell ? 24 : 18;
   return (
     <SidebarMenuSection
@@ -115,8 +120,15 @@ export const SidebarDmSection = ({
         (personalAssistantAgent && starredAgentIds.has(personalAssistantAgent.id))
         || (personalAssistantChannelId && starredChannelIds.has(personalAssistantChannelId))
       ) ? (
-        <PersonalAssistantSidebarEntry
+        personalAssistantAgent && personalAssistantChannelId ? <SidebarAgentSessions
+          agentId={personalAssistantAgent.id}
+          agentName={personalAssistantAgent.name}
+          channelId={personalAssistantChannelId}
+          currentChannelId={currentChannelId}
+          pathname={pathname}
+          entry={<PersonalAssistantSidebarEntry
           active={personalAssistantChannelId === currentChannelId}
+          activeChild={Boolean(selectedSessionId && personalAssistantChannelId === currentChannelId)}
           agent={personalAssistantAgent}
           avatarSize={avatarSize}
           bootstrapping={personalAssistantBootstrapping}
@@ -131,17 +143,30 @@ export const SidebarDmSection = ({
           )}
           token={token}
           unreadCount={personalAssistantUnreadCount}
+          />}
+        /> : <PersonalAssistantSidebarEntry
+          active={personalAssistantChannelId === currentChannelId}
+          agent={personalAssistantAgent}
+          avatarSize={avatarSize}
+          bootstrapping={personalAssistantBootstrapping}
+          onClick={onOpenPersonalAssistant}
+          onToggleStar={() => {
+            if (personalAssistantAgent) onToggleStar('agent', personalAssistantAgent.id);
+          }}
+          starred={false}
+          token={token}
+          unreadCount={personalAssistantUnreadCount}
         />
       ) : null}
       {sidebarProductAssistants.map((assistant) => {
         if (starredChannelIds.has(assistant.dmChannelId)) return null;
 
         const unreadCount = unreadCountByChannelId.get(assistant.dmChannelId) ?? 0;
-        return (
+        const entry = (
           <button
-            aria-current={sidebarAriaCurrent(currentChannelId === assistant.dmChannelId)}
+            aria-current={sidebarAriaCurrent(currentChannelId === assistant.dmChannelId && !selectedSessionId)}
             key={assistant.productSlug}
-            className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${currentChannelId === assistant.dmChannelId ? 'active' : ''}`}
+            className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${currentChannelId === assistant.dmChannelId ? selectedSessionId ? 'active-parent' : 'active' : ''}`}
             onClick={() => onNavigateChannel(assistant.dmChannelId)}
             type="button"
             {...prewarmRowHandlers(prewarm, `/channels/${assistant.dmChannelId}`)}
@@ -161,16 +186,25 @@ export const SidebarDmSection = ({
             {renderUnreadCount(unreadCount)}
           </button>
         );
+        return assistant.agentId ? <SidebarAgentSessions
+          agentId={assistant.agentId}
+          agentName={assistant.label}
+          channelId={assistant.dmChannelId}
+          currentChannelId={currentChannelId}
+          entry={entry}
+          key={assistant.productSlug}
+          pathname={pathname}
+        /> : entry;
       })}
       {sidebarAgentDms.map((agent) => {
         if (starredAgentIds.has(agent.id) || starredChannelIds.has(agent.dmChannelId)) return null;
 
         const unreadCount = unreadCountByChannelId.get(agent.dmChannelId) ?? 0;
-        return (
+        const entry = (
           <button
-            aria-current={sidebarAriaCurrent(currentChannelId === agent.dmChannelId)}
+            aria-current={sidebarAriaCurrent(currentChannelId === agent.dmChannelId && !selectedSessionId)}
             key={agent.id}
-            className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${currentChannelId === agent.dmChannelId ? 'active' : ''}`}
+            className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${currentChannelId === agent.dmChannelId ? selectedSessionId ? 'active-parent' : 'active' : ''}`}
             onClick={() => onNavigateChannel(agent.dmChannelId)}
             type="button"
             {...prewarmRowHandlers(prewarm, `/channels/${agent.dmChannelId}`)}
@@ -185,6 +219,15 @@ export const SidebarDmSection = ({
             {renderUnreadCount(unreadCount)}
           </button>
         );
+        return agent.agentId ? <SidebarAgentSessions
+          agentId={agent.agentId}
+          agentName={agent.label}
+          channelId={agent.dmChannelId}
+          currentChannelId={currentChannelId}
+          entry={entry}
+          key={agent.id}
+          pathname={pathname}
+        /> : entry;
       })}
       {sidebarGroupDms.map((group) => {
         if (starredChannelIds.has(group.dmChannelId)) return null;

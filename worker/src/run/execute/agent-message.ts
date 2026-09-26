@@ -63,12 +63,17 @@ const inTransaction = async <T>(tx: Tx, work: (inner: Tx) => Promise<T>): Promis
  * and the live-stream gate must ask the same question of the same destination,
  * so the chain is built once rather than restated at each call.
  */
-const destinationFor = (context: RunContext) => ({
+const destinationFor = (context: Pick<RunContext, 'channel'>) => ({
   channelId: context.channel.id,
   organizationId: context.channel.organizationId,
   projectId: context.channel.projectId,
   teamId: context.channel.teamId,
 })
+
+type ReplyDestinationContext = Pick<
+  RunContext,
+  'boundAgentIds' | 'channel' | 'consumedSources' | 'emailMailboxId'
+>
 
 /**
  * Whether what this run has consumed *so far* would restrict its reply.
@@ -80,7 +85,7 @@ const destinationFor = (context: RunContext) => ({
  * everything after the flip is withheld until the finished message is read
  * through the disclosure predicate.
  */
-export const runReplyBasis = (context: RunContext): BasisScope[] =>
+export const runReplyBasis = (context: ReplyDestinationContext): BasisScope[] =>
   computeReplyBasis(
     context.consumedSources.list(),
     destinationFor(context),
@@ -92,6 +97,35 @@ export const runReplyBasis = (context: RunContext): BasisScope[] =>
 
 export const runReplyIsRestricted = (context: RunContext): boolean =>
   runReplyBasis(context).length > 0
+
+const scopeKey = (scope: BasisScope): string => `${scope.scopeType}:${scope.scopeId}`
+
+/**
+ * What consuming these scopes would add to this run's reply basis: the
+ * destination's own subtraction, less what the run already holds.
+ *
+ * Asked of a source *before* it is consumed, by context the platform assembles
+ * on the run's behalf rather than one the run chose to read — recall, and the
+ * transcript of a run no person is live in. That context must never be what
+ * restricts a reply in its own room: a scheduled joke recalled its owner's DM
+ * with the agent and was withheld from everyone else in the channel, and every
+ * later joke inherited the stamp from the one before it through the room's
+ * history (docs/standards/disclosure-boundaries.md → "Assembled context never
+ * restricts a reply"). Empty means admitting the source changes no one's access
+ * to the reply.
+ */
+export const addedReplyRestriction = (
+  context: ReplyDestinationContext,
+  scopes: readonly BasisScope[],
+): BasisScope[] => {
+  const held = new Set(runReplyBasis(context).map(scopeKey))
+  return computeReplyBasis(
+    scopes,
+    destinationFor(context),
+    context.boundAgentIds,
+    context.emailMailboxId ?? null,
+  ).filter((scope) => !held.has(scopeKey(scope)))
+}
 
 export type AgentMessageDraft = {
   content: string

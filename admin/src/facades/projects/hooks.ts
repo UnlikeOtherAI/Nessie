@@ -27,7 +27,8 @@ export const useProjects = (enabled = true) => {
     queryKey: projectKeys.all,
     queryFn: () => apiClient.get('/api/projects', ProjectRecordSchema.array()),
     enabled,
-    staleTime: Infinity,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
   })
 }
 
@@ -65,7 +66,8 @@ export const useTeams = () => {
   return useQuery<TeamRecord[]>({
     queryKey: teamKeys.all,
     queryFn: () => apiClient.get('/api/teams'),
-    staleTime: Infinity,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
   })
 }
 

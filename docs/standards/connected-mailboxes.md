@@ -57,8 +57,9 @@ Plan and as-built deltas:
   access rows: a connection no agent may use does nothing. Connecting resolves
   and proves both legs before it stores, and only a provider rejection
   (`auth`-kind) flips a connection to `needs_reauthorization`. The personal
-  Email doorway is address-first: a server-approved Google or Microsoft OAuth
-  route starts its native connector, while an IMAP/SMTP route asks for a
+  doorway, Connect email on Connected accounts' Mail and calendar tab, is
+  address-first: a server-approved Google or Microsoft OAuth route starts its
+  native connector, while an IMAP/SMTP route asks for a
   password and lets the server find the endpoints, escalating one question at a
   time only when it cannot. A team shared mailbox stays Model A-only and never
   starts a personal OAuth connection.

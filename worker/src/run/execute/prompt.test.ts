@@ -96,8 +96,9 @@ test('an agent with no speaking style carries no block at all', () => {
 
 test('the system prompt tells the agent to link to tool-sourced locations, not describe them', () => {
   const messages = buildModelPrompt([], makeContext('Aria'), 'hi', null)
-  assert.match(systemContent(messages), /link directly to it/)
-  assert.match(systemContent(messages), /link=` value/)
+  assert.match(systemContent(messages), /Link to the resource itself using the link returned by its lookup tool/)
+  assert.match(systemContent(messages), /use nessie_link with the returned name and identifiers/)
+  assert.match(systemContent(messages), /Use names and clickable links, not IDs or GUIDs, unless the person asks/)
 })
 
 test('an agent with card_post receives the compact secret-form instruction', () => {
@@ -136,6 +137,24 @@ test('every agent can describe Browserbase setup, but only card_post can collect
   assert.match(withCard, /Only `browser_login_request` can request temporary personal browser access/)
   assert.match(withCard, /exact selected HTTPS origins for one task/)
   assert.match(withCard, /A `card_post` card or chat text cannot grant browser access/)
+})
+
+test('a run holding the grant verb is not told, in its main prompt, that an owner must grant', () => {
+  // The Designer's catalogue (a later system message) said "you grant it with
+  // agent_tool_access_set"; this block, rendered for every agent without the
+  // fact, said "an owner must explicitly grant … at Agents → Tools" — and the
+  // Designer quoted the refusal. Same facts, from the resolved toolset.
+  const designer = systemContent(buildModelPrompt([], makeContext('Agent Designer'), 'hi', null, {
+    canGrantBrowserTools: true,
+    hasCardTool: true,
+    ownToolsetFixed: true,
+  }))
+  assert.match(designer, /you grant to the named agent with `agent_tool_access_set`/)
+  assert.match(designer, /The grant does not wait for the account/)
+  assert.doesNotMatch(designer, /An owner must explicitly grant the named agent the browser tools/)
+  // Its own toolset is the deployment's: nobody can enable `browser_login_request` on it.
+  assert.match(designer, /not yours to request/)
+  assert.doesNotMatch(designer, /enable `browser_login_request` at Agents → Tools/)
 })
 
 test('an adopted temporary browser grant tells the successor to continue within its exact scope', () => {
@@ -581,6 +600,8 @@ test('machine-reach facts ride behind the clock and never touch the anchor or it
       /machine tools this turn|programs on the person's machine/.test(message.content ?? ''))
     const conversationIndex = messages.findIndex((message) => message.content === 'open the site again')
     assert.equal(messages[factsIndex]?.role, 'system', executorReach.kind)
+    assert.match(messages[factsIndex]?.content ?? '',
+      /^Executors are connected computers on which your assigned tools run commands and local apps\./)
     assert.equal(factsIndex, timeIndex + 1, 'the facts come straight after the clock')
     assert.ok(factsIndex < conversationIndex, 'and before the conversation window')
   }

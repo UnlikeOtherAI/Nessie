@@ -125,7 +125,7 @@ export const ProjectView = () => {
   // Read here as well as in `ProjectBoardTab` — one URL and one query cache
   // behind both, so the header's controls and the board they steer cannot
   // disagree. Above the `projectId` guard with every other hook.
-  const chrome = useBoardChrome(projectId, board?.id)
+  const chrome = useBoardChrome(onBoard ? projectId : undefined, onBoard ? board?.id : undefined)
   // The Configure menu's sync rows read the same source list the board used
   // to draw its status strip from — one query key, one fetch, one cache
   // entry, so the menu and the board can never disagree about freshness.

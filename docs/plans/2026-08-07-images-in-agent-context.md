@@ -128,6 +128,15 @@ trigger message and the recent-history window it reasons over now carry the same
 inventory line. The judgement itself remains entirely the model's — the line is
 structural fact about what is attached, never an interpretation of it.
 
+Until 2026-09-26 that held only inside the orchestrator: the `orchestrate.decide`
+job payload still required `content: z.string().min(1)`, so the worker
+dead-lettered every attachment-only post's job before the judgement ran, and
+nobody answered an image sent on its own. The payload now accepts empty content
+(`packages/schemas/src/jobs.ts`, pinned by
+`packages/schemas/src/__tests__/orchestrate-decide-payload.test.ts`); a browser
+check the same day pasted a screenshot into an agent conversation, sent it with
+no text, and read it back from the model request as an image part.
+
 ## What this does not do
 
 - **PDFs are not read.** A PDF's stored preview is its first page only; handing

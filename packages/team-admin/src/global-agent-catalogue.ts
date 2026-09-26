@@ -2,7 +2,6 @@ import {
   AgentEffortSchema,
   AgentRunLimitsSchema,
   AgentVisibilitySchema,
-  type AgentModelOption,
 } from '@nessie/schemas'
 import { buildBrowserbaseSetupPrompt } from '@nessie/runtime'
 import type { GlobalAgentExecutorFacts } from '@nessie/executor-manage'
@@ -11,6 +10,12 @@ import {
   executorSection,
   type GlobalAgentCatalogueWriteSurface,
 } from './global-agent-executor-catalogue.js'
+import {
+  modelCatalogueSection,
+  modelPairParameterLine,
+  type GlobalAgentModelCatalogueFacts,
+} from './global-agent-model-catalogue.js'
+import { proposalCardSection } from './global-agent-proposal-card-catalogue.js'
 import {
   documentTriggerFactsSection,
   ticketWorkFactsSection,
@@ -31,7 +36,9 @@ import type {
  * Hand-written prose about parameters or tool lists is forbidden here. Every
  * enum below comes from the contract that validates it, every tool from
  * `BUILTIN_TOOL_DEFINITIONS` plus this organisation's live registry rows, and
- * every model from the Ledger catalogue the model picker reads — so a tool or a
+ * every model from the same two sources the model picker reads — the
+ * deployment's Ledger catalogue and the person's own linked plans
+ * (`global-agent-model-catalogue.ts`) — so a tool or a
  * field added anywhere is in the Designer's knowledge the deploy it ships,
  * rather than the next time somebody remembers to edit a prompt. This is the
  * same discipline as the research-routing and agent-documents blocks; it is
@@ -46,7 +53,7 @@ import type {
  * Spec: docs/plans/2026-09-02-agent-designer-global-agent.md (D5, D9).
  */
 
-export type GlobalAgentCatalogueFacts = {
+export type GlobalAgentCatalogueFacts = GlobalAgentModelCatalogueFacts & {
   catalogue: AgentToolCatalog
   /**
    * Every executor the requesting person is entitled to see, with the detail
@@ -57,8 +64,6 @@ export type GlobalAgentCatalogueFacts = {
    * sidebar face ever learns an executor exists — it holds no read tools.
    */
   executors: GlobalAgentExecutorFacts[] | null
-  /** Null when the model catalogue could not be read; never a stale guess. */
-  models: AgentModelOption[] | null
   /**
    * The look this person's generated portraits are drawn in.
    *
@@ -101,8 +106,6 @@ export type GlobalAgentCatalogueFacts = {
    */
   heldToolIds?: ReadonlySet<string>
 }
-
-const MODEL_SHORTLIST = 20
 
 const bullet = (line: string): string => `- ${line}`
 
@@ -246,10 +249,7 @@ const parametersSection = (avatarLineText: string): string[] => [
     + 'lives in an owner-only home conversation, cannot be bound to any channel, '
     + 'and cannot be transferred.',
   ),
-  bullet(
-    'provider + model — an exact pair from the deployment catalogue, sent '
-    + 'together. Omit both to run on the organisation\'s default.',
-  ),
+  bullet(modelPairParameterLine()),
   bullet(
     `effort — ${AgentEffortSchema.options.join(' | ')}. It maps to the `
     + 'provider\'s reasoning effort ONLY; it is not a spend setting.',
@@ -342,98 +342,6 @@ const cloudBrowserSetupSection = (
   })
     .split('\n')
     .map((line) => line === 'Cloud browser setup:' ? line : bullet(line)),
-]
-
-const modelSection = (models: AgentModelOption[] | null): string[] => {
-  if (models === null) {
-    return [
-      'The model catalogue could not be read just now. Leave provider and model '
-      + 'unset so the agent runs on the organisation default, and say so.',
-    ]
-  }
-  if (models.length === 0) {
-    return [
-      'This deployment lists no selectable models. Leave provider and model '
-      + 'unset; the agent runs on the organisation default.',
-    ]
-  }
-  const shown = models.slice(0, MODEL_SHORTLIST)
-  return [
-    `Models available here (${models.length}${
-      models.length > shown.length ? `, first ${shown.length} shown` : ''
-    }); provider and model are one exact pair:`,
-    ...shown.map((option) =>
-      bullet(`${option.provider}/${option.model} — ${option.displayName}`)),
-  ]
-}
-
-/**
- * The proposal card, described once, in the only transport that can post one.
- *
- * It lives here rather than in the blueprint persona because the persona is
- * shared by three faces and only this one holds `card_post`: the Agent Designer
- * page fills a form, and the shared-channel face writes nothing at all. Telling
- * either of those to post a card would be the prompt itself breaking the "never
- * imply you did work you did not do" rule.
- *
- * Standardised on purpose. A person who has read one of these should be able to
- * read the next at a glance, so the four things that are true of every agent —
- * what it is called, what it will do, where it lives, and what it can reach —
- * are always in the same place, and the agent's own additions go in the fold
- * rather than rearranging the card.
- */
-const proposalCardSection = (): string[] => [
-  'Proposing an agent: one card, always the same card.',
-  bullet('title — the agent\'s name. subtitle — its role, two or three words.'),
-  bullet(
-    'message — your own words about this proposal, the sentence or two you '
-    + 'would otherwise have typed into the chat. It renders above the card, in '
-    + 'the same message, so the person reads it and the buttons as one thing.',
-  ),
-  bullet(
-    'A text block of at most three lines saying what it will do. The work, '
-    + 'not the machinery.',
-  ),
-  bullet(
-    'A fields block with "Lives in" and "Who can see it". Lives in is the '
-    + 'existing channels the person named, each with its team and project; when '
-    + 'they named none it reads exactly "nowhere yet — add it to any channel", '
-    + 'and it is never a channel you would create for the agent. Who can see it '
-    + 'is the team, or that it is private to them.',
-  ),
-  bullet(
-    'When the agent gets a ticket_changed trigger, the same fields block has a '
-    + 'third field, "Starts work when": the moment its work starts, in the '
-    + 'person\'s words and naming the board and the column, such as "someone '
-    + 'moves a ticket into In progress on Engineering".',
-  ),
-  bullet(
-    'When that trigger\'s work should run on machines, the same fields block also has "Runs on". It names '
-    + 'the machines only when the person asking paired them and is the one reading the card, here in your '
-    + 'own conversation with them; otherwise it reads exactly "a machine its owner confirms". The card\'s '
-    + 'message then says that one machine-access confirmation follows, which the machines\' owner confirms '
-    + 'with their password.',
-  ),
-  bullet(
-    'An input block, a select, for the model: a few from the catalogue above '
-    + 'with your recommendation as the default. Each option\'s value is the '
-    + 'provider and model as one pair, written exactly as the catalogue writes '
-    + 'it. Ask for the model here and never in prose.',
-  ),
-  bullet(
-    'A details block, which arrives closed, holding what they can check if '
-    + 'they want to: a chips block naming the tools, a chips block naming the '
-    + 'apps it will reach, and anything else this particular agent needs said. '
-    + 'That fold is where your own blocks go — do not invent a different card '
-    + 'because this one has no row for something.',
-  ),
-  bullet('Three actions: Accept, which submits, then Edit and Decline, which do not.'),
-  'Post it without wait, so they can press it or simply answer in chat, and '
-  + 'then end your turn without another word: the card carries your message, '
-  + 'and a sentence after it is the same thing said twice. '
-  + 'Accept means build exactly what the card says, on the model they picked, '
-  + 'and then say where it landed. Edit means ask what they want different and '
-  + 'post a fresh card. Decline means build nothing.',
 ]
 
 const WRITE_SURFACE_LINE: Record<
@@ -536,7 +444,7 @@ export const buildGlobalAgentCatalogueBlock = (
           '',
         ]
       : []),
-    ...modelSection(facts.models),
+    ...modelCatalogueSection(facts),
     '',
     ...executorSection(facts.executors, facts.writeSurface),
     '',

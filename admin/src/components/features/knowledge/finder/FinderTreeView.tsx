@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import { iconForFilename } from '../../../shared/file-icons'
-import { SidebarTreeChevron, SidebarTreeChildren, SidebarTreeLeading, SidebarTreeNode, SidebarTreePanel } from '../../../primitives/SidebarTree'
+import { SidebarTreeChevron, SidebarTreeChildren, SidebarTreeLeading, SidebarTreeNode } from '../../../primitives/SidebarTree'
 import { FinderRow } from './FinderRow'
 import { NewFolderRow } from './NewFolderRow'
 
@@ -15,9 +15,7 @@ type FinderTreeViewProps = {
   onOpenPage: (page: KnowledgePageRecord, path: string[]) => void
   onSubmitFolder?: (name: string) => void
   pagePath: string[]
-  basePath?: string[]
   rootColumnKey?: string
-  embedded?: boolean
 }
 
 const TreeItemIcon = ({ kind, title }: { kind: KnowledgePageRecord['kind']; title: string }) => {
@@ -55,10 +53,8 @@ export const FinderTreeView = ({
   onOpenPage,
   onSubmitFolder,
   pagePath,
-  basePath = [],
   rootColumnKey,
   rowsIn,
-  embedded = false,
 }: FinderTreeViewProps) => {
   const [expandedPages, setExpandedPages] = useState<Set<string>>(() => new Set())
   const selectedPageId = activePageId ?? pagePath.at(-1)
@@ -109,6 +105,7 @@ export const FinderTreeView = ({
                 onOpenPage(page, path)
               }}
               selected={page.id === selectedPageId}
+              status={page.status}
               title={page.title}
               tree
               variant="item"
@@ -120,7 +117,5 @@ export const FinderTreeView = ({
     </SidebarTreeChildren>
   )
 
-  return embedded
-    ? <SidebarTreeChildren className="sidebar-tree-depth">{renderPages(rowsIn(null), [], 0)}</SidebarTreeChildren>
-    : <SidebarTreePanel className="knowledge-sidebar-tree-panel h-full">{renderPages(rowsIn(null), basePath, 0)}</SidebarTreePanel>
+  return <SidebarTreeChildren className="sidebar-tree-depth">{renderPages(rowsIn(null), [], 0)}</SidebarTreeChildren>
 }

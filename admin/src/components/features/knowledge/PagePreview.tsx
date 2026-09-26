@@ -3,7 +3,7 @@ import {
   faBoxArchive,
   faClockRotateLeft,
   faEllipsis,
-  faPaperclip,
+  faPen,
 } from '@fortawesome/free-solid-svg-icons'
 import { toFormErrors } from '../../../facades/forms/form-errors'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
@@ -36,7 +36,6 @@ type PagePreviewProps = {
   onOpenHistory: () => void
   onOpenBreadcrumb: (pageId: string) => void
   onPublish: () => void
-  onToggleAttachments: () => void
   page: KnowledgePageRecord
   publishPending?: boolean
   spaceName: string
@@ -54,7 +53,6 @@ export const PagePreview = ({
   onOpenHistory,
   onOpenBreadcrumb,
   onPublish,
-  onToggleAttachments,
   page,
   publishPending,
   spaceName,
@@ -66,71 +64,69 @@ export const PagePreview = ({
     commentsComposerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     commentsComposerRef.current?.focus()
   }
-  const headerActions: PageHeaderAction[] = [
-    {
-      icon: faPaperclip,
-      id: 'attachments',
-      label: 'Attachments',
-      onSelect: onToggleAttachments,
-      priority: 60,
-    },
+  const detailActions: PageHeaderAction[] = [
     ...(canWrite
-      ? [
-          {
-            id: 'edit',
-            label: 'Edit',
-            onSelect: onEdit,
-            priority: 40,
-          },
-          ...(page.status !== 'published'
-            ? [{
-                disabled: publishPending,
-                id: 'publish',
-                label: 'Publish',
-                onSelect: onPublish,
-                primary: true,
-                priority: 100,
-              } satisfies PageHeaderAction]
-            : []),
-        ] satisfies PageHeaderAction[]
+      ? [{
+          compact: true,
+          icon: faPen,
+          id: 'edit',
+          label: 'Edit',
+          onSelect: onEdit,
+          priority: 50,
+          title: 'Edit document',
+        } satisfies PageHeaderAction]
       : []),
     {
       compact: true,
-      icon: faEllipsis,
-      id: 'page-actions',
-      items: [
-        {
-          icon: faClockRotateLeft,
-          id: 'history',
-          label: 'History',
-          onSelect: onOpenHistory,
-        },
-        ...(canWrite
-          ? [{
-              disabled: archivePending,
-              icon: faBoxArchive,
-              id: 'archive-page',
-              label: 'Archive document',
-              onSelect: () => {
-                setArchiveError(null)
-                setArchiveConfirmOpen(true)
-              },
-            }]
-          : []),
-      ],
-      kind: 'menu',
-      label: 'Document actions',
-      priority: 10,
+      icon: faClockRotateLeft,
+      id: 'history',
+      label: 'History',
+      onSelect: onOpenHistory,
+      priority: 40,
+      title: 'Version history',
     },
+    ...(canWrite
+      ? [{
+          compact: true,
+          icon: faEllipsis,
+          id: 'document-actions',
+          items: [{
+            disabled: archivePending,
+            icon: faBoxArchive,
+            id: 'archive-page',
+            label: 'Archive document',
+            onSelect: () => {
+              setArchiveError(null)
+              setArchiveConfirmOpen(true)
+            },
+          }],
+          kind: 'menu',
+          label: 'More document actions',
+          priority: 10,
+          title: 'More document actions',
+        } satisfies PageHeaderAction]
+      : []),
+    ...(canWrite && page.status !== 'published'
+      ? [{
+          disabled: publishPending,
+          id: 'publish',
+          label: 'Publish',
+          onSelect: onPublish,
+          primary: true,
+          priority: 100,
+        } satisfies PageHeaderAction]
+      : []),
   ]
 
   return (
     <KnowledgePane
-      actions={headerActions}
+      bottomActionLabel="Document actions"
+      bottomActions={detailActions}
       onBack={onBack}
       title={page.title}
     >
-      <div className="kb-reader mx-auto my-8 w-full max-w-3xl rounded-xl px-8 py-8 shadow-sm">
+      <>
+        <div className="kb-reader mx-auto my-8 w-full max-w-3xl rounded-xl px-8 py-8 shadow-sm">
         <nav aria-label="Page breadcrumbs" className="mb-5 flex flex-wrap items-center gap-1 text-xs text-[color:var(--tx3)]">
           <button className="hover:text-[color:var(--tx)]" onClick={onBrowseRoot} type="button">
             {spaceName}
@@ -199,6 +195,8 @@ export const PagePreview = ({
           </QueryState>
         </div>
 
+        <BacklinksPanel pageId={page.id} />
+        <div className="mt-8 border-t border-[color:var(--sep)] pt-6">
         <AttachmentsDrawer
           canWrite={canWrite}
           inline
@@ -206,11 +204,12 @@ export const PagePreview = ({
           open
           pageId={page.id}
         />
-
-        <BacklinksPanel pageId={page.id} />
-
+        </div>
+        <div className="mt-8 border-t border-[color:var(--sep)] pt-6" id="knowledge-page-comments">
         <CommentsSection canResolve={canWrite} composerRef={commentsComposerRef} pageId={page.id} />
-      </div>
+        </div>
+        </div>
+      </>
       <ConfirmDialog
         body={
           <>

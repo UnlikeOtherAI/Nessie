@@ -10,15 +10,21 @@ import {
   STATUS_LABEL,
   STATUS_TONE,
 } from './connections/ConnectionCard'
+import {
+  DEFAULT_CONNECTION_TAB,
+  PROVIDER_TAB,
+  connectedAccountsPath,
+} from './connections/connection-tabs'
 
 /**
  * One connected account: its permissions, the resources it syncs, and the two
  * ways to end it.
  *
- * Reached by opening a row in the Email or Slack table. The card renders
- * without its own heading here — the screen header already names the provider,
- * its status and the account, and saying all three twice was the defect the
- * list rework set out to remove.
+ * Reached by opening a row in the Mail and calendar or Chat table, and Back
+ * returns to the tab that lists it. The card renders without its own heading
+ * here — the screen header already names the provider, its status and the
+ * account, and saying all three twice was the defect the list rework set out
+ * to remove.
  */
 export const ConnectionDetailPage = () => {
   const navigate = useNavigate()
@@ -28,7 +34,9 @@ export const ConnectionDetailPage = () => {
     (candidate) => candidate.id === connectionId,
   )
 
-  const backToList = () => void navigate('/settings/accounts')
+  const backToList = () => void navigate(
+    connectedAccountsPath(connection ? PROVIDER_TAB[connection.provider] : DEFAULT_CONNECTION_TAB),
+  )
 
   if (!connection) {
     // The header is rendered here too: loading, failure and not-found are

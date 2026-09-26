@@ -81,7 +81,16 @@ instead of the organization's Ledger credits. Rules that must not drift:
   is shown, both come off the Ledger entries, because a default nobody chose
   must never put an agent's spend on somebody's personal plan. So the
   presentation order is the client's (`orderModelOptionsForPicker`), never the
-  catalogue's.
+  catalogue's. **The Designer still sees every plan the person linked.** Its
+  generated catalogue lists them in their own group, in full and never behind
+  the deployment shortlist, with the exact pair to pass
+  (`global-agent-model-catalogue.ts`): the home-DM face reads them through
+  the picker's own `listAgentModelOptionsForUser`, the page sidebar receives
+  them in the picker's list, and the shared-channel face — advising everyone,
+  holding no write verb — reads none. A Designer handed the Ledger catalogue
+  alone told a person who had just linked Kimi that no such connector existed.
+  The rule the group states is the picker's: a plan goes on an agent when the
+  person asks for it, never as a recommendation nobody chose.
 - **One validator, every write path.** `assertAgentModelSelection`
   (`@nessie/team-admin`) gates create, update, clone and the PA
   `agent_create` tool; ownership transfer and clone strip the selection,
@@ -149,9 +158,14 @@ Facts not restated there:
   backend may not serve.
 - Package `@nessie/model-subscriptions` (adapters, vault store, coordinator);
   routes `/api/model-subscriptions*`; surfaces are the "Personal model
-  subscriptions" section on `/settings/accounts` and the **Your
-  subscriptions** group in the Agent Designer model picker, which also carries
-  the "Link a personal subscription…" doorway when none is linked.
+  subscriptions" section on Connected accounts' AI plans tab
+  (`/settings/accounts?tab=ai`), the **Your subscriptions** group in the
+  Agent Designer model picker, which also carries the "Link a personal
+  subscription…" doorway to that tab when none is linked, and the
+  Designer's own conversation: its catalogue's "own linked plans" group, and
+  `agent_create` / `agent_update` taking the `subscription/<key>` pair plus
+  `modelSubscriptionId` when two accounts at one provider must be told apart
+  (`worker/test/db/designer-model-catalogue.test.ts`).
 - Vault configuration is `NESSIE_SUBSCRIPTION_VAULT_API_URL` /
   `_TOKEN` / `_PROJECT_ID` (+ optional `_ENVIRONMENT`). Unset ⇒ the settings
   section says the feature is unavailable and linking is refused, unless the

@@ -47,9 +47,12 @@ const SCREENSHOTS = resolve(
 
 /**
  * Long enough for two real browser submissions to overlap before either mock
- * answer returns, and still short enough for the suite's four-minute budget.
+ * answer returns, with the second run still in flight when the live-dot case
+ * reads the list. In a DM the column is a route of its own, so that read costs
+ * a navigation after the second send, which 7.5s did not cover. Still short
+ * enough for the suite's four-minute budget.
  */
-const ECHO_LATENCY_MS = 7_500
+const ECHO_LATENCY_MS = 15_000
 const CONVERSATION_TITLE = 'Pricing page copy'
 
 const api = async (path, token, options = {}) => {
@@ -105,6 +108,24 @@ const settledRows = async (page, expected, label) => {
 const composer = (page) => page.locator('form.admin-compose:visible [contenteditable="true"]').last()
 
 /**
+ * An agent DM's own "New conversation", under its row in the sidebar. A DM has
+ * no Conversations column doorway (docs/standards/reply-threads.md): its
+ * sessions are the sidebar's, and pressing this opens one without leaving it.
+ */
+const sidebarNewConversation = (page, agentName) =>
+  page.getByRole('button', { exact: true, name: `New conversation with ${agentName}` })
+
+/**
+ * The start door's own answer to one press, armed before the press: whether it
+ * opened a conversation or handed back the caller's still-empty one.
+ */
+const nextStartAnswer = (page, agentId) => page.waitForResponse(
+  (response) => response.request().method() === 'POST'
+    && new URL(response.url()).pathname === `/api/agents/${agentId}/conversations`,
+  { timeout: 30_000 },
+).then((response) => response.json()).then((payload) => payload?.data ?? null)
+
+/**
  * Type into the composer and send, confirming both.
  *
  * The composer is a contenteditable whose props change as the page's later
@@ -143,8 +164,17 @@ const sendMessage = async (page, text) => {
  * because the column is a real screen there. Every page starts from "no tool
  * open" (`viewports.mjs`), so a press always opens.
  */
+let agentDmChannelId = null
+
 const openConversationsColumn = async (page, viewport, agentName) => {
-  if (viewport === 'phone') {
+  const pathname = new URL(page.url()).pathname
+  const inAgentDm = pathname === `/channels/${agentDmChannelId}`
+    || pathname.startsWith(`/channels/${agentDmChannelId}/`)
+  if (inAgentDm) {
+    // Saved tool links still resolve, although the DM's visible doorway is the sidebar.
+    await goto(page, `/channels/${agentDmChannelId}/tools/conversations`)
+    await page.waitForURL(/\/tools\/conversations$/u)
+  } else if (viewport === 'phone') {
     // The header renders a hidden measuring copy of every action beside the
     // real one — hence `:visible`. And `.last()`, not `.first()`: the room's
     // layer is retained beneath a pushed conversation, so its own still-visible
@@ -398,6 +428,7 @@ const main = async () => {
   // queue would serialise the very thing this suite is here to disprove.
   const pipeline = await startMockPipeline({ workers: 2 })
   const fixture = await seedFixture(pipeline, seedScope, ensurePersonalAssistantBootstrap)
+  agentDmChannelId = fixture.dmRoom.id
   plan.targetAgentName = fixture.agent.name
   const ownerToken = tokenFor(issueSessionToken, fixture.owner, fixture.scope)
   const outsiderToken = tokenFor(issueSessionToken, fixture.outsider, fixture.scope)
@@ -423,18 +454,28 @@ const main = async () => {
     // Agent X's own room with A: one agent, so the rail names it without a
     // strip. The ordinary rooms get their own cases at the end.
     const room = `/channels/${fixture.dmRoom.id}`
+    const dmGeneral = `${room}/threads/${fixture.dmThread.id}`
 
-    // ---- rail -------------------------------------------------------------
-    // The doorway exists, offers only the tools this agent has, and opens onto
-    // the room's own General row before any conversation has been started.
+    await goto(desktop, room)
+    await desktop.getByTestId('agent-session-home').waitFor({ timeout: 60_000 })
+    assert.equal(await desktop.locator('form.admin-compose:visible').count(), 0,
+      'the agent home has no selected session composer')
+    assert.equal(await desktop.getByTestId('agent-session-home').getByRole('button', {
+      name: 'New conversation',
+    }).count(), 1, 'the home offers a new session')
+
+    // ---- agent DM sidebar -------------------------------------------------
+    // The visible session doorway is the sidebar. Existing direct tool links
+    // continue to resolve the same list for saved URLs and old notifications.
     await gallery.capture('rail', async (page, viewport) => {
-      await goto(page, room)
+      await goto(page, dmGeneral)
       await composer(page).waitFor({ timeout: 60_000 })
       if (viewport === 'phone') {
-        // The doorway lands with the agent read, which is a second request; a
-        // rendered composer does not mean the header has decided yet.
-        await page.locator('[data-page-header-action="chat-tool-conversations"]:visible')
-          .last().waitFor({ timeout: 30_000 })
+        assert.equal(
+          await page.locator('[data-page-header-action="chat-tool-conversations"]:visible').count(),
+          0,
+          'the phone header has no duplicate Conversations action',
+        )
         assert.equal(
           await page.locator('aside[aria-label="Agent tools"]').count(), 0,
           'the rail stands down on a single-column layout',
@@ -444,12 +485,11 @@ const main = async () => {
           'an agent with no browser grant is offered no Browser doorway',
         )
       } else {
-        await page.locator('aside[aria-label="Agent tools"]').waitFor({ timeout: 30_000 })
         const labels = await page.locator(
           'aside[aria-label="Agent tools"] .admin-rail-btn-label',
         ).allInnerTexts()
-        assert.deepEqual(labels, ['Conversations'],
-          `the rail offers only the tools this agent has (${viewport})`)
+        assert.deepEqual(labels, [], `the agent DM has no duplicate tool rail (${viewport})`)
+        await page.getByTestId('agent-session-sidebar-row').first().waitFor({ timeout: 30_000 })
       }
       await openConversationsColumn(page, viewport, fixture.agent.name)
       // Three General rows and no conversations yet: the list rule's second arm
@@ -466,14 +506,14 @@ const main = async () => {
     })
 
     // ---- start-two --------------------------------------------------------
-    // Two presses, two threads, two isolated jobs.
-    await goto(desktop, room)
+    // Two presses, two threads, two isolated jobs — through the DM's own
+    // doorway, which stays on screen from one press to the next.
+    await goto(desktop, dmGeneral)
     await composer(desktop).waitFor({ timeout: 60_000 })
-    await openConversationsColumn(desktop, 'desktop', fixture.agent.name)
     const started = []
     for (const question of [ALPHA_QUESTION, BETA_QUESTION]) {
       const before = desktop.url()
-      await desktop.locator('[data-testid="start-agent-conversation"]').click()
+      await sidebarNewConversation(desktop, fixture.agent.name).click()
       // A *different* thread each time: matching the shape alone would accept
       // the URL the previous press already put there.
       await desktop.waitForURL((url) => url.href !== before
@@ -593,42 +633,69 @@ const main = async () => {
       await goto(page, `${room}/threads/${betaThreadId}`)
       await page.waitForFunction((needle) => document.body.innerText.includes(needle),
         BETA_QUESTION, { timeout: 60_000 })
+      if (viewport !== 'phone') {
+        // Only a layout that shows both at once can mark the one on screen,
+        // and in a DM that list is the sidebar. On a phone the list *is* the
+        // screen, so marking Beta there would be a lie.
+        const open = page.locator('[data-testid="agent-session-sidebar-row"][aria-current="true"]')
+        await open.waitFor({ timeout: 30_000 })
+        assert.ok((await open.innerText()).includes(BETA_QUESTION),
+          `the conversation on screen is the marked row (${viewport})`)
+      }
       await openConversationsColumn(page, viewport, fixture.agent.name)
       const titles = await settledRows(page, 5,
         `two conversations and three General rows (${viewport})`)
       assert.ok(titles.some((title) => title.includes(ALPHA_QUESTION)),
         `the first is listed under the name its first message gave it (${viewport})`)
       assert.ok(titles.some((title) => title.includes(BETA_QUESTION)), 'and so is the second')
-      if (viewport === 'phone') return
-      // Only a layout that shows both at once can mark the one on screen. On a
-      // phone the list *is* the screen, so its `aria-current` is the room's
-      // General row and marking Beta there would be a lie.
-      const open = await page.locator(
-        '[data-testid="agent-conversation-row"][aria-current="true"]',
-      ).innerText()
-      assert.ok(open.includes(BETA_QUESTION), 'the conversation on screen is the marked row')
     })
 
     // ---- one-empty-at-a-time ----------------------------------------------
     // The button is not a thread factory. While a conversation opened here has
-    // still had nothing said in it, pressing it again hands that one back —
-    // the row blinks, the column says why — instead of stacking a second row
-    // that reads "No messages yet". The rule is the server's
-    // (`startAgentConversation` → `reused`), so this is the whole path: press,
-    // press again, and count what exists afterwards.
-    await goto(desktop, room)
+    // still had nothing said in it, pressing it again hands that one back
+    // instead of stacking a second row that reads "No messages yet". The rule
+    // is the server's (`startAgentConversation` → `reused`), so this is the
+    // whole path, at both doorways: press, press again, read the start door's
+    // own answer, and count what exists afterwards.
+    const emptyConversations = (channelId) => pipeline.prisma.thread.findMany({
+      select: { id: true },
+      where: { agentId: fixture.agent.id, channelId, messages: { none: {} } },
+    })
+
+    // A DM's doorway is its sidebar row's "New conversation".
+    await goto(desktop, dmGeneral)
     await composer(desktop).waitFor({ timeout: 60_000 })
-    await openConversationsColumn(desktop, 'desktop', fixture.agent.name)
     const beforeEmpty = desktop.url()
-    await desktop.locator('[data-testid="start-agent-conversation"]').click()
+    await sidebarNewConversation(desktop, fixture.agent.name).click()
     await desktop.waitForURL((url) => url.href !== beforeEmpty
       && new RegExp(`${fixture.dmRoom.id}/threads/[0-9a-f-]{36}$`, 'u').test(url.pathname))
-    const emptyThreadId = desktop.url().split('/threads/')[1]
     const standingIn = desktop.url()
-
-    await desktop.locator('[data-testid="start-agent-conversation"]').click()
-    await desktop.locator('[data-testid="empty-conversation-nudge"]').waitFor({ timeout: 30_000 })
+    const dmAgain = nextStartAnswer(desktop, fixture.agent.id)
+    await sidebarNewConversation(desktop, fixture.agent.name).click()
+    const dmAnswer = await dmAgain
+    assert.equal(dmAnswer?.reused, true, 'the second press is handed the empty conversation back')
+    assert.equal(dmAnswer?.conversation?.id, standingIn.split('/threads/')[1],
+      'and it is the one already on screen')
     assert.equal(desktop.url(), standingIn,
+      'the second press stays in the conversation that is already empty')
+    const dmEmpty = await emptyConversations(fixture.dmRoom.id)
+    assert.equal(dmEmpty.length, 1, 'and leaves exactly one empty conversation in the DM, not two')
+
+    // A shared room's doorway is still the column, which also says why nothing
+    // opened: the row it handed back blinks and a notice explains.
+    await goto(desktop, `/channels/${fixture.privateRoom.id}`)
+    await composer(desktop).waitFor({ timeout: 60_000 })
+    await openConversationsColumn(desktop, 'desktop', fixture.agent.name)
+    const beforeRoomEmpty = desktop.url()
+    await desktop.locator('[data-testid="start-agent-conversation"]').click()
+    await desktop.waitForURL((url) => url.href !== beforeRoomEmpty
+      && new RegExp(`${fixture.privateRoom.id}/threads/[0-9a-f-]{36}$`, 'u').test(url.pathname))
+    const standingInRoom = desktop.url()
+    const roomAgain = nextStartAnswer(desktop, fixture.agent.id)
+    await desktop.locator('[data-testid="start-agent-conversation"]').click()
+    assert.equal((await roomAgain)?.reused, true, 'the column’s second press is handed it back too')
+    await desktop.locator('[data-testid="empty-conversation-nudge"]').waitFor({ timeout: 30_000 })
+    assert.equal(desktop.url(), standingInRoom,
       'the second press stays in the conversation that is already empty')
     // The blink first: it stands for as long as the notice does, and the
     // database read below is not worth spending that window on.
@@ -640,21 +707,14 @@ const main = async () => {
       'the conversation it handed back is the row that blinks',
     )
     await shot(desktop, SCREENSHOTS, 'empty-nudge', 'desktop')
-    assert.equal(
-      await pipeline.prisma.thread.count({
-        where: {
-          agentId: fixture.agent.id,
-          channelId: fixture.dmRoom.id,
-          messages: { none: {} },
-        },
-      }),
-      1,
-      'and leaves exactly one empty conversation in the room, not two',
-    )
-    // The cases below count this room's rows. An empty conversation nobody will
-    // ever say anything in is not one of them, so this one goes rather than
-    // silently shifting every count after it.
-    await pipeline.prisma.thread.delete({ where: { id: emptyThreadId } })
+    const roomEmpty = await emptyConversations(fixture.privateRoom.id)
+    assert.equal(roomEmpty.length, 1, 'and leaves exactly one empty conversation in the room, not two')
+    // The cases below count rows. An empty conversation nobody will ever say
+    // anything in is not one of them, so these go rather than silently shifting
+    // every count after them.
+    await pipeline.prisma.thread.deleteMany({
+      where: { id: { in: [...dmEmpty, ...roomEmpty].map((thread) => thread.id) } },
+    })
 
     // ---- rename -----------------------------------------------------------
     // The doorway, not the endpoint. `PATCH /api/threads/:id` has always taken
@@ -1034,7 +1094,7 @@ const main = async () => {
     visitorId = ticketSeed.visitor.id
     const ticketTitles = ticketSeed.tickets.map((ticket) => ticket.title)
     await gallery.capture('tickets-fold', async (page, viewport) => {
-      await goto(page, room)
+      await goto(page, dmGeneral)
       await composer(page).waitFor({ timeout: 60_000 })
       await openConversationsColumn(page, viewport, fixture.agent.name)
       const fold = conversationsPanel(page).last().getByTestId('agent-conversation-tickets')
@@ -1102,7 +1162,7 @@ const main = async () => {
       gallery,
       goto,
       openConversationsColumn,
-      room,
+      room: dmGeneral,
       rowTitles,
       screenshots: SCREENSHOTS,
       seeded: await seedDocumentReviewThread(pipeline.prisma, fixture, {

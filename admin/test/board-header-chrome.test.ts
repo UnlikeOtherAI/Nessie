@@ -84,11 +84,13 @@ test('the board tab draws no toolbar of its own any more', () => {
 test('one piece of state behind the header and the board', () => {
   // Two components, one URL and one query cache — not a prop chain through
   // the page, and not two copies that can disagree.
-  assert.match(view, /const chrome = useBoardChrome\(projectId, board\?\.id\)/)
+  // Other project sections keep the same hook order without fetching hidden cards.
+  assert.match(view,
+    /const chrome = useBoardChrome\(onBoard \? projectId : undefined, onBoard \? board\?\.id : undefined\)/)
   assert.match(boardTab, /const chrome = useBoardChrome\(projectId, board\?\.id\)/)
   // Above the `projectId` guard, with every other hook.
   assert.ok(
-    view.indexOf('useBoardChrome(projectId') < view.indexOf('if (!projectId) return null'),
+    view.indexOf('const chrome = useBoardChrome(') < view.indexOf('if (!projectId) return null'),
     'the hook runs before the guard, so hook order never depends on the URL',
   )
 })

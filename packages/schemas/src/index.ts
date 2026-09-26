@@ -155,3 +155,4 @@ export * from './local-inference-resource.js'
 export * from './agent-reaction.js'
 
 export * from './executor-sharing.js'
+export { buildNessieResourcePath } from './resource-links.js'

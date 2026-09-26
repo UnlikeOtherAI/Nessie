@@ -114,7 +114,10 @@ export const registerAuthUoaTeamRoute = (
           sourceUserId: source.sub,
           target: body,
         },
-        ...createUoaRefreshCallbacks(prisma),
+        ...createUoaRefreshCallbacks(prisma, {
+          onSystemAgentsBootstrapError: (error) =>
+            request.log.error({ err: error }, 'system_agents_bootstrap_failed'),
+        }),
       })
     } catch (error) {
       if (error instanceof UoaTeamSwitchError) {

@@ -5,6 +5,7 @@ import test from 'node:test'
 import { PrismaClient } from '@prisma/client'
 import {
   addPersonalAssistantPresence,
+  getChannelIfMember,
   isAgentAccessibleToActor,
   removePersonalAssistantPresence,
 } from '@nessie/team-admin'
@@ -50,7 +51,7 @@ dbTest('a shared channel keeps one PA presence per live member and removes it on
       ],
     })
     const project = await prisma.project.create({
-      data: { name: `PA presence ${organizationId}`, organizationId },
+      data: { channelRoot: true, name: `PA presence ${organizationId}`, organizationId },
     })
     const team = await prisma.team.create({
       data: { name: `PA presence ${organizationId}`, projectId: project.id },
@@ -76,6 +77,11 @@ dbTest('a shared channel keeps one PA presence per live member and removes it on
       teamId: team.id,
       userId: firstUserId,
     })
+
+    // The HTTP placement gate accepts null for an ordinary channel.
+    assert.equal((await getChannelIfMember(
+      prisma, firstUserId, organizationId, channel.id,
+    ))?.systemChannelType, null)
 
     assert.equal((await addPersonalAssistantPresence(prisma, {
       channelId: channel.id,

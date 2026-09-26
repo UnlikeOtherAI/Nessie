@@ -5,7 +5,7 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import { resolveLiveEntitlements, type LiveEntitlements } from './uoa-live-entitlements.js'
 
 export type ChannelAccessRow = {
-  systemChannelType?: ChannelSystemType
+  systemChannelType: ChannelSystemType | null
   type: string
   visibility: string
 }
@@ -41,7 +41,7 @@ export const getChannelIfMember = async (
     return null
   }
   return {
-    systemChannelType: channel.systemChannelType ?? undefined,
+    systemChannelType: channel.systemChannelType,
     type: channel.type,
     visibility: channel.visibility,
   }

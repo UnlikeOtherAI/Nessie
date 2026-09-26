@@ -103,7 +103,7 @@ shrinks.
 | a team (`TeamPage`) | `tab` | `general` · `overrides` |
 | People, AI models, Company connections, Keys (`useAdminScope`) | `scope` | `organisation` · `team:<id>` as each page's API gates allow the viewer, the rest listed disabled with the reason; People offers only the teams the viewer is in, and a change clears its roster's `tab` and page; AI models' change clears its catalogue page |
 | Keys and Saved keys (`SecretsPanel`) | `status` | `active` · `revoked` |
-| Connected accounts (`ConnectionsPage`) | `tab` | `email` · `inference` · `slack` · `calendar` · `tools` · `browsers` |
+| Connected accounts (`ConnectionsPage`) | `tab` | `mail` · `chat` · `tickets` · `browsers` · `ai`; an OAuth return selects its provider's tab once its notice has been consumed |
 | an agent (`AgentDetailTabs`) | `agentTab` | `edit` · `to-dos` · `activity` · `sub-agents` · `tools` · `messages` · `documents` · `email` |
 | the apps catalogue (`AppsPage`) | `filter` | `all` · `installed` (default: this device's last view) |
 | the agents list (`AgentsList`) | `scope` | `personal` · `team` · `global` (default: the session ledger) |

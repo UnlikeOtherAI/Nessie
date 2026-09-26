@@ -43,8 +43,19 @@ const safeSwitchCode = (
   }
 }
 
+export type UoaRefreshCallbackOptions = {
+  /**
+   * Where a failed system-agent bootstrap on a materialized team is reported
+   * (`materializeUoaTeam`); the route hands its request logger in.
+   */
+  onSystemAgentsBootstrapError: (error: unknown) => void
+}
+
 /** One callback set for ordinary refresh and explicit/resumed UOA rescoping. */
-export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
+export const createUoaRefreshCallbacks = (
+  prisma: PrismaClient,
+  options: UoaRefreshCallbackOptions,
+) => ({
   refreshUoaSession: async (upstream: {
     configUrl: string
     expectedIdentity: UoaSessionIdentity
@@ -58,6 +69,7 @@ export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
       if (upstream.teamSwitch) {
         await materializeUoaTeamSwitch(prisma, {
           identity: refreshed.identity,
+          onSystemAgentsBootstrapError: options.onSystemAgentsBootstrapError,
           target: upstream.teamSwitch,
           userId: upstream.userId,
         })
@@ -73,6 +85,7 @@ export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
         // entirely and are byte-identical to before.
         await materializeUoaTeam(prisma, {
           identity: refreshed.identity,
+          onSystemAgentsBootstrapError: options.onSystemAgentsBootstrapError,
           userId: upstream.userId,
         })
       }

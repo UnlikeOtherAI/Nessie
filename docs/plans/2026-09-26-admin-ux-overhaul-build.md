@@ -209,9 +209,9 @@ is retitled Computers), `/knowledge-base/*`, `/documents/*`, `/mail/*`,
 | `/settings/account?tab=agents` | `/settings/accounts?tab=browsers` | `api/src/routes/browser-cloud-agent-session.ts` banners |
 | `/settings/organization?tab=agents` | `/admin/connections` | same banners |
 | `/settings/organization?tab=appearance` | `/admin/organisation?tab=appearance` | `ColoursPanel`, docs |
-| `/settings/connections?tab=<id>` | `/settings/accounts?tab=<id>` (T3 renames the ids) | alerts, model picker, PA tool copy |
-| `/settings/connections?connected=&error=&provider=` | `/settings/accounts?connected=&error=&provider=` | `api/src/routes/comms/oauth-routes.ts`, `board-sources/callback-page.ts` |
-| `/settings/connections?tab=inference#local-inference-host-<id>` | `/settings/accounts?tab=inference#local-inference-host-<id>` (T3: `?tab=ai`) | `facades/alerts/hooks.ts` |
+| `/settings/connections?tab=<id>` | `/settings/accounts?tab=<id>`, T3's ids: `email` and `calendar` → `mail` (the default, so the bare address) · `slack` → `chat` · `tools` → `tickets` · `inference` → `ai` · `browsers` unchanged | alerts, model picker (`?tab=ai`), PA tool copy |
+| `/settings/connections?connected=&error=&provider=` | `/settings/accounts?connected=&error=&provider=`, consumed intents of the Your settings row; the notice lands on the provider's tab (`slack` → `?tab=chat`, `google` and `microsoft` → `mail`) | `api/src/routes/comms/oauth-routes.ts`, `board-sources/callback-page.ts` |
+| `/settings/connections?tab=inference#local-inference-host-<id>` | `/settings/accounts?tab=ai#local-inference-host-<id>` | `facades/alerts/hooks.ts` |
 | `/settings/members?membersTab=automatic&automaticMembershipRule=<id>` | `/admin/people?scope=organisation&tab=automatic&automaticMembershipRule=<id>` | `facades/alerts/hooks.ts` |
 | `/settings/paired-agents?code=<code>` | `/settings/security?code=<code>` | `api/src/routes/mcp-agent-auth.ts` verification URI, `well-known-mcp-resource.ts` |
 | `/apps?filter=installed` | `/admin/apps?filter=installed` | catalogue |

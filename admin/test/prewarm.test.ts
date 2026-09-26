@@ -20,6 +20,7 @@ import { dashboardKeys } from '../src/facades/dashboards/keys.js'
 import { knowledgeKeys } from '../src/facades/knowledge/keys.js'
 import { projectKeys } from '../src/facades/projects/keys.js'
 import { threadKeys } from '../src/facades/threads/keys.js'
+import { taskKeys } from '../src/facades/tasks/keys.js'
 
 // Step 10 of docs/done/2026-09-01-navigation-motion-system.md (§4.10),
 // docs/navigation/overview.md §"Arriving with content".
@@ -34,7 +35,7 @@ const runFor = async (
 ): Promise<void> => {
   const matched = matchPrewarm(to)
   assert.ok(matched, `${to} resolves to a prewarm entry`)
-  matched.entry.run(matched.id, { apiClient, queryClient })
+  matched.entry.run(matched.id, { apiClient, queryClient }, to)
   // `prefetchQuery` resolves on a microtask chain; one turn of the loop is
   // enough for the fetcher to have been called and the cache written.
   await new Promise((resolve) => setTimeout(resolve, 0))
@@ -68,6 +69,31 @@ const fakeApiClient = (calls: string[]): ApiClient => ({
     calls.push(`PUT ${path}`)
     return null as never
   },
+})
+
+test('project intent warms default-board cards and respects an explicit board without waiting for its directory', async () => {
+  const queryClient = new QueryClient()
+  const calls: string[] = []
+  const apiClient = fakeApiClient(calls)
+  apiClient.get = async (path: string) => {
+    calls.push(path)
+    return (path.endsWith('/boards')
+      ? [{ id: 'default-board', isDefault: true }]
+      : { tasks: [], truncated: false }) as never
+  }
+  await runFor('/projects/project-a/board', queryClient, apiClient)
+  assert.deepEqual(queryClient.getQueryData(taskKeys.forBoard('project-a', 'default-board')),
+    { tasks: [], truncated: false })
+  const target = matchPrewarm('/projects/project-a/board?board=other-board')!
+  target.entry.run(target.id, { apiClient, queryClient }, '/projects/project-a/board?board=other-board')
+  assert.ok(calls.includes('/api/projects/project-a/boards/other-board/tasks'))
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.deepEqual(queryClient.getQueryData(taskKeys.forBoard('project-a', 'other-board')),
+    { tasks: [], truncated: false })
+  calls.length = 0
+  await runFor('/projects/project-b/docs', queryClient, apiClient)
+  assert.deepEqual(calls, ['/api/projects/project-b/boards'], 'a Documents entry does not fetch hidden board cards')
+  queryClient.clear()
 })
 
 test('the registry maps each destination to its screen\'s own keys and fetchers', async () => {

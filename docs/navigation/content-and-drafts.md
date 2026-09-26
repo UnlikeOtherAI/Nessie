@@ -7,7 +7,50 @@ the draft rules that keep a half-written thing from being lost to a Back.
 ## 14. Arriving with content — **built** (step 10)
 
 The stack slides for 300 ms; the destination has to have something to show
-for it. Four pieces, plus one cache underneath them all.
+for it. Prewarming and retained reads share React Query; browser snapshots
+restore selected reads before the authenticated app mounts.
+
+### Saved reads and freshness
+
+`lib/read-query-cache.ts` persists only the allowlist in
+`providers/read-cache-policy.ts`: project/channel/team directories, project
+boards and board cards. It hydrates the same React Query keys after a live
+`/me` response confirms the user, API server, tenant context, roles and
+membership fingerprint. Every restored query is invalidated, including reads
+with infinite stale time, so it paints its saved result and refreshes on mount.
+There is no offline mutation queue or cached authentication decision.
+
+The snapshot is limited to 60 entries, 1,000,000 characters (at most about
+2 MB of UTF-16 storage), and 24 hours per result. Writes are throttled to one
+per second, flushed on page hide, and deferred during mutations. Stored data
+is parsed against the shared response schemas. Corrupt, oversized, expired,
+foreign-session and incompatible-version snapshots are ignored; blocked
+storage or quota exhaustion leaves ordinary memory caching working. Logout,
+account/team changes and a changed live entitlement fingerprint fence pending
+writes and clear the snapshot before the replacement session is exposed.
+An explicit 401/403/404 on an authenticated read removes its old content and
+any disk copy. A transient refresh failure preserves the last successful board and
+offers Retry.
+
+Unused in-memory queries survive for 30 minutes, independently of freshness.
+Project/channel/team directories become stale after one minute and revalidate
+on focus; message history after 30 seconds. Existing realtime invalidations
+still refresh mounted data. `board.updated` refreshes board definitions as
+well as cards. Message/document bodies, mail, memberships, credentials and
+live execution state are deliberately excluded from disk persistence.
+
+Projects and channels reuse only the selected entity's own data. A cold
+board or message feed uses the shared skeleton until its first result arrives; a scrum board does not
+claim there is no active sprint before its sprint read settles. A channel URL
+never falls back to the first room when the requested room is absent.
+
+Verification: `test:e2e:read-cache` drives the real app headlessly at desktop
+and phone sizes with delayed HTTP responses, checking saved boards before
+responses arrive, background replacement, warm channel navigation, and account
+isolation. The audit and limits are recorded in
+[`../done/2026-09-26-loading-and-cache-audit.md`](../done/2026-09-26-loading-and-cache-audit.md).
+
+### Prewarming and placeholder surfaces
 
 - **Prewarm on intent** — `admin/src/navigation/prewarm.ts`. `usePrewarm()`
   returns `prewarm(to)`; `prewarmRowHandlers(prewarm, to)` is what a row
@@ -16,7 +59,9 @@ for it. Four pieces, plus one cache underneath them all.
   before the slide starts. The registry is six entries, keyed by destination
   path: `/channels/:id` → that channel's first messages page (its thread id
   read out of the already-cached channel list), `/projects/:id` (and its six
-  section routes) → the board, `/admin/agents/:id` → the agent's status,
+  section routes) → the board directory, and on the board route its selected
+  board's cards (an explicit `?board=` starts that request in parallel),
+  `/admin/agents/:id` → the agent's status,
   `/dashboards/:id` → the dashboard, `/knowledge-base/spaces/:id` → the space
   and its pages, `/admin/apps/:slug` → the app. Each entry calls the **exact
   `fetch*` function the destination's hook calls**, under the exact key from
@@ -28,10 +73,12 @@ for it. Four pieces, plus one cache underneath them all.
   warm entry costs nothing. Wired to the sidebar channel/DM/project/starred
   rows, the knowledge space list, the agents table, the app cards and the
   dashboards list.
-- **Sibling swaps keep previous data.** Every facade `useQuery` that is keyed
+- **Sibling swaps keep previous data where identities permit it.** A facade `useQuery` that is keyed
   by an entity id, or gated on one (`enabled: Boolean(id)`), passes
-  `placeholderData: keepPreviousData`, so channel A → B shows A's feed until
-  B's arrives instead of flashing empty. Pinned by
+  `placeholderData: keepPreviousData` may bridge compatible list filters.
+  Channel histories/replies and project boards/cards instead reuse only their
+  own key; another room's messages or board's cards must not paint under the
+  selected entity. Pinned by
   `admin/test/skeleton.test.ts`; the exemptions are billing, whose keys are
   scoped per UOA org/team and must never reuse another team's projection, and
   connected mail/Gmail drafts, where a mailbox, thread or provider draft is
@@ -54,6 +101,12 @@ for it. Four pieces, plus one cache underneath them all.
   Knowledge backlinks (`admin/src/facades/knowledge/backlinks-hooks.ts`) also
   opt out: their rows describe links to one exact page and must never appear
   under another page while it loads.
+  The Knowledge provider keeps the pages query's previous result cached but
+  treats it as loading until it belongs to the newly selected space. Otherwise
+  opening a folder just after changing spaces briefly paints the previous
+  space's document tree and can resolve its old document into the detail pane.
+  A space-detail placeholder is likewise accepted only when its id matches
+  the selected space, so its old name and write permissions never flash.
   The corollary is that **`isSuccess` no longer means "this entity's data"** —
   a query serving placeholder data reports success — so a consumer that acts
   on identity guards with the id: the thread read marker refuses while its
@@ -161,10 +214,12 @@ const { draft, setDraft, flush, clear, restored, revision, saveError, isSaving }
   form cannot flush before its required fields are valid (the task dialog, a
   new agent, a new page — leaving keeps the local draft); the **knowledge page
   editor** and the **dashboard** each append a durable version per save, so a
-  debounced flush would bury the history their version panels exist for; and
-  the **trigger editor** decides when automation fires, so re-arming a live
-  schedule on every keystroke is not a save. All four still buffer locally, so
-  nothing is lost.
+  debounced flush would bury the history their version panels exist for. A new
+  knowledge document's primary action publishes the created page in the same
+  submit flow; **Save as draft** is the secondary action. Editing an existing
+  page continues to use **Save version**. The **trigger editor** decides when
+  automation fires, so re-arming a live schedule on every keystroke is not a
+  save. All four still buffer locally, so nothing is lost.
 - **A draft is written from a person's edit, never from a mount effect.** The
   agent designer mirrors its reducer into the draft and once did so on mount,
   while the reducer still held the empty baseline: that write counted as

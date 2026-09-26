@@ -6,6 +6,8 @@ import { AGENT_DESIGNER_SLUG, globalAgentHomeDmKey } from '@nessie/team-admin'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 import {
   admitRememberedThoughtLineage,
+  readsRoomHistoryAsRoom,
+  recallLineageGate,
   retainThoughtsWithLineage,
   requiresMemoryDestinationContainment,
   requiresProjectWriteRecallContainment,
@@ -138,7 +140,7 @@ test('a recalled thought without complete durable lineage is excluded from model
 })
 
 // F16: a contained run lent a project write recalls under the narrower
-// project-write floor; every other run keeps the recall it had.
+// project-write floor.
 const projectChannelRun = {
   agentKind: 'shared' as const,
   dmKey: null,
@@ -177,4 +179,74 @@ test('a thought\'s lineage scopes are its audience plus every private conversati
     sources: [],
     thoughtId: 'legacy',
   }), [])
+})
+
+// A scheduled joke in a public room recalled its owner's DM with the agent and
+// was withheld from everyone else there. Recall may not be what restricts a
+// contained run's reply; what the room already implies is still recalled.
+const PROJECT = '44444444-4444-4444-8444-444444444444'
+const TEAM = '55555555-5555-4555-8555-555555555555'
+const ROOM = '66666666-6666-4666-8666-666666666666'
+const AGENT = '77777777-7777-4777-8777-777777777777'
+const DM = '88888888-8888-4888-8888-888888888888'
+
+const roomRun = (sink = createConsumedSourceSink()) => ({
+  boundAgentIds: [AGENT],
+  channel: { id: ROOM, organizationId: ORG, projectId: PROJECT, teamId: TEAM },
+  consumedSources: sink,
+  emailMailboxId: null,
+})
+
+test('a contained room recalls only what adds nothing to its reply basis', () => {
+  const gate = recallLineageGate(projectChannelRun, roomRun() as never, false, true)
+  assert.ok(gate)
+  for (const implied of [
+    { scopeId: ORG, scopeType: 'organization' },
+    { scopeId: PROJECT, scopeType: 'project' },
+    { scopeId: TEAM, scopeType: 'team' },
+    { scopeId: ROOM, scopeType: 'channel' },
+    { scopeId: AGENT, scopeType: 'agent' },
+  ]) assert.equal(gate([implied]), true, `${implied.scopeType} is implied by the room`)
+  assert.equal(gate([]), true)
+  // The owner's DM with the agent is theirs alone.
+  assert.equal(gate([{ scopeId: ORG, scopeType: 'organization' }, { scopeId: DM, scopeType: 'channel' }]), false)
+  assert.equal(gate([{ scopeId: USER, scopeType: 'user' }]), false)
+
+  // Once the reply already carries that conversation, recalling more of it
+  // changes no one's access, so it is taken.
+  const holding = createConsumedSourceSink()
+  holding.addPrivateConversationSource({ sourceAuthorUserId: USER, sourceChannelId: DM })
+  const heldGate = recallLineageGate(projectChannelRun, roomRun(holding) as never, false, true)
+  assert.equal(heldGate?.([{ scopeId: DM, scopeType: 'channel' }]), true)
+})
+
+test('a lent project write keeps its narrower floor, and a delegate home judges nothing', () => {
+  const gate = recallLineageGate(projectChannelRun, roomRun() as never, true, true)
+  assert.equal(gate?.([{ scopeId: PROJECT, scopeType: 'project' }]), true)
+  // The room's own channel is implied for a reply, never for a board write.
+  assert.equal(gate?.([{ scopeId: ROOM, scopeType: 'channel' }]), false)
+
+  const home = {
+    ...projectChannelRun,
+    dmKey: globalAgentHomeDmKey({ organizationId: ORG, slug: AGENT_DESIGNER_SLUG, userId: USER }),
+    systemChannelType: 'system_agent',
+    systemSlug: AGENT_DESIGNER_SLUG,
+  }
+  assert.equal(recallLineageGate(home, roomRun() as never, false, true), null)
+  // Containment switched off by deployment: nothing is judged.
+  assert.equal(recallLineageGate(projectChannelRun, roomRun() as never, false, false), null)
+})
+
+test('a run no person is live in reads its room as the room does', () => {
+  // A schedule, event trigger or channel policy acting on a saved authority.
+  assert.equal(readsRoomHistoryAsRoom(projectChannelRun, false, true), true)
+  // A live requester continues their own conversation, restricted or not.
+  assert.equal(readsRoomHistoryAsRoom(projectChannelRun, true, true), false)
+  // A delegate in its own home is that person's estate.
+  assert.equal(readsRoomHistoryAsRoom({
+    agentKind: 'personal_assistant',
+    organizationId: ORG,
+    systemChannelType: 'personal_assistant',
+  }, false, true), false)
+  assert.equal(readsRoomHistoryAsRoom(projectChannelRun, false, false), false)
 })

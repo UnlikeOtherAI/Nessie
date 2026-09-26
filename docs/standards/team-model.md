@@ -467,6 +467,11 @@ rather than by redirecting a person into its chooser for a second interactive
 login; the local rows are still born only in `materializeUoaTeam`, from what
 the silent switch grant proved
 ([docs/plans/2026-09-02-in-app-organisation-creation.md](../plans/2026-09-02-in-app-organisation-creation.md)).
+The same materialization provisions Nessie's own agents for the person who
+entered — the Personal Assistant and every global agent, one row per
+organisation and a home DM each — so a team or organisation somebody just
+created is never without them until their next login
+([global agents](global-agents.md) → the bootstrap paragraph).
 The org name is UOA's mirror, so a **rename is a relayed
 `PUT /org/organisations/:orgId` write**. An install with no IdP keeps one
 unbound organisation (`externalOrgId` null). Budgets, policies, audit, the

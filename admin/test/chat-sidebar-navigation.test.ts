@@ -110,13 +110,14 @@ test('Channels and Knowledge reuse the sidebar tree presentation primitives', ()
   const tree = readSource('../src/components/primitives/SidebarTree.tsx')
   const menuSection = readSource('../src/layouts/admin-shell/SidebarMenuSection.tsx')
   const knowledgeTree = readSource('../src/components/features/knowledge/finder/FinderTreeView.tsx')
+  const knowledgeSidebar = readSource('../src/components/features/knowledge/finder/FinderTreeSidebar.tsx')
   const styles = readSource('../src/styles.css')
 
   assert.match(tree, /export const SidebarTreePanel/)
   assert.match(tree, /export const SidebarTreeSectionHeader/)
   assert.match(tree, /export const SidebarTreeChildren/)
   assert.match(menuSection, /SidebarTreeSectionHeader/)
-  assert.match(knowledgeTree, /SidebarTreePanel/)
+  assert.match(knowledgeSidebar, /SidebarTreePanel/)
   assert.match(knowledgeTree, /SidebarTreeChildren/)
   assert.match(
     styles,
@@ -195,8 +196,9 @@ test('the starred Personal Assistant follows its active direct-message route', (
   const source = readSource('../src/layouts/admin-shell/SidebarStarredSection.tsx')
 
   assert.match(source, /agent\.agentKind === 'personal_assistant'/)
-  assert.match(source, /personalAssistantChannelId === currentChannelId/)
-  assert.match(source, /isActivePersonalAssistant \? 'active' : ''/)
+  assert.match(source, /dmChannelId === currentChannelId/)
+  assert.match(source, /selectedSessionId \? 'active-parent' : 'active'/)
+  assert.match(source, /<SidebarAgentSessions/)
 })
 
 test('the Personal Assistant has the same favorite control as a direct-message user', () => {
@@ -231,6 +233,8 @@ test('the new-message surface excludes the sender and keeps recipients available
   const recipientBar = readSource('../src/components/shared/RecipientBar.tsx')
   // Clicking anywhere in the chip row focuses the field and opens the list.
   assert.match(recipientBar, /setFocused\(true\)/)
+  // Browser contact/email autofill must not cover the address book.
+  assert.match(recipientBar, /autoComplete="off"/)
   // A blur that did not leave the field does not close the list underneath it.
   assert.match(recipientBar, /document\.activeElement !== inputRef\.current/)
   // The compose screen keeps its own handle, because it focuses the field on
@@ -239,7 +243,7 @@ test('the new-message surface excludes the sender and keeps recipients available
   assert.match(source, /open: !phoneLayout,/)
   assert.match(source, /fixed inset-0 bg-\[color:var\(--main\)\]/)
   // One address book: people and agents together, no People/Agents switch.
-  assert.match(source, /placeholder="Type a name, email address or agent"/)
+  assert.match(source, /placeholder="Search people or agents"/)
   assert.match(source, /agents=\{agents\}/)
   assert.match(source, /users=\{users\}/)
   assert.doesNotMatch(source, /role="tablist"|role="tabpanel"|useTabParam/)

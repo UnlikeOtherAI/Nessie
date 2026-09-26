@@ -6,6 +6,7 @@ import {
   KnowledgeSpaceResponseSchema,
   type KnowledgeSpaceResponse,
 } from '@nessie/schemas'
+import type { KnowledgePageRecord } from '../src/facades/knowledge/hooks.js'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { JSDOM } from 'jsdom'
 
@@ -174,6 +175,75 @@ test('a deep-linked space outside the scoped list uses its detail write verdict'
     )
   } finally {
     await act(async () => { root.unmount() })
+    queryClient.clear()
+    container.remove()
+    for (const [key, descriptor] of previousGlobals) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor)
+      else Reflect.deleteProperty(globalThis, key)
+    }
+  }
+})
+
+test('switching spaces never paints the previous space’s pages while the next folder loads', async () => {
+  const previousGlobals = new Map<string, PropertyDescriptor | undefined>()
+  for (const [key, value] of Object.entries(domGlobals)) {
+    previousGlobals.set(key, Object.getOwnPropertyDescriptor(globalThis, key))
+    Object.defineProperty(globalThis, key, { configurable: true, value, writable: true })
+  }
+
+  const alpha = makeSpace({ canWrite: true, id: listedSpaceId, name: 'Alpha documents' })
+  const beta = makeSpace({ canWrite: true, id: personalSpaceId, name: 'Beta documents' })
+  const oldPage = { id: personalPageId, parentPageId: null, position: 0, title: 'Old folder' } as KnowledgePageRecord
+  let finishNextRead: ((pages: KnowledgePageRecord[]) => void) | undefined
+  const nextRead = new Promise<KnowledgePageRecord[]>((resolve) => { finishNextRead = resolve })
+  const get: ApiClient['get'] = async <TData,>(path: string): Promise<TData> => {
+    if (path.startsWith('/api/knowledge-base/spaces?')) return [alpha, beta] as TData
+    if (path === `/api/knowledge-base/spaces/${alpha.id}/pages`) return [oldPage] as TData
+    if (path === `/api/knowledge-base/spaces/${beta.id}/pages`) return nextRead as Promise<TData>
+    throw new Error(`Unexpected GET ${path}`)
+  }
+  const getPage: ApiClient['getPage'] = async <TData,>(path: string) => ({
+    data: await get<TData>(path),
+    meta: { hasMore: false, nextCursor: null, prevCursor: null, total: 2 },
+  })
+  const unavailable = async () => { throw new Error('Unexpected mutation') }
+  const apiClient = { delete: unavailable, get, getPage, patch: unavailable,
+    post: unavailable, put: unavailable } as ApiClient
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const container = dom.window.document.createElement('div')
+  dom.window.document.body.appendChild(container)
+  const root = createRoot(container)
+  let selectSpace: ((spaceId: string) => void) | undefined
+  const SpaceProbe = () => {
+    const knowledge = useKnowledge()
+    selectSpace = knowledge.selectSpace
+    return h('output', {}, JSON.stringify({
+      loading: knowledge.pagesLoading,
+      pages: knowledge.pages.map((page) => page.title),
+      space: knowledge.selectedSpaceId,
+    }))
+  }
+
+  try {
+    await act(async () => {
+      root.render(h(QueryClientProvider, { client: queryClient },
+        h(ApiClientProvider, { client: apiClient },
+          h(MemoryRouter, { initialEntries: [`/projects/${projectId}/docs`] },
+            h(KnowledgeProvider, { projectId }, h(SpaceProbe))))))
+    })
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (container.textContent?.includes('Old folder')) break
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    }
+    assert.ok(container.textContent?.includes('Old folder'), 'first space has loaded')
+    await act(async () => { selectSpace?.(beta.id) })
+    assert.deepEqual(JSON.parse(container.textContent ?? '{}'), {
+      loading: true,
+      pages: [],
+      space: beta.id,
+    })
+  } finally {
+    await act(async () => { finishNextRead?.([]); root.unmount() })
     queryClient.clear()
     container.remove()
     for (const [key, descriptor] of previousGlobals) {
