@@ -75,8 +75,7 @@ interface ChannelConversationSurfaceProps {
   // To-dos and Triggers sections hang off it.
   conversationAgent: AgentRecord | null
   // The agents whose tools this room offers — a set, because an ordinary room
-  // an agent works in has a conversations doorway too. Deliberately not
-  // `conversationAgent`: the sections above need one subject, the tools do not.
+  // an agent works in has a conversations doorway too, while tabs need one agent.
   chatToolAgents: readonly AgentRecord[]
   callEligible: boolean
   callStarting: boolean
@@ -278,7 +277,7 @@ export const ChannelConversationSurface = ({
     >
       <ChannelHeader
         activeCall={Boolean(activeCall)}
-        activeChannel={activeChannel}
+        activeChannel={activeChannel} hideConversations={!!conversationAgent && activeChannel?.type === 'dm'}
         boundAgents={boundAgents}
         callEligible={callEligible}
         callMeetingUri={activeCall?.meetingUri}
@@ -532,7 +531,6 @@ export const ChannelConversationSurface = ({
           )}
         </div>
       </Dialog>
-
       <DropZoneOverlay active={chatDrop.isDragging} label="Drop files to attach" />
     </div>
   )

@@ -143,8 +143,17 @@ const sendMessage = async (page, text) => {
  * because the column is a real screen there. Every page starts from "no tool
  * open" (`viewports.mjs`), so a press always opens.
  */
+let agentDmChannelId = null
+
 const openConversationsColumn = async (page, viewport, agentName) => {
-  if (viewport === 'phone') {
+  const pathname = new URL(page.url()).pathname
+  const inAgentDm = pathname === `/channels/${agentDmChannelId}`
+    || pathname.startsWith(`/channels/${agentDmChannelId}/`)
+  if (inAgentDm) {
+    // Saved tool links still resolve, although the DM's visible doorway is the sidebar.
+    await goto(page, `/channels/${agentDmChannelId}/tools/conversations`)
+    await page.waitForURL(/\/tools\/conversations$/u)
+  } else if (viewport === 'phone') {
     // The header renders a hidden measuring copy of every action beside the
     // real one — hence `:visible`. And `.last()`, not `.first()`: the room's
     // layer is retained beneath a pushed conversation, so its own still-visible
@@ -398,6 +407,7 @@ const main = async () => {
   // queue would serialise the very thing this suite is here to disprove.
   const pipeline = await startMockPipeline({ workers: 2 })
   const fixture = await seedFixture(pipeline, seedScope, ensurePersonalAssistantBootstrap)
+  agentDmChannelId = fixture.dmRoom.id
   plan.targetAgentName = fixture.agent.name
   const ownerToken = tokenFor(issueSessionToken, fixture.owner, fixture.scope)
   const outsiderToken = tokenFor(issueSessionToken, fixture.outsider, fixture.scope)
@@ -433,17 +443,18 @@ const main = async () => {
       name: 'New conversation',
     }).count(), 1, 'the home offers a new session')
 
-    // ---- rail -------------------------------------------------------------
-    // The doorway exists, offers only the tools this agent has, and opens onto
-    // the room's own General row before any conversation has been started.
+    // ---- agent DM sidebar -------------------------------------------------
+    // The visible session doorway is the sidebar. Existing direct tool links
+    // continue to resolve the same list for saved URLs and old notifications.
     await gallery.capture('rail', async (page, viewport) => {
       await goto(page, dmGeneral)
       await composer(page).waitFor({ timeout: 60_000 })
       if (viewport === 'phone') {
-        // The doorway lands with the agent read, which is a second request; a
-        // rendered composer does not mean the header has decided yet.
-        await page.locator('[data-page-header-action="chat-tool-conversations"]:visible')
-          .last().waitFor({ timeout: 30_000 })
+        assert.equal(
+          await page.locator('[data-page-header-action="chat-tool-conversations"]:visible').count(),
+          0,
+          'the phone header has no duplicate Conversations action',
+        )
         assert.equal(
           await page.locator('aside[aria-label="Agent tools"]').count(), 0,
           'the rail stands down on a single-column layout',
@@ -453,12 +464,11 @@ const main = async () => {
           'an agent with no browser grant is offered no Browser doorway',
         )
       } else {
-        await page.locator('aside[aria-label="Agent tools"]').waitFor({ timeout: 30_000 })
         const labels = await page.locator(
           'aside[aria-label="Agent tools"] .admin-rail-btn-label',
         ).allInnerTexts()
-        assert.deepEqual(labels, ['Conversations'],
-          `the rail offers only the tools this agent has (${viewport})`)
+        assert.deepEqual(labels, [], `the agent DM has no duplicate tool rail (${viewport})`)
+        await page.getByTestId('agent-session-sidebar-row').first().waitFor({ timeout: 30_000 })
       }
       await openConversationsColumn(page, viewport, fixture.agent.name)
       // Three General rows and no conversations yet: the list rule's second arm
@@ -1111,7 +1121,7 @@ const main = async () => {
       gallery,
       goto,
       openConversationsColumn,
-      room,
+      room: dmGeneral,
       rowTitles,
       screenshots: SCREENSHOTS,
       seeded: await seedDocumentReviewThread(pipeline.prisma, fixture, {

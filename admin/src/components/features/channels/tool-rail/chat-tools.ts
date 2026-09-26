@@ -107,8 +107,11 @@ export const resolveChatToolAgents = ({
  * The tools these agents actually have, in table order. An agent with no
  * browser gets a rail of one rather than a button that explains it cannot open.
  */
-export const availableChatTools = (agents: readonly AgentRecord[]): readonly ChatTool[] =>
-  CHAT_TOOLS.filter((tool) => tool.available(agents))
+export const availableChatTools = (
+  agents: readonly AgentRecord[],
+  hideConversations = false,
+): readonly ChatTool[] =>
+  CHAT_TOOLS.filter((tool) => tool.available(agents) && !(hideConversations && tool.id === 'conversations'))
 
 /** Which control carries the tools on a given layout. */
 export type ChatToolDoorway = 'header' | 'none' | 'rail'
@@ -160,16 +163,18 @@ export const CHAT_TOOL_ACTION_PRIORITY = 95
  */
 export const chatToolHeaderActions = ({
   agents,
+  hideConversations = false,
   onOpenTool,
   single,
 }: {
   /** The agents whose tools this room offers (`resolveChatToolAgents`). */
   agents: readonly AgentRecord[]
+  hideConversations?: boolean
   onOpenTool: (tool: ChatToolId) => void
   single: boolean
 }): PageHeaderAction[] =>
   chatToolDoorway({ hasToolAgents: agents.length > 0, single }) === 'header'
-    ? availableChatTools(agents).map((tool) => ({
+    ? availableChatTools(agents, hideConversations).map((tool) => ({
         // The two-pane glyph, in the native bar's one vocabulary: the
         // conversation on the left and the panel it opens on the right, which
         // is what pressing it does — the screen arrives from the right over the
