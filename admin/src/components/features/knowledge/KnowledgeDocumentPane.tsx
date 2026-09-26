@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useRef, useState } from 'react'
 import { useUploadFileVersion } from '../../../facades/knowledge/file-hooks'
 import { useConvertToSpreadsheet } from '../../../facades/knowledge/spreadsheet-hooks'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
@@ -57,16 +57,19 @@ export const KnowledgeDocumentPane = ({
   const [versionDialogOpen, setVersionDialogOpen] = useState(false)
   const [versionProgress, setVersionProgress] = useState<UploadProgress | null>(null)
   const [versionError, setVersionError] = useState<string | null>(null)
+  const paneRef = useRef<HTMLDivElement>(null)
 
   const convertToSpreadsheet = useConvertToSpreadsheet(selectedSpaceId)
   const fileVersionUpload = useUploadFileVersion(page.id, selectedSpaceId)
 
   const showAttachments = () => {
-    document.getElementById('knowledge-page-attachments')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const section = paneRef.current?.querySelector<HTMLElement>('#knowledge-page-attachments')
+    section?.focus({ preventScroll: true })
+    section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full" ref={paneRef}>
       {page.kind === 'spreadsheet' ? (
         <Suspense
           fallback={

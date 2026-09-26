@@ -70,3 +70,38 @@ test('a plain writer sees ordinary settings but not access administration contro
   assert.doesNotMatch(markup, /People with access/)
   assert.doesNotMatch(markup, /Agents with access/)
 })
+
+test('project root settings show the project folder, not the backing space name', () => {
+  const queryClient = new QueryClient()
+  const unavailable = async () => { throw new Error('unexpected API call') }
+  const apiClient = {
+    delete: unavailable,
+    get: unavailable,
+    patch: unavailable,
+    post: unavailable,
+    put: unavailable,
+  } as ApiClient
+  const markup = renderToStaticMarkup(
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(
+        ApiClientProvider,
+        { client: apiClient },
+        createElement(SpaceSettingsDialog, {
+          canManageAccess: false,
+          onClose: () => undefined,
+          onSave: async () => undefined,
+          open: true,
+          projectRootName: 'App launch',
+          space: { ...space, name: 'Project Documents' },
+        }),
+      ),
+    ),
+  )
+
+  assert.match(markup, /App launch settings/)
+  assert.match(markup, /Project folder/)
+  assert.match(markup, /value="App launch"/)
+  assert.doesNotMatch(markup, /value="Project Documents"/)
+})

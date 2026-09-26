@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { faClockRotateLeft, faFolder, faHouse, faLayerGroup, faRobot, faShareNodes } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgeRoot } from '@nessie/schemas'
+import type { KnowledgeRootSpace } from '@nessie/schemas'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import { SidebarTreeChevron, SidebarTreeChildren, SidebarTreeLeading, SidebarTreePanel, SidebarTreeSectionHeader } from '../../../primitives/SidebarTree'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
@@ -9,6 +10,8 @@ import { QueryState } from '../../../shared/QueryState'
 import { ProjectAvatar } from '../../../primitives/ProjectAvatar'
 import { FinderRow } from './FinderRow'
 import { FinderTreeView } from './FinderTreeView'
+import { agentDocumentsSpaceDisplayName } from './agent-space-name'
+import { AgentAvatar } from '../../../shared/AgentAvatar'
 import type { FinderRootRow } from './FinderRootColumn'
 
 type FinderTreeSidebarProps = {
@@ -21,6 +24,7 @@ type FinderTreeSidebarProps = {
   onSubmitFolder: (name: string) => void
   onOpenDocument: (page: KnowledgePageRecord, path: string[]) => void
   onOpenRoot: (row: FinderRootRow) => void
+  onOpenAgent: (space: KnowledgeRootSpace) => void
   pagePath: string[]
   pagesQuery: { isError: boolean; isLoading: boolean; refetch: () => unknown }
   root?: KnowledgeRoot
@@ -39,6 +43,7 @@ export const FinderTreeSidebar = ({
   onSubmitFolder,
   onOpenDocument,
   onOpenRoot,
+  onOpenAgent,
   pagePath,
   pagesQuery,
   root,
@@ -112,7 +117,6 @@ export const FinderTreeSidebar = ({
                 pagePath={pagePath}
                 onSubmitFolder={onSubmitFolder}
                 rowsIn={rowsIn}
-                embedded
                 rootColumnKey={`space:${row.space.spaceId}`}
               />
             )}
@@ -125,6 +129,7 @@ export const FinderTreeSidebar = ({
   const personal = root ? { id: root.myDocuments.spaceId, kind: 'space' as const, role: 'personal' as const, space: root.myDocuments } : null
   const projects = root?.projects ?? []
   const spaces = root?.shared ?? []
+  const agentsExpanded = activeRootRowId === 'virtual:agents'
 
   return (
     <SidebarTreePanel className="knowledge-sidebar-tree-panel">
@@ -162,7 +167,70 @@ export const FinderTreeSidebar = ({
               </SidebarTreeChildren>
             </div>
             <div className="mt-3">
-              {rootRow({ id: 'virtual:agents', kind: 'agents' }, 'Agents', faRobot)}
+              {rootRow({ id: 'virtual:agents', kind: 'agents' }, 'Agents', faRobot, (
+                <SidebarTreeLeading>
+                  <SidebarTreeChevron expanded={agentsExpanded} />
+                  <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--accent)]" fixedWidth icon={faRobot} />
+                </SidebarTreeLeading>
+              ))}
+              {agentsExpanded ? (
+                <SidebarTreeChildren className="sidebar-tree-depth">
+                  {(root.agentHomes ?? []).map((space) => {
+                    const agentId = space.ownerAgentId
+                    if (!agentId) return null
+                    const expanded = selectedSpaceId === space.spaceId
+                    return (
+                      <div key={space.spaceId}>
+                        <FinderRow
+                          id={space.spaceId}
+                          kind="space"
+                          leading={(
+                            <SidebarTreeLeading>
+                              <SidebarTreeChevron expanded={expanded} />
+                              <AgentAvatar agentId={agentId} size={20} token={token} />
+                            </SidebarTreeLeading>
+                          )}
+                          onOpen={() => onOpenAgent(space)}
+                          selected={expanded}
+                          title={agentDocumentsSpaceDisplayName(space.name)}
+                          tree
+                          variant="item"
+                        />
+                        {expanded ? (
+                          <QueryState
+                            className="knowledge-sidebar-tree-query py-2"
+                            errorLabel="Couldn’t load agent documents."
+                            loadingLabel="Loading documents…"
+                            query={pagesQuery}
+                          >
+                            {() => (
+                              <FinderTreeView
+                                activePageId={activePageId}
+                                createFolderColumnKey={createFolderColumnKey}
+                                createFolderPending={createFolderPending}
+                                onCancelFolder={onCancelFolder}
+                                onOpenPage={(page, path) => {
+                                  if (page.kind === 'folder') return browseTo(path)
+                                  onOpenDocument(page, path)
+                                }}
+                                onSubmitFolder={onSubmitFolder}
+                                pagePath={pagePath}
+                                rowsIn={rowsIn}
+                                rootColumnKey={`space:${space.spaceId}`}
+                              />
+                            )}
+                          </QueryState>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                  {root.agentHomesTruncated ? (
+                    <p className="px-3 py-2 text-xs text-[color:var(--tx3)]">
+                      Showing the first 200 accessible agents.
+                    </p>
+                  ) : null}
+                </SidebarTreeChildren>
+              ) : null}
             </div>
             <div className="mt-3">
               <SidebarTreeSectionHeader

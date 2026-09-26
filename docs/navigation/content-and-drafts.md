@@ -158,10 +158,12 @@ const { draft, setDraft, flush, clear, restored, revision, saveError, isSaving }
   form cannot flush before its required fields are valid (the task dialog, a
   new agent, a new page — leaving keeps the local draft); the **knowledge page
   editor** and the **dashboard** each append a durable version per save, so a
-  debounced flush would bury the history their version panels exist for; and
-  the **trigger editor** decides when automation fires, so re-arming a live
-  schedule on every keystroke is not a save. All four still buffer locally, so
-  nothing is lost.
+  debounced flush would bury the history their version panels exist for. A new
+  knowledge document's primary action publishes the created page in the same
+  submit flow; **Save as draft** is the secondary action. Editing an existing
+  page continues to use **Save version**. The **trigger editor** decides when
+  automation fires, so re-arming a live schedule on every keystroke is not a
+  save. All four still buffer locally, so nothing is lost.
 - **A draft is written from a person's edit, never from a mount effect.** The
   agent designer mirrors its reducer into the draft and once did so on mount,
   while the reducer still held the empty baseline: that write counted as

@@ -15,7 +15,9 @@ test('the page editor is a borderless writing canvas with descriptive placeholde
   assert.match(editor, /aria-label="Document title"/)
   assert.match(editor, /kb-document-title/)
   assert.match(editor, /title=\{mode === 'create' \? 'New document' : 'Edit document'\}/)
-  assert.match(editor, /label: pending[\s\S]*?\? 'Saving…'[\s\S]*?\? 'Create document'/)
+  assert.match(editor, /\? 'Publish'/)
+  assert.match(editor, /label: pending \? 'Saving…' : 'Save as draft'/)
+  assert.match(editor, /mode === 'create' && publishOnCreate\.current/)
   assert.match(styles, /\.kb-document-title\s*\{[^}]*font-size: 3rem/)
   assert.match(styles, /@media \(min-width: 640px\)[\s\S]*?\.kb-document-title\s*\{[^}]*font-size: 4rem/)
   assert.doesNotMatch(editor, /Create page|New page|Edit page/)
@@ -46,7 +48,7 @@ test('new pages can choose only an existing folder as their parent', () => {
   assert.match(workspace, /pages=\{pages\}/)
   // "Documents", not "Pages": the section, the root row and the editor's
   // breadcrumb all say the word the owner uses.
-  assert.match(workspace, /spaceName=\{selectedSpace\?\.name \?\? 'Documents'\}/)
+  assert.match(workspace, /spaceName=\{spaceDisplayName\}/)
 })
 
 test('an open document is a leaf without creation or child-page UI', () => {
@@ -81,6 +83,14 @@ test('saving follows a parent changed in the editor location picker', () => {
   const mutations = read('useKnowledgeMutations.ts')
   assert.match(mutations, /const parentPageId = input\.parentPageId \?\? null/)
   assert.match(mutations, /setPagePath\(\[\.\.\.parentPath, created\.id\]\)/)
+})
+
+test('new documents can be published in the create flow while drafts stay unpublished', () => {
+  const mutations = read('useKnowledgeMutations.ts')
+  assert.match(editor, /onSubmit: \(input: SavePageInput, publish\?: boolean\)/)
+  assert.match(mutations, /async \(input: SavePageInput, publish = false\)/)
+  assert.match(mutations, /if \(publish\) await publishPageMutation\.mutateAsync\(\{ pageId: created\.id \}\)/)
+  assert.match(editor, /mode === 'create'[\s\S]*?\? 'Publish'[\s\S]*?: 'Save version'/)
 })
 
 test('the open folder expands into the next column of the Finder', () => {
