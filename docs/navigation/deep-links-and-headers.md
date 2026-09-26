@@ -151,7 +151,7 @@ loading and not-found branches — so a phone standing on one had no Back.
   unchanged.
 - **The header is always rendered.** Loading, empty, not-found and refused
   states render *inside* the screen body under the same header: `OwnerGate`
-  now wraps the body, not the page (Audit Log, Policy, Operational usage), and
+  now wraps the body, not the page (Audit Log, Access rules, Usage and limits), and
   the agent, app and dashboard details render their header on every branch.
 - **The header names the screen everywhere.** The registry classifies a route
   but cannot name it, so the rendered title is published to
