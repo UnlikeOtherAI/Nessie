@@ -30,7 +30,7 @@ try {
   const connections = page.getByTestId('connections')
   for (const expected of [
     'this browser never scans your device',
-    'Open paired executors',
+    'Open paired computers',
     'Online — ready for a selected local model.',
     'Offline — start Nessie Desktop or its executor on this computer.',
     'Unknown — Nessie cannot currently verify this connection.',
@@ -41,7 +41,7 @@ try {
 
   // Executor detail reuses the same host controls, scoped to its one executor.
   const executor = page.getByTestId('executor-detail')
-  await executor.getByText('Paired executor · offline', { exact: true }).waitFor()
+  await executor.getByText('Paired computer · offline', { exact: true }).waitFor()
   await executor.getByRole('button', { name: 'Pause local models', exact: true }).click()
   const callsAfterPause = await page.evaluate(() => window.localOllamaFixtureCalls)
   assert.ok(callsAfterPause.some((call) => call.path.endsWith('/hosts/00000000-0000-4000-8000-0000000000e1/pause')))
@@ -89,8 +89,8 @@ try {
   // Narrow rendering must preserve the browser's honest doorway and keyboard
   // reachability instead of hiding the repair beneath horizontal overflow.
   await page.setViewportSize({ height: 844, width: 390 })
-  await page.getByRole('link', { name: 'Open paired executors', exact: true }).focus()
-  assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Open paired executors')
+  await page.getByRole('link', { name: 'Open paired computers', exact: true }).focus()
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Open paired computers')
   await page.screenshot({ fullPage: true, path: resolve(screenshots, 'phone-doorways-and-policy.png') })
   assert.deepEqual(errors, [], errors.join(' | '))
   await context.close()

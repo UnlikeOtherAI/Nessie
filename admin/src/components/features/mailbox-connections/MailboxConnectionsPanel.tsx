@@ -58,8 +58,8 @@ const SCOPE_COPY: Record<
     disconnectBody:
       'Your agents will lose access to this mailbox immediately. Nothing in the mailbox '
       + 'itself is touched.',
-    empty: 'No live IMAP mailboxes are connected yet.',
-    title: 'Live IMAP mailboxes',
+    empty: 'No live mailboxes are connected yet.',
+    title: 'Live mailboxes',
   },
 }
 

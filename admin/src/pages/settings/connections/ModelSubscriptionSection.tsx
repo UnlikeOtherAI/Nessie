@@ -18,7 +18,7 @@ import {
 import { QueryState } from '../../../components/shared/QueryState'
 
 /**
- * "Personal model subscriptions" — a person links their own consumer AI plan
+ * "Your AI plans" — a person links their own consumer AI plan
  * (Kimi, GLM today) so the agents they own run on it instead of the
  * organisation's credits.
  *
@@ -186,7 +186,7 @@ export const ModelSubscriptionSection = () => {
     <section className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <h2 className="text-base font-semibold text-[color:var(--tx1)]">
-          Personal model subscriptions
+          Your AI plans
         </h2>
         <p className="text-sm text-[color:var(--tx2)]">
           Link a plan you already pay for, and the agents you own can run on it

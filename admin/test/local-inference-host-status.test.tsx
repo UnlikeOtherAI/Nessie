@@ -86,13 +86,13 @@ test('an executor detail gets its own host status and real repairs', () => {
   assert.match(html, /Pause/)
   assert.match(html, /Disconnect local models/)
   assert.doesNotMatch(html, /Offline — start Nessie Desktop/)
-  assert.doesNotMatch(html, /Open executor/)
+  assert.doesNotMatch(html, /Open computer/)
 })
 
 test('Connections keeps the doorway into the same scoped executor surface', () => {
   const html = render()
 
-  assert.match(html, /Open executor/)
+  assert.match(html, /Open computer/)
   assert.match(html, /href="\/admin\/computers\/executor-a"/)
 })
 
@@ -195,7 +195,7 @@ test('revocation remains a shared repair but only reaches the server after expli
     assert.match(view.dialogText(), /Agents will stop using this computer’s local models/)
     assert.match(
       view.dialogText(),
-      /executor pairing and other machine permissions stay connected/,
+      /computer pairing and other computer permissions stay connected/,
     )
     assert.equal(view.calls.length, 0, 'opening the destructive confirmation must not revoke')
 
