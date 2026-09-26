@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nessie Executor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header><div><h1>Nessie Executor</h1><p id="headline" role="status">Checking connections…</p></div><button id="hide" aria-label="Close window">Close</button></header>
+  <nav aria-label="Executor settings">
+    <button data-tab="teams" aria-current="page">Paired teams</button>
+    <button data-tab="folders">Folders</button>
+    <button data-tab="commands">Commands</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+  <p id="error" role="alert" hidden></p>
+  <main>
+    <div id="connection-picker" hidden><label for="connection">Settings for team</label><select id="connection"></select><p class="hint">These permissions are stored on this computer. Only someone using this computer can change them.</p></div>
+    <section id="tab-teams">
+      <div class="section-heading"><h2>Paired teams</h2><button id="pair" class="primary">Add team</button></div>
+      <div id="executors-list"></div>
+      <form id="pair-form" hidden>
+        <h2>Connect a team</h2><p>Your existing team connections stay online.</p>
+        <label for="pairing-server">Nessie API address</label><input id="pairing-server" type="url" value="https://api.nessie.works" required>
+        <div class="row"><button type="button" id="choose-workspace">Choose folder…</button><span id="chosen-workspace" class="path">No folder chosen</span></div>
+        <p class="hint">Choose a folder to make available to this team. Add or remove folders after pairing.</p>
+        <div class="actions"><button type="submit" class="primary">Get pairing code</button><button type="button" id="pair-cancel">Cancel</button></div>
+      </form>
+      <section id="pairing-progress" hidden aria-live="polite">
+        <h2 id="pairing-title">Pair this computer</h2><p id="pairing-instruction"></p>
+        <div id="code-row"><output id="pairing-code" aria-label="Pairing code"></output><button id="copy-code" aria-label="Copy pairing code" title="Copy pairing code">Copy</button></div>
+        <p id="pairing-time" class="hint"></p><p id="pairing-destination"></p><p id="pairing-fingerprint" class="hint path"></p>
+        <div class="actions"><button id="pairing-confirm" class="primary" hidden>Confirm and connect</button><button id="pairing-stop">Cancel pairing</button></div>
+      </section>
+    </section>
+    <section id="tab-folders" hidden>
+      <div class="section-heading"><h2>Allowed folders</h2><button id="add-folder">Add folder…</button></div>
+      <p>Files outside these folders are unavailable to the executor’s file tools. File edits are prepared as drafts.</p>
+      <div id="reach-folders"></div>
+      <p class="hint">Interactive programs have their own working folders, configured under Commands.</p>
+    </section>
+    <section id="tab-commands" hidden>
+      <h2>Command permissions</h2>
+      <form id="command-form">
+        <label for="command-mode">Commands this team may run</label><select id="command-mode"><option value="all">Allow all commands</option><option value="allowlist">Only allowlisted commands</option></select>
+        <label for="command-allowlist">Allowlist</label><textarea id="command-allowlist" placeholder="git *&#10;pnpm run *" rows="3"></textarea>
+        <label for="command-denylist">Denylist — always blocked</label><textarea id="command-denylist" placeholder="git push *" rows="3"></textarea>
+        <p class="hint">One program and optional arguments per line. A trailing * allows further arguments. Denials take priority. These rules apply to executor commands; installed interactive programs run with your OS account’s access.</p>
+        <button class="primary" type="submit">Save command permissions</button>
+      </form>
+      <p id="command-availability" class="hint"></p>
+      <hr><h2>Interactive programs</h2>
+      <p>Run Codex, Gemini, Claude, or another terminal program installed and signed in on this computer.</p>
+      <p id="terminal-current" class="hint"></p>
+      <form id="terminal-form">
+        <label for="terminal-command">Program</label><input id="terminal-command" placeholder="claude, codex, gemini, or the executable’s full path" required>
+        <label for="terminal-arguments">Arguments (optional, one per line)</label><textarea id="terminal-arguments" rows="2"></textarea>
+        <div class="row"><button id="choose-terminal-folder" type="button">Choose working folder…</button><span id="terminal-folder" class="path">No folder chosen</span></div>
+        <p class="hint">Choose a separate folder from the draft folders above. Interactive programs can edit this folder directly. macOS and Linux require tmux on PATH.</p>
+        <button class="primary" type="submit">Save interactive program</button>
+      </form>
+    </section>
+    <section id="tab-settings" hidden>
+      <h2>Start at login</h2><label class="toggle"><input type="checkbox" id="autostart"> Open Nessie Executor when I log in</label>
+      <p id="autostart-note" class="hint"></p>
+      <hr><h2>Team access</h2><p>Choose who can use this executor in Nessie. Folder and command permissions are controlled here on this computer, separately for each team.</p>
+    </section>
+  </main>
+  <footer><button id="open-nessie">Open Nessie</button><span id="saved" role="status"></span></footer>
+  <script src="native.js"></script><script src="main.js"></script><script src="pairing.js"></script><script src="permissions.js"></script>
+</body>
+</html>
