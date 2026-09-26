@@ -67,7 +67,7 @@ const DESKTOP_PREFIXES = ['desktop/', 'executor/windows-provenance/', 'assets/']
 // tray, Hyper-V bridge, guest payload, and WiX authoring all live under
 // executor/. Root and workflow changes already force `full` above, so they
 // cannot silently bypass this gate.
-const WINDOWS_NATIVE_PREFIXES = ['desktop/', 'executor/', 'assets/'];
+const WINDOWS_NATIVE_PREFIXES = ['desktop/', 'executor/', 'packages/executor-console/', 'assets/'];
 
 // Inputs to the three production container images Deploy builds and ships:
 //   admin ← admin/ + packages/ + api/prisma (its Prisma client)

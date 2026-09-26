@@ -93,6 +93,18 @@ const stateFor = (workspaceRoot: string) => ({
   workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
 })
 
+test('a team denylist refuses a command before touching files or starting a guest', async () => {
+  let started = false
+  const manager = createExecutorCommandSessionManager('/unused', {
+    ...stateFor('/unused'), commandPolicy: { mode: 'all', allowlist: [], denylist: ['pnpm install *'] },
+  }, {
+    startSession: async () => { started = true; throw new Error('Must not start a guest') },
+  })
+  assert.deepEqual(await manager.run(commandFor({ program: 'pnpm', args: ['install'] }), runId),
+    { code: 'EXECUTOR_COMMAND_DENIED', success: false })
+  assert.equal(started, false)
+})
+
 test('command session starts one no-egress COW guest and forwards an argv request without a shell', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-command-manager-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-command-workspace-'))

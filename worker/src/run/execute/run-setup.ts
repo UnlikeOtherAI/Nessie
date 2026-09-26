@@ -507,13 +507,17 @@ export const prepareRunExecution = async (
     await markRecallsInjected(injectedRecallIds, deps.searchConfig.pool)
   }
 
-  // Checkpoint auto-load (§5): ANY follow-up run in this thread picks up the
-  // saved work state, which is what makes a plain "keep going" reply resume
-  // properly. DeepWater handoff runs are excluded — their launch prompt is
-  // server-authored and must stay byte-identical.
+  // Checkpoint resume (§5): a continuation claimed for this run, or — what
+  // makes a plain "keep going" reply work — a person's own reply in the
+  // conversation the work stopped in, for a checkpoint they may read
+  // (`loadRunCheckpointForRun`). DeepWater handoff runs are excluded — their
+  // launch prompt is server-authored and must stay byte-identical.
   const loadedCheckpoint = input.isHandoffTurn
     ? null
     : await loadRunCheckpointForRun(deps.prisma, {
+      agentId: context.agent.id,
+      principalUserId: context.run.principalUserId ?? null,
+      resumer: liveRequester ? viewer : null,
       rootMessageId: context.replyRootMessageId ?? null,
       runId: context.run.id,
       threadId: context.run.threadId,

@@ -104,7 +104,10 @@ receive the same internal inset. This covers full-height and horizontal layouts
 as well as ordinary lists. It never shortens the page or sidebar surface:
 content continues behind the glass while the final row can scroll above it. iPad and Android
 reserve their top inset in the native frame. Android's
-floating dock has no independent separator: the shared dock-geometry contract
+floating dock blurs the live page on Android 12 and newer, with a translucent
+theme tint and highlighted pill edge; older devices retain a stronger tint
+for readability. This uses `expo-blur` and requires rebuilding the native app.
+It has no independent separator: the shared dock-geometry contract
 adds its exact interaction clearance to the WebView columns, keeping the chat
 composer entirely above the dock while page backgrounds continue beneath it. The
 per-section secondary sidebar (channel list, admin sub-pages, …) opens from a
@@ -119,10 +122,14 @@ control: the same avatar, presence/status badges, and account menu used at the
 bottom of the desktop rail. A shell with that rail never renders a second
 top-bar account badge.
 
-On the native iPhone and Android first screen of **every tab** (Channels,
+On the native iPhone first screen of **every tab** (Channels,
 Projects, Knowledge, Admin, and Search, including ordinary query-string state),
 `NativePhoneConversationMenuChrome` adds a workspace header above the retained
-WebView. Its surface is the same `--rail` backing surface visible beneath the
+WebView. Android keeps this same team/account header on every screen with a
+bottom dock, including chats and other details; opening a conversation must
+never remove the account-menu doorway or shift the WebView's top edge. Login
+and the full-screen compose flow still hide both global bars.
+Its surface is the same `--rail` backing surface visible beneath the
 transparent iPad tab controls, and its controls use the theme's `--tx` colour;
 in particular, the default Sandstone header is the same warm light beige as
 that iPad background. On a portrait phone, the team/workspace switcher is at

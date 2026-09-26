@@ -84,8 +84,6 @@ pub fn run() {
         .manage(executor_companion::ExecutorCompanionState::default())
         .manage(local_inference::LocalInferenceState::default())
         .invoke_handler(tauri::generate_handler![
-            executor_companion::executor_companion_change_workspace,
-            executor_companion::executor_companion_configure_workspace,
             executor_companion::executor_companion_forget,
             executor_companion::executor_companion_open_menu_bar_app,
             executor_companion::executor_companion_pair,

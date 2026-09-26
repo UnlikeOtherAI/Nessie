@@ -13,20 +13,23 @@ import {
   type Recipient,
 } from '../lib/channel-compose-recipients'
 import { usePhoneLayout } from '../navigation/mobile-shell'
+import { useFileDrop } from '../hooks/useFileDrop'
+import { OverlayOwnerProvider } from '../components/overlays/overlay-owner'
 import { OverlayPortal } from '../components/overlays/OverlayPortal'
 import { useOverlay } from '../components/overlays/useOverlay'
-import {
-  MentionInput,
-  type AgentMention,
-  type MentionEntity,
-  type MentionInputHandle,
+import type {
+  AgentMention,
+  MentionEntity,
+  MentionInputHandle,
 } from '../components/shared/MentionInput'
+import { DropZoneOverlay } from '../components/shared/DropZoneOverlay'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useIsOrganizationAdmin } from '../facades/auth/hooks'
 import { RecipientBar } from '../components/shared/RecipientBar'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
-import { VoiceDictationControl } from '../components/features/channels/VoiceDictationControl'
-import { type VoiceDictationState, voiceDictationBlocksSubmit } from '../components/features/channels/voice-dictation-state'
+import { ChannelComposer } from '../components/features/channels/ChannelComposer'
+import { useComposerAttachments } from '../components/features/channels/useComposerAttachments'
+import { NO_MENTION_INVITE } from '../components/features/channels/useMentionInviteGate'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 const getRecipientName = (
@@ -58,12 +61,18 @@ export const ChannelConversationComposePage = () => {
   const sendMessage = useSendMessageToThread()
   const mentionRef = useRef<MentionInputHandle>(null)
   const addressInputRef = useRef<HTMLInputElement>(null)
+  // Staged exactly as in any conversation — paste, the paperclip, a drop —
+  // and linked by the first message, which is what makes them its files.
+  const attachments = useComposerAttachments()
+  const drop = useFileDrop(attachments.addFiles)
+  // One start at a time. Enter clears the editor but not the staged files, so
+  // a second Enter while the first start is in flight would send them again.
+  const sending = useRef(false)
 
   const [recipients, setRecipients] = useState<Recipient[]>([])
   const [message, setMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [oversizePaste, setOversizePaste] = useState<string | null>(null)
-  const [voiceState, setVoiceState] = useState<VoiceDictationState>('idle')
 
   const returnTo = readChannelComposeReturnTo(location.state)
   const close = useCallback(() => {
@@ -112,18 +121,31 @@ export const ChannelConversationComposePage = () => {
     [agentsById, recipients, usersById],
   )
 
+  // Enter empties the editor before the send is attempted (`MentionInput`), so
+  // a send that did not happen puts the words back; the staged files never
+  // left, because they are cleared only once the message holds them.
+  const restoreText = useCallback((text: string) => {
+    if (!text || mentionRef.current?.getText().trim()) return
+    mentionRef.current?.setText(text)
+    setMessage(text)
+  }, [])
+
   const submit = useCallback(
     async (rawText: string, agentMentions: AgentMention[] = []) => {
       const content = rawText.trim()
-      if (!content) {
+      const attachmentIds = attachments.attachmentIds
+      // Text, finished uploads, or both — the same rule as every composer.
+      if ((!content && attachmentIds.length === 0) || sending.current) {
         return
       }
       if (recipients.length === 0) {
+        restoreText(content)
         setError('Choose at least one recipient.')
         addressInputRef.current?.focus()
         return
       }
 
+      sending.current = true
       setError(null)
       try {
         const channel = await startConversation.mutateAsync({
@@ -136,17 +158,24 @@ export const ChannelConversationComposePage = () => {
         })
         await sendMessage.mutateAsync({
           ...(agentMentions.length > 0 ? { agentMentions } : {}),
+          ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
           content,
           threadId: channel.defaultThreadId,
         })
         mentionRef.current?.clear()
         setMessage('')
-        void navigate(`/channels/${channel.id}`, { replace: true })
+        attachments.clearStaged()
+        // The thread this message was written in, not the bare room: an agent
+        // DM's bare address is its session home, which does not show it.
+        void navigate(`/channels/${channel.id}/threads/${channel.defaultThreadId}`, { replace: true })
       } catch (err) {
+        restoreText(content)
         setError(err instanceof Error ? err.message : 'Could not start chat.')
+      } finally {
+        sending.current = false
       }
     },
-    [navigate, recipients, sendMessage, startConversation],
+    [attachments, navigate, recipients, restoreText, sendMessage, startConversation],
   )
 
   const isPending = startConversation.isPending || sendMessage.isPending
@@ -169,128 +198,121 @@ export const ChannelConversationComposePage = () => {
           aria-labelledby="channel-conversation-compose-title"
           aria-modal={phoneLayout ? undefined : true}
           className={phoneLayout
-            ? 'flex h-[100dvh] min-h-0 w-full flex-col bg-[color:var(--main)] pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)]'
-            : 'flex h-[46rem] max-h-[calc(100dvh-3rem)] min-h-0 w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--main)] shadow-2xl'}
+            ? 'relative flex h-[100dvh] min-h-0 w-full flex-col bg-[color:var(--main)] pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)]'
+            : 'relative flex h-[46rem] max-h-[calc(100dvh-3rem)] min-h-0 w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--main)] shadow-2xl'}
           ref={overlay.panelRef}
           role="dialog"
           tabIndex={phoneLayout ? undefined : -1}
+          {...drop.dropHandlers}
         >
-          {/* The one header, at the shell's height rather than this flow's own
-              58px. A Flow returning to an explicit address owns its Back, so on
-              the single layout the leading control is this page's close; on
-              split — where the flow is a centred dialog — the same action is a
-              Close in the actions lane. */}
-          <ScreenHeader
-            actions={phoneLayout ? [] : [{
-              compact: true,
-              icon: faXmark,
-              id: 'close-compose',
-              label: 'Close new message',
-              onSelect: close,
-              priority: 100,
-            }]}
-            backLabel="Back to Channels"
-            flowOwnsBack
-            onBack={phoneLayout ? close : undefined}
-            title="New message"
-            titleId="channel-conversation-compose-title"
-          />
-
-          <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-5 py-5">
-          {/* One address book: people and agents are offered side by side, and
-              any mix of them can be addressed in the same message. */}
-          <div className="flex-shrink-0">
-            <RecipientBar
-              agents={agents}
-              autoFocus
-              inputRef={addressInputRef}
-              label="To"
-              // People are listed first, so a short cap would push every agent
-              // out of reach until the person typed; the list scrolls instead.
-              limit={50}
-              onChange={setRecipients}
-              placeholder="Search people or agents"
-              recipients={recipients}
-              token={token}
-              users={users}
+          {/* On split this panel is a modal, so what the composer anchors to
+              it — the emoji picker — takes the modal-owned layer rather than
+              opening under this scrim (docs/navigation/overlays.md). On single
+              it is an ordinary screen and owns nothing. */}
+          <OverlayOwnerProvider value={phoneLayout ? null : 'modal'}>
+            {/* The one header, at the shell's height rather than this flow's
+                own 58px. A Flow returning to an explicit address owns its
+                Back, so on the single layout the leading control is this
+                page's close; on split — where the flow is a centred dialog —
+                the same action is a Close in the actions lane. */}
+            <ScreenHeader
+              actions={phoneLayout ? [] : [{
+                compact: true,
+                icon: faXmark,
+                id: 'close-compose',
+                label: 'Close new message',
+                onSelect: close,
+                priority: 100,
+              }]}
+              backLabel="Back to Channels"
+              flowOwnsBack
+              onBack={phoneLayout ? close : undefined}
+              title="New message"
+              titleId="channel-conversation-compose-title"
             />
-          </div>
 
-          <form
-            className="admin-compose mt-auto flex-shrink-0"
-            // The soft-keyboard inset (docs/navigation/overview.md §4.14) keeps this
-            // composer above an on-screen keyboard on hosts whose `dvh` does
-            // not itself shrink for it.
-            style={{ marginBottom: 'var(--keyboard-inset, 0px)' }}
-            onSubmit={(event) => {
-              event.preventDefault()
-              if (voiceDictationBlocksSubmit(voiceState)) return
-              void submit(mentionRef.current?.getText() ?? message)
-            }}
-          >
-            <MentionInput
-              ref={mentionRef}
-              entities={mentionEntities}
-              maxLength={CHAT_MESSAGE_MAX_CHARS}
-              onChange={setMessage}
-              onOversizePaste={setOversizePaste}
-              onSubmit={(text, agentMentions) => void submit(text, agentMentions)}
-              placeholder="Message"
-              submitDisabled={voiceDictationBlocksSubmit(voiceState)}
-            />
-            <div className="flex items-center justify-between border-t border-[color:var(--border-strong)] px-3 py-1.5">
-              <div className="text-sm text-[color:var(--danger-text)]">
-                {error}
+            <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
+              {/* One address book: people and agents are offered side by side,
+                  and any mix of them can be addressed in the same message. */}
+              <div className="flex-shrink-0 px-5 pt-5">
+                <RecipientBar
+                  agents={agents}
+                  autoFocus
+                  inputRef={addressInputRef}
+                  label="To"
+                  // People are listed first, so a short cap would push every
+                  // agent out of reach until the person typed; the list
+                  // scrolls instead.
+                  limit={50}
+                  onChange={setRecipients}
+                  placeholder="Search people or agents"
+                  recipients={recipients}
+                  token={token}
+                  users={users}
+                />
               </div>
-              <div className="flex items-center gap-2">
-                <VoiceDictationControl
-                  disabled={isPending}
-                  onInsertTranscript={(text) => {
-                    mentionRef.current?.insertDictationText(text)
+
+              {/* The one composer (docs/standards/design-system.md), so a new
+                  conversation's first message is written with everything any
+                  other message is: paste, the paperclip, emoji, dictation. It
+                  brings its own gutter and the soft-keyboard inset. */}
+              <div className="mt-auto flex-shrink-0">
+                <ChannelComposer
+                  attachments={attachments}
+                  isSendPending={isPending}
+                  mentionEntities={mentionEntities}
+                  mentionRef={mentionRef}
+                  message={message}
+                  onChangeMessage={setMessage}
+                  onInsertAtSign={() => mentionRef.current?.insertAtSign()}
+                  onInsertEmoji={(emoji) => {
+                    mentionRef.current?.insertText(emoji)
                     mentionRef.current?.focus()
                   }}
-                  onStateChange={setVoiceState}
+                  onInsertHashSign={() => mentionRef.current?.insertHashSign()}
+                  onOversizePaste={setOversizePaste}
+                  onSubmitForm={(event) => {
+                    event?.preventDefault()
+                    void submit(
+                      mentionRef.current?.getText() ?? message,
+                      mentionRef.current?.getAgentMentions() ?? [],
+                    )
+                  }}
+                  onSubmitText={(text, agentMentions) => void submit(text, agentMentions)}
+                  placeholder="Message"
+                  sendError={error}
+                  // The questions a send can raise in an existing conversation
+                  // do not arise before one exists. Every mention here names a
+                  // recipient, and the send makes each a member, so nobody can
+                  // be mentioned in from outside and no agent is left unbound.
+                  // This page also does not hold a typed credential for the
+                  // vault the way a conversation's composer does, so there is
+                  // no capture to show.
+                  mentionInvite={NO_MENTION_INVITE}
+                  pendingAgentInvites={[]}
+                  invitingAgentId={null}
+                  inviteErrors={{}}
+                  onInvitePendingAgent={() => undefined}
+                  onDismissPendingAgent={() => undefined}
+                  secretCapture={null}
+                  onConfirmSecretCapture={async () => undefined}
+                  onDismissSecretCapture={() => undefined}
                 />
-                <button
-                  aria-label="Send message"
-                  className="admin-compose-send flex h-[30px] items-center justify-center rounded-lg bg-[color:var(--accent)] px-3 text-[var(--on-accent)] disabled:opacity-50"
-                  disabled={
-                    recipients.length === 0
-                    || !message.trim()
-                    || isPending
-                    || voiceDictationBlocksSubmit(voiceState)
-                  }
-                  type="submit"
-                >
-                  <svg
-                    className="admin-compose-action-icon h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      d="m12 19 9 2-9-18-9 18 9-2Zm0 0v-8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
               </div>
             </div>
-          </form>
-        </div>
 
-        <OversizePasteDialog
-          limit={CHAT_MESSAGE_MAX_CHARS}
-          onCancel={() => setOversizePaste(null)}
-          onInsertTrimmed={(trimmed) => {
-            setOversizePaste(null)
-            mentionRef.current?.insertText(trimmed)
-          }}
-          open={oversizePaste !== null}
-          pastedText={oversizePaste ?? ''}
-        />
+            <OversizePasteDialog
+              limit={CHAT_MESSAGE_MAX_CHARS}
+              onCancel={() => setOversizePaste(null)}
+              onInsertTrimmed={(trimmed) => {
+                setOversizePaste(null)
+                mentionRef.current?.insertText(trimmed)
+              }}
+              open={oversizePaste !== null}
+              pastedText={oversizePaste ?? ''}
+            />
+            <DropZoneOverlay active={drop.isDragging} label="Drop files to attach" />
+          </OverlayOwnerProvider>
         </div>
       </div>
     </OverlayPortal>

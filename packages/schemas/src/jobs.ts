@@ -109,6 +109,32 @@ export type RunCompletionFollowupJobPayload = z.infer<
   typeof RunCompletionFollowupJobPayloadSchema
 >
 
+/**
+ * A non-interactive run's auto-continuation, waiting for its (agent, thread)
+ * slot. A continuation that finds the slot taken waits for it rather than
+ * leaving the stopped work to whichever run holds it
+ * (docs/standards/tech-and-run-budgets.md → "Three kinds of checkpoint").
+ */
+export const RUN_AUTO_CONTINUATION_TOPIC = 'run.auto_continuation'
+
+export const RunAutoContinuationJobPayloadSchema = z.object({
+  /** How many times this continuation has tried to start, this one included. */
+  attempt: z.number().int().positive(),
+  checkpointId: z.string().uuid(),
+  /** The stopped run's own job, which its continuation replays. */
+  source: RunExecuteJobPayloadSchema,
+  stoppedRun: z.object({
+    agentId: z.string().uuid(),
+    channelId: z.string().uuid(),
+    id: z.string().uuid(),
+    organizationId: z.string().uuid(),
+    principalUserId: z.string().uuid().nullable(),
+    replyPlacement: z.enum(['channel', 'thread']).nullable(),
+    threadId: z.string().uuid(),
+  }),
+})
+export type RunAutoContinuationJobPayload = z.infer<typeof RunAutoContinuationJobPayloadSchema>
+
 export const OrchestrateDecideJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
   /**

@@ -13,6 +13,9 @@
 #[cfg(windows)]
 mod sid;
 
+pub mod runtime;
+pub mod lease;
+
 #[cfg(windows)]
 pub use sid::sid_to_string;
 

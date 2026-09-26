@@ -36,6 +36,9 @@ targets:
     sources:
       - path: Sources/Core
       - path: Sources/App
+      - path: ../../packages/executor-console
+        type: folder
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: Nessie Executor

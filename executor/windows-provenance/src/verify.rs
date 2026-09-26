@@ -3,15 +3,16 @@
 //! `WinVerifyTrust` answers "is this file's Authenticode signature valid and
 //! trusted", never "who signed it" — an attacker with any code-signing
 //! certificate produces a file that passes it. The signer certificate has to be
-//! read out of the verification state and compared to the publisher compiled
-//! into the release, which is what [`super::decide_release_signature`] does with
-//! the facts this module collects.
+//! read out of the verification state and its durable profile EKU compared to
+//! the publisher identity compiled into the release, which is what
+//! [`super::decide_release_signature`] does with the facts this module collects.
 
+use std::ffi::CStr;
 use std::os::windows::ffi::OsStrExt;
 
 use windows_sys::Win32::Foundation::TRUE;
 use windows_sys::Win32::Security::Cryptography::{
-    CertGetCertificateContextProperty, CERT_HASH_PROP_ID,
+    CertGetEnhancedKeyUsage, CERT_CONTEXT, CTL_USAGE,
 };
 use windows_sys::Win32::Security::WinTrust::{
     WinVerifyTrust, WTHelperGetProvCertFromChain, WTHelperGetProvSignerFromChain,
@@ -22,51 +23,70 @@ use windows_sys::Win32::Security::WinTrust::{
 
 use super::WindowsSignatureFacts;
 
-/// A SHA-1 thumbprint is 20 bytes, rendered as 40 hexadecimal characters.
-const THUMBPRINT_BYTES: usize = 20;
-
 fn wide(path: &std::path::Path) -> Vec<u16> {
     path.as_os_str().encode_wide().chain(std::iter::once(0)).collect()
 }
 
-fn hexadecimal(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
-/// The signer's SHA-1 thumbprint, read from the state `WinVerifyTrust` left
-/// behind. Read only after a successful verification: on failure the chain may
-/// be absent or incomplete, and a thumbprint from an untrusted chain would be
-/// exactly the value an attacker controls.
-unsafe fn signer_thumbprint(state: *mut std::ffi::c_void) -> Option<String> {
+/// The signer's leaf certificate from the state `WinVerifyTrust` left behind.
+/// Read only after a successful verification: on failure the chain may be
+/// absent or incomplete, and certificate fields would be attacker-controlled.
+unsafe fn signer_certificate(state: *mut std::ffi::c_void) -> *const CERT_CONTEXT {
     let provider = WTHelperProvDataFromStateData(state);
     if provider.is_null() {
-        return None;
+        return std::ptr::null();
     }
     // Signer 0, chain 0: the first signature's leaf certificate — the publisher.
     let signer = WTHelperGetProvSignerFromChain(provider, 0, 0, 0);
     if signer.is_null() {
-        return None;
+        return std::ptr::null();
     }
     let certificate = WTHelperGetProvCertFromChain(signer, 0);
     if certificate.is_null() {
-        return None;
+        return std::ptr::null();
     }
-    let context = (*certificate).pCert;
+    (*certificate).pCert
+}
+
+/// All EKUs in the trusted leaf certificate. Artifact Signing renews its leaf
+/// certificate daily but keeps the profile-specific `1.3.6.1.4.1.311.97.*`
+/// EKU stable for the lifetime of the certificate profile.
+unsafe fn signer_enhanced_key_usages(state: *mut std::ffi::c_void) -> Option<Vec<String>> {
+    let context = signer_certificate(state);
     if context.is_null() {
         return None;
     }
-    let mut thumbprint = [0_u8; THUMBPRINT_BYTES];
-    let mut size = THUMBPRINT_BYTES as u32;
-    let read = CertGetCertificateContextProperty(
-        context,
-        CERT_HASH_PROP_ID,
-        thumbprint.as_mut_ptr().cast(),
-        &mut size,
-    );
-    if read != TRUE || size as usize != THUMBPRINT_BYTES {
+
+    let mut size = 0_u32;
+    if CertGetEnhancedKeyUsage(context, 0, std::ptr::null_mut(), &mut size) != TRUE
+        || size < std::mem::size_of::<CTL_USAGE>() as u32
+    {
         return None;
     }
-    Some(hexadecimal(&thumbprint))
+    // `Vec<usize>` supplies alignment suitable for CTL_USAGE (the Win32
+    // `CERT_ENHKEY_USAGE` typedef) while
+    // still giving the Win32 API the requested byte count.
+    let words = (size as usize).div_ceil(std::mem::size_of::<usize>());
+    let mut buffer = vec![0_usize; words];
+    let usage = buffer.as_mut_ptr().cast::<CTL_USAGE>();
+    if CertGetEnhancedKeyUsage(context, 0, usage, &mut size) != TRUE {
+        return None;
+    }
+    if (*usage).cUsageIdentifier == 0 || (*usage).rgpszUsageIdentifier.is_null() {
+        return Some(Vec::new());
+    }
+    let identifiers = std::slice::from_raw_parts(
+        (*usage).rgpszUsageIdentifier,
+        (*usage).cUsageIdentifier as usize,
+    );
+    identifiers
+        .iter()
+        .map(|identifier| {
+            if (*identifier).is_null() {
+                return None;
+            }
+            CStr::from_ptr((*identifier).cast()).to_str().ok().map(str::to_owned)
+        })
+        .collect()
 }
 
 /// Verifies the file's Authenticode signature with no UI and no network:
@@ -95,8 +115,8 @@ pub fn collect_signature_facts(path: &std::path::Path) -> Option<WindowsSignatur
         WinVerifyTrust(std::ptr::null_mut(), &mut action, (&mut data as *mut WINTRUST_DATA).cast())
     };
     let facts = WindowsSignatureFacts {
-        signer_thumbprint: if verified == 0 {
-            unsafe { signer_thumbprint(data.hWVTStateData) }
+        signer_enhanced_key_usages: if verified == 0 {
+            unsafe { signer_enhanced_key_usages(data.hWVTStateData) }
         } else {
             None
         },

@@ -57,6 +57,11 @@ projects or the current team. People may be made administrators; project and
 whole-team sharing also exposes management to that team's administrators.
 Machine capabilities require no review. See [executor sharing](standards/executor-sharing.md).
 
+Folder and command permissions are owned and enforced on the executor machine,
+separately for each paired team; Nessie controls who may use it. The CLI and
+matching macOS/Windows consoles use machine-issued pairing codes. See
+[local executor controls](executor-local-controls.md).
+
 ## Local model agents direction (2026-09-20)
 
 An existing agent may explicitly use an installed Ollama model through a paired

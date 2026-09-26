@@ -22,6 +22,7 @@ import {
 } from '@nessie/schemas'
 
 import { executorApi } from './api-client.js'
+import { localCommandPolicyOf, parseLocalCommandPolicy, type LocalCommandPolicy } from './command-policy.js'
 import { planCodingSessions, type CodingSessionsRequest } from './coding-sessions-policy.js'
 import { assertHostSupportsOperations, buildSignedDescriptor } from './descriptor.js'
 import { compileExecutorEgressPolicy } from './egress-policy.js'
@@ -178,6 +179,7 @@ const configuredOperationKeys = (
   host: ExecutorHost,
   commandAllowlist: readonly string[],
   mcpServerCount: number,
+  hasLocalCommandRules = false,
 ): string[] => {
   const requested = new Set(requestedOperationKeys)
   if (requested.size === 0 || requested.size !== requestedOperationKeys.length) {
@@ -224,7 +226,7 @@ const configuredOperationKeys = (
   // An enabled operation that can never succeed is a misconfiguration, not a
   // policy: with no permitted program, every command.run would be refused at
   // dispatch while the executor advertised the capability.
-  if (requested.has(COMMAND_OPERATION_KEY) && commandAllowlist.length === 0) {
+  if (requested.has(COMMAND_OPERATION_KEY) && commandAllowlist.length === 0 && !hasLocalCommandRules) {
     throw new Error('Name at least one permitted program before enabling command.run.')
   }
   const requestedMcpOperations = MCP_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey))
@@ -261,8 +263,8 @@ const profilesForOperationKeys = (operationKeys: string[]): string[] =>
 /**
  * Update the companion's locally enforced policy. Promotion additionally needs
  * an owner-verified native helper. This deliberately does not submit a
- * descriptor: `connect` signs and proposes the new revision, then an entitled
- * human must confirm its review in Nessie before it is usable.
+ * descriptor: the next connection signs and reports the new capabilities.
+ * Machine resource permissions remain owned by this local configuration.
  *
  * An omitted `commandAllowlist` keeps the permitted programs the policy already
  * names — a caller changing operations does not silently disarm the list — and
@@ -275,14 +277,20 @@ export const configureExecutorLocalPolicy = async (
   nativeHelperPath?: string,
   host: ExecutorHost = detectExecutorHost(),
   workspaceFolders: readonly ExecutorWorkspaceFolder[] = state.workspaceFolders,
-  commandAllowlist: readonly string[] = state.descriptor.commandAllowlist ?? [],
+  commandAllowlist?: readonly string[],
   // An omitted list keeps the named servers; an empty one removes them all,
   // which the operation check below then refuses while mcp.* stays enabled.
   mcpServers: readonly ExecutorLocalMcpServer[] = state.mcpServers ?? [],
   // The built-in coding-sessions bridge is never a named server: the executor
   // generates its entry from this, and its power facts join the descriptor.
   codingSessions: CodingSessionsRequest = {},
+  commandPolicy?: LocalCommandPolicy,
 ): Promise<ExecutorLocalState> => {
+  const permittedPrograms = configuredCommandAllowlist(commandAllowlist ?? state.descriptor.commandAllowlist ?? [])
+  const localRules = commandPolicy !== undefined ? parseLocalCommandPolicy(commandPolicy)
+    : commandAllowlist !== undefined
+      ? parseLocalCommandPolicy({ ...localCommandPolicyOf(state), mode: 'allowlist', allowlist: permittedPrograms })
+      : localCommandPolicyOf(state)
   const canonicalWorkspaceFolders = sameWorkspaceFolders(workspaceFolders, state.workspaceFolders)
     ? state.workspaceFolders
     : await configureExecutorWorkspaceFolders(workspaceFolders)
@@ -297,14 +305,14 @@ export const configureExecutorLocalPolicy = async (
     workspaceFolders: canonicalWorkspaceFolders,
   })
   const namedMcpServers = bridge.servers
-  const permittedPrograms = configuredCommandAllowlist(commandAllowlist)
   const operationKeys = configuredOperationKeys(
     requestedOperationKeys,
     Boolean(state.browserSandbox),
     Boolean(state.codexSandbox),
     host,
-    permittedPrograms,
+    localRules.allowlist,
     namedMcpServers.length,
+    commandPolicy !== undefined || state.commandPolicy !== undefined,
   )
   const helper = nativeHelperPath
     ? await verifyNativeHelperPath(nativeHelperPath)
@@ -315,12 +323,11 @@ export const configureExecutorLocalPolicy = async (
   await bridge.persist(operationKeys)
   const next: ExecutorLocalState = {
     ...state,
-    // Rebuilt field by field rather than spread over the previous descriptor:
-    // an emptied allowlist has to leave no key behind, because a `commandAllowlist`
-    // present but undefined is not canonicalizable and would fail the next digest.
+    commandPolicy: localRules,
+    // Local edits migrate legacy command rules out of the public descriptor.
+    // The server receives capability facts, never the machine's launch rules.
     descriptor: {
       ...(bridge.facts ? { codingSessions: bridge.facts } : {}),
-      ...(permittedPrograms.length > 0 ? { commandAllowlist: permittedPrograms } : {}),
       limits: state.descriptor.limits,
       ...(namedMcpServers.length > 0
         ? { mcpServers: executorLocalMcpServerNames(namedMcpServers) }
@@ -380,7 +387,8 @@ export const configureExecutorBrowserSandbox = async (
     ...currentNonBrowserOperations,
     'sandbox.stop',
     ...BROWSER_OPERATION_KEYS,
-  ])], true, Boolean(state.codexSandbox), host, state.descriptor.commandAllowlist ?? [], state.mcpServers?.length ?? 0)
+  ])], true, Boolean(state.codexSandbox), host, localCommandPolicyOf(state).allowlist,
+  state.mcpServers?.length ?? 0, state.commandPolicy !== undefined)
   const next: ExecutorLocalState = {
     ...state,
     browserSandbox,
@@ -431,7 +439,7 @@ export const configureExecutorCodexSandbox = async (
     'sandbox.stop',
     ...CODING_OPERATION_KEYS,
   ])], Boolean(state.browserSandbox), true, host,
-  state.descriptor.commandAllowlist ?? [], state.mcpServers?.length ?? 0)
+  localCommandPolicyOf(state).allowlist, state.mcpServers?.length ?? 0, state.commandPolicy !== undefined)
   const next: ExecutorLocalState = {
     ...state,
     codexSandbox,

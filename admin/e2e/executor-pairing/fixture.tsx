@@ -25,7 +25,7 @@ const Fixture = () => {
             <main className="min-h-screen bg-[color:var(--bg)] p-8 text-[color:var(--tx)]">
               <h1>Executors</h1>
               {new URLSearchParams(location.search).has('pending') ? <ExecutorPairingPendingNotice /> : null}
-              <button className="admin-button admin-button-primary" onClick={() => setOpen(true)} type="button">Pair executor</button>
+              <button className="admin-button admin-button-primary" onClick={() => setOpen(true)} type="button">Add executor</button>
               {finished ? <p>Executor opened</p> : null}
               <ExecutorPairDialog
                 initialAudience={new URLSearchParams(location.search).has('team') ? 'team' : 'personal'}

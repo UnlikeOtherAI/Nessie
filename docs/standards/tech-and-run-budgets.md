@@ -300,6 +300,25 @@ summary and points here; **this file is the rule**.
     by a NEW run through `POST /api/runs/:id/continue` or the worker's
     auto-continuation. Untrusted narrative, re-injected under an explicit
     untrusted framing.
+  - **Who resumes one** (`loadRunCheckpointForRun`). A continuation claimed
+    for it — the Continue press, an approval or card resume, the worker's
+    auto-continuation, each after its own gate — or a person's own reply in
+    the conversation it stopped in: the same agent and Personal Assistant
+    principal, the same thread and reply root, and a checkpoint that person
+    may read, checked before the one-shot claim with the predicate run setup
+    admits it by. Every other run leaves it alone — a schedule, an event
+    trigger, a channel policy, a wake, another agent, a member who may not
+    read it. It used to go to the next run in the thread, whatever that was:
+    a schedule answered from a person's working notes and was stamped with
+    their sources, and a member who could not read them consumed them and
+    dropped them (`worker/test/db/checkpoint-resume-scope.test.ts`).
+  - **A continuation waits for a busy thread.** An auto-continuation that
+    finds its (agent, thread) slot taken queues itself again
+    (`startAutoContinuation`, topic `run.auto_continuation`; 15 s doubling to
+    5 min, twelve tries, about 45 min) instead of leaving the work to the run
+    holding the slot, which no longer takes a checkpoint it was not handed. It
+    stops once someone resumes the checkpoint, and after its last try leaves
+    it for a Continue press or reply.
   - **Crash** (`worker/src/run/execute/crash-checkpoint.ts`, reason `crash`,
     empty note) is machine state that nobody renders: the assembled transcript,
     the loop iteration count, the live inference-invocation accumulator, spend

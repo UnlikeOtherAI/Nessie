@@ -14,10 +14,11 @@ test('every chat composition surface uses the one dictation control', () => {
   // The shared composer also holds Enter while a staged file uploads.
   assert.match(sharedComposer, /submitDisabled=\{voiceDictationBlocksSubmit\(voiceState\) \|\|/u)
 
+  // The New message page writes in the one composer, so it dictates through
+  // that composer's control rather than a copy of it.
   const newMessage = source('pages/ChannelConversationComposePage.tsx')
-  assert.match(newMessage, /VoiceDictationControl/u)
-  assert.match(newMessage, /mentionRef\.current\?\.insertDictationText/u)
-  assert.match(newMessage, /submitDisabled=\{voiceDictationBlocksSubmit\(voiceState\)\}/u)
+  assert.match(newMessage, /<ChannelComposer/u)
+  assert.doesNotMatch(newMessage, /VoiceDictationControl/u)
 
   const designer = source('components/features/agents/designer/DesignerChat.tsx')
   assert.match(designer, /VoiceDictationControl/u)

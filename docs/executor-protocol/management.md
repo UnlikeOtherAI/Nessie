@@ -6,6 +6,11 @@ settings › Your computers) and a project's Computers tab. [Executor sharing](.
 direct agent assignment, people/project/team sharing and immediate signed
 capability reports. There is no permission-review badge or queue.
 
+Machine resource permissions belong only to the local executor, independently
+for each paired team. Nessie manages people and agent access but exposes no
+remote folder/command configuration path; see
+[local executor controls](../executor-local-controls.md).
+
 Agent and candidate lists retain pagination, search and the existing private
 agent entitlement. Direct agent mutations are atomic with tool-policy changes,
 connection fences and audit. The older prepared-change machinery remains for
