@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   decorateMarkdownEditor,
   extractEditorText,
@@ -20,6 +21,7 @@ export const MarkdownEditInput = ({
   onChange,
   onSubmit,
 }: MarkdownEditInputProps) => {
+  const { t } = useTranslation('channels')
   const editorRef = useRef<HTMLDivElement>(null)
   const composingRef = useRef(false)
 
@@ -35,7 +37,7 @@ export const MarkdownEditInput = ({
   return (
     <div
       ref={editorRef}
-      aria-label="Edit message Markdown"
+      aria-label={t('messageActions.editMarkdown')}
       className="admin-input admin-markdown-edit-input"
       contentEditable
       onCompositionEnd={(event) => {

@@ -115,7 +115,8 @@
     "addReaction": "Add emoji reaction",
     "reply": "Reply in thread",
     "edit": "Edit message",
-    "delete": "Delete message"
+    "delete": "Delete message",
+    "editMarkdown": "Edit message Markdown"
   },
   "messageFeed": {
     "deleted": "Message has been deleted",
@@ -315,6 +316,10 @@
     "mentionChannel": "Mention channel",
     "runOnExecutor": "Run on executor",
     "attachFiles": "Attach files",
-    "sendMessage": "Send message"
+    "sendMessage": "Send message",
+    "insertEmoji": "Insert emoji",
+    "removeAttachment": "Remove {{name}}",
+    "removeAttachmentTitle": "Remove",
+    "uploadFailed": "Upload failed"
   }
 }

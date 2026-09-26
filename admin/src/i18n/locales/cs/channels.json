@@ -115,7 +115,8 @@
     "addReaction": "Přidat reakci emoji",
     "reply": "Odpovědět ve vlákně",
     "edit": "Upravit zprávu",
-    "delete": "Odstranit zprávu"
+    "delete": "Odstranit zprávu",
+    "editMarkdown": "Upravit formátování zprávy Markdown"
   },
   "messageFeed": {
     "deleted": "Zpráva byla odstraněna",
@@ -315,6 +316,10 @@
     "mentionChannel": "Zmínit kanál",
     "runOnExecutor": "Spustit na exekutoru",
     "attachFiles": "Připojit soubory",
-    "sendMessage": "Odeslat zprávu"
+    "sendMessage": "Odeslat zprávu",
+    "insertEmoji": "Vložit emoji",
+    "removeAttachment": "Odebrat {{name}}",
+    "removeAttachmentTitle": "Odebrat",
+    "uploadFailed": "Nahrání se nezdařilo"
   }
 }

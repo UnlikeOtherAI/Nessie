@@ -115,7 +115,8 @@
     "addReaction": "Ajouter une réaction emoji",
     "reply": "Répondre dans le fil",
     "edit": "Modifier le message",
-    "delete": "Supprimer le message"
+    "delete": "Supprimer le message",
+    "editMarkdown": "Modifier le Markdown du message"
   },
   "messageFeed": {
     "deleted": "Le message a été supprimé",
@@ -315,6 +316,10 @@
     "mentionChannel": "Mentionner un canal",
     "runOnExecutor": "Exécuter sur l’exécuteur",
     "attachFiles": "Joindre des fichiers",
-    "sendMessage": "Envoyer le message"
+    "sendMessage": "Envoyer le message",
+    "insertEmoji": "Insérer un emoji",
+    "removeAttachment": "Supprimer {{name}}",
+    "removeAttachmentTitle": "Supprimer",
+    "uploadFailed": "Échec du téléversement"
   }
 }

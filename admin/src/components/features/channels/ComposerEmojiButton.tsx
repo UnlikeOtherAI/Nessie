@@ -1,4 +1,5 @@
 import { useId, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { faFaceSmile } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { usePhoneLayout } from '../../../navigation/mobile-shell'
@@ -9,6 +10,7 @@ import { toolbarButtonClass } from './channel-presentation'
 // Composer emoji picker: the same panel the message reactions use, opened as a
 // Popover above the toolbar and inserting the picked glyph into the input.
 export const ComposerEmojiButton = ({ onSelect }: { onSelect: (emoji: string) => void }) => {
+  const { t } = useTranslation('channels')
   const phoneLayout = usePhoneLayout()
   const pickerId = useId()
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -20,11 +22,11 @@ export const ComposerEmojiButton = ({ onSelect }: { onSelect: (emoji: string) =>
         aria-controls={open ? pickerId : undefined}
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-label="Insert emoji"
+        aria-label={t('composer.insertEmoji')}
         className={toolbarButtonClass}
         onClick={() => setOpen((current) => !current)}
         ref={triggerRef}
-        title="Insert emoji"
+        title={t('composer.insertEmoji')}
         type="button"
       >
         <FontAwesomeIcon className="admin-compose-action-icon h-4 w-4" icon={faFaceSmile} />
@@ -33,7 +35,7 @@ export const ComposerEmojiButton = ({ onSelect }: { onSelect: (emoji: string) =>
         anchorRef={triggerRef}
         className="admin-compose-emoji-menu"
         id={pickerId}
-        label="Insert emoji"
+        label={t('composer.insertEmoji')}
         onClose={() => setOpen(false)}
         open={open}
         placement="top-start"

@@ -11,6 +11,7 @@ export const ComposerAttachments = ({
 }: {
   attachments: ComposerAttachmentsState
 }) => {
+  const { t } = useTranslation('channels')
   if (attachments.staged.length === 0 && !attachments.error) {
     return null
   }
@@ -44,10 +45,10 @@ export const ComposerAttachments = ({
                     : formatBytes(entry.sizeBytes)}
                 </span>
                 <button
-                  aria-label={`Remove ${entry.filename}`}
+                  aria-label={t('composer.removeAttachment', { name: entry.filename })}
                   className="flex h-4 w-4 items-center justify-center rounded text-[color:var(--tx3)] hover:bg-[var(--overlay)] hover:text-[color:var(--tx)]"
                   onClick={() => attachments.removeStaged(entry.clientId)}
-                  title="Remove"
+                  title={t('composer.removeAttachmentTitle')}
                   type="button"
                 >
                   <FontAwesomeIcon className="h-3 w-3" icon={faXmark} />
@@ -63,7 +64,7 @@ export const ComposerAttachments = ({
               ) : null}
               {entry.status === 'error' ? (
                 <span className="text-[11px] text-[color:var(--danger-text)]" role="alert">
-                  {entry.error ?? 'Upload failed'}
+                  {entry.error ?? t('composer.uploadFailed')}
                 </span>
               ) : null}
             </li>
