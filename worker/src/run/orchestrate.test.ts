@@ -271,6 +271,8 @@ const decideFixture = (thread: { agentId: string | null; startedByUserId: string
       },
     },
     prisma: {
+      // No card was answered by this message.
+      agentCard: { findUnique: async () => null },
       attachment: { findMany: async () => [] },
       budget: { findMany: async () => [] },
       channel: {

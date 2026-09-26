@@ -87,7 +87,9 @@ export const resolveSystemDmDecisions = (
  * structurally. The API writes the press as a person's reply under the card and
  * records it on the card in the same transaction (`AgentCard.responseMessageId`,
  * a column no client can write), which is the fact read here — never the
- * message's words. No judgement is asked: a one-on-one judgement or an
+ * message's words. A typed answer Jev matched to a prepared button in a
+ * one-on-one room is recorded the same way, on the person's own top-level
+ * message, and is answered in the main chat. No judgement is asked: a one-on-one judgement or an
  * engagement decision is free to answer "only react" or "stay out", and either
  * would leave the agent that asked waiting on an answer it never hears
  * (docs/standards/agent-cards.md → "The press is a message").
@@ -96,8 +98,9 @@ export const resolveCardResponseDecisions = async (
   prisma: Pick<PrismaClient, 'agentCard'>,
   input: { channelAgents: ChannelAgent[]; messageId: string; role: string; rootMessageId: string | null },
 ): Promise<OrchestratorDecision[] | null> => {
-  // A press is always a person's, and always a reply under its card.
-  if (input.role !== 'user' || input.rootMessageId === null) return null
+  // An answer is always a person's: a press under its card, or words in a
+  // one-on-one room's main chat that Jev matched to a prepared button.
+  if (input.role !== 'user') return null
   const card = await prisma.agentCard.findUnique({
     where: { responseMessageId: input.messageId },
     select: { agentId: true },
@@ -108,7 +111,7 @@ export const resolveCardResponseDecisions = async (
     action: 'reply',
     agentId: agent.id,
     ...(agent.principalUserId ? { principalUserId: agent.principalUserId } : {}),
-    replyPlacement: 'thread',
+    replyPlacement: input.rootMessageId === null ? 'channel' : 'thread',
   }]
 }
 
@@ -251,6 +254,7 @@ export const executeOrchestrateDecideJob = async (
       rootMessageId: true,
       createdAt: true,
       threadId: true,
+      userId: true,
       channelDecision: true,
       basisScopes: { select: { scopeType: true, scopeId: true } },
       thread: { select: { agentId: true, startedByUserId: true } },

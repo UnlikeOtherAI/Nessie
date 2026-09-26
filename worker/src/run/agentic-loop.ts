@@ -112,6 +112,19 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
   // way back into the transcript that does not re-bill the inference that
   // produced it.
   let resumedToolCalls: ProviderToolCall[] | null = resume?.pendingToolCalls ?? null
+  // A pressed card button's prepared call enters exactly like that batch: its
+  // assistant turn is the one the agent wrote when it posted the card, and it
+  // runs before any inference. When every call succeeds the model is never
+  // asked; anything else continues into the ordinary loop with the results.
+  let preparedBatchPending = false
+  if (!resume && input.preparedToolCalls?.length) {
+    messages.push(coverProviderInputComponent(
+      { content: null, role: 'assistant', toolCalls: input.preparedToolCalls },
+      'prepared_action',
+    ))
+    resumedToolCalls = input.preparedToolCalls
+    preparedBatchPending = true
+  }
   // Mirror the governor state into checkpoints so a reclaimed run keeps both
   // the attempt ceiling and the two-iteration cooldown.
   let compactionAttempts = resume?.compactionAttempts ?? 0
@@ -497,6 +510,10 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
     // The batch is closed: every result is in the transcript, so from here a
     // snapshot resumes at the next iteration rather than re-entering this one.
     markDispatchBoundary(null)
+    if (preparedBatchPending) {
+      preparedBatchPending = false
+      if (toolResults.every((result) => result.success)) return { ...finish(null, ''), preparedCompleted: true }
+    }
 
     if (batch.loopNudge) {
       messages.push(coverProviderInputComponent({

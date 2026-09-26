@@ -7,6 +7,7 @@ import {
   type OneOnOneEarlierMessage,
   type OneOnOneJudgement,
   type OrchestratorDecision,
+  type PgRealtimeTransport,
 } from '@nessie/runtime'
 import {
   ChannelDecisionSnapshotSchema,
@@ -16,6 +17,7 @@ import {
 
 import { conversationTurnLineage } from './execute/private-conversation-lineage.js'
 import type { ChannelAgent } from './orchestrate-candidates.js'
+import { claimCardWithTypedAnswer, loadAnswerableCard } from './orchestrate-card-answer.js'
 import { loadAttachmentAnnotator, resolveDecisionViewer } from './orchestrate-context.js'
 
 /**
@@ -78,6 +80,8 @@ type OneOnOneTrigger = {
   createdAt: Date
   id: string
   rootMessageId: string | null
+  /** The person who wrote it; a typed answer to a card is theirs to give. */
+  userId?: string | null
 }
 
 const uniqueByValue = <T>(values: readonly T[]): T[] =>
@@ -198,7 +202,11 @@ const addressedTo = (agent: ChannelAgent, snapshot: unknown): OrchestratorDecisi
  * message of a private chat would be worse than the plain answer it replaces.
  */
 export const decideOneOnOneTurn = async (
-  deps: { decisionClient?: DecisionModelClient; prisma: PrismaClient },
+  deps: {
+    decisionClient?: DecisionModelClient
+    prisma: PrismaClient
+    realtimeTransport?: Pick<PgRealtimeTransport, 'publishWs'>
+  },
   input: {
     agent: ChannelAgent
     channel: { organizationId: string; visibility: string }
@@ -211,12 +219,16 @@ export const decideOneOnOneTurn = async (
   if (!deps.decisionClient) return null
 
   const window = await loadOneOnOneWindow(deps.prisma, input)
+  const card = await loadAnswerableCard(deps.prisma, {
+    agentId: agent.id, threadId: payload.threadId, trigger,
+  })
   let judged: Awaited<ReturnType<typeof judgeOneOnOneTurn>>
   try {
     judged = await judgeOneOnOneTurn(deps.decisionClient, {
       agent,
       content: window.content,
       earlierMessages: window.earlierMessages,
+      ...(card ? { offer: card.offer } : {}),
       recentMessages: window.recentMessages,
       timeoutMs: JEV_TIMEOUT_MS,
       usage: attributionFromActorContext(payload.actorContext, {
@@ -232,12 +244,21 @@ export const decideOneOnOneTurn = async (
     return null
   }
 
+  // Words that take a prepared button exactly as offered answer the card the
+  // way pressing it would; the run that follows finds the card by this message
+  // and runs the button's call before the model is asked anything.
+  const answeredCard = card && judged.offerAnswer && trigger.userId
+    ? await claimCardWithTypedAnswer(deps, {
+      actionKey: judged.offerAnswer, card, channelId: payload.channelId,
+      messageId: trigger.id, userId: trigger.userId,
+    })
+    : false
   const snapshot = {
     policyFingerprint: ONE_ON_ONE_DECISION_FINGERPRINT,
     authorizer: null,
     basisScopes: window.basisScopes,
     choices: judged.choices,
-    decisions: decisionsFor(judged.judgement, agent, trigger),
+    decisions: decisionsFor(answeredCard ? { shape: 'reply' } : judged.judgement, agent, trigger),
     disclosureSources: window.disclosureSources,
   }
   const claimed = await deps.prisma.message.updateMany({

@@ -15,6 +15,9 @@ export type ProviderInputSourceAdapter =
   | 'global_catalogue'
   | 'loop_instruction'
   | 'memory'
+  // The assistant turn a pressed card button's prepared call stands in for
+  // (`prepared-card-call.ts`): written by the agent when it posted the card.
+  | 'prepared_action'
   | 'prompt_system'
   | 'secret_redaction'
   // The turn after a tool batch that carries the images its results named

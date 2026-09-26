@@ -349,6 +349,8 @@ when one changes, the same turn updates it, not this section.
   before writing code here.
 - **Agent chat cards.** One card system with a closed block vocabulary; the
   press is claimed once by a conditional UPDATE and writes a real user message.
+  A button may carry a prepared tool call that its answer runs, once, before any
+  model turn.
   Read [`docs/standards/agent-cards.md`](docs/standards/agent-cards.md)
   before writing code here.
 - **A board owns its tickets and its columns.** A project has many `Board`s,
