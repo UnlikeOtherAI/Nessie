@@ -199,7 +199,7 @@ export const ChannelConversationComposePage = () => {
         sending.current = false
       }
     },
-    [attachments, interceptSecret, navigate, recipients, restoreText, sendMessage, startConversation],
+    [attachments, interceptSecret, navigate, recipients, restoreText, sendMessage, startConversation, t],
   )
 
   // Saved to the vault: the masked text starts the conversation like any

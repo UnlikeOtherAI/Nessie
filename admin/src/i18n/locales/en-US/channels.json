@@ -12,5 +12,25 @@
   },
   "channels": {
     "messagePersonalAssistant": "Message Personal Assistant"
+  },
+  "routine": {
+    "recordingBadge": "Recording routine · structural tool steps only",
+    "recordingDescription": "Teach an agent by doing a routine together once. Only completed, redacted structural tool calls are kept; a recording never runs automatically.",
+    "recordingTitle": "Routine recording",
+    "recordTitle": "Record a routine"
+  },
+  "search": {
+    "placeholder": "Search messages in this channel",
+    "noMatches": "No matches."
+  },
+  "thread": {
+    "backToChannel": "Back to channel",
+    "title": "Thread",
+    "loading": "Loading thread…",
+    "replyPlaceholder": "Reply to thread",
+    "dropFiles": "Drop files to reply with",
+    "loadError": "This thread could not be loaded. It may have been removed.",
+    "deletedReply": "You can’t reply to a deleted message.",
+    "alsoSendTo": "Also send to {{channel}}"
   }
 }

@@ -12,5 +12,25 @@
   },
   "channels": {
     "messagePersonalAssistant": "Napsat osobnímu asistentovi"
+  },
+  "routine": {
+    "recordingBadge": "Nahrávání postupu · pouze strukturální kroky nástrojů",
+    "recordingDescription": "Naučte agenta postup společným provedením. Ukládají se pouze dokončená a anonymizovaná strukturální volání nástrojů; nahrávání se nikdy nespouští automaticky.",
+    "recordingTitle": "Nahrávání postupu",
+    "recordTitle": "Nahrát postup"
+  },
+  "search": {
+    "placeholder": "Hledat zprávy v tomto kanálu",
+    "noMatches": "Žádné výsledky."
+  },
+  "thread": {
+    "backToChannel": "Zpět na kanál",
+    "title": "Vlákno",
+    "loading": "Načítání vlákna…",
+    "replyPlaceholder": "Odpovědět ve vlákně",
+    "dropFiles": "Přetáhněte soubory pro odpověď",
+    "loadError": "Vlákno se nepodařilo načíst. Mohlo být odstraněno.",
+    "deletedReply": "Na odstraněnou zprávu nelze odpovědět.",
+    "alsoSendTo": "Poslat také do kanálu {{channel}}"
   }
 }

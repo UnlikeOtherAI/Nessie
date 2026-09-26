@@ -12,5 +12,25 @@
   },
   "channels": {
     "messagePersonalAssistant": "Escribir al asistente personal"
+  },
+  "routine": {
+    "recordingBadge": "Grabando rutina · solo pasos estructurales de herramientas",
+    "recordingDescription": "Enseña una rutina a un agente realizándola juntos una vez. Solo se guardan las llamadas estructurales completadas y depuradas; la grabación nunca se ejecuta automáticamente.",
+    "recordingTitle": "Grabación de rutina",
+    "recordTitle": "Grabar una rutina"
+  },
+  "search": {
+    "placeholder": "Buscar mensajes en este canal",
+    "noMatches": "No hay coincidencias."
+  },
+  "thread": {
+    "backToChannel": "Volver al canal",
+    "title": "Hilo",
+    "loading": "Cargando hilo…",
+    "replyPlaceholder": "Responder al hilo",
+    "dropFiles": "Suelta archivos para responder",
+    "loadError": "No se pudo cargar este hilo. Es posible que se haya eliminado.",
+    "deletedReply": "No puedes responder a un mensaje eliminado.",
+    "alsoSendTo": "Enviar también a {{channel}}"
   }
 }

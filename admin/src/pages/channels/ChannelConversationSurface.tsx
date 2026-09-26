@@ -1,4 +1,5 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { ExternalAgentIdentity } from '../../facades/integrations/hooks'
 import { usePersonalAssistant } from '../../facades/personal-assistant/hooks'
 import type {
@@ -231,6 +232,7 @@ export const ChannelConversationSurface = ({
   visibleActiveTab,
   workThread,
 }: ChannelConversationSurfaceProps) => {
+  const { t } = useTranslation('channels')
   const {
     addReaction,
     cancelEdit,
@@ -308,7 +310,7 @@ export const ChannelConversationSurface = ({
 
       {recording ? (
         <div className="border-b border-[color:var(--sep)] px-3 py-2" data-testid="demonstration-recording-pill">
-          <Pill tone="danger" uppercase={false}>Recording routine · structural tool steps only</Pill>
+          <Pill tone="danger" uppercase={false}>{t('routine.recordingBadge')}</Pill>
         </div>
       ) : null}
 
@@ -464,11 +466,11 @@ export const ChannelConversationSurface = ({
 
       {deleteConfirm}
       <Dialog
-        description="Teach an agent by doing a routine together once. Only completed, redacted structural tool calls are kept; a recording never runs automatically."
+        description={t('routine.recordingDescription')}
         dismissDisabled={startDemonstration.isPending || stopDemonstration.isPending}
         onClose={() => setRecordRoutineOpen(false)}
         open={recordRoutineOpen}
-        title={recording ? 'Routine recording' : 'Record a routine'}
+        title={recording ? t('routine.recordingTitle') : t('routine.recordTitle')}
       >
         <div className="grid gap-4">
           {recording ? (
@@ -531,7 +533,7 @@ export const ChannelConversationSurface = ({
           )}
         </div>
       </Dialog>
-      <DropZoneOverlay active={chatDrop.isDragging} label="Drop files to attach" />
+      <DropZoneOverlay active={chatDrop.isDragging} label={t('compose.dropFiles')} />
     </div>
   )
 }

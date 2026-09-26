@@ -12,5 +12,25 @@
   },
   "channels": {
     "messagePersonalAssistant": "Écrire à l’assistant personnel"
+  },
+  "routine": {
+    "recordingBadge": "Enregistrement de routine · étapes structurelles uniquement",
+    "recordingDescription": "Apprenez une routine à un agent en la réalisant ensemble une fois. Seuls les appels structurels terminés et expurgés sont conservés ; l’enregistrement ne s’exécute jamais automatiquement.",
+    "recordingTitle": "Enregistrement de routine",
+    "recordTitle": "Enregistrer une routine"
+  },
+  "search": {
+    "placeholder": "Rechercher des messages dans ce canal",
+    "noMatches": "Aucun résultat."
+  },
+  "thread": {
+    "backToChannel": "Retour au canal",
+    "title": "Fil",
+    "loading": "Chargement du fil…",
+    "replyPlaceholder": "Répondre dans le fil",
+    "dropFiles": "Déposez les fichiers pour répondre",
+    "loadError": "Impossible de charger ce fil. Il a peut-être été supprimé.",
+    "deletedReply": "Vous ne pouvez pas répondre à un message supprimé.",
+    "alsoSendTo": "Envoyer aussi dans {{channel}}"
   }
 }

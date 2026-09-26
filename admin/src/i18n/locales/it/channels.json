@@ -12,5 +12,25 @@
   },
   "channels": {
     "messagePersonalAssistant": "Scrivi all’assistente personale"
+  },
+  "routine": {
+    "recordingBadge": "Registrazione routine · solo passaggi strutturali degli strumenti",
+    "recordingDescription": "Insegna una routine a un agente svolgendola insieme una volta. Vengono conservate solo le chiamate strutturali completate e ripulite; la registrazione non viene mai eseguita automaticamente.",
+    "recordingTitle": "Registrazione routine",
+    "recordTitle": "Registra una routine"
+  },
+  "search": {
+    "placeholder": "Cerca messaggi in questo canale",
+    "noMatches": "Nessun risultato."
+  },
+  "thread": {
+    "backToChannel": "Torna al canale",
+    "title": "Thread",
+    "loading": "Caricamento del thread…",
+    "replyPlaceholder": "Rispondi al thread",
+    "dropFiles": "Trascina qui i file per rispondere",
+    "loadError": "Impossibile caricare questo thread. Potrebbe essere stato rimosso.",
+    "deletedReply": "Non puoi rispondere a un messaggio eliminato.",
+    "alsoSendTo": "Invia anche a {{channel}}"
   }
 }

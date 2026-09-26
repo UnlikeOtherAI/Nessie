@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { useTranslation } from 'react-i18next'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import type { AgentRecord, ChannelRecord, UserRecord } from '../../../../lib/api-client'
 import type { PendingStreamMessage } from '../../../../facades/threads/thinking'
@@ -92,6 +93,7 @@ export const ThreadReplyPanel = ({
   thread,
   token,
 }: ThreadReplyPanelProps) => {
+  const { t } = useTranslation('channels')
   const phoneLayout = usePhoneLayout()
   const {
     activeThreadId,
@@ -234,14 +236,14 @@ export const ThreadReplyPanel = ({
   // channel underneath, with the channel's actions attached to it.
   const { hidden: nativeBarOwnsHeader } = useNativeBarHeader({
     actions: [],
-    back: { label: 'Back to channel', onBack: closeThread },
-    title: 'Thread',
+    back: { label: t('thread.backToChannel'), onBack: closeThread },
+    title: t('thread.title'),
   })
 
   return (
     <>
       <SidePanelShell
-        ariaLabel="Thread"
+        ariaLabel={t('thread.title')}
         containerProps={replyDrop.dropHandlers}
         isClosing={isClosing}
         onClose={closeThread}
@@ -262,20 +264,20 @@ export const ThreadReplyPanel = ({
           {phoneLayout ? (
             // The route-level control sits behind this full-screen overlay, so
             // the thread itself owns the shared phone Back doorway.
-            <PhoneBackButton label="Back to channel" onBack={closeThread} />
+            <PhoneBackButton label={t('thread.backToChannel')} onBack={closeThread} />
           ) : (
             <button
-              aria-label="Back to channel"
+              aria-label={t('thread.backToChannel')}
               className="admin-button admin-button-secondary flex h-8 w-8 shrink-0 items-center justify-center px-0"
               onClick={closeThread}
-              title="Back to channel"
+              title={t('thread.backToChannel')}
               type="button"
             >
               <BackArrow />
             </button>
           )}
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-[var(--tx)]">Thread</h2>
+            <h2 className="text-sm font-semibold text-[var(--tx)]">{t('thread.title')}</h2>
             <div className="truncate text-xs text-[color:var(--tx3)]">
               {channelLabel(activeChannel)}
             </div>
@@ -284,18 +286,18 @@ export const ThreadReplyPanel = ({
         )}
 
         {rootQuery.isLoading ? (
-          <div className="p-5 text-sm text-[color:var(--tx3)]">Loading thread…</div>
+          <div className="p-5 text-sm text-[color:var(--tx3)]">{t('thread.loading')}</div>
         ) : rootQuery.isError || !root ? (
           <div className="flex flex-col items-start gap-3 p-5">
             <p className="text-sm text-[color:var(--tx2)]">
-              This thread could not be loaded. It may have been removed.
+              {t('thread.loadError')}
             </p>
             <button
               className="admin-button admin-button-secondary h-8 px-3 text-xs"
               onClick={closeThread}
               type="button"
             >
-              Back to channel
+              {t('thread.backToChannel')}
             </button>
           </div>
         ) : (
@@ -351,7 +353,7 @@ export const ThreadReplyPanel = ({
 
             {rootDeleted ? (
               <div className="flex-shrink-0 px-5 pb-[14px] text-xs text-[color:var(--tx3)]">
-                You can’t reply to a deleted message.
+                {t('thread.deletedReply')}
               </div>
             ) : (
               <>
@@ -362,7 +364,7 @@ export const ThreadReplyPanel = ({
                     onChange={(event) => setAlsoSendToChannel(event.target.checked)}
                     type="checkbox"
                   />
-                  Also send to {channelLabel(activeChannel)}
+                  {t('thread.alsoSendTo', { channel: channelLabel(activeChannel) })}
                 </label>
                 <ChannelComposer
                   attachments={attachments}
@@ -372,7 +374,7 @@ export const ThreadReplyPanel = ({
                   mentionEntities={mentionEntities}
                   mentionRef={mentionRef}
                   message={message}
-                  placeholder="Reply to thread"
+                  placeholder={t('thread.replyPlaceholder')}
                   onChangeMessage={setMessage}
                   onInsertAtSign={() => mentionRef.current?.insertAtSign()}
                   onInsertEmoji={insertEmoji}
@@ -404,7 +406,7 @@ export const ThreadReplyPanel = ({
           </>
         )}
 
-        <DropZoneOverlay active={replyDrop.isDragging} label="Drop files to reply with" />
+        <DropZoneOverlay active={replyDrop.isDragging} label={t('thread.dropFiles')} />
       </SidePanelShell>
 
       {deleteConfirm}

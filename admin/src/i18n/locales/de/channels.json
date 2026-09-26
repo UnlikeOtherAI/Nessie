@@ -12,5 +12,25 @@
   },
   "channels": {
     "messagePersonalAssistant": "Persönlichem Assistenten schreiben"
+  },
+  "routine": {
+    "recordingBadge": "Routine wird aufgezeichnet · nur strukturelle Werkzeugschritte",
+    "recordingDescription": "Bringe einem Agenten eine Routine bei, indem ihr sie einmal gemeinsam ausführt. Gespeichert werden nur abgeschlossene, bereinigte strukturelle Werkzeugaufrufe; eine Aufzeichnung wird nie automatisch ausgeführt.",
+    "recordingTitle": "Routine wird aufgezeichnet",
+    "recordTitle": "Routine aufzeichnen"
+  },
+  "search": {
+    "placeholder": "Nachrichten in diesem Kanal suchen",
+    "noMatches": "Keine Treffer."
+  },
+  "thread": {
+    "backToChannel": "Zurück zum Kanal",
+    "title": "Thread",
+    "loading": "Thread wird geladen…",
+    "replyPlaceholder": "Auf Thread antworten",
+    "dropFiles": "Dateien für die Antwort hier ablegen",
+    "loadError": "Dieser Thread konnte nicht geladen werden. Möglicherweise wurde er entfernt.",
+    "deletedReply": "Auf eine gelöschte Nachricht kannst du nicht antworten.",
+    "alsoSendTo": "Auch an {{channel}} senden"
   }
 }
