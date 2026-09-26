@@ -4,6 +4,15 @@ Status: implementation in progress. Native host verification, Kimix review and
 release checks are recorded separately; this document does not certify an
 installation.
 
+## Table of Contents
+
+- [Outcome and scope](#outcome-and-scope)
+- [Provider behavior](#provider-behavior)
+- [Shared bridge and lifecycle](#shared-bridge-and-lifecycle)
+- [Tools and doorways](#tools-and-doorways)
+- [Delivery and privacy](#delivery-and-privacy)
+- [Verification and limitations](#verification-and-limitations)
+
 ## Outcome and scope
 
 An agent with the machine owner's existing executor authorization can find an
