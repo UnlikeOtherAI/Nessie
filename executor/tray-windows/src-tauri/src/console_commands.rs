@@ -20,8 +20,11 @@ pub async fn executor_configure(
 ) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let current = describe(&executor_id)?;
-        // A new folder needs the same explicit local OS grant as pairing.
+        // Only legacy service connections need an explicit service-account ACL.
         if !crate::user_connections::owns(&executor_id) {
+        if configuration_input.get("terminalProgram").is_some() {
+            return Err("Interactive programs need a user-session connection. Add a team in this app first.".into());
+        }
         if let Some(folders) = configuration_input.get("workspaceFolders").and_then(|v| v.as_array()) {
             for folder in folders {
                 if let Some(path) = folder.get("path").and_then(|v| v.as_str()) {
@@ -31,10 +34,6 @@ pub async fn executor_configure(
                     if !existed { crate::grant::request_workspace_grant(std::path::Path::new(path))?; }
                 }
             }
-        }
-        if let Some(path) = configuration_input["terminalProgram"]["workspaceRoot"].as_str() {
-            let _ = path;
-            return Err("Interactive programs need a user-session connection. Add a team in this app first.".into());
         }
         }
         call(&serde_json::json!({ "command": "configureInput", "executorId": executor_id,

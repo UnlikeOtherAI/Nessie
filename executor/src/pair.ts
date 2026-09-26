@@ -289,7 +289,7 @@ export const configureExecutorLocalPolicy = async (
   const permittedPrograms = configuredCommandAllowlist(commandAllowlist ?? state.descriptor.commandAllowlist ?? [])
   const localRules = commandPolicy !== undefined ? parseLocalCommandPolicy(commandPolicy)
     : commandAllowlist !== undefined
-      ? parseLocalCommandPolicy({ ...localCommandPolicyOf(state), mode: 'allowlist', allowlist: [...commandAllowlist] })
+      ? parseLocalCommandPolicy({ ...localCommandPolicyOf(state), mode: 'allowlist', allowlist: permittedPrograms })
       : localCommandPolicyOf(state)
   const canonicalWorkspaceFolders = sameWorkspaceFolders(workspaceFolders, state.workspaceFolders)
     ? state.workspaceFolders
@@ -323,14 +323,11 @@ export const configureExecutorLocalPolicy = async (
   await bridge.persist(operationKeys)
   const next: ExecutorLocalState = {
     ...state,
-    ...(commandPolicy !== undefined || (state.commandPolicy && commandAllowlist !== undefined)
-      ? { commandPolicy: localRules } : {}),
-    // Rebuilt field by field rather than spread over the previous descriptor:
-    // an emptied allowlist has to leave no key behind, because a `commandAllowlist`
-    // present but undefined is not canonicalizable and would fail the next digest.
+    commandPolicy: localRules,
+    // Local edits migrate legacy command rules out of the public descriptor.
+    // The server receives capability facts, never the machine's launch rules.
     descriptor: {
       ...(bridge.facts ? { codingSessions: bridge.facts } : {}),
-      ...(permittedPrograms.length > 0 ? { commandAllowlist: permittedPrograms } : {}),
       limits: state.descriptor.limits,
       ...(namedMcpServers.length > 0
         ? { mcpServers: executorLocalMcpServerNames(namedMcpServers) }

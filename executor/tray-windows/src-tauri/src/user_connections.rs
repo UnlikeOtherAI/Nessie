@@ -72,7 +72,8 @@ impl Connections {
             return Err("This connection is running in another app or CLI. Stop it there first.".into());
         }
         let path = state_dir.display().to_string();
-        user_runtime::run(&["connect".into(), "--state-dir".into(), path.clone()], None)?;
+        // serve claims its own connection. Never block the tray's controller
+        // on a preliminary network request while the user is signing in.
         let mut child = user_runtime::command()?.args(["serve", "--parent-liveness-stdin", "--state-dir", &path])
             .stdin(Stdio::piped()).spawn().map_err(|_| "Could not start the executor daemon.")?;
         let liveness = child.stdin.take();

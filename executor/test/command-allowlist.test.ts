@@ -220,7 +220,8 @@ test('configure stores a canonical list and refuses command.run without one', { 
   )
   // Hand-typed spacing is normalised, so the same policy typed twice is not two
   // revisions to review.
-  assert.deepEqual(configured.descriptor.commandAllowlist, ['git *', 'pnpm run *'])
+  assert.deepEqual(configured.commandPolicy?.allowlist, ['git *', 'pnpm run *'])
+  assert.equal('commandAllowlist' in configured.descriptor, false)
   assert.equal(configured.descriptor.revision, 2)
 
   // Changing operations without saying anything about tools keeps the tools.
@@ -232,7 +233,8 @@ test('configure stores a canonical list and refuses command.run without one', { 
     sandboxHost,
     configured.workspaceFolders,
   )
-  assert.deepEqual(kept.descriptor.commandAllowlist, ['git *', 'pnpm run *'])
+  assert.deepEqual(kept.commandPolicy?.allowlist, ['git *', 'pnpm run *'])
+  assert.equal('commandAllowlist' in kept.descriptor, false)
 
   // Clearing them leaves no key behind, so the next digest stays canonicalizable.
   const cleared = await configureExecutorLocalPolicy(

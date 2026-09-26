@@ -55,8 +55,9 @@ permitted program may spawn.
 The daemon checks the local rules before accepting `command.run`, and the
 command-session manager checks them before creating a guest. The new rules
 are never included in the signed server descriptor. The descriptor still
-reports available operations and named roots; old descriptors may retain their
-legacy allowlist field. Saving locally restarts an app-owned connection to
+reports available operations and named roots. Untouched old descriptors may
+retain their legacy allowlist field; the next local edit moves those rules to
+local state without widening them. Saving locally restarts an app-owned connection to
 apply the rules. A CLI operator restarts the daemon after changing them.
 Allow-all is the default command policy; availability of sandboxed
 `command.run` still requires a configured guest runtime.

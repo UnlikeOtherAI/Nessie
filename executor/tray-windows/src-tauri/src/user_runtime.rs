@@ -19,6 +19,8 @@ pub fn command() -> Result<Command, String> {
         .env("NESSIE_EXECUTOR_SUPERVISOR", "desktop")
         .env_remove("NODE_OPTIONS").env_remove("NODE_PATH")
         .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    if cfg!(debug_assertions) { command.env("NESSIE_EXECUTOR_ALLOW_LOCAL_API", "1"); }
+    else { command.env_remove("NESSIE_EXECUTOR_ALLOW_LOCAL_API"); }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

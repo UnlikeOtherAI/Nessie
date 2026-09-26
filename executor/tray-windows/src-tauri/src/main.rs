@@ -4,12 +4,9 @@
 //! `nessie-executor-tray.exe` — the Nessie Executor's control surface beside the
 //! Windows clock.
 //!
-//! It starts at login, shows no window, and polls the service over its control
-//! pipe. Right-click gives the menu; left-click opens a small frameless status
-//! window that offers the same actions through the same functions. It holds no
-//! state and no credential of its own: everything it shows came from the
-//! service in the last three seconds, and everything it changes goes back over
-//! the pipe.
+//! Right-click gives the menu; left-click opens the shared executor console.
+//! New connections run in this user's session; existing service connections
+//! use the authenticated control pipe. The CLI owns all keys and local policy.
 //!
 //! It has one other mode, which it invokes on itself: `--grant-workspace <path>`
 //! is the elevated half of pairing.
@@ -25,16 +22,13 @@
 
 mod commands;
 mod console_commands;
-mod description;
 mod grant;
 mod menu;
 mod pairing_origin;
 mod pairing_code;
-mod permitted_command;
 mod pipe_client;
 mod service_identity;
 mod state;
-mod workspace_folder;
 mod user_connections;
 mod user_runtime;
 
@@ -123,8 +117,8 @@ fn handle_menu(app: &AppHandle, id: &str) {
         }
         MenuAction::OpenNessie => report(app, "Open Nessie", commands::open_nessie(app, "https://api.nessie.works")),
         MenuAction::OpenLogs => report(app, "Open logs folder", commands::open_logs(app)),
-        // Only this process exits. The service, and every daemon it supervises,
-        // keeps running — which is what the menu entry says it will do.
+        // Closing this process's liveness pipes stops its user-session daemons.
+        // The independent Windows service retains its own connections.
         MenuAction::Quit => app.exit(0),
         MenuAction::Unknown => {}
     }
@@ -188,16 +182,19 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             console_commands::executor_console_describe,
             console_commands::executor_configure,
             console_commands::executor_autostart,
             console_commands::executor_set_autostart,
             console_commands::executor_copy_code,
-            commands::executor_add_command,
-            commands::executor_add_folder,
             commands::executor_choose_folder,
-            commands::executor_describe,
             commands::executor_hide_status,
             commands::executor_open_logs,
             commands::executor_open_nessie,
@@ -206,8 +203,6 @@ fn main() {
             pairing_code::executor_pairing_status,
             pairing_code::executor_pairing_confirm,
             pairing_code::executor_pairing_cancel,
-            commands::executor_remove_command,
-            commands::executor_remove_folder,
             commands::executor_start,
             commands::executor_stop,
             commands::executor_view,
