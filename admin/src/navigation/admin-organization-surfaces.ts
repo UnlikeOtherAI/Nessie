@@ -34,10 +34,12 @@ export const createAdminOrganizationSurfaces = (adminRoot: string): Surface[] =>
     type: 'detail',
   },
   {
-    // One team, pushed from the Teams list. Its sections are a tab strip.
+    // One team, pushed from the Teams list. Its two sections, General and
+    // Overrides, are a tab strip; what the team overrides is changed on the
+    // Organisation pages at its scope, which its rows open.
     depth: 2,
     identityOf: (match) => `team:${match[1]}`,
-    intent: { state: ['tab', 'status', 'model', 'provider'] },
+    intent: { state: ['tab'] },
     keyScope: () => 'team',
     parentOf: toTeams,
     pattern: /^\/admin\/teams\/([^/]+)$/,

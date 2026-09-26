@@ -16,7 +16,9 @@ import {
   teamScopeOption,
   type ScopeViewer,
 } from '../src/pages/admin/scope-entitlements.js'
+import { teamInheritanceChips } from '../src/components/features/settings/setting-inheritance.js'
 import { connectedMailSettingsPath } from '../src/facades/mail/settings-path.js'
+import type { ResolvedSetting } from '../src/facades/settings/hooks.js'
 
 // The Organisation pages' scope switch (docs/plans/2026-09-26-admin-ux-overhaul.md
 // §6.8): the scopes a page offers are decided by the API gate each one
@@ -153,5 +155,35 @@ test('a shared mailbox’s settings open Company connections at its team’s sco
   assert.equal(
     connectedMailSettingsPath({ id: 'gm-1', scope: 'personal', source: 'gmail' }, DESIGN.id),
     '/settings/accounts#connection-gm-1',
+  )
+})
+
+const setting = (overrides: Partial<ResolvedSetting>): ResolvedSetting => ({
+  canEdit: true,
+  key: 'k',
+  lockedAtScope: null,
+  lockedHere: false,
+  setAtScope: null,
+  value: null,
+  ...overrides,
+})
+
+test('a team’s inheritance reads as chips: who set it, and who locked it', () => {
+  assert.deepEqual(teamInheritanceChips(undefined), [])
+  assert.deepEqual(teamInheritanceChips(setting({})), [])
+  assert.deepEqual(
+    teamInheritanceChips(setting({ lockedAtScope: 'organization', setAtScope: 'organization', value: true }))
+      .map((chip) => chip.label),
+    ['Set by organisation', 'Locked by organisation'],
+  )
+  assert.deepEqual(
+    teamInheritanceChips(setting({ lockedAtScope: 'team', setAtScope: 'team', value: 'x' }))
+      .map((chip) => chip.label),
+    ['Set by this team', 'Locked by this team'],
+  )
+  // A lock-only row pins what resolved above without setting anything.
+  assert.deepEqual(
+    teamInheritanceChips(setting({ lockedAtScope: 'organization' })).map((chip) => chip.label),
+    ['Locked by organisation'],
   )
 })
