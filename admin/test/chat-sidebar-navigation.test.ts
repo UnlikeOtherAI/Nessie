@@ -231,6 +231,8 @@ test('the new-message surface excludes the sender and keeps recipients available
   const recipientBar = readSource('../src/components/shared/RecipientBar.tsx')
   // Clicking anywhere in the chip row focuses the field and opens the list.
   assert.match(recipientBar, /setFocused\(true\)/)
+  // Browser contact/email autofill must not cover the address book.
+  assert.match(recipientBar, /autoComplete="off"/)
   // A blur that did not leave the field does not close the list underneath it.
   assert.match(recipientBar, /document\.activeElement !== inputRef\.current/)
   // The compose screen keeps its own handle, because it focuses the field on
@@ -239,7 +241,7 @@ test('the new-message surface excludes the sender and keeps recipients available
   assert.match(source, /open: !phoneLayout,/)
   assert.match(source, /fixed inset-0 bg-\[color:var\(--main\)\]/)
   // One address book: people and agents together, no People/Agents switch.
-  assert.match(source, /placeholder="Type a name, email address or agent"/)
+  assert.match(source, /placeholder="Search people or agents"/)
   assert.match(source, /agents=\{agents\}/)
   assert.match(source, /users=\{users\}/)
   assert.doesNotMatch(source, /role="tablist"|role="tabpanel"|useTabParam/)
