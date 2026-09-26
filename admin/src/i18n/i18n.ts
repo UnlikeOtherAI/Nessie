@@ -21,7 +21,7 @@ export const initializeLocalization = (): Promise<unknown> => {
     lng: isLanguage(initial) ? initial : DEFAULT_LANGUAGE,
     fallbackLng: DEFAULT_LANGUAGE,
     defaultNS: 'accountMenu',
-    ns: translationNamespaces,
+    ns: [...translationNamespaces],
     interpolation: { escapeValue: false },
     returnNull: false,
   })
