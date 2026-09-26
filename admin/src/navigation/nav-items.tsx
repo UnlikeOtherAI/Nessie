@@ -1,27 +1,27 @@
 import type { ReactNode } from 'react';
 
-// Route prefixes that make up the admin area (settings + the ops/governance
-// surfaces). Shared by the "Admin" nav section and the shell's sidebar selection
-// (useAdminShell imports this so there is a single source of truth).
-export const ADMIN_ROUTE_PREFIXES = [
-  '/settings',
-  '/agents',
-  '/workflows',
-  // `/apps/:slug` belongs to the same section as its list.
-  '/apps',
-  '/audit',
-  '/tokens',
-  '/policy',
-  '/ops',
-];
+// Route prefixes that make up the Admin area: agents and what they use, then
+// the organisation's administration. Shared by the "Admin" rail item and the
+// shell's sidebar selection (useAdminShell imports this so there is a single
+// source of truth).
+export const ADMIN_ROUTE_PREFIXES = ['/admin'];
+
+// Your settings — the pages about the person reading them, reached from the
+// avatar menu rather than the rail. No rail item is active there: the sidebar
+// column shows the Your settings list instead of a section's.
+export const SETTINGS_ROUTE_PREFIXES = ['/settings'];
+
+const matchesPrefixes = (prefixes: readonly string[], pathname: string): boolean =>
+  prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 
 // Pathname normalization for route-family checks lives with the surface
 // registry (`admin/src/navigation/surfaces.ts` → normalizeNavigationPathname);
 // this module keeps only the nav's own section membership.
 export const matchesAdminRoute = (pathname: string): boolean =>
-  ADMIN_ROUTE_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  );
+  matchesPrefixes(ADMIN_ROUTE_PREFIXES, pathname);
+
+export const matchesSettingsRoute = (pathname: string): boolean =>
+  matchesPrefixes(SETTINGS_ROUTE_PREFIXES, pathname);
 
 export type NavSectionId =
   | 'channels'
@@ -136,7 +136,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     id: 'admin',
     label: 'Admin',
-    to: '/settings',
+    to: '/admin',
     isActive: matchesAdminRoute,
     icon: AdminIcon,
   },

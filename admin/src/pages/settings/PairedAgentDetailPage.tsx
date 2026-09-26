@@ -35,7 +35,8 @@ const PairedAgentDetailBody = ({ scope }: PairedAgentDetailPageProps) => {
   const revoke = useRevokeAgentAccessCredential()
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const listPath = organization ? '/settings/organization/paired-agents' : '/settings/paired-agents'
+  const listPath = organization ? '/admin/security?tab=programs' : '/settings/security'
+  const eyebrow = organization ? 'Programs signed in as people' : 'Programs signed in as you'
   const backToList = () => void navigate(listPath)
 
   const rows = credentialsQuery.data?.credentials ?? []
@@ -46,10 +47,10 @@ const PairedAgentDetailBody = ({ scope }: PairedAgentDetailPageProps) => {
     // states of this screen, and a phone with no header has no Back at all.
     return (
       <SettingsPanel
-        backLabel="Back to Paired agents"
-        eyebrow="Paired agents"
+        backLabel="Back to Security"
+        eyebrow={eyebrow}
         onBack={backToList}
-        title="Paired agent"
+        title="Program"
       >
         <QueryState
           className="py-12"
@@ -89,8 +90,8 @@ const PairedAgentDetailBody = ({ scope }: PairedAgentDetailPageProps) => {
   return (
     <SettingsPanel
       actions={actions}
-      backLabel="Back to Paired agents"
-      eyebrow="Paired agents"
+      backLabel="Back to Security"
+      eyebrow={eyebrow}
       onBack={backToList}
       subtitle={
         <div className="flex flex-wrap items-center gap-2">

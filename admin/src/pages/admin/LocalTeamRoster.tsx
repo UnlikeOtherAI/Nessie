@@ -1,26 +1,17 @@
-import { TeamMembersSection } from './TeamMembersSection'
-import { SettingsPanel } from '../../components/shared/SettingsPanel'
+import { TeamMembersSection } from '../settings/TeamMembersSection'
+import { SettingsPanel, type SettingsTabHostProps } from '../../components/shared/SettingsPanel'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useIsOwner } from '../../facades/auth/hooks'
 import { startExternalSignIn } from '../../lib/external-auth'
 import { useTheme } from '../../providers/ThemeProvider'
-import { MembersRosterPanel } from '../../components/features/settings/MembersRosterPanel'
 
 /**
- * A team's own roster — the direct, top-level peer of
- * `SettingsMembersPage`'s organisation roster (`/settings/members`), not a
- * tab buried inside Team Settings. Same doorway shape: a "Team" sidebar
- * item of its own (`AdminSidebarNav.tsx`), mirroring how "Members" already
- * sits beside "Settings" under "Organization".
- *
- * `GET /api/team/members` is scoped to the caller's own currently-active
- * team — there is no arbitrary-team parameter — so, exactly like the
- * organisation page reads the viewer's own org, this page always shows the
- * viewer's own current team. No team picker: picking a different team to
- * view is switching teams, a different action with its own doorway (the
- * workspace switcher).
+ * People at a team's scope on a session with no UnlikeOtherAI roster: the
+ * team's own members, read from `GET /api/team/members`, which is scoped to the
+ * team the person is working in — so `PeoplePage` renders this only for that
+ * team and says so for any other.
  */
-export const TeamMembersPage = () => {
+export const LocalTeamRoster = ({ host }: { host?: SettingsTabHostProps }) => {
   const { me } = useAuthSession()
   const isOwner = useIsOwner()
   const canManage = isOwner || (me?.user.roleIds.includes('admin') ?? false)
@@ -28,12 +19,8 @@ export const TeamMembersPage = () => {
 
   if (!me) return null
 
-  if (me.auth.providerType === 'uoa') {
-    return <MembersRosterPanel scope="team" />
-  }
-
   return (
-    <SettingsPanel eyebrow="Team" title="Members">
+    <SettingsPanel eyebrow="Team" host={host} title="People">
       <TeamMembersSection
         canManage={canManage}
         onReconnect={async () => {

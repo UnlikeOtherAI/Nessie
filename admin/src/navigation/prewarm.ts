@@ -130,16 +130,16 @@ export const PREWARM_REGISTRY: PrewarmEntry[] = [
     },
   },
   {
-    // Ahead of the bare `/agents/:id` row below, which would otherwise read
-    // "executors" as an agent id.
-    pattern: /^\/agents\/executors\/([^/]+)$/,
+    // `sessions` is the computers' session list, never a machine id.
+    pattern: /^\/admin\/computers\/(?!sessions$)([^/]+)$/,
     run: (executorId, context) => {
       prefetch(context, executorKeys.access(executorId), () =>
         fetchExecutorAccess(context.apiClient, executorId))
     },
   },
   {
-    pattern: /^\/agents\/([^/]+)$/,
+    // `designer` is the creation flow, never an agent id.
+    pattern: /^\/admin\/agents\/(?!designer$)([^/]+)$/,
     run: (agentId, context) => {
       prefetch(context, agentKeys.status(agentId), () =>
         fetchAgentStatus(context.apiClient, agentId))
@@ -171,7 +171,7 @@ export const PREWARM_REGISTRY: PrewarmEntry[] = [
     },
   },
   {
-    pattern: /^\/apps\/([^/]+)$/,
+    pattern: /^\/admin\/apps\/([^/]+)$/,
     run: (slug, context) => {
       prefetch(context, appKeys.detail(slug), () => fetchApp(context.apiClient, slug))
     },
@@ -185,8 +185,9 @@ export const matchPrewarm = (
   const pathname = normalizeNavigationPathname(to)
   for (const entry of PREWARM_REGISTRY) {
     const match = entry.pattern.exec(pathname)
-    // A screen that pushes no id (`/agents/designer`) is not a prewarm target;
-    // the surface registry owns those as their own rows.
+    // A screen that pushes no id (`/admin/agents/designer`) is not a prewarm
+    // target; the patterns above exclude it, and the surface registry owns it
+    // as a row of its own.
     if (match?.[1]) return { entry, id: decodeURIComponent(match[1]) }
   }
   return null

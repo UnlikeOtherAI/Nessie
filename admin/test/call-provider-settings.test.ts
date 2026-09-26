@@ -5,7 +5,7 @@ import * as ReactNamespace from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
-import { CallProviderSelect } from '../src/pages/settings/organization/CallProviderSettingsPanel.js'
+import { CallProviderSelect } from '../src/pages/settings/team/TeamCallProvider.js'
 import type { TeamRecord } from '../src/lib/api-client.js'
 
 // The production Vite transform injects the JSX runtime. Node's lightweight

@@ -43,7 +43,7 @@ const ThemeSwatch = ({ colours }: { colours: readonly [string, string, string] }
  *
  * This panel is the doorway, never the home: it shows and picks the
  * organisation theme, and an administrator authors it on
- * `/settings/organization?tab=appearance`.
+ * `/admin/organisation?tab=appearance`.
  */
 export const ColoursPanel = () => {
   const { organizationTheme, setTheme, theme, themes } = useTheme()
@@ -116,7 +116,7 @@ export const ColoursPanel = () => {
       {canAdminister ? (
         <Link
           className="mt-4 inline-block text-sm text-[color:var(--lnk)] hover:underline"
-          to="/settings/organization?tab=appearance"
+          to="/admin/organisation?tab=appearance"
         >
           {hasOrganizationTheme
             ? "Edit your organisation's theme →"

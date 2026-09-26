@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { ExecutorTerminalScreen } from '../components/features/executors/ExecutorTerminalScreen'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { QueryState } from '../components/shared/QueryState'
+import { COMPUTER_SESSIONS_PATH } from '../navigation/computers'
 import { useExecutorSessionView } from '../facades/executors/coding-sessions'
 import { ExecutorSessionSharing } from '../components/features/executors/ExecutorSessionSharing'
 
@@ -15,8 +16,8 @@ export const ExecutorSessionPage = () => {
   const session = view.data?.session
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <ScreenHeader title={session?.title ?? 'Session'} eyebrow="Executor sessions"
-        backLabel="Back to sessions" onBack={() => void navigate('/agents/executor-sessions')}
+      <ScreenHeader title={session?.title ?? 'Session'} eyebrow="Sessions"
+        backLabel="Back to sessions" onBack={() => void navigate(COMPUTER_SESSIONS_PATH)}
         actions={view.data?.canShare ? [{
           id: 'share-session', kind: 'button', label: 'Share session', priority: 80, onSelect: () => setSharing(true),
         }] : []}

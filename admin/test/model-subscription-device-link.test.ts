@@ -19,7 +19,7 @@ import { openOverlayIn } from './support/overlay-host'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   pretendToBeVisual: true,
-  url: 'http://localhost:5455/settings/connections',
+  url: 'http://localhost:5455/settings/accounts',
 })
 
 const React = await import('react')

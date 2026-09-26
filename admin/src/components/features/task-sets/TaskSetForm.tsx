@@ -114,7 +114,7 @@ export const TaskSetForm = ({ initial, identity, onSave, onSaved, submitLabel, s
           </QueryState>
           {selected?.reason ? <p className="text-sm text-[color:var(--tx2)]">{selected.reason}</p> : null}
           {(processors.data ?? []).some((option) => option.source === 'local' && option.setupUrl) ?
-            <Link className="text-sm text-[color:var(--accent)] underline" to="/agents/executors">Set up a local processor</Link> : null}
+            <Link className="text-sm text-[color:var(--accent)] underline" to="/admin/computers">Set up a local processor</Link> : null}
           <FormField label="Research tools">
             <Select onChange={(event) => patch({ search: event.target.value as 'none' | 'processor' })} value={draft.search ?? 'none'}>
               <option value="none">No web research</option>

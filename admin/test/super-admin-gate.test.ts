@@ -13,7 +13,7 @@ import type { MeResponse } from '@nessie/schemas'
  */
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
-  url: 'http://localhost:5455/ops',
+  url: 'http://localhost:5455/admin/advanced/health',
 })
 
 const React = await import('react')
@@ -99,7 +99,7 @@ const renderOpsHealthPage = (): string => withLocalStorage(() => renderToStaticM
     { client: new QueryClient() },
     createElement(
       MemoryRouter,
-      { initialEntries: ['/ops'] },
+      { initialEntries: ['/admin/advanced/health'] },
       createElement(
         AuthSessionProvider,
         null,
@@ -128,6 +128,6 @@ const renderOpsHealthPage = (): string => withLocalStorage(() => renderToStaticM
 test('OpsHealthPage renders its header before the refusal, with exactly one h1 (05-F3)', () => {
   const markup = renderOpsHealthPage()
   assert.equal(markup.match(/<h1[\s>]/g)?.length, 1, 'exactly one h1, even on the refusal branch')
-  assert.match(markup, /<h1[^>]*>System Health<\/h1>/)
+  assert.match(markup, /<h1[^>]*>System health<\/h1>/)
   assert.match(markup, /Instance super-admin access required/)
 })

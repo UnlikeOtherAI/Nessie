@@ -16,7 +16,7 @@ import type { MeResponse } from '@nessie/schemas'
  */
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
-  url: 'http://localhost:5455/audit',
+  url: 'http://localhost:5455/admin/security',
 })
 
 const React = await import('react')

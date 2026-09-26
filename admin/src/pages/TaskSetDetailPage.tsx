@@ -7,6 +7,7 @@ import { localInferenceKeys } from '../facades/local-inference/keys'
 import { taskSetKeys } from '../facades/task-sets/keys'
 import { useTaskSet, useTaskSetAction, useTaskSetProcessors, useUpdateTaskSet } from '../facades/task-sets/hooks'
 import { formErrorMessage } from '../facades/forms/form-errors'
+import { BATCH_JOBS_PATH } from '../navigation/task-sets'
 import { PageBody, Section } from '../components/shared/PageBody'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
@@ -75,7 +76,7 @@ export const TaskSetDetailPage = () => {
   )
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <ScreenHeader actions={actions} backLabel="Task Sets" onBack={() => navigate('/agents/task-sets')}
+      <ScreenHeader actions={actions} backLabel="Batch jobs" onBack={() => navigate(BATCH_JOBS_PATH)}
         title={set?.name ?? 'Task set'} />
       <PageBody className="grid gap-6">
         <QueryState errorLabel="This task set could not be loaded." loadingLabel="Loading task set…" query={query}>

@@ -15,7 +15,7 @@ import { agentsAccessEmptyMessage, type AppEmptyMessage } from './app-detail-vie
  * is written as the same verdict across *every* callable row of *every* one of
  * this app's connections. That is a fan-out, not a new concept, and it is the
  * reason `partial` is a first-class state below rather than a rounding error: a
- * per-capability edit on `/agents/tools`, a capability discovered after the
+ * per-capability edit on `/admin/advanced/tools`, a capability discovered after the
  * grant, or a fan-out that failed half way all leave an agent holding some rows
  * and not others. A checkbox that rendered those as "on" would be a checkbox
  * disagreeing with the data it claims to show.

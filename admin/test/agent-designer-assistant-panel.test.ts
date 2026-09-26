@@ -24,7 +24,7 @@ test('agent rows use detail as their only designer doorway', () => {
   const table = readSource('../src/components/features/agents/AgentsTable.tsx')
   const row = readSource('../src/components/features/agents/AgentListRow.tsx')
 
-  assert.match(list, /onOpen=\{\(agentId\) => void navigate\(`\/agents\/\$\{agentId\}`\)\}/)
+  assert.match(list, /onOpen=\{\(agentId\) => void navigate\(`\/admin\/agents\/\$\{agentId\}`\)\}/)
   assert.doesNotMatch(list, /\/agents\/designer\/\$\{agentId\}/)
   assert.doesNotMatch(table, /onEdit|showMenu/)
   assert.doesNotMatch(row, /AgentRowMenu|Edit in designer|Actions for/)

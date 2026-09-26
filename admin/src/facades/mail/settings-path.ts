@@ -8,6 +8,6 @@ export const connectedMailSettingsPath = (account: {
   source: ConnectedMailSource
 }): string => {
   const sharedMailbox = account.source === 'mailbox' && account.scope === 'shared'
-  const root = sharedMailbox ? '/settings/organization?tab=agents' : '/settings/connections'
+  const root = sharedMailbox ? '/admin/connections' : '/settings/accounts'
   return `${root}#${connectionAnchorId(account.id)}`
 }

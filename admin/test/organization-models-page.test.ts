@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 const source = readFileSync(
-  join(process.cwd(), 'src', 'pages', 'settings', 'OrganizationModelsPage.tsx'),
+  join(process.cwd(), 'src', 'components', 'features', 'inference-models', 'ModelAvailabilitySettings.tsx'),
   'utf8',
 )
 
@@ -19,7 +19,7 @@ test('deployment model filters are server-side URL state', () => {
 test('the shared surface uses team-scoped catalogue controls when given a team', () => {
   assert.match(source, /useSetDeploymentModelsEnabled\(teamId\)/)
   assert.match(source, /useSetDeploymentModelEnabled\(teamId\)/)
-  assert.match(source, /eyebrow=\{teamId \? 'Team' : 'Organisation'\}/)
+  assert.match(source, /eyebrow=\{teamId \? 'Teams' : 'Organisation'\}/)
   assert.doesNotMatch(source, /Every model this deployment can run, as the model service/)
 })
 

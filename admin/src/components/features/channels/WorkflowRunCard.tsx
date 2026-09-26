@@ -43,10 +43,11 @@ export const WorkflowRunCard = ({
   const openRun = (event: { stopPropagation: () => void }) => {
     event.stopPropagation()
     const params = new URLSearchParams({
+      tab: 'workflows',
       installation: card.installationId,
       run: card.workflowRunId,
     })
-    navigate(`/workflows?${params.toString()}`)
+    navigate(`/admin/automations?${params.toString()}`)
   }
 
   return (

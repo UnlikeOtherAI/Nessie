@@ -24,7 +24,7 @@ import { ResearchReadinessUnread } from './ResearchReadinessScreen'
 import { useIntentActionId } from './useIntentActionId'
 
 /**
- * DeepWater for this team, on its `/apps/deep-water` hero (nessie.md §7.7
+ * DeepWater for this team, on its `/admin/apps/deep-water` hero (nessie.md §7.7
  * doorways; amendments N8.5, N9): where it stands, and for a team owner the
  * changes there are to make — turn it on, turn it off, or update it to the
  * current research tools (a team that needs updating can also be turned off

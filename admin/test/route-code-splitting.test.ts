@@ -37,19 +37,17 @@ const lazySource = readFileSync(LAZY_PAGES_PATH, 'utf8').replaceAll('\r\n', '\n'
 const EAGER_PAGES = ['BootstrapPage', 'ChannelsPage', 'ExternalAuthCompletionPage', 'LoginRoute', 'NotFoundPage']
 
 // Non-page structural elements a route may reference directly (never through
-// lazyElement): the two eager layouts, the redirect primitive, and the two
-// local redirect components declared in this file.
+// lazyElement): the two eager layouts, the redirect primitive, the landing
+// redirect, and the contextual-list root that `/admin` and `/settings` share —
+// a redirect to the first page on a desktop and nothing on a phone, where the
+// shell's own list is the page. None of them is a page: nothing to code-split.
 const ALLOWED_DIRECT_ELEMENTS = [
   ...EAGER_PAGES,
   'AdminShellLayout',
+  'ContextualListRoute',
   'RedirectRoute',
   'RootLayout',
   'RootRouteRedirect',
-  'SettingsRootRoute',
-  // `/settings/agent-access` → `/settings/paired-agents`, carrying the `?code=`
-  // an agent's verification URI put there. A redirect, not a page: nothing to
-  // code-split.
-  'AgentAccessRedirect',
 ]
 
 const staticPageImports = [...source.matchAll(

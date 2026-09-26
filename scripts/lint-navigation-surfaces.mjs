@@ -25,6 +25,8 @@ const ROUTER_FILE = 'admin/src/router.tsx'
 const SURFACE_FILES = [
   'admin/src/navigation/surfaces.ts',
   'admin/src/navigation/admin-surfaces.ts',
+  'admin/src/navigation/admin-organization-surfaces.ts',
+  'admin/src/navigation/settings-surfaces.ts',
   'admin/src/navigation/connected-mail-surfaces.ts',
 ]
 
@@ -201,7 +203,7 @@ export const findShadowedPaths = (routerPaths, patterns, outside) => {
 }
 
 // Seeded from a full run of `findShadowedPaths` against router.tsx and the
-// registry as they stand today — 14 entries, matching
+// registry — 14 entries when this gate landed, matching
 // docs/plans/2026-09-05-admin-architecture-review/audit/08-navigation-dependency-rules.md
 // F11. Each is a router path whose specific surface row must stay declared
 // ahead of a broader sibling row that would otherwise also match it; the
@@ -210,11 +212,11 @@ export const findShadowedPaths = (routerPaths, patterns, outside) => {
 // (with a reason) or reorder the rows so only the specific one matches. This
 // list should only shrink (a specific row absorbed into its general sibling,
 // or the general row narrowed so it no longer overlaps), never grow silently.
+// The admin overhaul shrank it to the channel family: the Admin and Your
+// settings rows name their pages, and the agent, computer and batch-job
+// detail rows exclude their named siblings (`designer`, `sessions`, `new`)
+// in their own pattern rather than depending on order.
 export const SHADOWED_PATHS = new Set([
-  // `/settings/:tab` (the generic settings-tab row) also matches these two
-  // named-feature settings screens; the named rows are declared first.
-  '/settings/tools',
-  '/settings/agents',
   // `/channels/:channelId(?:/.*)?` (the channel detail catch-all) also
   // matches every one of these more specific channel sub-routes; each is
   // declared ahead of the catch-all.
@@ -226,14 +228,6 @@ export const SHADOWED_PATHS = new Set([
   '/channels/:channelId/info',
   '/channels/:channelId/info/members',
   '/channels/:channelId/info/members/add',
-  // `/agents/:id` (agent detail) also matches these named agent sub-screens;
-  // each is declared ahead of it.
-  '/agents/designer',
-  '/agents/workflow-designer',
-  '/agents/triggers',
-  '/agents/workflows',
-  '/agents/tools',
-  '/agents/executors',
 ])
 
 const main = () => {

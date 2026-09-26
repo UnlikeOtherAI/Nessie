@@ -103,7 +103,7 @@ export const PolicyPage = () => {
     <section className="flex h-full min-h-0 flex-col">
       {/* The header is always rendered: a refusal is a state of this screen,
           not a screen of its own, so Back never disappears with it. */}
-      <ScreenHeader title="Policy Rules" />
+      <ScreenHeader eyebrow="Advanced" title="Access rules" />
       <OwnerGate>
         <PageBody>
           <Section title="Create rule">

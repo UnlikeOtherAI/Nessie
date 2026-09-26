@@ -128,7 +128,7 @@ test('narrowing and pausing say plainly that nobody is removed', () => {
 
 test('the invitation dialog carries the in-context doorway', () => {
   assert.match(invitationDialog, /Set up automatic team access/)
-  assert.match(invitationDialog, /updated\.set\('membersTab', 'automatic'\)/)
+  assert.match(invitationDialog, /updated\.set\('tab', 'automatic'\)/)
 })
 
 test('reconciliation shows counters, never a list of matching people', () => {

@@ -74,7 +74,7 @@ export const TriggerDetailPage = () => {
     setSaved(null)
   }, [triggerId])
 
-  const backToList = () => void navigate('/agents/triggers')
+  const backToList = () => void navigate('/admin/automations')
 
   if (!trigger) {
     // The header is rendered here too: loading, failure and not-found are

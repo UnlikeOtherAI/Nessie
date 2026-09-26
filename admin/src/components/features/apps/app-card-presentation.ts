@@ -21,7 +21,7 @@ export type AppLinkTarget = Pick<AppSummaryRecord, 'id' | 'slug'>
  * to be reachable, so its id stands in.
  */
 export const appDetailHref = (app: AppLinkTarget, tab?: string): string =>
-  `/apps/${encodeURIComponent(app.slug ?? app.id)}${tab ? `?tab=${tab}` : ''}`
+  `/admin/apps/${encodeURIComponent(app.slug ?? app.id)}${tab ? `?tab=${tab}` : ''}`
 
 // Connect never leaves Apps: the card's button opens `AppConnectDialog`, which
 // runs the same `useAppConnectFlow` as the detail page.

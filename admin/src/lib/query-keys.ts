@@ -61,7 +61,7 @@ export const opsHealthKeys = {
   all: ['ops-health'] as const,
 }
 
-/** Owner-only local telemetry behind `/ops/usage` — never customer billing. */
+/** Owner-only local telemetry behind `/admin/usage` — never customer billing. */
 export const opsTelemetryKeys = {
   connectorSummary: (groupBy: string) => ['connector-summary', groupBy] as const,
   fileUsageSummary: ['file-usage-summary'] as const,

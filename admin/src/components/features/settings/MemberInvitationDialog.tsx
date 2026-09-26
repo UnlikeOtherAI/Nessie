@@ -183,7 +183,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
               onClose()
               setSearchParams((current) => {
                 const updated = new URLSearchParams(current)
-                updated.set('membersTab', 'automatic')
+                updated.set('tab', 'automatic')
                 return updated
               }, { replace: true })
             }}

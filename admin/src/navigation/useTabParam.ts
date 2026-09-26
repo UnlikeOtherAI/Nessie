@@ -20,10 +20,20 @@ import { useLocation, useSearchParams } from 'react-router-dom'
 // alongside `select`, so the URL wins when it carries a tab and the preference
 // decides when it does not.
 
+type TabParamOptions = {
+  /**
+   * Params that belong to one tab rather than to the page — a list's search,
+   * its filters, its selection, its page. They leave in the same replace when
+   * the tab changes, so one tab's `?search=` never narrows the next tab's list.
+   */
+  clears?: readonly string[]
+}
+
 export const useTabParam = <T extends string>(
   name: string,
   tabs: readonly T[],
   fallback: T,
+  { clears }: TabParamOptions = {},
 ): [T, (next: T) => void] => {
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
@@ -43,6 +53,9 @@ export const useTabParam = <T extends string>(
       setSearchParams(
         (current) => {
           const params = new URLSearchParams(current)
+          const currentRaw = current.get(name)
+          const previous = tabs.some((tab) => tab === currentRaw) ? currentRaw : fallback
+          if (clears && previous !== next) for (const owned of clears) params.delete(owned)
           if (next === fallback || !tabs.some((tab) => tab === next)) params.delete(name)
           else params.set(name, next)
           return params
@@ -50,7 +63,7 @@ export const useTabParam = <T extends string>(
         { replace: true, state },
       )
     },
-    [fallback, name, setSearchParams, state, tabs],
+    [clears, fallback, name, setSearchParams, state, tabs],
   )
   return [active, select]
 }

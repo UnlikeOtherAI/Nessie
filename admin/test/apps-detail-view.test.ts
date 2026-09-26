@@ -210,7 +210,7 @@ test('the hero offers exactly the card action — navigations link, connects con
   const connected = detail({ connections: [connection()], state: 'connected' })
   assert.deepEqual(appDetailCta(connected), {
     kind: 'link',
-    href: '/apps/github?tab=accounts',
+    href: '/admin/apps/github?tab=accounts',
     label: 'Manage',
     tone: 'secondary',
   })
@@ -250,7 +250,7 @@ test('the sign-in popup cannot reach back at the tab that opened it', () => {
     closed: false,
     focus: () => {},
     // Whatever the browser handed the window; the launcher must clear it.
-    opener: { location: 'https://app.nessie.works/apps/github' },
+    opener: { location: 'https://app.nessie.works/admin/apps/github' },
   }
   const calls: string[] = []
   const handle = createWindowAuthLauncher({

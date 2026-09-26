@@ -228,7 +228,7 @@ const NodeConfigFields = ({
       </p>
       <Link
         className="inline-flex items-center gap-1.5 text-[var(--accent)] hover:underline"
-        to="/agents/triggers"
+        to="/admin/automations"
       >
         Manage triggers
       </Link>

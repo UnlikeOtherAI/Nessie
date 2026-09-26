@@ -69,13 +69,26 @@ test('an origin screen pops to the real predecessor and says only "Back"', () =>
 
   // A cold deep link falls back to the declared parent, and names it.
   const cold = resolveBack({ pathname: '/alerts', owners: null, ledger: ledgerOf(['/alerts']) })
-  assert.deepEqual(cold, { kind: 'route', label: 'Back to Admin', mode: 'replace', to: '/settings', swipeable: true })
+  assert.deepEqual(cold, { kind: 'route', label: 'Back to Admin', mode: 'replace', to: '/admin', swipeable: true })
 
-  // Operational usage is owner-only and listed on Admin; /ops is
-  // super-admin-only, so it is never the fallback.
-  const usage = resolveBack({ pathname: '/ops/usage', owners: null, ledger: ledgerOf(['/settings', '/ops/usage']) })
-  assert.deepEqual(usage, { kind: 'route', label: 'Back to Admin', mode: 'pop', to: '/settings', swipeable: true })
-  assert.equal(resolveBack({ pathname: '/ops/usage', owners: null, ledger: null })?.to, '/settings')
+  // A Your settings page is opened from the avatar menu anywhere, so it pops
+  // to wherever the reader was, and names its own list only on a cold link.
+  const profile = resolveBack({
+    pathname: '/settings/profile',
+    owners: null,
+    ledger: ledgerOf(['/channels', '/channels/c1', '/settings/profile']),
+  })
+  assert.deepEqual(profile, { kind: 'route', label: 'Back', mode: 'pop', to: '/channels/c1', swipeable: true })
+  const coldProfile = resolveBack({ pathname: '/settings/profile', owners: null, ledger: ledgerOf(['/settings/profile']) })
+  assert.deepEqual(coldProfile, {
+    kind: 'route', label: 'Back to Your settings', mode: 'replace', to: '/settings', swipeable: true,
+  })
+
+  // Usage and limits is an Admin page like its neighbours: Back returns to the
+  // Admin list whether the reader came from it or a budget alert opened it.
+  const usage = resolveBack({ pathname: '/admin/usage', owners: null, ledger: ledgerOf(['/admin', '/admin/usage']) })
+  assert.deepEqual(usage, { kind: 'route', label: 'Back to Admin', mode: 'pop', to: '/admin', swipeable: true })
+  assert.equal(resolveBack({ pathname: '/admin/usage', owners: null, ledger: null })?.to, '/admin')
 })
 
 test('a root has no Back action', () => {
@@ -96,12 +109,15 @@ test('history reads come from the ledger, not a private counter', () => {
 })
 
 test('a section tab returns to the last place visited in that section this session', () => {
-  const ledger = ledgerOf(['/channels', '/agents', '/agents/a1?tab=tools', '/channels/c2'])
-  assert.equal(lastPathInSection(ledger, 'admin'), '/agents/a1?tab=tools')
+  const ledger = ledgerOf([
+    '/channels', '/admin/agents', '/admin/agents/a1?agentTab=tools', '/settings/profile', '/channels/c2',
+  ])
+  // Your settings lights no rail item, so it is never the Admin tab's memory.
+  assert.equal(lastPathInSection(ledger, 'admin'), '/admin/agents/a1?agentTab=tools')
   assert.equal(lastPathInSection(ledger, 'channels'), '/channels/c2')
   assert.equal(lastPathInSection(ledger, 'knowledge'), null)
   assert.equal(resolveSectionTarget(ledger, 'knowledge', '/knowledge-base'), '/knowledge-base')
-  assert.equal(resolveSectionTarget(ledger, 'admin', '/settings'), '/agents/a1?tab=tools')
+  assert.equal(resolveSectionTarget(ledger, 'admin', '/admin'), '/admin/agents/a1?agentTab=tools')
 })
 
 test('the transition signal counts in-flight transitions and releases waiters on settle', async () => {

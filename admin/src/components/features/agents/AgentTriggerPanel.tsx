@@ -201,7 +201,7 @@ export const AgentTriggerPanel = ({ agent, title = 'Triggers' }: AgentTriggerPan
             className="admin-button admin-button-primary"
             data-testid="agent-trigger-create"
             onClick={() =>
-              void navigate(`/agents/triggers?create=${encodeURIComponent(agent.id)}`)}
+              void navigate(`/admin/automations?create=${encodeURIComponent(agent.id)}`)}
             type="button"
           >
             New trigger

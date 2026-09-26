@@ -33,7 +33,7 @@ test('Create ends with Agent, opening the Agent Designer', () => {
   assert.ok(createMenu.indexOf('>Project<') < createMenu.indexOf('>Agent<'))
   // Desktop and the native phone sheet reach the same designer.
   assert.equal(shell.split('onCreateAgent={shell.navigateToNewAgent}').length - 1, 2)
-  assert.match(shellHook, /navigate\('\/agents\/designer', \{\n\s+state: \{ returnTo:/)
+  assert.match(shellHook, /navigate\('\/admin\/agents\/designer', \{\n\s+state: \{ returnTo:/)
 })
 
 test('the New message composer is one address book with no agent creation', () => {

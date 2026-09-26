@@ -7,8 +7,12 @@ const navSource = readFileSync(
   join(process.cwd(), 'src', 'layouts', 'admin-shell', 'admin-nav-items.tsx'),
   'utf8',
 )
-const pageSource = readFileSync(
-  join(process.cwd(), 'src', 'pages', 'settings', 'team', 'TeamModelsPage.tsx'),
+const teamPageSource = readFileSync(
+  join(process.cwd(), 'src', 'pages', 'admin', 'TeamPage.tsx'),
+  'utf8',
+)
+const modelsPageSource = readFileSync(
+  join(process.cwd(), 'src', 'pages', 'admin', 'ModelsPage.tsx'),
   'utf8',
 )
 const hooksSource = readFileSync(
@@ -24,11 +28,13 @@ const designerSource = readFileSync(
   'utf8',
 )
 
-test('Team Models is a first-class sidebar page using the shared surface and icon', () => {
-  assert.match(navSource, /path: '\/settings\/team\/models'[\s\S]*?icon: modelsIcon/)
-  assert.match(navSource, /path: '\/settings\/organization\/models'[\s\S]*?icon: modelsIcon/)
-  assert.match(pageSource, /<ModelAvailabilitySettings/)
-  assert.match(pageSource, /teamId=\{team\.id\}/)
+test('AI models is an Admin page, and a team narrows the same surface from its own page', () => {
+  assert.match(navSource, /path: '\/admin\/models', label: 'AI models'[\s\S]*?icon: modelsIcon/)
+  assert.match(modelsPageSource, /<ModelAvailabilitySettings \/>/)
+  // The team's tab is the one shared surface, scoped by the team the address
+  // names rather than the one the session is working in.
+  assert.match(teamPageSource, /models: 'AI models'/)
+  assert.match(teamPageSource, /<ModelAvailabilitySettings host=\{host\} teamId=\{team\.id\} \/>/)
 })
 
 test('team availability calls team-scoped catalogue endpoints', () => {
