@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import type { Location } from 'react-router-dom'
 
 import type {
@@ -149,8 +149,6 @@ export const useChannelMessageSurface = ({
   const messageActions = useChannelMessageActions(activeThreadId)
   const cancelEdit = messageActions.cancelEdit
   const shareRestricted = useShareRestrictedMessage(activeThreadId)
-  const search = useChannelMessageSearch(activeChannel?.id)
-  const closeSearch = search.closeSearch
   const feedScroll = useStickToBottom(
     `${activeThreadId ?? activeChannel?.id ?? ''}:${visibleActiveTab}`,
     visibleActiveTab === 'messages',
@@ -163,13 +161,9 @@ export const useChannelMessageSurface = ({
       pageCount: threadMessagePageCount,
     },
   )
-  const releaseFeedPin = feedScroll.releasePin
-  const jumpToMessage = search.jumpToMessage
-  const jumpToFeedMessage = useCallback((messageId: string) => {
-    releaseFeedPin()
-    jumpToMessage(messageId)
-  }, [jumpToMessage, releaseFeedPin])
-  useAlertMessageHighlight(threadMessagesFetched, jumpToFeedMessage)
+  const search = useChannelMessageSearch(activeChannel?.id, feedScroll.releasePin)
+  const closeSearch = search.closeSearch
+  useAlertMessageHighlight(threadMessagesFetched, search.jumpToMessage)
   const [showChannelSettings, setShowChannelSettings] = useState(false)
   const joinChannel = useJoinChannel()
 

@@ -39,6 +39,7 @@ import {
 import { estimateTokens } from '../context-management.js'
 import { buildModelPrompt, loadConversation } from './prompt.js'
 import { loadExecutorReachFacts } from './executor-reach-facts.js'
+import { buildOneOnOnePlanBlock } from './one-on-one-plan.js'
 import { prepareRunExecutorToolset } from './run-setup-executor.js'
 import { viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveLiveEntitlements } from '@nessie/runtime'
@@ -570,6 +571,11 @@ export const prepareRunExecution = async (
       emailConversation: emailContext?.block ?? null,
       checkpointNotes: checkpoint ? buildCheckpointInjection(checkpoint) : null,
       executorReach,
+      replyPlan: buildOneOnOnePlanBlock(
+        context.oneOnOnePlan,
+        conversation.find((turn) => turn.id === context.oneOnOnePlan?.earlier?.messageId)?.content
+          ?? null,
+      ),
       routing: {
         hasDelegate: resolvedToolIds.has('delegate'),
         researchTools: mcpToolset.managedResearchToolNames,

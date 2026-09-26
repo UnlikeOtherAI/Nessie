@@ -157,6 +157,7 @@ const complete = async (
   deps: ExecutionDependencies,
   context: RunContext,
   responseText: string,
+  outcome: { markedDone?: boolean } = {},
 ): Promise<void> => withRunExecutorFence(context.run.id, async () => {
   registerExecutorFence(context.run.id, RUN_ID)
   await completeRunExecution(deps, makePayload(), context, {
@@ -168,6 +169,7 @@ const complete = async (
     memories: [],
     responseText,
     toolCallsUsed: 0,
+    ...outcome,
   })
 })
 
@@ -222,6 +224,22 @@ for (const row of PRECEDENCE_MATRIX) {
     )
   })
 }
+
+const EARLIER_MESSAGE_ID = '00000000-0000-0000-0000-000000000088'
+
+// One-on-one rooms: Jev can place the answer under the earlier message the
+// trigger goes back to. It ranks after the two structural rules above it.
+test('a one-on-one answer Jev placed under an earlier message attaches to that thread', () => {
+  const topLevel = { id: TRIGGER_MESSAGE_ID, rootMessageId: null }
+  assert.equal(resolveReplyRootMessageId(topLevel, null, 'thread', EARLIER_MESSAGE_ID), EARLIER_MESSAGE_ID)
+  // A turn written inside a thread keeps its own thread...
+  assert.equal(
+    resolveReplyRootMessageId({ ...topLevel, rootMessageId: ROOT_MESSAGE_ID }, null, 'thread', EARLIER_MESSAGE_ID),
+    ROOT_MESSAGE_ID,
+  )
+  // ...and a DeepWater handoff stays top-level whatever was judged.
+  assert.equal(resolveReplyRootMessageId(topLevel, HANDOFF_LOCATOR, 'thread', EARLIER_MESSAGE_ID), undefined)
+})
 
 test('persistResolvedReplyAnchor writes the resolved anchor (null when top-level)', async () => {
   const updates: Array<Record<string, unknown>> = []
@@ -340,6 +358,42 @@ test('a completed run with nothing to say writes no message at all', async () =>
 // The guard on the line above: silence is emptiness, not a judgement about
 // whether the words were worth posting. A bare emoji is a real answer and is
 // only ever withheld by the reaction branch, which knows the run reacted.
+test('a linked one-on-one answer carries the earlier message it points at', async () => {
+  const { deps, messageCreates } = makeDeps()
+  const context = makeContext()
+  context.oneOnOnePlan = {
+    acknowledgeWhenDone: false,
+    earlier: { messageId: EARLIER_MESSAGE_ID, reference: 'link' },
+  }
+
+  await complete(deps, context, 'Twelfth of October, as you said.')
+
+  assert.deepEqual(messageCreates[0]?.data.metadata, { messageRef: { messageId: EARLIER_MESSAGE_ID } })
+})
+
+test('one-on-one work with nothing to say marks the person’s message done instead', async () => {
+  const { deps, messageCreates, queuedPayloads, sse } = makeDeps()
+  const reactions: Array<Record<string, unknown>> = []
+  ;(deps.prisma as unknown as Record<string, unknown>).messageReaction = {
+    createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => {
+      reactions.push(...data)
+      return { count: data.length }
+    },
+  }
+
+  await complete(deps, makeContext(), '', { markedDone: true })
+
+  assert.equal(messageCreates.length, 0)
+  assert.deepEqual(reactions, [{
+    agentId: AGENT_ID, emoji: '✅', messageId: TRIGGER_MESSAGE_ID, onBehalfOfUserId: null,
+  }])
+  // Written in the run's commit; announced by the follow-up once durable.
+  assert.deepEqual(queuedPayloads[0]?.delivery, {
+    emoji: '✅', kind: 'reaction', sourceMessageId: TRIGGER_MESSAGE_ID,
+  })
+  assert.deepEqual(sse, [])
+})
+
 test('a wordless but non-empty answer is still posted', async () => {
   const { deps, messageCreates, queuedPayloads } = makeDeps()
 

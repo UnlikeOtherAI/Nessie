@@ -60,6 +60,8 @@ type FixtureOptions = {
   toolCallId?: string | null
   /** No user actor and no delegated identity: an autonomous run. */
   unattended?: boolean
+  /** Where the conversation opens; a shared two-person room unless overridden. */
+  destination?: { members: Array<{ userId: string }>; type: 'dm' | 'standard' }
 }
 
 const agentRow = (name: string) => ({
@@ -99,6 +101,7 @@ const destinationRow = {
 }
 
 const makeFixture = (options: FixtureOptions = {}) => {
+  const destination = { ...destinationRow, ...options.destination }
   const committed: Written[] = []
   const committedThreads: string[] = []
   const enqueuedKeys: string[] = []
@@ -171,8 +174,12 @@ const makeFixture = (options: FixtureOptions = {}) => {
         // The destination read the sole-audience decision and the opener's
         // basis are computed from — also inside, so the audience the basis was
         // computed for is the audience the opener was committed to.
-        findUniqueOrThrow: async () => destinationRow,
+        findUniqueOrThrow: async () => destination,
       },
+      // The requester's own room resolves their disclosure viewer inside the
+      // transaction: a local organisation with no membership row.
+      organization: { findUnique: async () => ({ externalOrgId: null }) },
+      organizationMember: { findFirst: async () => null },
       run: {
         // Serves both of `claimThreadRunOrPend`'s reads: no run already
         // delivered for this message, and no run in flight on the thread.
@@ -208,7 +215,7 @@ const makeFixture = (options: FixtureOptions = {}) => {
       findMany: async () => [],
       // Both room resolvers — this file's and `startAgentConversation`'s.
       findFirst: async () => ({ id: DESTINATION_CHANNEL_ID, label: 'research' }),
-      findUniqueOrThrow: async () => destinationRow,
+      findUniqueOrThrow: async () => destination,
     },
     organizationMember: {
       findUnique: async () => ({ deactivatedAt: null, role: 'member' }),
@@ -354,6 +361,21 @@ test('the target\'s run is claimed against the opener, unattended and threaded',
   // Two publications: the doorway on the run's own thread, and the opener on
   // the destination channel's lane.
   assert.deepEqual(fixture.published.map((entry) => entry.event), ['message.new', 'message.new'])
+})
+
+test('in the requester’s own DM the target answers in the main chat', async () => {
+  // One person in the room: nobody else for a reply thread to spare, so the
+  // target's answer lands below the opener rather than under it.
+  const fixture = makeFixture({ destination: { members: [{ userId: ACTOR_ID }], type: 'dm' } })
+  await runAgentConversationStartTool(fixture.context, {
+    agent: 'Researcher',
+    channel: DESTINATION_CHANNEL_ID,
+    message: 'Check the pricing page.',
+  })
+
+  assert.deepEqual(fixture.runsCreated, [
+    { replyPlacement: 'channel', triggerMessageId: OPENER_ID },
+  ])
 })
 
 test('an unattended run may start a conversation', async () => {

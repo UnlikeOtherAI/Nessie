@@ -34,6 +34,7 @@ import {
 import { useResolveReactorName } from './useResolveReactorName'
 import { useCollapsedFeedDates } from './useCollapsedFeedDates'
 import { FeedConversationContext } from './feed-conversation'
+import { buildFeedMessageRefs, FeedMessageRefsContext } from './feed-message-refs'
 import { TicketWorkEventRow, ticketWorkEventOf } from '../ticket-work/TicketWorkEventRow'
 
 // Stable identity so a feed without a document facade never re-runs the
@@ -114,6 +115,10 @@ interface ChannelMessageFeedProps {
   // Opens the reply-thread panel for a message's root (#233); when absent the
   // feed renders no thread affordances.
   onOpenThread?: (rootMessageId: string) => void
+  // Scrolls this feed to a message it has loaded and flashes it — where a
+  // one-on-one reply's link to an earlier message goes. Absent on a surface
+  // that cannot scroll to one; the link then opens that message's thread.
+  onJumpToMessage?: (messageId: string) => void
   onSelectAgent?: (agent: ChannelAgentParticipant) => void
   onSelectUser?: (user: MessageUserIdentity) => void
   resolveThreadParticipant?: (participantId: string) => ThreadParticipant | null
@@ -164,6 +169,7 @@ export const ChannelMessageFeed = ({
   onAddReaction,
   onConfirmDelete,
   onOpenThread,
+  onJumpToMessage,
   onSelectAgent,
   onSelectUser,
   resolveThreadParticipant,
@@ -204,6 +210,17 @@ export const ChannelMessageFeed = ({
       }
     },
     [agentById, assistantFallbackName, isDedicatedAgentConversation, lookupAgentIdentity],
+  )
+  const messageRefs = useMemo(
+    () => buildFeedMessageRefs(
+      feedItems.flatMap((item) => (item.kind === 'message' ? [item.message] : [])),
+      {
+        agentName: (agentId) => resolveAgentIdentity(agentId).name,
+        ...(onJumpToMessage ? { jumpTo: onJumpToMessage } : {}),
+        meUserId,
+      },
+    ),
+    [feedItems, meUserId, onJumpToMessage, resolveAgentIdentity],
   )
   // Full-size attachment viewer, owned here so it works identically from the
   // channel feed, the reply panel, and the info drawers — same seam as the
@@ -265,176 +282,178 @@ export const ChannelMessageFeed = ({
 
   return (
     <FeedConversationContext.Provider value={conversation}>
-      <div className="admin-chat-feed" data-message-feed>
-        {historyStatus?.isLoadingOlder ? (
-          <div
-            aria-live="polite"
-            className="px-5 py-2 text-center text-xs text-[color:var(--tx3)]"
-            role="status"
-          >
-            Loading earlier messages…
-          </div>
-        ) : historyStatus?.olderLoadFailed && historyStatus.hasOlder ? (
-          <div className="flex items-center justify-center gap-2 px-5 py-2 text-xs text-[color:var(--danger-text)]">
-            <span>Earlier messages could not be loaded.</span>
-            <button
-              className="admin-button admin-button-secondary admin-button-compact"
-              onClick={historyStatus.retryOlder}
-              type="button"
+      <FeedMessageRefsContext.Provider value={messageRefs}>
+        <div className="admin-chat-feed" data-message-feed>
+          {historyStatus?.isLoadingOlder ? (
+            <div
+              aria-live="polite"
+              className="px-5 py-2 text-center text-xs text-[color:var(--tx3)]"
+              role="status"
             >
-              Retry
-            </button>
-          </div>
-        ) : null}
-
-        {feedItems.length === 0 &&
-        pendingMessages.length === 0 &&
-        optimisticMessages.length === 0 ? (
-          emptyState ?? (
-            <div className="p-5">
-              <div className="admin-card p-4 text-sm text-[color:var(--tx3)]">
-                No messages yet. Send the first message to start this thread.
-              </div>
+              Loading earlier messages…
             </div>
-          )
-        ) : null}
+          ) : historyStatus?.olderLoadFailed && historyStatus.hasOlder ? (
+            <div className="flex items-center justify-center gap-2 px-5 py-2 text-xs text-[color:var(--danger-text)]">
+              <span>Earlier messages could not be loaded.</span>
+              <button
+                className="admin-button admin-button-secondary admin-button-compact"
+                onClick={historyStatus.retryOlder}
+                type="button"
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
 
-        {visibleFeedItems.map((item, index) => {
-          if (item.kind === 'date') {
-            const collapsed = collapsedDateKeys.has(item.key)
-            return (
-              <div key={`date:${item.key}`} className="admin-date-sep">
-                <button
-                  aria-expanded={!collapsed}
-                  className="admin-date-pill admin-date-pill-button"
-                  onClick={() => toggleDateKey(item.key)}
-                  type="button"
-                >
-                  {item.label}
-                  <svg
-                    className={[
-                      'h-3 w-3 flex-shrink-0 transition-transform',
-                      collapsed ? '-rotate-90' : '',
-                    ].join(' ')}
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
+          {feedItems.length === 0 &&
+          pendingMessages.length === 0 &&
+          optimisticMessages.length === 0 ? (
+            emptyState ?? (
+              <div className="p-5">
+                <div className="admin-card p-4 text-sm text-[color:var(--tx3)]">
+                  No messages yet. Send the first message to start this thread.
+                </div>
               </div>
             )
-          }
+          ) : null}
 
-          if (item.message.deletedAt) {
-            return index < lastMessageIndex ? <DeletedBubble key={item.message.id} /> : null
-          }
+          {visibleFeedItems.map((item, index) => {
+            if (item.kind === 'date') {
+              const collapsed = collapsedDateKeys.has(item.key)
+              return (
+                <div key={`date:${item.key}`} className="admin-date-sep">
+                  <button
+                    aria-expanded={!collapsed}
+                    className="admin-date-pill admin-date-pill-button"
+                    onClick={() => toggleDateKey(item.key)}
+                    type="button"
+                  >
+                    {item.label}
+                    <svg
+                      className={[
+                        'h-3 w-3 flex-shrink-0 transition-transform',
+                        collapsed ? '-rotate-90' : '',
+                      ].join(' ')}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                </div>
+              )
+            }
 
-          // A ticket work thread's event row: why its agent woke, not a message.
-          const workEvent = ticketWorkEventOf(item.message)
-          if (workEvent) {
-            return <TicketWorkEventRow event={workEvent} key={item.message.id} message={item.message} />
-          }
+            if (item.message.deletedAt) {
+              return index < lastMessageIndex ? <DeletedBubble key={item.message.id} /> : null
+            }
 
-          const anchoredThinking = pendingByRoot.get(item.message.id) ?? []
-          const personalAssistantPresence =
-            item.message.agentId && item.message.onBehalfOfUserId
-              ? personalAssistantPresenceByIdentity.get(personalAssistantPresenceKey(
-                  item.message.agentId,
-                  item.message.onBehalfOfUserId,
-                )) ?? null
-              : null
+            // A ticket work thread's event row: why its agent woke, not a message.
+            const workEvent = ticketWorkEventOf(item.message)
+            if (workEvent) {
+              return <TicketWorkEventRow event={workEvent} key={item.message.id} message={item.message} />
+            }
 
-          return (
-            <Fragment key={item.message.id}>
-              <ChannelMessageRow
-                activeActionMessageId={activeActionMessageId}
-                agentMap={agentMap}
-                assistantFallbackName={assistantFallbackName}
-                editingContent={editingContent}
-                editingMessageId={editingMessageId}
-                getPresence={getPresence}
-                isDedicatedAgentConversation={isDedicatedAgentConversation}
-                isExternalAgentConversation={isExternalAgentConversation}
-                meAvatar={meAvatar}
-                meDisplayName={meDisplayName}
-                meUserId={meUserId}
-                message={item.message}
-                personalAssistantPresence={personalAssistantPresence}
-                renderContent={renderContent}
-                resolveReactorName={resolveReactorName}
-                setActiveActionMessageId={setActiveActionMessageId}
-                token={token}
-                updatePending={updatePending}
-                onAddReaction={onAddReaction}
-                onCancelEdit={onCancelEdit}
-                onChangeEditingContent={onChangeEditingContent}
-                onConfirmDelete={onConfirmDelete}
-                onOpenAttachment={openAttachment}
-                onOpenThread={onOpenThread}
-                onSelectAgent={onSelectAgent}
-                onSelectUser={onSelectUser}
-                onStartEdit={onStartEdit}
-                shareRestrictedMessage={shareRestrictedMessage}
-                onSubmitEdit={onSubmitEdit}
-                resolveThreadParticipant={resolveThreadParticipant}
-              />
-              {anchoredThinking.map((entry) => renderThinkingBubble(entry))}
-            </Fragment>
-          )
-        })}
+            const anchoredThinking = pendingByRoot.get(item.message.id) ?? []
+            const personalAssistantPresence =
+              item.message.agentId && item.message.onBehalfOfUserId
+                ? personalAssistantPresenceByIdentity.get(personalAssistantPresenceKey(
+                    item.message.agentId,
+                    item.message.onBehalfOfUserId,
+                  )) ?? null
+                : null
 
-        {optimisticMessages.map((entry) => (
-          <OptimisticMessageRow
-            entry={entry}
-            getPresence={getPresence}
-            key={entry.clientId}
-            meAvatar={meAvatar}
-            meDisplayName={meDisplayName}
-            meUserId={meUserId}
+            return (
+              <Fragment key={item.message.id}>
+                <ChannelMessageRow
+                  activeActionMessageId={activeActionMessageId}
+                  agentMap={agentMap}
+                  assistantFallbackName={assistantFallbackName}
+                  editingContent={editingContent}
+                  editingMessageId={editingMessageId}
+                  getPresence={getPresence}
+                  isDedicatedAgentConversation={isDedicatedAgentConversation}
+                  isExternalAgentConversation={isExternalAgentConversation}
+                  meAvatar={meAvatar}
+                  meDisplayName={meDisplayName}
+                  meUserId={meUserId}
+                  message={item.message}
+                  personalAssistantPresence={personalAssistantPresence}
+                  renderContent={renderContent}
+                  resolveReactorName={resolveReactorName}
+                  setActiveActionMessageId={setActiveActionMessageId}
+                  token={token}
+                  updatePending={updatePending}
+                  onAddReaction={onAddReaction}
+                  onCancelEdit={onCancelEdit}
+                  onChangeEditingContent={onChangeEditingContent}
+                  onConfirmDelete={onConfirmDelete}
+                  onOpenAttachment={openAttachment}
+                  onOpenThread={onOpenThread}
+                  onSelectAgent={onSelectAgent}
+                  onSelectUser={onSelectUser}
+                  onStartEdit={onStartEdit}
+                  shareRestrictedMessage={shareRestrictedMessage}
+                  onSubmitEdit={onSubmitEdit}
+                  resolveThreadParticipant={resolveThreadParticipant}
+                />
+                {anchoredThinking.map((entry) => renderThinkingBubble(entry))}
+              </Fragment>
+            )
+          })}
+
+          {optimisticMessages.map((entry) => (
+            <OptimisticMessageRow
+              entry={entry}
+              getPresence={getPresence}
+              key={entry.clientId}
+              meAvatar={meAvatar}
+              meDisplayName={meDisplayName}
+              meUserId={meUserId}
+              renderContent={renderContent}
+              token={token}
+            />
+          ))}
+
+          <ChannelLiveStreamTail
+            isDedicatedAgentConversation={isDedicatedAgentConversation}
+            onOpenThoughtProcess={openThoughtProcess}
+            pendingMessages={pendingMessages}
             renderContent={renderContent}
+            resolveAgentIdentity={resolveAgentIdentity}
+            thinkingSurface={thinkingSurface}
             token={token}
           />
-        ))}
+          {/*
+            The ambient line, last so it sits directly under the newest row. It is
+            anonymous by design — no avatar, no agent name — because no run exists
+            yet and the engagement decision may still decline.
+          */}
+          {showLivenessHint ? (
+            <div
+              aria-label="Waiting for a reply"
+              className="flex items-center py-1 pl-12 pr-5"
+              data-testid="liveness-hint"
+              role="status"
+            >
+              <span aria-hidden="true" className="liveness-dots">
+                <span />
+                <span />
+                <span />
+              </span>
+            </div>
+          ) : null}
 
-        <ChannelLiveStreamTail
-          isDedicatedAgentConversation={isDedicatedAgentConversation}
-          onOpenThoughtProcess={openThoughtProcess}
-          pendingMessages={pendingMessages}
-          renderContent={renderContent}
-          resolveAgentIdentity={resolveAgentIdentity}
-          thinkingSurface={thinkingSurface}
-          token={token}
-        />
-        {/*
-          The ambient line, last so it sits directly under the newest row. It is
-          anonymous by design — no avatar, no agent name — because no run exists
-          yet and the engagement decision may still decline.
-        */}
-        {showLivenessHint ? (
-          <div
-            aria-label="Waiting for a reply"
-            className="flex items-center py-1 pl-12 pr-5"
-            data-testid="liveness-hint"
-            role="status"
-          >
-            <span aria-hidden="true" className="liveness-dots">
-              <span />
-              <span />
-              <span />
-            </span>
-          </div>
-        ) : null}
+          {documentChips}
 
-        {documentChips}
-
-        {attachmentViewer}
-        {documentDialog}
-        {thoughtProcessDialog}
-        <div className="h-3" />
-      </div>
+          {attachmentViewer}
+          {documentDialog}
+          {thoughtProcessDialog}
+          <div className="h-3" />
+        </div>
+      </FeedMessageRefsContext.Provider>
     </FeedConversationContext.Provider>
   )
 }
