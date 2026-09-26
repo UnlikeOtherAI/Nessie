@@ -12,7 +12,7 @@ use std::os::windows::ffi::OsStrExt;
 
 use windows_sys::Win32::Foundation::TRUE;
 use windows_sys::Win32::Security::Cryptography::{
-    CertGetEnhancedKeyUsage, CERT_CONTEXT, CERT_ENHKEY_USAGE,
+    CertGetEnhancedKeyUsage, CERT_CONTEXT, CTL_USAGE,
 };
 use windows_sys::Win32::Security::WinTrust::{
     WinVerifyTrust, WTHelperGetProvCertFromChain, WTHelperGetProvSignerFromChain,
@@ -58,15 +58,16 @@ unsafe fn signer_enhanced_key_usages(state: *mut std::ffi::c_void) -> Option<Vec
 
     let mut size = 0_u32;
     if CertGetEnhancedKeyUsage(context, 0, std::ptr::null_mut(), &mut size) != TRUE
-        || size < std::mem::size_of::<CERT_ENHKEY_USAGE>() as u32
+        || size < std::mem::size_of::<CTL_USAGE>() as u32
     {
         return None;
     }
-    // `Vec<usize>` supplies alignment suitable for CERT_ENHKEY_USAGE while
+    // `Vec<usize>` supplies alignment suitable for CTL_USAGE (the Win32
+    // `CERT_ENHKEY_USAGE` typedef) while
     // still giving the Win32 API the requested byte count.
     let words = (size as usize).div_ceil(std::mem::size_of::<usize>());
     let mut buffer = vec![0_usize; words];
-    let usage = buffer.as_mut_ptr().cast::<CERT_ENHKEY_USAGE>();
+    let usage = buffer.as_mut_ptr().cast::<CTL_USAGE>();
     if CertGetEnhancedKeyUsage(context, 0, usage, &mut size) != TRUE {
         return None;
     }
