@@ -28,23 +28,23 @@ export const ProjectDirectoryPage = () => {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ScreenHeader
-        backLabel={t('Back to Projects')}
+        backLabel={t('directory.back')}
         onBack={() => void navigate('/projects')}
-        subtitle={t('Every project in your organisation. Ask a member to add you to one you are not in.')}
-        title={t('All projects')}
+        subtitle={t('directory.subtitle')}
+        title={t('directory.title')}
       />
       <PageBody>
         <QueryState
-          errorLabel={t('Projects could not be loaded.')}
-          loadingLabel={t('Loading projects…')}
+          errorLabel={t('directory.error')}
+          loadingLabel={t('directory.loading')}
           query={directoryQuery}
         >
           {() => {
             const entries = directoryQuery.data ?? []
             return entries.length === 0
-              ? <EmptyState>{t('There are no projects in this organisation yet.')}</EmptyState>
+              ? <EmptyState>{t('directory.empty')}</EmptyState>
               : (
-                <ul className="grid gap-3" aria-label={t('Projects in this organisation')}>
+                <ul className="grid gap-3" aria-label={t('directory.listLabel')}>
                   {entries.map((entry) => <ProjectDirectoryRow entry={entry} key={entry.id} />)}
                 </ul>
               )
@@ -76,18 +76,18 @@ const ProjectDirectoryRow = ({ entry }: { entry: ProjectDirectoryEntry }) => {
         </span>
         <span className="text-xs text-[color:var(--tx3)]">
           {entry.access === 'full'
-            ? (entry.viewerIsMember ? t('You are a member') : t('You can open this as an organisation admin'))
+            ? (entry.viewerIsMember ? t('directory.member') : t('directory.adminAccess'))
             : entry.visibility === 'protected'
-              ? t('Protected — ask a member to add you')
-              : t('You are not a member')}
+              ? t('directory.protected')
+              : t('directory.notMember')}
         </span>
       </div>
       {entry.description ? (
         <p className="text-sm text-[color:var(--tx2)]">{entry.description}</p>
       ) : null}
-      <div className="flex flex-wrap items-center gap-2" aria-label={t('Members of {{name}}', { name: entry.name })}>
+      <div className="flex flex-wrap items-center gap-2" aria-label={t('directory.membersOf', { name: entry.name })}>
         {entry.members.length === 0 ? (
-          <span className="text-xs text-[color:var(--tx3)]">{t('No members')}</span>
+          <span className="text-xs text-[color:var(--tx3)]">{t('directory.noMembers')}</span>
         ) : entry.members.map((member) => (
           <span className="flex items-center gap-1.5 text-xs text-[color:var(--tx2)]" key={member.userId}>
             <UserAvatar

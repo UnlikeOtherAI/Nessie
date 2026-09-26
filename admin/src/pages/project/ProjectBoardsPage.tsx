@@ -52,7 +52,7 @@ export const ProjectBoardsPage = () => {
         {
           icon: faPlus,
           id: 'new-board',
-          label: t('New board'),
+          label: t('boardDirectory.new'),
           onSelect: () => setCreateOpen(true),
           primary: true,
           priority: 100,
@@ -65,16 +65,16 @@ export const ProjectBoardsPage = () => {
     <section className="flex h-full min-h-0 flex-col">
       <ProjectPageHeader
         actions={actions}
-        backLabel={t('Back to board')}
+        backLabel={t('boardDirectory.back')}
         onBack={() => void navigate(`/projects/${projectId}/board`)}
         project={project}
         subtitle={project?.name}
-        title={t('Boards')}
+        title={t('boardDirectory.title')}
       />
       <PageBody>
         <QueryState
-          errorLabel={t("Couldn't load boards.")}
-          loadingLabel={t('Loading boards…')}
+          errorLabel={t('boardDirectory.error')}
+          loadingLabel={t('boardDirectory.loading')}
           query={boardsQuery}
         >
           {() => boards.length === 0 ? (
@@ -86,19 +86,19 @@ export const ProjectBoardsPage = () => {
                     onClick={() => setCreateOpen(true)}
                     type="button"
                   >
-                    {t('New board')}
+                    {t('boardDirectory.new')}
                   </button>
                 ) : undefined
               }
-              title={t('No boards yet.')}
+              title={t('boardDirectory.empty')}
             >
-              {t("Create a board to organise this project's tickets.")}
+              {t('boardDirectory.emptyDescription')}
             </EmptyState>
           ) : (
             <DataTable
             columns={[
               {
-                header: t('Board'),
+                header: t('boardDirectory.board'),
                 key: 'name',
                 render: (board) => (
                   <span className="flex min-w-0 flex-col gap-0.5">
@@ -107,13 +107,13 @@ export const ProjectBoardsPage = () => {
                       <span className="break-words">{board.name}</span>
                     </span>
                     <span className="text-xs text-[color:var(--tx3)]">
-                      {board.style === 'scrum' ? t('Iterations') : t('Kanban')} · {board.isDefault ? t('Default') : t('Not default')} · {t('column', { count: board.columns.length })}
+                      {board.style === 'scrum' ? t('boardDirectory.iterations') : t('boardDirectory.kanban')} · {board.isDefault ? t('boardDirectory.default') : t('boardDirectory.notDefault')} · {t('boardDirectory.columnCount', { count: board.columns.length })}
                     </span>
                   </span>
                 ),
               },
               {
-                header: t('Actions'),
+                header: t('boardDirectory.actions'),
                 key: 'actions',
                 render: (board) => (
                   <span className="inline-flex flex-col items-start gap-0.5">
@@ -122,7 +122,7 @@ export const ProjectBoardsPage = () => {
                       to={boardPath(projectId, board)}
                       {...prewarmRowHandlers(prewarm, boardPath(projectId, board))}
                     >
-                      {t('Open board')}
+                      {t('boardDirectory.open')}
                     </Link>
                     <Link
                       className="admin-link inline-flex min-h-11 items-center"
@@ -132,7 +132,7 @@ export const ProjectBoardsPage = () => {
                         `/projects/${projectId}/boards/${board.id}/settings`,
                       )}
                     >
-                      {t('Settings')}
+                      {t('boardDirectory.settings')}
                     </Link>
                   </span>
                 ),
@@ -140,7 +140,7 @@ export const ProjectBoardsPage = () => {
               },
             ]}
             expandable
-            label={t('Project boards')}
+            label={t('boardDirectory.tableLabel')}
             layout="fixed"
             rowKey={(board) => board.id}
             rows={boards}

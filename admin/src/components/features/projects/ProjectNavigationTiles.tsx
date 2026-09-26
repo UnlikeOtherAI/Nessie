@@ -70,7 +70,7 @@ export const ProjectNavigationTiles = ({ className, projectId }: ProjectNavigati
 
   return (
     <>
-      <nav aria-label={t('Project sections')} className={['project-nav-grid', className ?? ''].join(' ')}>
+      <nav aria-label={t('navigation.sections')} className={['project-nav-grid', className ?? ''].join(' ')}>
         {tiles.map((tile) => (
           <Tile key={tile.key} onOpenMembers={() => setMembersOpen(true)} tile={tile} />
         ))}
@@ -133,7 +133,7 @@ const DashboardTile = ({ tile }: { tile: ProjectNavigationTile }) => {
     >
       {dashboard ? (
         <ScaledDashboard
-          ariaLabel={t('Open {{label}}', { label: tile.label })}
+          ariaLabel={t('navigation.openNamed', { label: tile.label })}
           dashboard={dashboard}
           fill
           onOpen={open}

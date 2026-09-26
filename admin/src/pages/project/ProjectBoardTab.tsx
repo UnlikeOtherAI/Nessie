@@ -58,7 +58,7 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
     return <Skeleton variant="board" />
   }
   if (isScrum && iterationsQuery.isError && !iterationsQuery.data) {
-    return <QueryState errorLabel={t('Could not load sprints.')} loadingLabel={t('Loading sprints…')} query={iterationsQuery}>
+    return <QueryState errorLabel={t('board.sprintsError')} loadingLabel={t('board.loadingSprints')} query={iterationsQuery}>
       {() => null}
     </QueryState>
   }
@@ -68,12 +68,12 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
   if (isScrum && !activeIteration) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
-        <div className="text-sm text-[color:var(--tx2)]">{t('No active sprint.')}</div>
+        <div className="text-sm text-[color:var(--tx2)]">{t('board.noActiveSprint')}</div>
         <Link
           className="admin-button admin-button-primary"
           to={`/projects/${projectId}/backlog`}
         >
-          {t('Plan a sprint')}
+          {t('board.planSprint')}
         </Link>
       </div>
     )
@@ -86,8 +86,8 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
     <div className="flex h-full min-h-0 flex-col gap-3 px-4 pt-4">
       {tasksQuery.isError && tasksQuery.data ? (
         <Notice role="alert" tone="warning">
-          {t('Could not refresh this board. Showing the last loaded cards.')}{' '}
-          <button className="underline" onClick={() => void tasksQuery.refetch()} type="button">{t('Retry')}</button>
+          {t('board.refreshWarning')}{' '}
+          <button className="underline" onClick={() => void tasksQuery.refetch()} type="button">{t('board.retry')}</button>
         </Notice>
       ) : null}
       {isScrum && activeIteration ? (
@@ -103,7 +103,7 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
       ) : null}
       <div className="min-h-0 flex-1">
         {tasksQuery.isError && !tasksQuery.data ? (
-          <QueryState errorLabel={t('Could not load tasks.')} loadingLabel={t('Loading tasks…')} query={tasksQuery}>
+          <QueryState errorLabel={t('board.tasksError')} loadingLabel={t('board.loadingTasks')} query={tasksQuery}>
             {() => null}
           </QueryState>
         ) : visibleTasks.length === 0 && tasks.length > 0 ? (
@@ -116,12 +116,12 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
                 onClick={() => setAssignee(ALL_ASSIGNEES)}
                 type="button"
               >
-                {t('Show all assignees')}
+                {t('board.showAllAssignees')}
               </button>
             }
-            title={t('No cards for this assignee.')}
+            title={t('board.noCardsForAssignee')}
           >
-          {t('This board has cards, but none are assigned to the person selected in the filter.')}
+          {t('board.filteredEmptyDescription')}
           </EmptyState>
         ) : columns.length === 0 ? (
           <EmptyState
@@ -130,12 +130,12 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
                 className="admin-button admin-button-primary"
                 to={`/projects/${projectId}/boards/${board.id}/settings?tab=columns`}
               >
-                {t('Add columns')}
+                {t('board.addColumns')}
               </Link>
             }
-            title={t('This board has no columns yet.')}
+            title={t('board.noColumns')}
           >
-            {t('Add a column for each stage this board should show.')}
+            {t('board.noColumnsDescription')}
           </EmptyState>
         ) : (
           <KanbanBoard
