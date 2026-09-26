@@ -79,4 +79,3 @@ export const notarizeAndStaple = async (path, notary) => {
   await run('xcrun', stapleArguments(path))
   await run('xcrun', ['stapler', 'validate', path])
 }
-

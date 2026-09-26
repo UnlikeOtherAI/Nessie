@@ -12,6 +12,7 @@ checksums; iOS remains an App Store delivery.
 
 ## Table of Contents
 
+- [executor-cli.md](executor-cli.md) — Homebrew, APT, RPM and WinGet installation, code pairing and per-team startup.
 - This file: physical-device delivery, prerequisites, the Mac desktop shell, desktop notifications, Mac TestFlight, status and caveats.
 - [mobile.md](mobile.md) — the mobile WebView shell, device builds, push, iOS TestFlight, Android.
 - [windows-desktop.md](windows-desktop.md) — the Windows desktop app, signed release, the Nessie Executor service and tray.

@@ -60,4 +60,3 @@ runs:
         printf %s "$APP_STORE_CONNECT_API_KEY_P8_BASE64" | base64 --decode > "$KEY_PATH"
         chmod 600 "$KEY_PATH"
         echo "APP_STORE_CONNECT_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
-
