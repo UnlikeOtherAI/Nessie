@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { faChevronDown, faUser, faUserSlash, faUsers } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { useTranslation } from 'react-i18next'
 import { PROVIDER_LABEL } from '../../../../facades/board-sources/hooks'
 import type { AssignableUser } from '../../../../facades/tasks/hooks'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
@@ -27,12 +28,12 @@ type BoardAssigneeFilterProps = {
 
 type StaticChoice = {
   icon: typeof faUser
-  label: string
+  key: 'allAssignees' | 'unassigned' | 'myIssues'
   value: Extract<AssigneeFilter, 'all' | 'me' | 'unassigned'>
 }
 
-const allAssigneesChoice: StaticChoice = { icon: faUsers, label: 'All assignees', value: 'all' }
-const unassignedChoice: StaticChoice = { icon: faUser, label: 'Unassigned', value: 'unassigned' }
+const allAssigneesChoice: StaticChoice = { icon: faUsers, key: 'allAssignees', value: 'all' }
+const unassignedChoice: StaticChoice = { icon: faUser, key: 'unassigned', value: 'unassigned' }
 const initialChoices: StaticChoice[] = [allAssigneesChoice, unassignedChoice]
 
 const RemoteAssigneeAvatar = ({ label, size }: { label: string; size: number }) => (
@@ -41,7 +42,7 @@ const RemoteAssigneeAvatar = ({ label, size }: { label: string; size: number }) 
     color="var(--tx2)"
     fallback={{ kind: 'icon', icon: <FontAwesomeIcon icon={faUserSlash} /> }}
     imageUrl={null}
-    label={`${label} — not mapped`}
+    label={label}
     size={size}
   />
 )
@@ -66,6 +67,7 @@ export const BoardAssigneeFilter = ({
   currentUserId,
   compact = false,
 }: BoardAssigneeFilterProps) => {
+  const { t } = useTranslation('projects')
   const { token } = useAuthSession()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -79,7 +81,7 @@ export const BoardAssigneeFilter = ({
     () => currentUserId
       ? [
           allAssigneesChoice,
-          { icon: faUser, label: 'My issues', value: 'me' },
+          { icon: faUser, key: 'myIssues', value: 'me' },
           unassignedChoice,
         ]
       : initialChoices,
@@ -87,8 +89,8 @@ export const BoardAssigneeFilter = ({
   )
   const term = query.trim().toLocaleLowerCase()
   const matchingStatic = useMemo(
-    () => term ? staticChoices.filter((choice) => choice.label.toLocaleLowerCase().includes(term)) : staticChoices,
-    [staticChoices, term],
+    () => term ? staticChoices.filter((choice) => t(`board.assigneeFilter.${choice.key}`).toLocaleLowerCase().includes(term)) : staticChoices,
+    [staticChoices, term, t],
   )
   const matchingPeople = useMemo(
     () => term ? people.filter((person) => person.displayName.toLocaleLowerCase().includes(term)) : people,
@@ -182,7 +184,7 @@ export const BoardAssigneeFilter = ({
     </>
   ) : selectedRemote ? (
     <>
-      <RemoteAssigneeAvatar label={selectedRemote.label} size={24} />
+      <RemoteAssigneeAvatar label={`${selectedRemote.label} — ${t('board.assigneeFilter.notMapped')}`} size={24} />
       <span className="min-w-0 flex-1 truncate" title={selectedRemote.label}>
         {selectedRemote.label}
       </span>
@@ -190,22 +192,21 @@ export const BoardAssigneeFilter = ({
   ) : (
     <>
       <FontAwesomeIcon className="w-4 shrink-0 text-[color:var(--tx3)]" icon={selectedStatic?.icon ?? faUsers} />
-      <span className="truncate">{selectedStatic?.label ?? 'All assignees'}</span>
+      <span className="truncate">{(selectedStatic ? t(`board.assigneeFilter.${selectedStatic.key}`) : t('board.assigneeFilter.allAssignees'))}</span>
     </>
   )
 
   const selectedMark = selectedPerson ? (
     <UserAvatar displayName={selectedPerson.displayName} size={24} token={token} userId={selectedPerson.id} />
   ) : selectedRemote ? (
-    <RemoteAssigneeAvatar label={selectedRemote.label} size={24} />
+    <RemoteAssigneeAvatar label={`${selectedRemote.label} — ${t('board.assigneeFilter.notMapped')}`} size={24} />
   ) : (
     <FontAwesomeIcon className="w-4 text-[color:var(--tx3)]" icon={selectedStatic?.icon ?? faUsers} />
   )
 
   const selectedLabel = selectedPerson?.displayName
     ?? selectedRemote?.label
-    ?? selectedStatic?.label
-    ?? 'All assignees'
+    ?? (selectedStatic ? t(`board.assigneeFilter.${selectedStatic.key}`) : t('board.assigneeFilter.allAssignees'))
 
   const selectedTextId = `${listboxId}-selected`
 
@@ -219,7 +220,7 @@ export const BoardAssigneeFilter = ({
         aria-describedby={selectedTextId}
         aria-expanded={open}
         aria-haspopup="listbox"
-        aria-label="Filter board by assignee"
+        aria-label={t('board.assigneeFilter.label')}
         // `admin-page-custom-action` is what keeps this on the header's line:
         // it stands in the action row, so it takes the action height from the
         // same token rather than `admin-input`'s own 44px padding box. The
@@ -267,7 +268,7 @@ export const BoardAssigneeFilter = ({
       <Popover
         anchorRef={triggerRef}
         className="flex w-[min(20rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] shadow-lg"
-        label="Filter board by assignee"
+        label={t('board.assigneeFilter.label')}
         onClose={() => close()}
         onKeyDown={onListKeyDown}
         open={open}
@@ -280,19 +281,19 @@ export const BoardAssigneeFilter = ({
             aria-controls={listboxId}
             aria-expanded={open}
             aria-haspopup="listbox"
-            aria-label="Search assignees"
+            aria-label={t('board.assigneeFilter.search')}
             className="admin-input min-h-11"
             onChange={(event) => {
               setQuery(event.target.value)
               setHighlighted(0)
             }}
-            placeholder="Search assignees…"
+            placeholder={t('board.assigneeFilter.searchPlaceholder')}
             ref={inputRef}
             role="combobox"
             value={query}
           />
         </div>
-        <div aria-label="Filter board by assignee" className="min-h-0 overflow-y-auto py-1" id={listboxId} role="listbox">
+        <div aria-label={t('board.assigneeFilter.label')} className="min-h-0 overflow-y-auto py-1" id={listboxId} role="listbox">
           {matchingStatic.map((choice, index) => (
             <button
               aria-selected={value === choice.value}
@@ -310,14 +311,14 @@ export const BoardAssigneeFilter = ({
               value={choice.value}
             >
               <FontAwesomeIcon className="w-4 shrink-0 text-[color:var(--tx3)]" icon={choice.icon} />
-              <span className="truncate">{choice.label}</span>
+              <span className="truncate">{t(`board.assigneeFilter.${choice.key}`)}</span>
             </button>
           ))}
 
           {matchingPeople.length > 0 ? (
-            <div aria-label="People" className="border-t border-[color:var(--sep)] pt-1" role="group">
+            <div aria-label={t('board.assigneeFilter.people')} className="border-t border-[color:var(--sep)] pt-1" role="group">
               <div className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--tx3)]">
-                People
+                {t('board.assigneeFilter.people')}
               </div>
               {matchingPeople.map((person) => {
                 const optionValue = `user:${person.id}` as AssigneeFilter
@@ -347,9 +348,9 @@ export const BoardAssigneeFilter = ({
           ) : null}
 
           {matchingRemote.length > 0 ? (
-            <div aria-label="Not mapped" className="border-t border-[color:var(--sep)] pt-1" role="group">
+            <div aria-label={t('board.assigneeFilter.notMapped')} className="border-t border-[color:var(--sep)] pt-1" role="group">
               <div className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--tx3)]">
-                Not mapped
+                {t('board.assigneeFilter.notMapped')}
               </div>
               {matchingRemote.map((person) => {
                 const index = optionValues.indexOf(person.value)
@@ -369,10 +370,10 @@ export const BoardAssigneeFilter = ({
                     type="button"
                     value={person.value}
                   >
-                    <RemoteAssigneeAvatar label={person.label} size={28} />
+                    <RemoteAssigneeAvatar label={`${person.label} — ${t('board.assigneeFilter.notMapped')}`} size={28} />
                     <span className="min-w-0 flex-1 truncate">{person.label}</span>
                     <span className="shrink-0 text-xs text-[color:var(--tx3)]">
-                      Not mapped · {PROVIDER_LABEL[person.provider]}
+                      {t('board.assigneeFilter.notMapped')} · {PROVIDER_LABEL[person.provider]}
                     </span>
                   </button>
                 )
@@ -381,7 +382,7 @@ export const BoardAssigneeFilter = ({
           ) : null}
 
           {term && matchingPeople.length === 0 && matchingRemote.length === 0 ? (
-            <p className="px-3 py-3 text-sm text-[color:var(--tx3)]">No matching people.</p>
+            <p className="px-3 py-3 text-sm text-[color:var(--tx3)]">{t('board.assigneeFilter.noMatches')}</p>
           ) : null}
         </div>
       </Popover>

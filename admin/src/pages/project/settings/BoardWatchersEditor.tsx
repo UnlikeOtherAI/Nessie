@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   useBoardWatchers,
   useSetBoardWatchers,
@@ -34,6 +35,7 @@ export const BoardWatchersEditor = ({
   boardId,
   boardName,
 }: BoardWatchersEditorProps) => {
+  const { t } = useTranslation('projects')
   const { token } = useAuthSession()
   const { data: users = [] } = useUsers()
   const watchersQuery = useBoardWatchers(projectId, boardId)
@@ -66,7 +68,7 @@ export const BoardWatchersEditor = ({
       recipients.map((recipient) => ({ kind: recipient.kind, id: recipient.id })),
       {
         onError: (cause) =>
-          setError(cause instanceof Error ? cause.message : 'Could not save the watchers'),
+          setError(cause instanceof Error ? cause.message : t('boardSettings.watchersSaveError')),
       },
     )
   }
@@ -74,15 +76,13 @@ export const BoardWatchersEditor = ({
   return (
     <Section
       description={
-        `Alert people when a connected ticket moves or is reassigned remotely ` +
-        `after its first import on ${boardName}. Native tickets and local moves ` +
-        'do not notify watchers.'
+        t('boardSettings.watchersDescription', { boardName })
       }
-      title="Watchers"
+      title={t('boardSettings.watchers')}
     >
       <QueryState
-        errorLabel="Couldn't load watchers."
-        loadingLabel="Loading watchers…"
+        errorLabel={t('boardSettings.watchersLoadError')}
+        loadingLabel={t('boardSettings.watchersLoading')}
         query={watchersQuery}
       >
         {() => (
@@ -91,21 +91,21 @@ export const BoardWatchersEditor = ({
               agents={NO_AGENTS}
               closeAfterSelection
               disabled={setWatchers.isPending}
-              label="Tell"
+              label={t('boardSettings.watchersTell')}
               onChange={setRecipients}
-              placeholder="Type a name"
+              placeholder={t('boardSettings.watchersPlaceholder')}
               recipients={recipients}
               token={token}
               users={users}
             />
             <p className="text-xs text-[color:var(--tx3)]" data-testid="watchers-agents-moved">
-              Agents start work from the column menu: “Start work with an agent…” on a board column.
+              {t('boardSettings.watchersAgentHint')}
             </p>
             <FormError>{error ?? undefined}</FormError>
             {dirty ? (
               <div className="flex justify-end gap-2">
                 <button className="admin-button" onClick={() => setRecipients(saved)} type="button">
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   className="admin-button admin-button-primary"
@@ -113,7 +113,7 @@ export const BoardWatchersEditor = ({
                   onClick={save}
                   type="button"
                 >
-                  {setWatchers.isPending ? 'Saving…' : 'Save watchers'}
+                  {setWatchers.isPending ? t('boardSettings.watchersSaving') : t('boardSettings.watchersSave')}
                 </button>
               </div>
             ) : null}

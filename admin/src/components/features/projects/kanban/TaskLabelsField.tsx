@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import type { TaskLabelSummary } from '@nessie/schemas'
 import { FieldLabel } from '../../../primitives/FieldLabel'
@@ -59,6 +60,7 @@ export const TaskLabelsField = ({
   taskLabels = [],
   value,
 }: TaskLabelsFieldProps) => {
+  const { t } = useTranslation('projects')
   const labelsQuery = useBoardLabels(projectId, boardId)
   const createLabel = useCreateBoardLabel(projectId, boardId ?? '')
   const labels = useMemo(() => labelsQuery.data ?? [], [labelsQuery.data])
@@ -70,7 +72,7 @@ export const TaskLabelsField = ({
     return map
   }, [labels, taskLabels])
 
-  const lockedTitle = readOnlySourceName ? `${readOnlySourceName} owns this label` : undefined
+  const lockedTitle = readOnlySourceName ? t('taskLabels.ownedBy', { provider: readOnlySourceName }) : undefined
   const locked = (label: TaskLabelSummary | undefined) => Boolean(readOnlySourceName && label?.external)
 
   const tokens = value.flatMap((id) => {
@@ -90,13 +92,13 @@ export const TaskLabelsField = ({
 
   return (
     <div className="grid gap-1.5">
-      <FieldLabel htmlFor={inputId}>Labels</FieldLabel>
+      <FieldLabel htmlFor={inputId}>{t('taskLabels.title')}</FieldLabel>
       <TokenInput
-        ariaLabel="Labels"
-        createLabel={(text) => `Create label “${text}”`}
+        ariaLabel={t('taskLabels.title')}
+        createLabel={(text) => t('taskLabels.create', { name: text })}
         disabled={disabled || loading}
         footer={boardId
-          ? <Link onClick={onLeave} to={`/projects/${projectId}/boards/${boardId}/settings?tab=labels`}>Manage labels…</Link>
+          ? <Link onClick={onLeave} to={`/projects/${projectId}/boards/${boardId}/settings?tab=labels`}>{t('taskLabels.manage')}</Link>
           : undefined}
         id={inputId}
         onAdd={(id) => onChange(value.includes(id) ? value : [...value, id])}
@@ -110,12 +112,12 @@ export const TaskLabelsField = ({
             })
             return { id: created.id }
           } catch (cause) {
-            throw new Error(formErrorMessage(cause, 'Could not create the label'))
+            throw new Error(formErrorMessage(cause, t('taskLabels.createError')))
           }
         }}
         onRemove={(id) => onChange(value.filter((entry) => entry !== id))}
         options={options}
-        placeholder={loading ? 'Loading labels…' : 'Add labels'}
+        placeholder={loading ? t('taskLabels.loading') : t('taskLabels.add')}
         renderOption={(option) => {
           const label = byId.get(option.id)
           return label
@@ -139,9 +141,9 @@ export const TaskLabelsField = ({
       />
       {labelsQuery.isError ? (
         <Notice size="sm" tone="danger">
-          Couldn't load labels.{' '}
+          {t('taskLabels.loadError')}{' '}
           <button className="underline" onClick={() => void labelsQuery.refetch()} type="button">
-            Retry
+            {t('taskLabels.retry')}
           </button>
         </Notice>
       ) : null}

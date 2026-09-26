@@ -15,7 +15,7 @@ import { useTaskFields } from '../../../../facades/task-fields/hooks'
 import { useTaskAssignees } from '../../../../facades/tasks/hooks'
 import type { BoardView } from './board-view'
 import { statusLabel } from './kanban-config'
-import { PRIORITY_LABEL, PRIORITY_SIGNAL, formatDueDate, isOverdue } from './task-meta'
+import { PRIORITY_SIGNAL, formatDueDate, isOverdue } from './task-meta'
 
 type KanbanCardProps = {
   task: TaskRecord
@@ -84,7 +84,7 @@ export const KanbanCardContent = ({
       ) : null}
 
       <div className="break-words text-sm font-semibold leading-snug text-[color:var(--tx)] line-clamp-3">
-        {task.title ?? task.purpose ?? 'Untitled task'}
+        {task.title ?? task.purpose ?? t('task.untitled')}
       </div>
       {excerpt ? (
         <div className="break-words text-xs font-normal leading-snug text-[color:var(--tx2)] line-clamp-4">
@@ -103,7 +103,7 @@ export const KanbanCardContent = ({
         <FontAwesomeIcon
           className={`shrink-0 text-xs ${PRIORITY_SIGNAL[task.priority]}`}
           icon={faSignal}
-          title={`${PRIORITY_LABEL[task.priority]} priority`}
+          title={t('taskDialog.priority.named', { priority: t(`taskDialog.priority.${task.priority}`) })}
         />
         {task.assigneeName === null && task.externalLink?.remoteAssigneeDisplay ? (
           <RemotePersonPill
@@ -117,7 +117,7 @@ export const KanbanCardContent = ({
             size="sm"
             uppercase={false}
           >
-            {task.assigneeName ?? 'Unassigned'}
+            {task.assigneeName ?? t('board.assigneeFilter.unassigned')}
           </Pill>
         )}
         {/* Discussion and material to read are a different decision from a
@@ -125,7 +125,7 @@ export const KanbanCardContent = ({
         {task.commentCount > 0 ? (
           <span
             className="flex shrink-0 items-center gap-1 text-[10px] text-[color:var(--tx3)]"
-            title={`${task.commentCount} ${task.commentCount === 1 ? 'comment' : 'comments'}`}
+            title={t('board.comments', { count: task.commentCount })}
           >
             <FontAwesomeIcon icon={faComment} />
             {task.commentCount}
@@ -134,7 +134,7 @@ export const KanbanCardContent = ({
         {task.attachmentCount > 0 ? (
           <span
             className="flex shrink-0 items-center gap-1 text-[10px] text-[color:var(--tx3)]"
-            title={`${task.attachmentCount} ${task.attachmentCount === 1 ? 'file' : 'files'}`}
+            title={t('board.files', { count: task.attachmentCount })}
           >
             <FontAwesomeIcon icon={faPaperclip} />
             {task.attachmentCount}
@@ -164,13 +164,14 @@ export const KanbanCardContent = ({
 // The `lines` view: the title and the priority signal, nothing else. The full
 // title stays reachable as a tooltip because one line truncates it.
 export const KanbanLineContent = ({ task, work }: Pick<KanbanCardProps, 'task' | 'work'>) => {
-  const title = task.title ?? task.purpose ?? 'Untitled task'
+  const { t } = useTranslation('projects')
+  const title = task.title ?? task.purpose ?? t('task.untitled')
   return (
     <>
       <FontAwesomeIcon
         className={`shrink-0 text-xs ${PRIORITY_SIGNAL[task.priority]}`}
         icon={faSignal}
-        title={`${PRIORITY_LABEL[task.priority]} priority`}
+        title={t('taskDialog.priority.named', { priority: t(`taskDialog.priority.${task.priority}`) })}
       />
       <span
         className="min-w-0 flex-1 truncate text-sm font-semibold text-[color:var(--tx)]"
@@ -198,6 +199,7 @@ export const KanbanCard = ({
   view = 'cards',
   work,
 }: KanbanCardProps) => {
+  const { t } = useTranslation('projects')
   const {
     attributes,
     listeners,
@@ -236,7 +238,7 @@ export const KanbanCard = ({
       }
     : { transform: CSS.Transform.toString(transform), transition }
 
-  const taskLabel = task.title ?? task.purpose ?? 'Untitled task'
+  const taskLabel = task.title ?? task.purpose ?? t('task.untitled')
 
   return (
     <div
@@ -265,7 +267,7 @@ export const KanbanCard = ({
         data-kanban-drag-handle
         onClick={(event) => event.stopPropagation()}
         ref={setActivatorNodeRef}
-        title="Drag to reorder or move this task"
+        title={t('board.dragTask')}
         type="button"
         {...attributes}
         {...listeners}

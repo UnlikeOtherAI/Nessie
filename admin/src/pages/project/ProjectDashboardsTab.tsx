@@ -12,6 +12,7 @@
  */
 
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 import { Pill } from '../../components/primitives/Pill'
 import { QueryState } from '../../components/shared/QueryState'
@@ -28,6 +29,7 @@ type ProjectDashboardsTabProps = {
 }
 
 export const ProjectDashboardsTab = ({ projectId }: ProjectDashboardsTabProps) => {
+  const { t, i18n } = useTranslation('projects')
   const prewarm = usePrewarm()
   const navigate = useNavigate()
   const dashboardsQuery = useDashboards(projectId)
@@ -62,7 +64,7 @@ export const ProjectDashboardsTab = ({ projectId }: ProjectDashboardsTabProps) =
         <input
           className="admin-input w-56"
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search dashboards"
+          placeholder={t('dashboardList.search')}
           value={search}
         />
         {canCreate ? (
@@ -71,12 +73,12 @@ export const ProjectDashboardsTab = ({ projectId }: ProjectDashboardsTabProps) =
             disabled={createDashboard.isPending}
             onClick={() =>
               createDashboard.mutate(
-                { projectId, title: 'Untitled dashboard' },
+                { projectId, title: t('dashboardList.untitled') },
                 { onSuccess: (created) => navigate(href(created.id)) },
               )}
             type="button"
           >
-            {createDashboard.isPending ? 'Creating…' : 'Blank dashboard'}
+            {createDashboard.isPending ? t('dashboardList.creating') : t('dashboardList.blank')}
           </button>
         ) : null}
         <button
@@ -85,7 +87,7 @@ export const ProjectDashboardsTab = ({ projectId }: ProjectDashboardsTabProps) =
           onClick={openDashboardDesigner}
           type="button"
         >
-          Ask Dashboard Designer
+          {t('dashboardList.askDesigner')}
         </button>
       </div>
 
@@ -93,8 +95,8 @@ export const ProjectDashboardsTab = ({ projectId }: ProjectDashboardsTabProps) =
           differently: "this project has none" is a call to action, "we could
           not read them" offers a Retry. */}
       <QueryState
-        errorLabel="Failed to load this project's dashboards."
-        loadingLabel="Loading…"
+        errorLabel={t('dashboardList.loadError')}
+        loadingLabel={t('dashboardList.loading')}
         query={dashboardsQuery}
       >
         {() =>
@@ -102,12 +104,11 @@ export const ProjectDashboardsTab = ({ projectId }: ProjectDashboardsTabProps) =
             <div className="admin-card p-8 text-center" data-testid="project-dashboards-empty">
               <p className="text-sm font-medium text-[color:var(--tx)]">
                 {search.trim()
-                  ? 'No dashboard here matches that.'
-                  : 'No dashboards in this project yet'}
+                  ? t('dashboardList.noSearchMatch')
+                  : t('dashboardList.emptyTitle')}
               </p>
               <p className="mx-auto mt-1 max-w-md text-xs text-[color:var(--tx3)]">
-                Describe what you want to watch and Dashboard Designer will connect the data
-                and lay out the widgets — the same controls you get here.
+                {t('dashboardList.emptyBody')}
               </p>
               <button
                 className="admin-button admin-button-secondary mt-4"
@@ -116,8 +117,8 @@ export const ProjectDashboardsTab = ({ projectId }: ProjectDashboardsTabProps) =
                 type="button"
               >
                 {openGlobalAgentHome.isPending
-                  ? 'Opening Dashboard Designer…'
-                  : 'Start a dashboard chat'}
+                  ? t('dashboardList.openingDesigner')
+                  : t('dashboardList.startChat')}
               </button>
             </div>
           ) : (
@@ -135,10 +136,10 @@ export const ProjectDashboardsTab = ({ projectId }: ProjectDashboardsTabProps) =
                       {dashboard.title}
                     </span>
                     {dashboard.createdByType === 'agent' ? (
-                      <Pill size="sm" tone="accent">built by an agent</Pill>
+                      <Pill size="sm" tone="accent">{t('dashboardList.builtByAgent')}</Pill>
                     ) : null}
                     <span className="text-[11px] text-[color:var(--tx3)]">
-                      {new Date(dashboard.updatedAt).toLocaleDateString()}
+                      {new Date(dashboard.updatedAt).toLocaleDateString(i18n.language)}
                     </span>
                   </Link>
                 </li>

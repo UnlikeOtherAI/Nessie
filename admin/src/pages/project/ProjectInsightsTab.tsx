@@ -1,10 +1,11 @@
 import { PageBody, Section } from '../../components/shared/PageBody'
+import { useTranslation } from 'react-i18next'
 import { QueryState } from '../../components/shared/QueryState'
 import { type ProjectInsights, useProjectInsights } from '../../facades/iterations/hooks'
 
-const VelocityChart = ({ velocity }: { velocity: ProjectInsights['velocity'] }) => {
+const VelocityChart = ({ velocity, emptyLabel }: { velocity: ProjectInsights['velocity']; emptyLabel: string }) => {
   if (velocity.length === 0) {
-    return <div className="text-xs text-[color:var(--tx3)]">No completed sprints yet.</div>
+    return <div className="text-xs text-[color:var(--tx3)]">{emptyLabel}</div>
   }
   const max = Math.max(1, ...velocity.map((point) => point.points))
   const barW = 44
@@ -69,13 +70,14 @@ type ProjectInsightsTabProps = {
 }
 
 export const ProjectInsightsTab = ({ projectId }: ProjectInsightsTabProps) => {
+  const { t } = useTranslation('projects')
   const insightsQuery = useProjectInsights(projectId)
 
   return (
     <PageBody>
       <QueryState
-        errorLabel="Couldn't load insights."
-        loadingLabel="Loading insights…"
+        errorLabel={t('insights.loadError')}
+        loadingLabel={t('insights.loading')}
         query={insightsQuery}
       >
         {() => {
@@ -85,32 +87,32 @@ export const ProjectInsightsTab = ({ projectId }: ProjectInsightsTabProps) => {
           return (
             <>
               <Section
-                description="Story points delivered per completed sprint."
-                title="Velocity"
+                description={t('insights.velocityDescription')}
+                title={t('insights.velocity')}
               >
                 <div className="admin-card p-4">
-                  <VelocityChart velocity={insights.velocity} />
+                  <VelocityChart emptyLabel={t('insights.noCompletedSprints')} velocity={insights.velocity} />
                 </div>
               </Section>
 
-              <Section title="Burndown — active sprint">
+              <Section title={t('insights.burndownTitle')}>
                 <div className="admin-card p-4">
                   {insights.burndown ? (
                     <>
                       <div className="mb-2 flex items-center gap-3 text-xs text-[color:var(--tx3)]">
                         <span className="font-semibold text-[color:var(--tx2)]">{insights.burndown.name}</span>
                         <span className="flex items-center gap-1">
-                          <span className="inline-block h-2 w-3 rounded-sm bg-[color:var(--accent)]" /> remaining
+                          <span className="inline-block h-2 w-3 rounded-sm bg-[color:var(--accent)]" /> {t('insights.remaining')}
                         </span>
                         <span className="flex items-center gap-1">
-                          <span className="inline-block h-0 w-3 border-t border-dashed border-[color:var(--tx3)]" /> ideal
+                          <span className="inline-block h-0 w-3 border-t border-dashed border-[color:var(--tx3)]" /> {t('insights.ideal')}
                         </span>
                       </div>
                       <BurndownChart burndown={insights.burndown} />
                     </>
                   ) : (
                     <div className="text-xs text-[color:var(--tx3)]">
-                      Start a sprint with start and end dates to see its burndown.
+                      {t('insights.startSprint')}
                     </div>
                   )}
                 </div>

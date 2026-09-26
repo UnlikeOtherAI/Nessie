@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   PROVIDER_LABEL,
   isSourceSyncing,
@@ -22,14 +23,14 @@ import { SourceMappingPanel } from './SourceMappingPanel'
  */
 const REMEDY: Record<
   BoardSourceRecord['healthState'],
-  { action: 'sync' | 'pause' | 'resume' | 'retry' | 'reconnect' | null; label: string }
+  { action: 'sync' | 'pause' | 'resume' | 'retry' | 'reconnect' | null; key: string }
 > = {
-  active: { action: 'pause', label: 'Pause' },
-  paused: { action: 'resume', label: 'Resume' },
-  needs_reauthorization: { action: 'reconnect', label: 'Reconnect' },
-  owner_inactive: { action: 'reconnect', label: 'Connect as me' },
-  misconfigured: { action: null, label: 'Edit the mapping below' },
-  error: { action: 'retry', label: 'Retry now' },
+  active: { action: 'pause', key: 'pause' },
+  paused: { action: 'resume', key: 'resume' },
+  needs_reauthorization: { action: 'reconnect', key: 'reconnect' },
+  owner_inactive: { action: 'reconnect', key: 'connectAsMe' },
+  misconfigured: { action: null, key: 'editMapping' },
+  error: { action: 'retry', key: 'retryNow' },
 }
 
 const HEALTH_TONE: Record<
@@ -42,15 +43,6 @@ const HEALTH_TONE: Record<
   owner_inactive: 'danger',
   misconfigured: 'warning',
   error: 'danger',
-}
-
-const HEALTH_SENTENCE: Record<BoardSourceRecord['healthState'], string> = {
-  active: 'Ready',
-  paused: 'Paused',
-  needs_reauthorization: 'The provider stopped accepting this connection',
-  owner_inactive: 'Its account owner is no longer an active member',
-  misconfigured: 'Something in its mapping needs a decision',
-  error: 'Syncing keeps failing',
 }
 
 type SourcesSettingsSectionProps = {
@@ -72,6 +64,7 @@ export const SourcesSettingsSection = ({
   selectedSourceId,
   startWithConnect,
 }: SourcesSettingsSectionProps) => {
+  const { t } = useTranslation('projects')
   const { data: sources = [] } = useProjectSources(projectId)
   const action = useSourceAction(projectId)
   const removeSource = useDeleteProjectSource(projectId)
@@ -83,14 +76,12 @@ export const SourcesSettingsSection = ({
   return (
     <>
       <Section
-        description="Work from another system, mirrored onto this project's boards as ordinary
-          tasks. Agents, approvals and search treat them exactly like native work."
-        title="Sources"
+        description={t('sourceSettings.description')}
+        title={t('projectSettings.sources')}
       >
         {sources.length === 0 ? (
-          <EmptyState title="No sources connected.">
-            Connect Jira, Linear, Trello or GitHub to bring their work onto this
-            project&rsquo;s boards.
+          <EmptyState title={t('sourceSettings.noneTitle')}>
+            {t('sourceSettings.noneBody')}
           </EmptyState>
         ) : (
           <div className="grid gap-1">
@@ -111,10 +102,10 @@ export const SourcesSettingsSection = ({
                     {PROVIDER_LABEL[source.provider]} · {source.name}
                   </button>
                   <Pill size="sm" tone={HEALTH_TONE[source.healthState]} uppercase={false}>
-                    {HEALTH_SENTENCE[source.healthState]}
+                    {t(`sourceSettings.health.${source.healthState}`)}
                   </Pill>
                   <span className="text-xs text-[color:var(--tx3)]">
-                    {source.itemCount} items · as {source.connectionOwnerDisplayName ?? 'unknown'}
+                    {t('sourceSettings.itemsByOwner', { count: source.itemCount, owner: source.connectionOwnerDisplayName ?? t('sourceSettings.unknown') })}
                   </span>
                   {/* Whether the provider pushes changes here or the board waits
                       for a poll. `misconfigured` for WEBHOOK_REGISTRATION_FAILED
@@ -122,14 +113,14 @@ export const SourcesSettingsSection = ({
                       statement of fact rather than a remedy. */}
                   <Pill size="sm" tone={source.webhookActive ? 'info' : 'muted'} uppercase={false}>
                     {source.webhookActive
-                      ? 'Live updates'
+                      ? t('sourceSettings.liveUpdates')
                       : source.pollingIntervalMinutes === null
-                        ? 'Manual sync only'
-                        : `Checks every ${source.pollingIntervalMinutes} min`}
+                        ? t('sourceSettings.manualSync')
+                        : t('sourceSettings.checksEvery', { count: source.pollingIntervalMinutes })}
                   </Pill>
                   {source.writeMode === 'read_write' ? (
                     <Pill size="sm" tone="info" uppercase={false}>
-                      Read &amp; write
+                      {t('sourceSettings.readWrite')}
                     </Pill>
                   ) : null}
                   {canAdminister && remedy.action && remedy.action !== 'reconnect' ? (
@@ -140,14 +131,14 @@ export const SourcesSettingsSection = ({
                           { id: source.id, action: remedy.action as 'sync' | 'pause' | 'resume' | 'retry' },
                           {
                             onError: (cause) =>
-                              onSaveError(formErrorMessage(cause, 'Could not change the source')),
+                              onSaveError(formErrorMessage(cause, t('sourceSettings.changeError'))),
                             onSuccess: onSaved,
                           },
                         )
                       }
                       type="button"
                     >
-                      {remedy.label}
+                      {t(`sourceSettings.remedy.${remedy.key}`)}
                     </button>
                   ) : null}
                   {canAdminister ? (
@@ -161,21 +152,21 @@ export const SourcesSettingsSection = ({
                             { id: source.id, action: 'sync' },
                             {
                               onError: (cause) =>
-                                onSaveError(formErrorMessage(cause, 'Could not start a sync')),
+                                onSaveError(formErrorMessage(cause, t('sourceSettings.syncError'))),
                               onSuccess: onSaved,
                             },
                           )
                         }
                         type="button"
                       >
-                        {isSourceSyncing(source) ? 'Syncing…' : 'Sync now'}
+                        {isSourceSyncing(source) ? t('sourceSettings.syncing') : t('sourceSettings.syncNow')}
                       </button>
                       <button
                         className="inline-flex min-h-11 items-center px-2 text-xs text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
                         onClick={() => setRemoveTarget(source)}
                         type="button"
                       >
-                        Remove
+                        {t('sourceSettings.remove')}
                       </button>
                     </>
                   ) : null}
@@ -192,7 +183,7 @@ export const SourcesSettingsSection = ({
               onClick={() => setConnectOpen(true)}
               type="button"
             >
-              Connect a source
+              {t('sourceSettings.connectTitle')}
             </button>
           </div>
         ) : null}
@@ -216,8 +207,8 @@ export const SourcesSettingsSection = ({
       />
 
       <ConfirmDialog
-        body="Its tickets stay on the board as ordinary tasks and stop updating. Nothing is deleted upstream."
-        confirmLabel="Remove source"
+        body={t('sourceSettings.removeBody')}
+        confirmLabel={t('sourceSettings.remove')}
         destructive
         onCancel={() => setRemoveTarget(null)}
         onConfirm={() => {
@@ -225,12 +216,12 @@ export const SourcesSettingsSection = ({
           setRemoveTarget(null)
           if (!target) return
           removeSource.mutate(target.id, {
-            onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not remove the source')),
+            onError: (cause) => onSaveError(formErrorMessage(cause, t('sourceSettings.removeError'))),
             onSuccess: onSaved,
           })
         }}
         open={removeTarget !== null}
-        title={`Remove ${removeTarget ? PROVIDER_LABEL[removeTarget.provider] : ''} · ${removeTarget?.name ?? ''}?`}
+        title={t('sourceSettings.removeTitle', { provider: removeTarget ? PROVIDER_LABEL[removeTarget.provider] : '', name: removeTarget?.name ?? '' })}
       />
     </>
   )
