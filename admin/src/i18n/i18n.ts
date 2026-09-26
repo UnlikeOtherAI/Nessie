@@ -1,6 +1,6 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
-import { catalogs } from './catalogs'
+import { catalogs, translationNamespaces } from './catalogs'
 import { DEFAULT_LANGUAGE, isLanguage } from './languages'
 
 export const LANGUAGE_STORAGE_KEY = 'nessie.language'
@@ -21,7 +21,7 @@ export const initializeLocalization = (): Promise<unknown> => {
     lng: isLanguage(initial) ? initial : DEFAULT_LANGUAGE,
     fallbackLng: DEFAULT_LANGUAGE,
     defaultNS: 'accountMenu',
-    ns: ['accountMenu'],
+    ns: translationNamespaces,
     interpolation: { escapeValue: false },
     returnNull: false,
   })
