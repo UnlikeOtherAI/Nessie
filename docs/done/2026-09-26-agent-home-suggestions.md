@@ -6,7 +6,7 @@
    model-generated questions based on recent conversations in that explicit DM.
 2. Persist the result per organisation, person and agent. Detect newly created
    conversations and changed messages; refresh on the next home read after activity,
-   at most once every six hours. Never regenerate unchanged history merely because
+   at most once every hour. Never regenerate unchanged history merely because
    time passed or the person opened the homepage. Defer while a run is pending or running; an older conversation waiting for
    input or approval does not block fresh suggestions.
 3. Atomically claim attempts in Postgres, including failed attempts, so replicas,

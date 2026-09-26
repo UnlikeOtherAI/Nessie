@@ -174,7 +174,12 @@ export const classifyTeamSessionPayload = (
 
 const MAX_SAFE_JWT_EXPIRY_SECONDS = Math.floor(Number.MAX_SAFE_INTEGER / 1_000)
 
-const decodeJwtPayload = (token: string): Record<string, unknown> | null => {
+/**
+ * Read a JWT's payload WITHOUT verifying it — for client-side bookkeeping such
+ * as renewal scheduling or resume cursors only. Authentication still happens on
+ * the server whenever the token is used.
+ */
+export const decodeJwtPayload = (token: string): Record<string, unknown> | null => {
   const payload = token.split('.')[1]
   if (!payload) return null
 
