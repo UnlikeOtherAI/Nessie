@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { useKnowledgePage, useKnowledgeVersions } from '../../../facades/knowledge/hooks'
 import { useProjects } from '../../../facades/projects/hooks'
+import { versionDownloadPath } from '../../../facades/knowledge/file-hooks'
+import { downloadAuthedPath } from '../../../lib/uploads'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { LOCAL_BACK_PRIORITY } from '../../../navigation/LocalBackContext'
 import { NestedStage, useNestedStageHosted } from '../../../navigation/NestedStage'
+import { Dialog } from '../../shared/Dialog'
 import { CreateSpaceDialog } from './CreateSpaceDialog'
 import { KnowledgeDocumentPane } from './KnowledgeDocumentPane'
-import { KnowledgePane } from './KnowledgePane'
 import { knowledgePageAncestors } from './page-ancestors'
 import { ProductDocumentsView } from './ProductDocumentsView'
 import { QueryState } from '../../shared/QueryState'
@@ -19,15 +22,15 @@ import { VersionHistory } from './VersionHistory'
 
 /**
  * The Knowledge work surface: the Finder, the open document beside it, and the
- * two full-width screens a document opens into (its version history, its
- * editor).
+ * full-width editor a document opens into. Version history opens in a modal
+ * over the document, using the same shell as Upload a new version.
  *
- * All three are nested stages (docs/navigation/overview.md §6). Where a
- * single-column stack hosts them each is a real layer: it slides in, Back
+ * The document and editor are nested stages (docs/navigation/overview.md §6).
+ * Where a single-column stack hosts them each is a real layer: it slides in, Back
  * unwinds exactly one level and the edge swipe drives the top one. Where no
  * stack hosts stages (a split layout, an isolated render) they render inline.
  * The Finder places documents beside the hierarchy in Tree and over its whole
- * browser in Columns/List; the editor and history remain full-width stages.
+ * browser in Columns/List; the editor remains a full-width stage.
  * Keeping the Finder mounted preserves its folder, scroll and selection.
  *
  * `knowledge:folder` is **gone**: the Finder sits on `ColumnBrowserViewport`,
@@ -44,6 +47,7 @@ export const KnowledgeWorkspace = ({
   canManageSpace,
   scope = { kind: 'org' },
 }: KnowledgeWorkspaceProps = {}) => {
+  const { token } = useAuthSession()
   const {
     activeProductView,
     selectedSpace,
@@ -111,9 +115,8 @@ export const KnowledgeWorkspace = ({
   // reading pane beside the hierarchy, while Columns and List cover their
   // browser with the same document surface.
   const editorOpen = Boolean(editor) && canWrite
-  const historyOpen = Boolean(historyPage) && (stacked || !editorOpen)
-  const documentOpen = Boolean(current) && (stacked || !(editorOpen || historyOpen))
-  const browserVisible = stacked || !(editorOpen || historyOpen)
+  const documentOpen = Boolean(current) && (stacked || !editorOpen)
+  const browserVisible = stacked || !editorOpen
 
   // The space-pages list omits page bodies (they're large and the browser never
   // shows them). Fetch the full body on demand for whichever page actually
@@ -193,23 +196,6 @@ export const KnowledgeWorkspace = ({
     </div>
   )
 
-  const historyPane = historyPage ? (
-    <KnowledgePane
-      onBack={stacked ? undefined : closeHistory}
-      title={`History — ${historyPage.title}`}
-    >
-      <div className="mx-auto w-full max-w-3xl px-6 py-6">
-        <VersionHistory
-          canRestore={canWrite}
-          onRestore={(versionId) => restoreVersion({ pageId: historyPage.id, versionId })}
-          page={fullPage ?? historyPage}
-          pending={restorePending}
-          versions={versionsQuery.data ?? []}
-        />
-      </div>
-    </KnowledgePane>
-  ) : null
-
   // Full-width editor (create or edit). Editing waits for the on-demand full
   // body so the editor never initialises from an empty (list-stripped) body and
   // overwrites real content on save.
@@ -252,6 +238,27 @@ export const KnowledgeWorkspace = ({
     </div>
   ) : null
 
+  const historyDialog = historyPage && !editorOpen ? (
+    <Dialog
+      description={historyPage.title}
+      onClose={closeHistory}
+      open
+      size={historyPage.kind === 'file' ? 'md' : 'xl'}
+      title="Version history"
+    >
+      <VersionHistory
+        canRestore={canWrite}
+        onDownload={(versionId) => void downloadAuthedPath(
+          versionDownloadPath(historyPage.id, versionId), historyPage.title, token,
+        )}
+        onRestore={(versionId) => restoreVersion({ pageId: historyPage.id, versionId })}
+        page={fullPage ?? historyPage}
+        pending={restorePending}
+        versions={versionsQuery.data ?? []}
+      />
+    </Dialog>
+  ) : null
+
   return (
     <>
       {activeProductView ? (
@@ -269,15 +276,9 @@ export const KnowledgeWorkspace = ({
         priority={LOCAL_BACK_PRIORITY.knowledgeDocument}
       >
         {documentPane}
-      </NestedStage>
-      <NestedStage
-        active={historyOpen}
-        id="knowledge:history"
-        label="Back from version history"
-        onBack={closeHistory}
-        priority={LOCAL_BACK_PRIORITY.knowledgeHistory}
-      >
-        {historyPane}
+        {/* A dialog opened over a phone document belongs to that stage's
+            overlay layer, so it stays visible while the route below is inert. */}
+        {historyDialog && documentOpen ? historyDialog : null}
       </NestedStage>
       <NestedStage
         active={editorOpen}
@@ -292,6 +293,7 @@ export const KnowledgeWorkspace = ({
       >
         {editorPane}
       </NestedStage>
+      {!documentOpen ? historyDialog : null}
     </>
   )
 }

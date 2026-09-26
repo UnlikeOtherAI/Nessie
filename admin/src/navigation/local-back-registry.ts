@@ -13,7 +13,7 @@ export type LocalBackRegistration = {
   label: string
   onBack: () => void
   // Numeric precedence — the deepest in-page stack registers the highest
-  // number (knowledge: folder 11, document 12, history 13, editor 14). Ties
+  // number (knowledge: document 12, editor 14). Ties
   // never happen between live owners: only one column/detail per browser is
   // visible on a phone, and hidden owners must pass active: false.
   priority?: number
