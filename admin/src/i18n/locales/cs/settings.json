@@ -497,5 +497,28 @@
     },
     "copyLabel": "Copy {{label}}",
     "project": "Projekt"
+  },
+  "pairedAgents": {
+    "pair": "Spárovat agenta",
+    "title": "Spárovaní agenti",
+    "agent": "Spárovaný agent",
+    "back": "Zpět na spárované agenty",
+    "nothingPaired": "Nic není spárováno",
+    "range": "{{start}}–{{end}} z {{count}}",
+    "description": "Claude Code, Codex a další klienti MCP pracují v Nessie jako vy. Spárovaný agent má přístup ke všemu, k čemu máte přístup vy, a nikdy k ničemu navíc. Nemůže sám publikovat dokumenty — požádá vás o schválení. Vše, co zde zpřístupníte, můžete zase odebrat.",
+    "empty": "Zatím není nic spárováno. Žádný program nemá přihlašovací údaj k vašemu účtu.",
+    "revokeFailed": "Přihlašovací údaj se nepodařilo odebrat. Stále je aktivní.",
+    "notFound": "Tento přihlašovací údaj nebyl nalezen. Možná už byl odebrán.",
+    "loadFailed": "Spárované agenty se nepodařilo načíst.",
+    "loading": "Načítání spárovaného agenta…",
+    "revoking": "Odebírání…",
+    "revoke": "Odebrat",
+    "worksAs": "Jedná jako {{name}}",
+    "worksAsYou": "Jedná jako vy",
+    "status": "Stav",
+    "worksAsLabel": "Jedná jako",
+    "expires": "Platnost do",
+    "open": "Otevřít",
+    "table": "Tabulka spárovaných agentů"
   }
 }

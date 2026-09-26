@@ -497,5 +497,28 @@
     },
     "copyLabel": "Copy {{label}}",
     "project": "Proyecto"
+  },
+  "pairedAgents": {
+    "pair": "Vincular un agente",
+    "title": "Agentes vinculados",
+    "agent": "Agente vinculado",
+    "back": "Volver a los agentes vinculados",
+    "nothingPaired": "No hay agentes vinculados",
+    "range": "{{start}}–{{end}} de {{count}}",
+    "description": "Claude Code, Codex y otros clientes MCP trabajan en Nessie como tú. Un agente vinculado accede exactamente a lo mismo que tú, nunca a más. No puede publicar documentos por su cuenta: te pide aprobación. Puedes retirar aquí todo acceso que concedas.",
+    "empty": "Aún no hay agentes vinculados. Ningún programa tiene credenciales de tu cuenta.",
+    "revokeFailed": "No se pudieron revocar las credenciales. Siguen activas.",
+    "notFound": "No se encontró esta credencial. Es posible que ya se haya eliminado.",
+    "loadFailed": "No se pudieron cargar los agentes vinculados.",
+    "loading": "Cargando agente vinculado…",
+    "revoking": "Revocando…",
+    "revoke": "Revocar",
+    "worksAs": "Actúa como {{name}}",
+    "worksAsYou": "Actúa como tú",
+    "status": "Estado",
+    "worksAsLabel": "Actúa como",
+    "expires": "Caduca",
+    "open": "Abrir",
+    "table": "Tabla de agentes vinculados"
   }
 }

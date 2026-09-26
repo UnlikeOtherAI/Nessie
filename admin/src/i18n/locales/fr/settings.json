@@ -497,5 +497,28 @@
     },
     "copyLabel": "Copy {{label}}",
     "project": "Projet"
+  },
+  "pairedAgents": {
+    "pair": "Associer un agent",
+    "title": "Agents associés",
+    "agent": "Agent associé",
+    "back": "Retour aux agents associés",
+    "nothingPaired": "Aucun agent associé",
+    "range": "{{start}}–{{end}} sur {{count}}",
+    "description": "Claude Code, Codex et les autres clients MCP utilisent Nessie en votre nom. Un agent associé accède exactement aux mêmes éléments que vous, sans aller au-delà. Il ne peut pas publier de document seul : votre approbation est requise. Vous pouvez révoquer ici tout accès accordé.",
+    "empty": "Aucun agent n’est encore associé. Aucun programme ne détient d’identifiant pour votre compte.",
+    "revokeFailed": "Impossible de révoquer cet identifiant. Il est toujours actif.",
+    "notFound": "Identifiant introuvable. Il a peut-être déjà été supprimé.",
+    "loadFailed": "Impossible de charger les agents associés.",
+    "loading": "Chargement de l’agent associé…",
+    "revoking": "Révocation…",
+    "revoke": "Révoquer",
+    "worksAs": "Agit en tant que {{name}}",
+    "worksAsYou": "Agit en votre nom",
+    "status": "État",
+    "worksAsLabel": "Agit en tant que",
+    "expires": "Expire",
+    "open": "Ouvrir",
+    "table": "Tableau des agents associés"
   }
 }

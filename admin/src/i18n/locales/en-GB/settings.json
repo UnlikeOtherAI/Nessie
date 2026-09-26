@@ -497,5 +497,28 @@
     },
     "copyLabel": "Copy {{label}}",
     "project": "Project"
+  },
+  "pairedAgents": {
+    "pair": "Pair an agent",
+    "title": "Paired agents",
+    "agent": "Paired agent",
+    "back": "Back to Paired agents",
+    "nothingPaired": "Nothing paired",
+    "range": "{{start}}–{{end}} of {{count}}",
+    "description": "Claude Code, Codex and other MCP clients, working in Nessie as you. A paired agent reaches exactly what you reach and never more, and it cannot publish a document on its own — that comes back to you as an approval. Everything you lend here you can take back here.",
+    "empty": "Nothing paired yet. No program is holding a credential for your account.",
+    "revokeFailed": "That credential could not be revoked. It is still live.",
+    "notFound": "This credential could not be found. It may already have been removed.",
+    "loadFailed": "Could not load paired agents.",
+    "loading": "Loading paired agent…",
+    "revoking": "Revoking…",
+    "revoke": "Revoke",
+    "worksAs": "Works as {{name}}",
+    "worksAsYou": "Works as you",
+    "status": "Status",
+    "worksAsLabel": "Works as",
+    "expires": "Expires",
+    "open": "Open",
+    "table": "Paired agents table"
   }
 }

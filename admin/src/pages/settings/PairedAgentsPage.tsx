@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { faPlus } from '@fortawesome/free-solid-svg-icons'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -33,6 +34,7 @@ const pairedAgentsListStore = createListPageStore()
  * what you have lent out, and pairing is the dialog behind its one action.
  */
 export const PairedAgentsPage = () => {
+  const { t } = useTranslation('settings')
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const credentials = useAgentAccessCredentials()
@@ -75,17 +77,17 @@ export const PairedAgentsPage = () => {
       actions={[{
         icon: faPlus,
         id: 'pair-agent',
-        label: 'Pair an agent',
+        label: t('pairedAgents.pair'),
         onSelect: () => setPairOpen(true),
         primary: true,
         priority: 100,
       }]}
-      eyebrow="User"
+      eyebrow={t('common.user')}
       footer={
         <PaginationFooter
           canNext={page < totalPages - 1}
           canPrevious={page > 0}
-          label={rows.length === 0 ? 'Nothing paired' : `${rangeStart}–${rangeEnd} of ${rows.length}`}
+          label={rows.length === 0 ? t('pairedAgents.nothingPaired') : t('pairedAgents.range', { start: rangeStart, end: rangeEnd, count: rows.length })}
           onPageChange={setRequestedPage}
           onPageSizeChange={(next) => {
             setPageSize(next)
@@ -98,20 +100,17 @@ export const PairedAgentsPage = () => {
       }
       subtitle={
         <p className="max-w-3xl text-sm text-[color:var(--tx3)]">
-          Claude Code, Codex and other MCP clients, working in Nessie as you. A paired agent
-          reaches exactly what you reach and never more, and it cannot publish a document on
-          its own — that comes back to you as an approval. Everything you lend here you can
-          take back here.
+          {t('pairedAgents.description')}
         </p>
       }
-      title="Paired agents"
+      title={t('pairedAgents.title')}
     >
       <div className="grid gap-3">
         <FormError>{actionError}</FormError>
 
         <PairedAgentsTable
           credentials={pageRows}
-          emptyMessage="Nothing paired yet. No program is holding a credential for your account."
+          emptyMessage={t('pairedAgents.empty')}
           isLoading={credentials.isPending}
           onOpen={(credentialId) => void navigate(`/settings/paired-agents/${credentialId}`)}
           onRevoke={(credentialId) => {
@@ -121,7 +120,7 @@ export const PairedAgentsPage = () => {
                 setActionError(
                   error instanceof Error
                     ? error.message
-                    : 'That credential could not be revoked. It is still live.',
+                    : t('pairedAgents.revokeFailed'),
                 ),
             })
           }}

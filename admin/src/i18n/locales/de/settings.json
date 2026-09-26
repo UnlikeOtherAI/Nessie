@@ -497,5 +497,28 @@
     },
     "copyLabel": "Copy {{label}}",
     "project": "Projekt"
+  },
+  "pairedAgents": {
+    "pair": "Agent koppeln",
+    "title": "Gekoppelte Agenten",
+    "agent": "Gekoppelter Agent",
+    "back": "Zurück zu gekoppelten Agenten",
+    "nothingPaired": "Nichts gekoppelt",
+    "range": "{{start}}–{{end}} von {{count}}",
+    "description": "Claude Code, Codex und andere MCP-Clients arbeiten in Nessie für Sie. Ein gekoppelter Agent erreicht genau das, worauf Sie Zugriff haben, und nichts darüber hinaus. Er kann kein Dokument selbst veröffentlichen; dafür benötigen Sie eine Freigabe. Alles, was Sie hier freigeben, können Sie hier wieder entziehen.",
+    "empty": "Noch nichts gekoppelt. Kein Programm besitzt eine Anmeldeinformation für Ihr Konto.",
+    "revokeFailed": "Die Anmeldeinformation konnte nicht widerrufen werden und ist weiterhin aktiv.",
+    "notFound": "Diese Anmeldeinformation wurde nicht gefunden. Sie wurde möglicherweise bereits entfernt.",
+    "loadFailed": "Gekoppelte Agenten konnten nicht geladen werden.",
+    "loading": "Gekoppelten Agenten wird geladen…",
+    "revoking": "Wird widerrufen…",
+    "revoke": "Widerrufen",
+    "worksAs": "Handelt als {{name}}",
+    "worksAsYou": "Handelt als Sie",
+    "status": "Status",
+    "worksAsLabel": "Handelt als",
+    "expires": "Läuft ab",
+    "open": "Öffnen",
+    "table": "Tabelle gekoppelter Agenten"
   }
 }

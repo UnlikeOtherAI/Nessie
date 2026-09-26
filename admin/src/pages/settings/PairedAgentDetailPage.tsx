@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { PairedAgentDetail } from '../../components/features/paired-agents/PairedAgentDetail'
@@ -26,6 +27,7 @@ type PairedAgentDetailPageProps = {
 }
 
 const PairedAgentDetailBody = ({ scope }: PairedAgentDetailPageProps) => {
+  const { t } = useTranslation('settings')
   const navigate = useNavigate()
   const { credentialId } = useParams<{ credentialId?: string }>()
   const organization = scope === 'organization'
@@ -46,17 +48,17 @@ const PairedAgentDetailBody = ({ scope }: PairedAgentDetailPageProps) => {
     // states of this screen, and a phone with no header has no Back at all.
     return (
       <SettingsPanel
-        backLabel="Back to Paired agents"
-        eyebrow="Paired agents"
+        backLabel={t('pairedAgents.back')}
+        eyebrow={t('pairedAgents.title')}
         onBack={backToList}
-        title="Paired agent"
+        title={t('pairedAgents.agent')}
       >
         <QueryState
           className="py-12"
-          emptyLabel="This credential could not be found. It may already have been removed."
-          errorLabel="Could not load paired agents."
+          emptyLabel={t('pairedAgents.notFound')}
+          errorLabel={t('pairedAgents.loadFailed')}
           isEmpty
-          loadingLabel="Loading paired agent…"
+          loadingLabel={t('pairedAgents.loading')}
           query={credentialsQuery}
         >
           {() => null}
@@ -69,7 +71,7 @@ const PairedAgentDetailBody = ({ scope }: PairedAgentDetailPageProps) => {
   const actions: PageHeaderAction[] = lifecycle === 'active'
     ? [{
       id: 'revoke-credential',
-      label: revoke.isPending ? 'Revoking…' : 'Revoke',
+      label: revoke.isPending ? t('pairedAgents.revoking') : t('pairedAgents.revoke'),
       onSelect: () => {
         setActionError(null)
         revoke.mutate(credential.id, {
@@ -77,7 +79,7 @@ const PairedAgentDetailBody = ({ scope }: PairedAgentDetailPageProps) => {
             setActionError(
               error instanceof Error
                 ? error.message
-                : 'That credential could not be revoked. It is still live.',
+                : t('pairedAgents.revokeFailed'),
             ),
         })
       },
@@ -89,8 +91,8 @@ const PairedAgentDetailBody = ({ scope }: PairedAgentDetailPageProps) => {
   return (
     <SettingsPanel
       actions={actions}
-      backLabel="Back to Paired agents"
-      eyebrow="Paired agents"
+      backLabel={t('pairedAgents.back')}
+      eyebrow={t('pairedAgents.title')}
       onBack={backToList}
       subtitle={
         <div className="flex flex-wrap items-center gap-2">
@@ -99,8 +101,8 @@ const PairedAgentDetailBody = ({ scope }: PairedAgentDetailPageProps) => {
           </Pill>
           <p className="text-sm text-[color:var(--tx3)]">
             {'user' in credential && credential.user
-              ? `Works as ${credential.user.displayName}`
-              : 'Works as you'}
+              ? t('pairedAgents.worksAs', { name: credential.user.displayName })
+              : t('pairedAgents.worksAsYou')}
           </p>
         </div>
       }
