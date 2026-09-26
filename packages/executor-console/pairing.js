@@ -12,7 +12,7 @@ const renderPairing = (view) => {
   byId('copy-code').textContent = 'Copy'
   byId('pairing-title').textContent = view.status === 'confirmation' ? 'Confirm this team' : 'Pair this computer'
   byId('pairing-instruction').textContent = {
-    waiting: 'In Nessie, select your team, then open Add executor and paste this code.',
+    waiting: 'In Nessie, select your team, then open Admin › Computers › Pair a computer and paste this code.',
     confirmation: 'Connect only if this is the organisation and team you selected in Nessie.',
     expired: 'This code expired. Cancel this attempt, then get a new code.',
   }[view.status] ?? ''

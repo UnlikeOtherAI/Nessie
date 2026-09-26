@@ -47,7 +47,7 @@ const connection: AppConnectionSummaryRecord = {
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   pretendToBeVisual: true,
-  url: 'http://localhost:5455/apps/kilo-support',
+  url: 'http://localhost:5455/admin/apps/kilo-support',
 })
 const React = await import('react')
 const { act, createElement: h } = React

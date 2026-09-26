@@ -1,4 +1,5 @@
 import type { IconDefinition } from '@fortawesome/free-solid-svg-icons'
+import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { ScreenBarIconName } from '../../navigation/screen-bar'
 
@@ -16,6 +17,8 @@ type PageHeaderMenuItemBase = {
   detail?: string
   disabled?: boolean
   icon?: IconDefinition
+  /** Optional outlined web glyph for menus that match the Channels icon style. */
+  outlineIcon?: LucideIcon
   id: string
   label: string
   title?: string
@@ -62,8 +65,11 @@ type PageHeaderActionBase = {
   barIcon?: ScreenBarIconName
   compact?: boolean
   disabled?: boolean
+  /** Keeps a stateful label from changing the action row's measured width. */
+  fixedWidth?: string
   form?: string
   icon?: IconDefinition
+  outlineIcon?: LucideIcon
   id: string
   label: string
   // Never collapses into More. For a control that carries the screen's own

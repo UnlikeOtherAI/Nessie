@@ -110,7 +110,7 @@ first.
 
 **The admin does not fully obey this yet.** Roughly two dozen strings still say
 "team" — the budget scope picker offers "Team" and "Team" as *sibling*
-scopes, agent ownership says "Team-owned", `CreateSpaceDialog` says "Everyone on
+scopes, `CreateSpaceDialog` says "Everyone on
 your team". Those are the copy equivalent of `Team.projectId`: known, wrong, and
 scheduled with the vocabulary pass in the plan below. Do not add more; do not
 take an existing one as licence.
@@ -461,7 +461,7 @@ does: see [docs/standards/calls.md](calls.md).
 "UOA is the authority" is a rule about **where the value is stored**, not about
 where a person is allowed to stand when they change it. Refusing the edit was
 never the invariant; writing a second copy was. So a team's name and its
-company picture are both changed from `/settings/team` → Profile, and both
+company picture are both changed from the team's page (`/admin/teams/:teamId`) → General, and both
 writes are relayed to UOA and then mirrored from the record UOA echoes back —
 never written locally and hoped for. Two consequences, both load-bearing:
 

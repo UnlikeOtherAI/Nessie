@@ -226,7 +226,11 @@ summary and points here; **this file is the rule**.
     `worker/src/run/follow-up-review.ts`) sends the whole transcript to the
     utility model after every text answer. Jev is asked first, over a bounded
     digest (`completionDigest`, `packages/runtime/src/run-decisions.ts`):
-    the latest request, up to four turns before it, this turn's tool calls
+    the latest request — the newest turn the person wrote, told apart by its
+    provenance (`conversation` or `direct_prompt`), never a tool's pictures
+    or a loop instruction, which are `user` turns too; with none left, as in
+    a compacted or crash-resumed transcript, the full review runs — up to
+    four turns before it, this turn's tool calls
     with excerpted results — the oldest dropped first to stay under 18 KB,
     with the number dropped said — and the proposed answer; never the system
     prompt or the agent's documents. At 0.9 or more on `complete`
@@ -302,7 +306,7 @@ summary and points here; **this file is the rule**.
   started spending, and across a period of long, partially-recorded runs the
   excess is bounded by their unrecorded headroom instead. Bounding a single
   run's own total remains the envelope's and the mid-run recheck's job.
-  Reservations are an estimate, so only admission reads them: `/ops/usage`,
+  Reservations are an estimate, so only admission reads them: `/admin/usage`,
   `listBudgetStatuses` and the mid-run recheck stay on recorded spend. A
   reservation is ignored once its run is terminal, and swept in
   `worker/src/control/budget-reservation-sweep.ts`. `warn`/`unlimited`/`off`
@@ -328,7 +332,7 @@ summary and points here; **this file is the rule**.
   `budget.threshold_alert` `TaskEvent` and enqueues `budget.alert-dispatch`,
   notifying org owners + the scope's managers through the shared push pipeline
   (`worker/src/control/push-delivery-core.ts`), respecting preferences and
-  deep-linking `/ops/usage`. Every terminal run persists its inference spend —
+  deep-linking `/admin/usage`. Every terminal run persists its inference spend —
   the generic failure/crash path too, via a caller-owned invocation accumulator
   threaded through `runAgenticLoop`, so a failed run's tokens stay attributable
   (idempotent on `inferenceInvocationId`). Owners read spend by run outcome at
@@ -465,8 +469,8 @@ summary and points here; **this file is the rule**.
   executor call's TTL plus margin (130 s for `mcp.call`) or a model or other
   tool's own timeout. Stop never adds a line to the composer.
   `pnpm --filter @nessie/admin test:e2e:run-stop` pins the button, the pending
-  state and the request. The standalone Agents → Activity page and its
-  `RunLifecyclePanel` were removed,
+  state and the request. The organisation-wide activity page and its
+  `RunLifecyclePanel` no longer exist,
   so the org-wide active-run list and the restart control have no admin surface
   (the `GET /api/runs/active` and `POST /api/runs/:id/restart` endpoints remain,
   API-only).

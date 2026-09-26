@@ -510,10 +510,6 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
     // The batch is closed: every result is in the transcript, so from here a
     // snapshot resumes at the next iteration rather than re-entering this one.
     markDispatchBoundary(null)
-    if (preparedBatchPending) {
-      preparedBatchPending = false
-      if (toolResults.every((result) => result.success)) return { ...finish(null, ''), preparedCompleted: true }
-    }
 
     if (batch.loopNudge) {
       messages.push(coverProviderInputComponent({
@@ -532,5 +528,15 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
     }
 
     if (batchStop) return stop(batchStop)
+
+    // After the same stop and cancel checks as any batch: a prepared call that
+    // is confirmed to have done its job leaves nothing for the model.
+    if (preparedBatchPending) {
+      preparedBatchPending = false
+      if (toolResults.every((result) => result.success)
+        && await (input.confirmPrepared?.(toolCalls, toolResults) ?? false)) {
+        return { ...finish(null, ''), preparedCompleted: true }
+      }
+    }
   }
 }

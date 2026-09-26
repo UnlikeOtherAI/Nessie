@@ -34,11 +34,26 @@ inner scroller — see `page-types-and-motion.md` §2). Everything else derives 
   deleted, and because classification can no longer fail, the shell mounts the
   phone viewport unconditionally.
 - **Depths** (plan §4.1): `/threads` and `/unread-messages` are Channels
-  details at depth 1, `/channels/new` a Channels Flow at depth 1; `/agents` 1,
-  `/agents/:id` 2, both designers Flows at 2 returning to the list they edit,
-  the four automation browsers 1; every settings page 1 with
-  `/settings/statuses/:id` at 2; `/ops` 1 and `/ops/usage` 2; `/apps` 1 and
-  `/apps/:slug` 2; `/audit`, `/approvals`, `/tokens`, `/policy` 1. Connected
+  details at depth 1, `/channels/new` a Channels Flow at depth 1. Admin's root
+  is `/admin`, a `contextualList` root: on `single` the Admin list is the page,
+  and on a wider layout the route opens its first page, Agents. Every Admin
+  page is depth 1 — `/admin/agents`, `/admin/apps`, `/admin/computers`,
+  `/admin/automations`, `/admin/people`, `/admin/teams`, the Organisation
+  pages (`/admin/organisation`, `/admin/models`, `/admin/connections`,
+  `/admin/keys`, `/admin/usage`, `/admin/billing`, `/admin/security`) and the
+  Advanced pages (`/admin/advanced/tools`, `access-rules`, `health`, `push`,
+  `debug`). One thing each page lists is depth 2: `/admin/agents/:id`,
+  `/admin/apps/:slug`, `/admin/computers/:id`, `/admin/computers/sessions`,
+  `/admin/automations/triggers/:id`, `/admin/automations/batch-jobs/:id`,
+  `/admin/teams/:teamId`, `/admin/security/programs/:id` and
+  `/admin/advanced/tools/:toolId`; the agent designer, the workflow designer
+  and a new batch job are Flows at 2 returning to the list they edit; an
+  agent's mailbox and a computer's session are 3. Your settings is a root of
+  its own, `/settings`, under the same `admin` section id (the section ids are
+  a wire contract with the native shells), and a `contextualList` root too
+  (its first page is Profile); its nine pages are depth 1 and
+  `parent: 'origin'`, with `/settings/status/:id`, `/settings/accounts/:id`
+  and `/settings/security/programs/:id` at 2. Connected
   mail is `/mail` 1 (the entitled account chooser),
   `/mail/:source/:accountId` 2, `/mail/:source/:accountId/threads/:threadId` 3
   (a nested screen on `single`, the inline reading pane on `split`), and
@@ -47,10 +62,13 @@ inner scroller — see `page-types-and-motion.md` §2). Everything else derives 
   an agent's chat doorway, or a Gmail draft card. A project's
   seven section routes are one `tabHost` identity, so switching sections never
   animates.
-- **`parent: 'origin'`** (`/alerts`, `/feedback`): reached from the bell, the
-  account menu and push notifications, from any section, so Back pops to the
-  reader's real predecessor when the ledger has one and falls back to the
-  Admin root only on a cold deep link.
+- **`parent: 'origin'`** (`/alerts`, `/feedback` and the Your settings
+  pages): reached from the bell, the avatar menu and push notifications, from
+  any section, so Back pops to the reader's real predecessor when the ledger
+  has one and falls back to its root — Admin for `/alerts` and `/feedback`,
+  the Your settings list for a Your settings page — only on a cold deep link. A Your
+  settings page lights no rail item and is never the Admin tab's remembered
+  place.
 - A page that auto-selects its first row must not do so on a phone once its
   detail is a real pushed screen: the redirect would slide a detail in on
   arrival and re-slide it on every Back. `ChannelsPage` and `StatusesPage`
@@ -71,9 +89,9 @@ authenticated shell; the name follows in a later rename). It owns:
   entry is it, else replace), else nothing at a root. `performBack()`,
   `PhoneNavigationButton`, the edge swipe, `nessie:back-state` and Android
   hardware Back all go through it. An owner may register `swipeable: false`.
-  A `parent: 'origin'` screen (`/alerts`, `/feedback`, `/ops/usage`) pops to
-  the reader's real predecessor and its control says only "Back"; on a cold
-  link it replaces to the declared fallback and names it.
+  A `parent: 'origin'` screen (`/alerts`, `/feedback`, a Your settings page)
+  pops to the reader's real predecessor and its control says only "Back"; on
+  a cold link it replaces to the declared fallback and names it.
 - **History controls are not Back.** The top bar and the iPad toolbar walk
   the ledger across sections, which Back never does; they consult the
   registry first so they never pop a route under an open owner.
@@ -92,10 +110,12 @@ authenticated shell; the name follows in a later rename). It owns:
 
 - **`RedirectRoute`** (`navigation/RedirectRoute.tsx`) is the only
   route-level redirect: it replaces and forwards `location.state`, so a
-  notification deep link or a return address that lands on a retired path
-  (`/work`, `/chats`, `/settings/tools`, …) arrives intact. `router.tsx`
-  never renders a bare `<Navigate>`
-  (`admin/test/navigation-redirect-route.test.ts`).
+  notification deep link or a return address that lands on the landing route
+  (`/`) or on `/admin` or `/settings` at a desktop width, which open their
+  first page, arrives intact. A retired address is deleted, never forwarded:
+  `/agents`, `/apps`, `/tokens`, `/audit`, `/policy`, `/ops` and the old
+  `/settings/*` pages match no row and render not-found. `router.tsx` never
+  renders a bare `<Navigate>` (`admin/test/navigation-redirect-route.test.ts`).
 - **The revealed layer is dimmed.** Every screen carries one
   `[data-phone-navigation-dim]` child, a `--scrim`-coloured overlay that is
   fully present while another screen rests over it and gone once that screen
@@ -135,9 +155,10 @@ differently there (`surfaceScreen(pathname, layout)`):
 
 - The pinned list column *is* the section's root, so a root and its details
   share the stack floor (depth 1): root → detail swaps in place with nothing
-  retained beneath; detail → nested (`/agents` → `/agents/:id`, `/apps` →
-  `/apps/:slug`, `/dashboards` → `/dashboards/:id`, a designer) pushes inside
-  the column with the detail retained beneath, exactly as on a phone.
+  retained beneath; detail → nested (`/admin/agents` → `/admin/agents/:id`,
+  `/admin/apps` → `/admin/apps/:slug`, `/dashboards` → `/dashboards/:id`, a
+  designer) pushes inside the column with the detail retained beneath,
+  exactly as on a phone.
 - A nested row whose parent page renders it itself on split declares
   `splitInline: true` (the conversation's info chain and reply thread, a
   status's detail) and classifies as its parent's screen there, so it neither
@@ -145,8 +166,8 @@ differently there (`surfaceScreen(pathname, layout)`):
 - No edge swipe arms on split: the column has no edge of its own, and on
   iPad the native swipe stays on until step 9.
 
-Verified in the browser at 1280×800 and 768×1024: `/agents` →
-`/agents/designer` slides inside the detail column over the dimmed, retained
+Verified in the browser at 1280×800 and 768×1024: `/admin/agents` →
+`/admin/agents/designer` slides inside the detail column over the dimmed, retained
 list and pops back; a conversation → its info and a status list → a status
 stay one layer. The page-owned detail columns (Knowledge, the column
 browsers, Dashboards) join the stack as nested stages in step 6; the thread
@@ -253,7 +274,7 @@ On `single`, each route owns its base Finder column and only a folder or
 document opened beneath that route becomes a nested stage; retained route
 instances must suspend their local Back owners while covered by a newer route.
 
-**`AgentDetailPage` is built.** It registers no local Back: `/agents/:id` is a
+**`AgentDetailPage` is built.** It registers no local Back: `/admin/agents/:id` is a
 real depth-2 route whose parent is Agents, so the shared route Back returns
 there. Its old `columnBase` registration outranked every Knowledge stage
 inside the agent's Documents tab, so Back left the agent instead of unwinding

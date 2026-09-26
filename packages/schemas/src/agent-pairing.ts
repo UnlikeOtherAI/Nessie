@@ -16,7 +16,7 @@ import { z } from 'zod'
  * did.
  *
  * **Only the organisation level has a surface today**
- * (`/settings/organization/paired-agents`, which always writes the key locked).
+ * (`/admin/security?tab=programs`, which always writes the key locked).
  * The cascade will honour a team or personal row the moment one exists, but
  * nothing writes them, so do not describe those levels as available to a person
  * until something does — a capability nobody can reach is not a capability.

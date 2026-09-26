@@ -50,9 +50,9 @@ export const AgentDetailPage = () => {
   const agent = agentId ? agents.find((candidate) => candidate.id === agentId) : undefined
   const canEdit = useCanEditAgent(agent)
 
-  const backToList = () => void navigate('/agents')
+  const backToList = () => void navigate('/admin/agents')
 
-  // `/agents/:id` is a real depth-2 route whose parent is Agents (the surface
+  // `/admin/agents/:id` is a real depth-2 route whose parent is Agents (the surface
   // registry, docs/navigation/overview.md §4.1), so the shared Back already returns to
   // the list — this page registers no owner of its own, which used to outrank
   // the Knowledge stages inside its Documents tab and leave the agent instead
@@ -132,7 +132,7 @@ export const AgentDetailPage = () => {
                 ) : undefined
               }
               key={agent.id}
-              onSelectAgent={(nextAgentId) => void navigate(`/agents/${nextAgentId}`)}
+              onSelectAgent={(nextAgentId) => void navigate(`/admin/agents/${nextAgentId}`)}
             />
           </div>
         </div>

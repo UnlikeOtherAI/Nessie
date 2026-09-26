@@ -162,7 +162,7 @@ export const OperationalTelemetryPage = () => {
   if (!me) {
     return (
       <section className="flex h-full min-h-0 flex-col">
-        <ScreenHeader title="Operational usage" />
+        <ScreenHeader eyebrow="Organisation" title="Usage and limits" />
         <OwnerGate />
       </section>
     )
@@ -172,7 +172,7 @@ export const OperationalTelemetryPage = () => {
     <section className="flex h-full min-h-0 flex-col">
       {/* The header is always rendered: a refusal is a state of this screen,
           not a screen of its own, so Back never disappears with it. */}
-      <ScreenHeader title="Operational usage" />
+      <ScreenHeader eyebrow="Organisation" title="Usage and limits" />
       <OwnerGate>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <div className="mb-4 w-full max-w-xs">
@@ -196,7 +196,7 @@ export const OperationalTelemetryPage = () => {
               These token, connector, file, budget, and model-pricing signals help
               owners operate Nessie. They are not customer credits, a tariff, or an
               invoice. Customer balances, statements, subscriptions, and charges
-              are supplied by UOA on Credits &amp; billing.
+              are supplied by your sign-in provider on Credits and billing.
             </p>
           </div>
 

@@ -50,7 +50,7 @@ export const TABS: TabDef[] = [
   {
     key: 'admin',
     title: 'Admin',
-    path: '/settings',
+    path: '/admin',
     sfSymbol: 'gearshape',
     materialIcon: 'settings',
   },

@@ -35,7 +35,7 @@ export const MyBrowserLoginsPanel = () => {
               {login.serviceHint}
               <Link
                 className="ml-2 text-[color:var(--lnk)] hover:underline"
-                to={`/agents/${login.agentId}`}
+                to={`/admin/agents/${login.agentId}`}
               >
                 {login.agentName}
               </Link>

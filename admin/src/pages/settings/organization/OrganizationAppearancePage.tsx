@@ -45,7 +45,7 @@ const APPEARANCES = [
   { label: 'Dark', value: 'dark' as const },
 ]
 
-export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
+export const OrganizationAppearancePage = ({ host }: { host?: SettingsTabHostProps }) => {
   const { data: organization, isLoading } = useCurrentOrganization()
   const updateTheme = useUpdateOrganizationTheme()
   const { setPreview } = useTheme()
@@ -138,8 +138,7 @@ export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
   ]
 
   return (
-    <SettingsPanel actions={actions} eyebrow="Organisation" title="Appearance">
-      {tabs}
+    <SettingsPanel actions={actions} eyebrow="Organisation" host={host} title="Appearance">
       <div className="grid gap-4 lg:grid-cols-2">
         <Card as="section">
           <SectionLabel>Theme</SectionLabel>

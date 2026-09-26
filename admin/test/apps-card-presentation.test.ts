@@ -49,12 +49,12 @@ const app = (overrides: Partial<AppSummaryRecord> = {}): AppSummaryRecord => ({
 })
 
 test('the detail route prefers the slug, falls back to the id, and escapes both', () => {
-  assert.equal(appDetailHref(app()), '/apps/github')
-  assert.equal(appDetailHref(app(), 'accounts'), '/apps/github?tab=accounts')
+  assert.equal(appDetailHref(app()), '/admin/apps/github')
+  assert.equal(appDetailHref(app(), 'accounts'), '/admin/apps/github?tab=accounts')
   // A pasted URL has to survive a rename, but an app with no slug yet still
   // has to be reachable.
-  assert.equal(appDetailHref(app({ slug: null })), '/apps/app-1')
-  assert.equal(appDetailHref(app({ slug: 'a b/c' })), '/apps/a%20b%2Fc')
+  assert.equal(appDetailHref(app({ slug: null })), '/admin/apps/app-1')
+  assert.equal(appDetailHref(app({ slug: 'a b/c' })), '/admin/apps/a%20b%2Fc')
 })
 
 test('an un-iconed app falls back to initials rather than to a shelf of identical tiles', () => {
@@ -178,14 +178,14 @@ test('a count appears only where it says something, and health decides its tone'
 test('a built-in offers Open, not Connect — there is no account, only a surface', () => {
   assert.deepEqual(appCardAction(app({ distribution: 'builtin' })), {
     kind: 'link',
-    href: '/apps/github',
+    href: '/admin/apps/github',
     label: 'Open',
     tone: 'secondary',
   })
 })
 
 test('connecting is a button that opens the dialog on this page, never a navigation', () => {
-  // Connect happens in the AppConnectDialog on /apps, so the card action is a
+  // Connect happens in the AppConnectDialog on /admin/apps, so the card action is a
   // button and never needs a second route.
   assert.deepEqual(appCardAction(app()), {
     kind: 'connect',
@@ -283,7 +283,7 @@ test('paused opens the accounts tab to look, because nothing re-enables an insta
   for (const state of ['connected', 'multiple_accounts'] as const) {
     assert.deepEqual(
       appCardAction(app({ state })),
-      { kind: 'link', href: '/apps/github?tab=accounts', label: 'Manage', tone: 'secondary' },
+      { kind: 'link', href: '/admin/apps/github?tab=accounts', label: 'Manage', tone: 'secondary' },
       state,
     )
   }
@@ -291,7 +291,7 @@ test('paused opens the accounts tab to look, because nothing re-enables an insta
   // backs: a paused install cannot be switched back on anywhere in the product.
   assert.deepEqual(appCardAction(app({ state: 'paused' })), {
     kind: 'link',
-    href: '/apps/github?tab=accounts',
+    href: '/admin/apps/github?tab=accounts',
     label: 'View accounts',
     tone: 'secondary',
   })

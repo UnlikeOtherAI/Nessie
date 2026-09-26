@@ -31,6 +31,8 @@ export const ConnectCloudBrowserBodySchema = z.object({
 export const CloudBrowserConnectionSchema = z.object({
   id: z.string().uuid(),
   scope: CloudBrowserScopeSchema,
+  /** Identifies the exact team for team-scoped connections. */
+  teamId: z.string().uuid().nullable(),
   /** Null on every connection made since the project id stopped being asked for. */
   projectId: z.string().nullable(),
   status: z.enum(['active', 'needs_attention', 'disabled']),

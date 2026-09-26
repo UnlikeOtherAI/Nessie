@@ -3,7 +3,7 @@ import { isRecord } from './json'
 import type { WorkflowCanvasNodeType } from './types'
 
 // W13: trigger nodes are labelled entry markers — no cron/timezone/interval
-// config is ever authored on the canvas (the Triggers page owns that), so
+// config is ever authored on the canvas (the Schedules and triggers page owns that), so
 // the marker carries only its type.
 export const getDefaultWorkflowTriggerConfig = (
   triggerType: keyof typeof WORKFLOW_TRIGGER_TYPE_LABELS,

@@ -62,12 +62,12 @@ const describeResumeError = (error: unknown): ResumeRecovery | null => {
     }
     if (error.code === 'CLOUD_BROWSER_NO_CONNECTION') {
       return {
-        message: 'This agent needs a Browserbase connection before its browser can open.',
+        message: 'This agent needs a cloud browser connection before its browser can open.',
       }
     }
     if (error.code === 'CLOUD_BROWSER_AUTH_FAILED') {
       return {
-        message: 'The Browserbase connection needs to be reconnected before this browser can open.',
+        message: 'The cloud browser connection needs to be reconnected before this browser can open.',
       }
     }
     if (error.code === 'CLOUD_BROWSER_SESSION_ALREADY_OPEN') {
@@ -80,7 +80,7 @@ const describeResumeError = (error: unknown): ResumeRecovery | null => {
       return { message: 'This browser is signed in by someone else, so only they can open it.' }
     }
     if (error.code === 'CLOUD_BROWSER_UNREACHABLE') {
-      return { action: 'Try again', message: 'Browserbase could not be reached. Try opening the browser again.' }
+      return { action: 'Try again', message: 'The cloud browser could not be reached. Try opening the browser again.' }
     }
     if (error.message) return { message: error.message }
   }

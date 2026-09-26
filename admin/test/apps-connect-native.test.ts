@@ -13,7 +13,7 @@ import {
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   pretendToBeVisual: true,
-  url: 'https://app.nessie.example/apps/github',
+  url: 'https://app.nessie.example/admin/apps/github',
 })
 
 const React = await import('react')

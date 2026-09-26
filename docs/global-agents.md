@@ -267,7 +267,7 @@ authorization bump rather than one per key.
 
 The per-operation kind (`agent_operation_grant`) and its tool
 (`executor_agent_access_prepare`) are untouched: a person picking one
-capability on the Executors page is still a thing to do. What no agent can do
+capability on the Computers page is still a thing to do. What no agent can do
 is issue that pick — one confirmation per operation key is how "let the
 researcher use my Mac" became a dozen reviews.
 
@@ -315,10 +315,10 @@ qualify and says why the others do not. The rules are in
 `GlobalAgentCatalogueFacts.executors` has the model catalogue's three states
 for the model catalogue's reason: `null` is "could not be read just now" and is
 said out loud, `[]` is "this deployment has none you can reach, pairing happens
-on the Executors page", and an array is the live list.
+on the Computers page", and an array is the live list.
 `listExecutorCatalogueFacts` (`@nessie/executor-manage`) builds it on
 `listVisibleExecutors` plus `getExecutorAccessView` per executor — **the same
-entitlement-scoped reads the Executors page and `executor_inspect` make, and no
+entitlement-scoped reads the Computers page and `executor_inspect` make, and no
 wider**. "All executors" means all the requesting person is entitled to see:
 organization scope, project scope they belong to or manage, private scope they
 are assigned.
@@ -508,7 +508,7 @@ forbidden: a new tool is in the Designer's knowledge the deploy it ships.
 **Models are the picker's list, both halves of it.** The home-DM face reads
 `listAgentModelOptionsForUser` — the deployment's Ledger catalogue minus the
 pairs the organisation or team switched off, plus the plans the person linked
-under Settings → Connected accounts — exactly as `GET /api/agents/models`
+under Your settings › Connected accounts › AI plans — exactly as `GET /api/agents/models`
 does; it used to read `listLedgerAgentModels` alone, which is how a person
 who had just linked Kimi was told no such connector existed. The section
 (`global-agent-model-catalogue.ts`) keeps the two apart: the deployment list

@@ -1,9 +1,8 @@
-import { Link } from 'react-router-dom';
 import { useMemo } from 'react';
 import { useFailedWorkflowRuns } from '../../facades/workflows/hooks';
 import { isReactNativeWebView, requestNativeFullRefresh } from '../../lib/native-shell';
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection';
-import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
+import { SidebarNavLink } from './SidebarNavLink';
 import {
   ADMIN_NAV,
   isAdminNavGroupVisible,
@@ -14,7 +13,7 @@ import type { AdminNavGroup, AdminNavGroupId, AdminNavViewer } from './admin-nav
 
 // Re-exported so existing call sites (e.g. `admin/test/*-nav-*.test.ts`,
 // which import the nav table straight from this file) keep working without
-// a path change — the data itself now lives in `admin-nav-items.tsx`.
+// a path change — the data itself lives in `admin-nav-items.tsx`.
 export { ADMIN_NAV, isAdminNavGroupVisible, isAdminNavItemActive, isAdminNavItemVisible };
 export type { AdminNavGroup, AdminNavGroupId, AdminNavViewer };
 
@@ -23,6 +22,8 @@ type AdminSidebarNavProps = AdminNavViewer & {
 };
 
 const adminNavCookieName = (id: AdminNavGroupId) => `adminNavCollapsed-${id}`;
+
+const AUTOMATIONS_PATH = '/admin/automations';
 
 type AdminNavSectionProps = {
   group: AdminNavGroup;
@@ -38,45 +39,29 @@ const AdminNavSection = ({
   onToggle,
   pathname,
   viewer,
-}: AdminNavSectionProps) => {
-  const sectionId = `admin-nav-${group.id}`;
-
-  return (
-    <SidebarMenuSection
-      id={sectionId}
-      isCollapsed={isCollapsed}
-      onToggle={() => onToggle(group.id)}
-      title={group.heading}
-    >
-      {group.items
-        .filter((item) => isAdminNavItemVisible(item, viewer))
-        .map((item) => {
-          const isActive = isAdminNavItemActive(item, pathname);
-          return (
-            <Link
-              aria-current={sidebarAriaCurrent(isActive)}
-              key={item.path}
-              className={['admin-sb-item', isActive ? 'active' : ''].join(' ')}
-              to={item.path}
-            >
-              {item.icon}
-              <span className="min-w-0 flex-1 truncate">{item.label}</span>
-              {item.badgeCount ? (
-                <span
-                  className="rounded-full bg-[color:var(--danger-soft)] px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--danger-text)]"
-                  data-testid={item.badgeTestId}
-                  title={item.badgeLabel}
-                >
-                  <span aria-hidden={Boolean(item.badgeLabel)}>{item.badgeCount}</span>
-                  {item.badgeLabel ? <span className="sr-only">{item.badgeLabel}</span> : null}
-                </span>
-              ) : null}
-            </Link>
-          );
-        })}
-    </SidebarMenuSection>
-  );
-};
+}: AdminNavSectionProps) => (
+  <SidebarMenuSection
+    id={`admin-nav-${group.id}`}
+    isCollapsed={isCollapsed}
+    onToggle={() => onToggle(group.id)}
+    title={group.heading}
+  >
+    {group.items
+      .filter((item) => isAdminNavItemVisible(item, viewer))
+      .map((item) => (
+        <SidebarNavLink
+          active={isAdminNavItemActive(item, pathname)}
+          badge={item.badgeCount
+            ? { count: item.badgeCount, label: item.badgeLabel, testId: item.badgeTestId }
+            : undefined}
+          icon={item.icon}
+          key={item.path}
+          label={item.label}
+          to={item.path}
+        />
+      ))}
+  </SidebarMenuSection>
+);
 
 export const AdminSidebarNav = ({
   canManageOrganization,
@@ -96,19 +81,27 @@ export const AdminSidebarNav = ({
       ADMIN_NAV.filter((group) => isAdminNavGroupVisible(group, viewer)),
     [viewer],
   );
+  // A group folded by default still opens for a reader who arrives on one of
+  // its pages, so the list never hides where they are standing.
   const { collapsedSections, toggleSection } = useCookieBackedSidebarSections(
     ADMIN_NAV.map((group) => group.id),
     adminNavCookieName,
+    (id) => {
+      const group = ADMIN_NAV.find((candidate) => candidate.id === id);
+      return Boolean(group?.collapsedByDefault)
+        && !group?.items.some((item) => isAdminNavItemActive(item, pathname));
+    },
   );
   // W29: the nav itself answers "did anything break?" — the count is the
-  // entitlement-scoped failed-runs feed the triage column reads.
+  // entitlement-scoped failed-runs feed the triage column reads, beside
+  // Automations, where the Workflows tab holds that column.
   const { data: failedWorkflowRuns = [] } = useFailedWorkflowRuns();
   const groupsWithBadges = useMemo(
     () =>
       visibleGroups.map((group) => ({
         ...group,
         items: group.items.map((item) =>
-          item.path === '/agents/workflows'
+          item.path === AUTOMATIONS_PATH
             ? {
               ...item,
               badgeCount: failedWorkflowRuns.length,

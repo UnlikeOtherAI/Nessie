@@ -92,7 +92,7 @@ const buildWorkflowFailurePayload = (
     kind: 'workflow_run_failed',
     workflowInstallationId: payload.workflowInstallationId,
     workflowRunId: payload.workflowRunId,
-    url: `/agents/workflows?failedRuns=1&run=${payload.workflowRunId}`,
+    url: `/admin/automations?tab=workflows&failedRuns=1&run=${payload.workflowRunId}`,
   },
   collapseId: `workflow-run:${payload.workflowRunId}`,
 })
@@ -176,7 +176,7 @@ export const handleWorkflowRunFailureDispatch = async (
     payload: buildWorkflowFailurePayload(payload, run.installation.workflowTemplate.name ?? null),
     recipientIds: pushRecipientIds,
     organizationId: payload.organizationId,
-    deepLinkUrl: `/agents/workflows?failedRuns=1&run=${payload.workflowRunId}`,
+    deepLinkUrl: `/admin/automations?tab=workflows&failedRuns=1&run=${payload.workflowRunId}`,
     messageId: null,
     // One notification per failed run: the terminal-event seam already dedupes
     // the enqueue on the same run id, so this claim closes the redelivery half.

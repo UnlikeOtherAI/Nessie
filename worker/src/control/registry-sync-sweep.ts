@@ -11,7 +11,7 @@ import {
 /**
  * Keep the Apps catalogue full without anyone running the `sync:registry` CLI.
  *
- * `/apps` is filled from the official MCP registry (~5,500 apps) by
+ * `/admin/apps` is filled from the official MCP registry (~5,500 apps) by
  * `syncRegistry`, but nothing called it on a schedule: a fresh deploy showed
  * only the seeded first-party connectors until an operator ran the CLI. This is
  * the missing scheduler's decision core — the worker sweeps on an interval and

@@ -21,8 +21,37 @@ test('a missing login-request tool cannot be replaced by a generic card', () => 
   const prompt = buildBrowserbaseSetupPrompt({ hasCardTool: true })
 
   assert.match(prompt, /`browser_login_request` is not in your toolset/)
-  assert.match(prompt, /enable `browser_login_request` at Agents → Tools/)
+  assert.match(prompt, /enable `browser_login_request` at Admin › Advanced › Tool registry/)
+  assert.match(prompt, /\(`\/admin\/advanced\/tools`\)/)
+  assert.doesNotMatch(prompt, /\/agents\/tools/)
   assert.match(prompt, /Do not substitute card_post, prose, or a fabricated permission card/)
+})
+
+// Where the prompt sent people before the admin moved: a personal account's
+// page, the organisation's page and the tool list. They resolve to nothing, so
+// one printed beside the current address would still send a person nowhere.
+const RETIRED_SETUP_ADDRESSES = [
+  /\/settings\/account\?tab=agents/,
+  /\/settings\/organization\?tab=agents/,
+  /\/agents\/tools/,
+]
+
+test('every variant names the current setup pages and none of the retired addresses', () => {
+  const variants = [
+    { hasCardTool: false },
+    { hasCardTool: true },
+    { hasBrowserLoginRequestTool: true, hasCardTool: true },
+    { canGrantBrowserTools: true, hasCardTool: true },
+    { canGrantBrowserTools: true, hasCardTool: true, ownToolsetFixed: true },
+    { hasCardTool: true, ownToolsetFixed: true },
+  ]
+  for (const facts of variants) {
+    const prompt = buildBrowserbaseSetupPrompt(facts)
+    const label = JSON.stringify(facts)
+    assert.match(prompt, /Your settings › Connected accounts › Browsers \(`\/settings\/accounts\?tab=browsers`\)/, label)
+    assert.match(prompt, /Admin › Company connections \(`\/admin\/connections`\)/, label)
+    for (const retired of RETIRED_SETUP_ADDRESSES) assert.doesNotMatch(prompt, retired, label)
+  }
 })
 
 test('service keys use the personal secret form before reveal', () => {
@@ -70,7 +99,7 @@ test('a grant never waits for the account', () => {
 
 test('an agent whose toolset is fixed is not sent to enable a tool on itself', () => {
   // The Designer quoted "the owner must enable `browser_login_request` at
-  // Agents → Tools" — about its OWN toolset, which no owner can change — to a
+  // the Tool registry" — about its OWN toolset, which no owner can change — to a
   // person asking about the agent it was building.
   const fixed = buildBrowserbaseSetupPrompt({
     canGrantBrowserTools: true,
@@ -83,15 +112,26 @@ test('an agent whose toolset is fixed is not sent to enable a tool on itself', (
     fixed,
     /For an agent a person builds it is an ordinary browser tool, granted with `agent_tool_access_set`/,
   )
-  assert.doesNotMatch(fixed, /enable `browser_login_request` at Agents → Tools/)
+  assert.doesNotMatch(fixed, /enable `browser_login_request` at Admin › Advanced › Tool registry/)
   assert.match(fixed, /Do not substitute card_post, prose, or a fabricated permission card/)
 
-  // The Personal Assistant: same fixed toolset, no grant verb of its own.
+  // Another fixed specialist without the grant verb.
   const assistant = buildBrowserbaseSetupPrompt({ hasCardTool: true, ownToolsetFixed: true })
   assert.match(assistant, /granted from that agent's Tools tab like the rest/)
-  assert.doesNotMatch(assistant, /enable `browser_login_request` at Agents → Tools/)
+  assert.doesNotMatch(assistant, /enable `browser_login_request` at Admin › Advanced › Tool registry/)
 
   // An ordinary agent's owner CAN enable it, so that door is still named.
   const ordinary = buildBrowserbaseSetupPrompt({ hasCardTool: true })
-  assert.match(ordinary, /enable `browser_login_request` at Agents → Tools/)
+  assert.match(ordinary, /enable `browser_login_request` at Admin › Advanced › Tool registry/)
+})
+
+
+test('delegates check saved accounts before proposing a key or permission', () => {
+  const prompt = buildBrowserbaseSetupPrompt({ hasCardTool: true, hasAccountConnectionsTool: true })
+  assert.match(prompt, /call `account_connections_list`/)
+  assert.match(prompt, /team Browserbase connections and personal Kimi plans/)
+  assert.match(prompt, /unreadable inventory is unknown/)
+  assert.match(prompt, /Never ask them to enter a saved key again/)
+  assert.match(prompt, /including for the Personal Assistant itself/)
+  assert.doesNotMatch(prompt, /your toolset is fixed by the deployment/)
 })

@@ -17,7 +17,7 @@ export const TaskSetOutputFields = ({ value, onChange, columnsText, onColumnsTex
         if (kind === 'documents') onChange({ kind, spaceId: '', format: 'text' })
         if (kind === 'spreadsheet') onChange({ kind, spaceId: '', fields: {} })
       }} value={value.kind}>
-        <option value="journal">Results in this task set</option>
+        <option value="journal">Results in this batch job</option>
         <option value="documents">Files in Documents</option>
         <option value="spreadsheet">A new Excel spreadsheet</option>
       </Select>
@@ -32,7 +32,7 @@ export const TaskSetOutputFields = ({ value, onChange, columnsText, onColumnsTex
         <option value="jsonl">JSON Lines</option>
       </Select>
     </FormField> : null}
-    {value.kind === 'spreadsheet' ? <FormField help="One output column per line: column name = result field. The processor must return these fields."
+    {value.kind === 'spreadsheet' ? <FormField help="One output column per line: column name = result field. The model must return these fields."
       label="Result columns">
       <Textarea onChange={(event) => onColumnsTextChange(event.target.value)}
         placeholder={'Summary = summary\nWebsite = website'} rows={4} value={columnsText} />

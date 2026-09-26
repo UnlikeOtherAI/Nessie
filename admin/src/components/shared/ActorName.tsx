@@ -7,7 +7,7 @@ import { useUsers } from '../../facades/users/hooks'
  * Who did this, in words.
  *
  * The two governance surfaces — `/approvals` ("which agent is asking") and
- * `/audit` ("which agent did this") — were the only screens in the admin that
+ * Security's audit log ("which agent did this") — were the only screens in the admin that
  * answered with an id. Approvals printed `Agent: a0000000` and the audit log
  * `agent:a0000000 → email_message`, while the roster, the agents table, the
  * channel agent panel and the chat feed all showed the agent's name. An

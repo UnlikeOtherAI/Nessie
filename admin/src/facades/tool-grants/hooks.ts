@@ -30,7 +30,7 @@ import {
 
 /**
  * Domain facade for the tool registry surface (`/api/mcp/tools`) and its grant
- * CRUD. This backs the canonical `/agents/tools` page (filters + detail +
+ * CRUD. This backs the canonical `/admin/advanced/tools` page (filters + detail +
  * per-agent grant matrix). The list response joins each tool's existing grants
  * so the matrix can render and revoke them on first paint. The legacy
  * `useTools()` facade in `facades/tools/hooks.ts` still backs the builtin-only

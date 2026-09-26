@@ -283,7 +283,7 @@ const endpointKeyOf = (transportConfig: unknown): string | null => {
  * the same `https://mcp.context7.com/mcp` inserted a rival row named
  * `context7-2` and the store showed the same server twice, with two detail
  * pages and a doubled count. Matching the endpoint as well makes one server one
- * app, which is the whole premise of `/apps` being a face on `McpCatalogEntry`.
+ * app, which is the whole premise of `/admin/apps` being a face on `McpCatalogEntry`.
  *
  * Scoped to instance-global published rows — precisely the rows a registry
  * create would collide with. An organisation's own entry is deliberately left

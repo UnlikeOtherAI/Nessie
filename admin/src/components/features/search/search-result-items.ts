@@ -197,7 +197,7 @@ export const buildSearchResultItems = (
 
   for (const agent of results.agents) {
     items.push({
-      href: `/agents/${agent.id}`,
+      href: `/admin/agents/${agent.id}`,
       id: `agent:${agent.id}`,
       primary: agent.name,
       secondary: agent.role,

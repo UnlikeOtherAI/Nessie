@@ -89,7 +89,7 @@ const SessionRow = ({ executorId, canClose, closing, onClose, pending, readAt, s
       {session.ticketWork ? <TicketWork work={session.ticketWork} /> : null}
     </div>
     {canClose ? <Link className="admin-button admin-button-secondary admin-button-compact"
-      to={`/agents/executors/${executorId}/sessions/${session.sessionId}`} aria-label={`View ${session.title}`}>
+      to={`/admin/computers/${executorId}/sessions/${session.sessionId}`} aria-label={`View ${session.title}`}>
       View session
     </Link> : null}
     {closing ? (

@@ -18,7 +18,7 @@ change-workspace commands.
 The console's home is **Paired teams**, reachable from the menu bar/tray.
 **Add team** requests an eight-digit code from the unauthenticated pairing
 start endpoint. The code appears in large black text with **Copy**. Paste it
-into Nessie's **Agents → Executors → Add executor** popup, which explains both
+into Nessie's **Admin › Computers › Pair a computer** popup, which explains both
 the app and CLI entry points. Review the fingerprint in Nessie, then confirm
 the claimed organisation and team on the computer. Expiry, single use and
 confirmation bound to the displayed claim remain enforced by the runtime.
@@ -90,8 +90,10 @@ nessie-executor permissions --executor <executor-id> --allow-all --deny "git pus
 nessie-executor permissions --executor <executor-id> --allow "git *,pnpm *"
 ```
 
-`login` uses the interactive code flow on every platform. On Linux it enables
-the existing user service after confirmation. `teams --json` provides the
+`login` uses the interactive code flow on every platform. After confirmation,
+interactive CLI login enables a per-team launchd agent on macOS or a systemd
+user service on Linux. `enable`, `disable` and `status` manage those services.
+Installation and startup: [executor packages](running-the-apps/executor-cli.md). `teams --json` provides the
 credential-free list of CLI pairings, with names read from the server and IDs
 still available offline. `--state-root` selects an alternate CLI-format root;
 `--state-dir` addresses a specific app-owned connection for local configuration.

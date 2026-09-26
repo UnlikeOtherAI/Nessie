@@ -18,6 +18,24 @@ export const useCurrentOrganization = () => {
   })
 }
 
+export type OrganizationAdministrationStatus = OrganizationSummary['administration']['status']
+
+/**
+ * Whether the signed-in person may administer the organisation: the standing
+ * the administrator-authored settings (AI on people's own computers) and the
+ * Organisation section's own routes require. `undefined` while it loads.
+ *
+ * The server decides it, and with the one resolver those routes use
+ * (`resolveOrganizationAdministrationAccess`): on an organisation bound to the
+ * sign-in provider, that provider's live capability; on an unbound local
+ * install, the local owner or admin role. `/api/organizations/current` answers
+ * with that same resolver, so this is read, never re-derived from roles — a
+ * local admin is allowed here exactly where the routes allow them, and a
+ * second derivation could only drift from the first.
+ */
+export const useOrganizationAdministration = (): OrganizationAdministrationStatus | undefined =>
+  useCurrentOrganization().data?.administration.status
+
 // Owners/admins set (or clear, with `null`) the org-wide round logo. Invalidates
 // the cached summary so the Logo panel and sidebar badge re-render immediately.
 export const useUpdateOrganizationLogo = () => {

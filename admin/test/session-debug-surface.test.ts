@@ -1,26 +1,67 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { JSDOM } from 'jsdom'
+import { buildSessionDebugDump } from '../src/lib/session-debug-export'
+import { parseSessionDebugImport } from '../src/lib/session-debug-import'
 
 const readSource = (path: string): string =>
   readFileSync(new URL(path, import.meta.url), 'utf8')
 
-test('authenticated export and native login import reuse one session debug surface', () => {
-  const exportButton = readSource('../src/components/shared/DebugTokenButton.tsx')
+const BROWSER_GLOBALS = ['document', 'localStorage', 'window'] as const
+
+const withBrowserGlobals = (dom: JSDOM, run: () => void): void => {
+  const values = {
+    document: dom.window.document,
+    localStorage: dom.window.localStorage,
+    window: dom.window,
+  }
+  const originals = BROWSER_GLOBALS.map((name) => Object.getOwnPropertyDescriptor(globalThis, name))
+  for (const name of BROWSER_GLOBALS) {
+    Object.defineProperty(globalThis, name, { configurable: true, value: values[name], writable: true })
+  }
+  try {
+    run()
+  } finally {
+    BROWSER_GLOBALS.forEach((name, index) => {
+      const original = originals[index]
+      if (original) Object.defineProperty(globalThis, name, original)
+      else Reflect.deleteProperty(globalThis, name)
+    })
+  }
+}
+
+test('Session debug exports the dump the sign-in import reads back', () => {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+    url: 'https://nessie.test/admin/advanced/debug',
+  })
+  withBrowserGlobals(dom, () => {
+    dom.window.localStorage.setItem('nessie.admin.token', 'header.payload.signature')
+    const dump = buildSessionDebugDump(null)
+    assert.deepEqual(parseSessionDebugImport(dump, 'https://nessie.test'), {
+      accessToken: 'header.payload.signature',
+    })
+  })
+})
+
+test('the export is an Advanced page and the sign-in import keeps the one session debug dialog', () => {
+  const page = readSource('../src/pages/admin/SessionDebugPage.tsx')
   const importButton = readSource('../src/components/shared/LoginSessionImportButton.tsx')
   const dialog = readSource('../src/components/shared/SessionDebugDialog.tsx')
 
-  assert.match(exportButton, /SessionDebugDialog, SessionDebugIcon/)
+  // The page reads the one dump builder rather than assembling the JSON itself.
+  assert.match(page, /buildSessionDebugDump\(me\)/)
+  assert.doesNotMatch(page, /loadStoredToken|document\.cookie/)
+  assert.match(page, /fixedWidth: '10rem'/)
+  assert.match(page, /eyebrow="Advanced"/)
+  assert.match(page, /aria-label="Session debug JSON"/)
   assert.match(importButton, /SessionDebugDialog, SessionDebugIcon/)
-  assert.doesNotMatch(exportButton, /<svg/)
   assert.doesNotMatch(importButton, /<svg/)
   assert.match(dialog, /initialFocusRef: textareaRef/)
   assert.match(dialog, /kind: 'modal'/)
   assert.match(dialog, /aria-modal="true"/)
   assert.match(dialog, /role="dialog"/)
   assert.match(dialog, /role="alert"/)
-  assert.match(dialog, /style=\{actionMinWidth \? \{ minWidth: actionMinWidth \} : undefined\}/)
-  assert.match(exportButton, /actionMinWidth="8\.5rem"/)
   assert.match(dialog, /\{\/\* Not the shared `Dialog`:/)
   assert.doesNotMatch(dialog, />\s*\/\/ Not the shared `Dialog`:/)
 })

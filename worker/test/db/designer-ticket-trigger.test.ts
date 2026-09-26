@@ -250,7 +250,7 @@ runDatabaseTest('the Designer creates a ticket trigger from names, refused field
   assert.equal(
     created.outputPreview,
     [
-      `Created ticket_changed trigger [CTO pickup](/agents/triggers/${trigger.id}) for [CTO](/agents/${s.ctoId})`,
+      `Created ticket_changed trigger [CTO pickup](/admin/automations/triggers/${trigger.id}) for [CTO](/admin/agents/${s.ctoId})`,
       `status=active | each ticket's work thread opens in [#eng](/channels/${s.engId})`,
       `Starts work when a person who can edit ${board} moves a ticket into `
       + `In progress (in_progress, columnId=${s.columns['In progress']}), and assigns an unassigned ticket to the agent`,

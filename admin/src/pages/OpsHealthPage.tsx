@@ -102,7 +102,7 @@ export const OpsHealthPage = () => {
       {/* The header is always rendered: a refusal is a state of this screen,
           not a screen of its own, so Back never disappears with it
           (docs/navigation/deep-links-and-headers.md §9). */}
-      <ScreenHeader actions={headerActions} title="System Health" />
+      <ScreenHeader actions={headerActions} eyebrow="Advanced" title="System health" />
       <SuperAdminGate>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <p className="mb-4 text-xs text-[color:var(--tx3)]">

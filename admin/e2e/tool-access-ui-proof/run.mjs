@@ -50,7 +50,7 @@ try {
   await mkdir(proofDir, { recursive: true })
   // This worktree's admin (AGENTS.md → "Ports"), never a hardcoded default.
   const adminUrl = process.env.UI_PROOF_ADMIN_URL ?? `http://localhost:${resolveAdminPort()}`
-  const url = `${adminUrl}/agents/${agentId}?agentTab=tools`
+  const url = `${adminUrl}/admin/agents/${agentId}?agentTab=tools`
   const responses = []
   page.on('response', (response) => {
     if (response.url().includes('/api/mcp/tools')) responses.push(`${response.status()} ${response.url()}`)

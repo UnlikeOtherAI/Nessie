@@ -1,7 +1,7 @@
 /**
  * Apps catalogue — ingestion from the official MCP registry.
  *
- * Phase 2 shipped the catalogue and ingested nothing, so `/apps` held the five
+ * Phase 2 shipped the catalogue and ingested nothing, so `/admin/apps` held the five
  * first-party connectors. This is what fills it: a bounded, cursor-paged read
  * of `registry.modelcontextprotocol.io` through the IP-pinned `safeFetch`, one
  * pure mapper from an upstream record to a catalogue row, a deterministic

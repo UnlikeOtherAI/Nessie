@@ -23,7 +23,7 @@ import { listLedgerAgentModels } from './ledger-agent-model-catalog.js'
  * one option still able to run.
  *
  * The Ledger arm is additionally filtered by the organisation's own
- * availability decisions (`/settings/organization/models`). A pair an owner
+ * availability decisions (`/admin/models`). A pair an owner
  * switched off must not be offerable, or the switch would be cosmetic — the
  * defect AGENTS.md Rule zero check 3 names. Personal subscriptions are NOT
  * filtered: an organisation owner has no standing over somebody's own consumer

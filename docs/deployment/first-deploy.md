@@ -144,10 +144,10 @@ At most one organisation is designated (`Organization.instanceBrand`; setting
 one clears the rest). With none designated — or when the designated
 organisation has uploaded no logo — the endpoint 404s and the sign-in screen
 falls back to the static Nessie mark. The designated organisation still uploads
-and changes its own logo the ordinary way, at Settings → Appearance.
+and changes its own logo the ordinary way, at Admin › Organisation › Profile.
 
 **An organisation's colour theme is not instance state and does not reach this
-screen.** An org admin authors a palette at Settings → Organization →
+screen.** An org admin authors a palette at Admin › Organisation ›
 Appearance, and it paints that organisation's people once they are signed in
 and known. Before sign-in nobody knows which organisation the visitor belongs
 to — and an instance routinely holds many — so `/login` renders the visitor's

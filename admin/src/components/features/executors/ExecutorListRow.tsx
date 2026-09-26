@@ -29,7 +29,7 @@ export const ExecutorListRow = ({ executor, onOpen, prewarm }: ExecutorListRowPr
     className="cursor-pointer"
     onClick={() => onOpen(executor.id)}
     tabIndex={0}
-    {...prewarmRowHandlers(prewarm, `/agents/executors/${executor.id}`)}
+    {...prewarmRowHandlers(prewarm, `/admin/computers/${executor.id}`)}
     onKeyDown={(event) => {
       if (event.target !== event.currentTarget) return
       if (event.key === 'Enter' || event.key === ' ') {

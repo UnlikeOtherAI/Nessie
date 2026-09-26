@@ -136,7 +136,7 @@ try {
     assert.equal(await page.getByText('Local Ollama', { exact: true }).count(), 0)
     await page.screenshot({ animations: 'disabled', path: resolve(output, `agents-${width}.png`) })
     await page.getByRole('tab', { name: /^Permissions/ }).click()
-    await page.getByLabel('Everyone in this team can use this executor').waitFor()
+    await page.getByLabel('Everyone in this team can use this computer').waitFor()
     assert.equal(await page.getByRole('button', { name: 'Review changes', exact: true }).count(), 0)
     await page.getByLabel('Person', { exact: true }).selectOption(invitedId)
     await page.getByLabel('Access', { exact: true }).selectOption('admin')
@@ -146,7 +146,7 @@ try {
     await page.getByLabel('Project', { exact: true }).selectOption(projectId)
     await page.getByRole('button', { name: 'Add project', exact: true }).click()
     await page.getByRole('region', { name: 'Projects with access' }).getByText('Website', { exact: true }).waitFor()
-    await page.getByLabel('Everyone in this team can use this executor').click()
+    await page.getByLabel('Everyone in this team can use this computer').click()
     await page.waitForFunction(() => document.querySelector('input[type=checkbox]')?.checked)
     assert.deepEqual(state.sharing, [
       { kind: 'person', userId: invitedId, role: 'admin' },
@@ -171,7 +171,7 @@ try {
       new RegExp('Pick up tickets[\\s\\S]*set up by Ondrej[\\s\\S]*CTO[\\s\\S]*Live[\\s\\S]*'
         + 'NES-140 Fix login redirect[\\s\\S]*holds this machine, working'))
     assert.equal(await standingSection.getByRole('link', { name: 'Pick up tickets' }).getAttribute('href'),
-      `/agents/triggers/${triggerId(1)}`, 'the trigger links to its own screen')
+      `/admin/automations/triggers/${triggerId(1)}`, 'the trigger links to its own screen')
     // Which ticket holds the machine (T5), linked to the ticket on its board.
     assert.equal(
       await standingSection.getByRole('link', { name: 'NES-140 Fix login redirect' }).first().getAttribute('href'),
@@ -205,7 +205,7 @@ try {
     await standingSection.scrollIntoViewIfNeeded()
     await page.screenshot({ animations: 'disabled', path: resolve(output, `standing-access-ended-${width}.png`) })
 
-    await page.getByRole('button', { name: 'Machine', exact: true }).click()
+    await page.getByRole('button', { name: 'Computer', exact: true }).click()
     await page.getByRole('menuitem', { name: 'Local models' }).click()
     const models = page.getByRole('dialog', { name: 'Local models', exact: true })
     await models.getByRole('button', { name: 'Disconnect local models' }).click()

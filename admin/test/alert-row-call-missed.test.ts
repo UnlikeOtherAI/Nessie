@@ -93,7 +93,7 @@ test('automatic-membership health alerts name the remedy and exact rule setting'
 
   assert.match(html, /Automatic access to Research needs reauthorization/)
   assert.deepEqual(getAlertLink(alert), {
-    to: '/settings/members?membersTab=automatic&automaticMembershipRule=55555555-5555-4555-8555-555555555555',
+    to: '/admin/people?scope=organisation&tab=automatic&automaticMembershipRule=55555555-5555-4555-8555-555555555555',
   })
 })
 
@@ -111,6 +111,6 @@ test('local inference health opens the exact owner-only recovery host', () => {
 
   assert.match(html, /Your local Ollama connection needs attention/)
   assert.deepEqual(getAlertLink(alert), {
-    to: '/settings/connections?tab=inference#local-inference-host-55555555-5555-4555-8555-555555555555',
+    to: '/settings/accounts?tab=ai#local-inference-host-55555555-5555-4555-8555-555555555555',
   })
 })

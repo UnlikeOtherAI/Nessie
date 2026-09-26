@@ -23,27 +23,22 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
 import { prepareExecutorRuntime } from '../../scripts/prepare-runtime.mjs'
+import { signMacApp, notarizeAndStaple } from './sign-app.mjs'
 import {
   APPLICATIONS_SYMLINK_NAME,
   APPLICATIONS_SYMLINK_TARGET,
-  APP_ENTITLEMENTS_FILE,
   BUILD_APP_SCRIPT,
   DEVELOPMENT_MARKER,
   EXECUTOR_RUNTIME_DIRECTORY,
-  RUNTIME_ENTITLEMENTS_FILE,
   assertBundleIdentifier,
-  assertDeveloperIdSignature,
   codesignArguments,
-  codesignVerifyArguments,
   dmgFileName,
   dmgVolumeName,
   gatekeeperAssessArguments,
   hdiutilArguments,
   missingBuildScriptMessage,
-  notarizeArguments,
   resolveBuildMode,
   resolveDmgVersion,
-  stapleArguments,
 } from './dmg-plan.mjs'
 
 const run = promisify(execFile)
@@ -111,25 +106,7 @@ const plistValue = async (appPath, key) => {
   return stdout.trim()
 }
 
-/**
- * Every Mach-O the bundle carries, deepest first, with the bundle's own main
- * executable left out: it is sealed by the bundle signature itself, and signing
- * it separately first is exactly how a bundle ends up reporting a valid inner
- * signature and an invalid outer one.
- */
-const nestedMachOFiles = async (appPath, mainExecutable) => {
-  const { stdout } = await run('/usr/bin/find', [appPath, '-type', 'f'])
-  const candidates = stdout.split('\n').map((line) => line.trim()).filter(Boolean)
-  const binaries = []
-  for (const path of candidates) {
-    if (path === mainExecutable) continue
-    const { stdout: kind } = await run('/usr/bin/file', ['--brief', '--mime-type', path])
-    if (kind.trim() === 'application/x-mach-binary') binaries.push(path)
-  }
-  // Deepest first, so a nested binary is always sealed before whatever contains
-  // it: signing a child after its parent silently breaks the parent.
-  return binaries.sort((left, right) => right.split('/').length - left.split('/').length)
-}
+
 
 /**
  * The packaged runtime, laid into the app by its one producer. The pinned Node,
@@ -144,44 +121,7 @@ const embedExecutorRuntime = async (appPath) => prepareExecutorRuntime({
 
 const sha256File = async (path) => createHash('sha256').update(await readFile(path)).digest('hex')
 
-/**
- * Signs inside-out and then asks Apple's own tools what was produced.
- *
- * The order matters twice over. The packaged Node is signed before the manifest
- * is rewritten, because a signature changes the file and
- * `executor/src/runtime-integrity.ts` refuses to serve from a runtime whose
- * bytes do not match the manifest beside them; and the manifest is rewritten
- * before the bundle is sealed, because a resource edited after sealing breaks
- * the seal.
- */
-const signApp = async (appPath, { identity, teamId }, runtime) => {
-  const appEntitlements = join(packagingDirectory, APP_ENTITLEMENTS_FILE)
-  const runtimeEntitlements = join(packagingDirectory, RUNTIME_ENTITLEMENTS_FILE)
-  const mainExecutable = join(appPath, 'Contents/MacOS', await plistValue(appPath, 'CFBundleExecutable'))
 
-  for (const path of await nestedMachOFiles(appPath, mainExecutable)) {
-    await run('codesign', codesignArguments({
-      entitlements: path === runtime.nodePath ? runtimeEntitlements : appEntitlements,
-      identity,
-      path,
-    }))
-  }
-
-  await writeFile(
-    runtime.manifestPath,
-    `${JSON.stringify({
-      ...runtime.manifest,
-      executorBundleSha256: await sha256File(runtime.executorBundlePath),
-      nodeSha256: await sha256File(runtime.nodePath),
-    }, null, 2)}\n`,
-    { mode: 0o644 },
-  )
-
-  await run('codesign', codesignArguments({ entitlements: appEntitlements, identity, path: appPath }))
-  await run('codesign', codesignVerifyArguments(appPath))
-  const { stderr } = await run('codesign', ['-dvv', appPath])
-  assertDeveloperIdSignature(stderr, teamId)
-}
 
 /**
  * The drag-to-Applications layout: the app, and a symlink to /Applications
@@ -199,22 +139,6 @@ const stageImage = async (appPath) => {
   await symlink(APPLICATIONS_SYMLINK_TARGET, join(stagingDirectory, APPLICATIONS_SYMLINK_NAME))
 }
 
-const notarizeAndStaple = async (path, notary) => {
-  process.stdout.write(`Notarizing ${basename(path)} with the ${notary.kind} credential…\n`)
-  const { stdout } = await run('xcrun', notarizeArguments(notary, path), {
-    maxBuffer: 16 * 1024 * 1024,
-  })
-  process.stdout.write(stdout)
-  if (!/status:\s*Accepted/i.test(stdout)) {
-    throw new Error(
-      `Notarization of ${basename(path)} was not Accepted. Read the log with `
-      + '`xcrun notarytool log <submission-id>`. A rejected submission is never stapled, and this '
-      + 'artifact must not be published.',
-    )
-  }
-  await run('xcrun', stapleArguments(path))
-  await run('xcrun', ['stapler', 'validate', path])
-}
 
 requireMacOs()
 
@@ -240,7 +164,7 @@ const packagePath = join(outputDirectory, name)
 const runtime = await embedExecutorRuntime(appPath)
 
 if (mode.kind === 'release') {
-  await signApp(appPath, mode, runtime)
+  await signMacApp(appPath, mode, runtime)
   await notarizeAndStaple(appPath, mode.notary)
   await run('spctl', gatekeeperAssessArguments(appPath, 'exec'))
 }

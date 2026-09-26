@@ -143,3 +143,5 @@ export {
   validatePersonalBrowserAccess,
   type PersonalBrowser,
 } from './personal-access-grant.js'
+
+export { listCloudBrowserConnectionMetadata } from './connection-directory.js'

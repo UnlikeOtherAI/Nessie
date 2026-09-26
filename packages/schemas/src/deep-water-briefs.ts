@@ -237,7 +237,7 @@ export type DeepWaterResearchReadiness = z.infer<typeof DeepWaterResearchReadine
  * still open — `LEDGER_DEEPWATER_ACTIVE_RUNS` on turning DeepWater off or
  * updating it, and the agent-revocation refusal (amendments N8.5). It names
  * the run by id, status, origin and requester only, never its topic, so an
- * owner can cancel it from the `/apps/deep-water` hero without reading it.
+ * owner can cancel it from the `/admin/apps/deep-water` hero without reading it.
  * Not strict: the refusal may name more about the run (its chat), which a
  * reader of these four fields has no use for.
  */

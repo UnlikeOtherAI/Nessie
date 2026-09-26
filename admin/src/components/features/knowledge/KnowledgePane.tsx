@@ -23,6 +23,7 @@ type KnowledgePaneProps = {
   children: ReactNode
   onBack?: () => void
   title: string
+  titleAside?: ReactNode
 }
 
 // Full-width chrome for the knowledge main area. Its actions use the shared
@@ -33,7 +34,7 @@ type KnowledgePaneProps = {
 // Android render the same action in this header. The route header underneath
 // the stage is retained off-screen and cannot be the visible doorway.
 export const KnowledgePane = ({
-  actions, below, bottomActionLabel = 'Item actions', bottomActions, children, onBack, title,
+  actions, below, bottomActionLabel = 'Item actions', bottomActions, children, onBack, title, titleAside,
 }: KnowledgePaneProps) => {
   // Only a pane that *is* an open stage publishes. The same component also
   // renders in a route layer — the space's root listing beneath an open
@@ -57,13 +58,19 @@ export const KnowledgePane = ({
         // spreadsheet's Sort, Filter, Find and Export from the desktop shell
         // and from iPad, where the header is hidden and there is no other
         // doorway to them.
-        ? (below ? <div className="min-w-0 px-[var(--page-gutter)] py-2">{below}</div> : null)
+        ? (below || titleAside ? (
+            <div className="min-w-0 px-[var(--page-gutter)] py-2">
+              {titleAside}
+              {below}
+            </div>
+          ) : null)
         : <ResponsivePageHeader
             actions={actions}
             below={below}
             leading={isStage ? <PhoneNavigationButton /> : undefined}
             onBack={onBack}
             title={title}
+            titleAside={titleAside}
           />}
       <div className={bottomActions?.length ? 'min-h-0 flex-1 overflow-y-auto pb-24' : 'min-h-0 flex-1 overflow-y-auto'}>{children}</div>
       {bottomActions?.length ? (

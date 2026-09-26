@@ -48,7 +48,7 @@ type TriggerEditorDialogProps = {
   /**
    * Whose unsent draft a create keeps. A doorway that prefills the editor (the
    * board's column menu, the Finder's "Tell an agent when this changes…")
-   * names its own, so the Triggers page's half-written create never replaces
+   * names its own, so the Schedules and triggers page's half-written create never replaces
    * the column or document it was opened for.
    */
   draftId?: string

@@ -7,7 +7,7 @@ import { seedWorkflowFailureAlert } from '../lib/seed.mjs'
 
 const proveColdLink = async (page, runId, screenshot) => {
   const runTitle = `Run ${runId.slice(0, 8)}`
-  const path = `/agents/workflows?failedRuns=1&run=${runId}`
+  const path = `/admin/automations?tab=workflows&failedRuns=1&run=${runId}`
   const heading = page.getByRole('heading', { level: 2, name: runTitle, exact: true })
 
   await gotoPath(page, path)
@@ -17,7 +17,7 @@ const proveColdLink = async (page, runId, screenshot) => {
   const opened = await heading.isVisible()
   const frame = screenshot ? await shot(page, 'desktop-workflow-failure-alert', screenshot) : undefined
   await page.getByRole('button', { name: `Back from ${runTitle}`, exact: true }).click()
-  await page.waitForURL(/\/agents\/workflows\?failedRuns=1$/u)
+  await page.waitForURL(/\/admin\/automations\?tab=workflows&failedRuns=1$/u)
   await heading.waitFor({ state: 'hidden' })
 
   return { backClosed: true, frame, opened }

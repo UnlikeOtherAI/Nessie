@@ -184,7 +184,7 @@ export const createExecutorCodingSessions = (input: {
       const addLink = (body: Record<string, unknown>): void => {
         if (input.executorId && typeof body.sessionId === 'string'
           && /^[0-9a-f-]{36}$/u.test(body.sessionId)) {
-          body.viewPath = `/agents/executors/${input.executorId}/sessions/${body.sessionId}`
+          body.viewPath = `/admin/computers/${input.executorId}/sessions/${body.sessionId}`
         }
       }
       addLink(parsed.body)

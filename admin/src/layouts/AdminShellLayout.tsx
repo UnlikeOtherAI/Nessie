@@ -43,6 +43,7 @@ import {
   ResizableSidebar,
   type SidebarSection,
 } from './admin-shell/ResizableSidebar';
+import { SettingsSidebarNav } from './admin-shell/SettingsSidebarNav';
 import { SidebarDialogs } from './admin-shell/SidebarDialogs';
 import { SidebarNav } from './admin-shell/SidebarNav';
 import { SidebarRail } from './admin-shell/SidebarRail';
@@ -259,12 +260,14 @@ const AuthenticatedAdminShellLayout = () => {
 
   // Which section that column belongs to. Its width is persisted per section
   // (ResizableSidebar's SidebarSection), so this branch and secNavElement's
-  // below have to keep agreeing on which section is active.
+  // below have to keep agreeing on which section is active. Your settings
+  // shares Admin's width: it is the same kind of page list, and the section
+  // names travel to the native shell, which knows no sixth.
   const sidebarSection: SidebarSection = shell.isKnowledgeRoute
     ? 'knowledge'
     : shell.isProjectsRoute
       ? 'projects'
-      : shell.isAdminRoute
+      : shell.isAdminRoute || shell.isSettingsRoute
         ? 'admin'
         : 'channels';
 
@@ -294,6 +297,8 @@ const AuthenticatedAdminShellLayout = () => {
       isUoaSession={shell.isUoaSession}
       pathname={shell.pathname}
     />
+  ) : shell.isSettingsRoute ? (
+    <SettingsSidebarNav pathname={shell.pathname} />
   ) : shell.isFeedbackRoute ? null : (
     sidebarNavElement
   );

@@ -24,7 +24,7 @@ import '../../src/styles.css'
 
 const EXECUTOR_ID = '33333333-3333-4333-8333-333333333333'
 const initialPath = new URLSearchParams(window.location.search).get('sessions') === '1'
-  ? '/agents/executor-sessions' : `/agents/executors/${EXECUTOR_ID}?tab=sessions`
+  ? '/admin/computers/sessions' : `/admin/computers/${EXECUTOR_ID}?tab=sessions`
 // Keep the fixture document served by Vite while exercising real browser history and reload.
 if (!window.location.hash) window.history.replaceState(null, '', `${window.location.href}#${initialPath}`)
 
@@ -43,9 +43,9 @@ createRoot(root).render(
           <PhoneNavigationProvider>
           <main className="h-screen bg-[color:var(--main)] text-[color:var(--tx)]">
             <Routes>
-              <Route path="/agents/executors/:executorId" element={<ExecutorDetailContent token={null} />} />
-              <Route path="/agents/executors/:executorId/sessions/:sessionId" element={<ExecutorSessionPage />} />
-              <Route path="/agents/executor-sessions" element={<ExecutorSessionsPage />} />
+              <Route path="/admin/computers/:executorId" element={<ExecutorDetailContent token={null} />} />
+              <Route path="/admin/computers/:executorId/sessions/:sessionId" element={<ExecutorSessionPage />} />
+              <Route path="/admin/computers/sessions" element={<ExecutorSessionsPage />} />
             </Routes>
           </main>
           </PhoneNavigationProvider>

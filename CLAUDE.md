@@ -29,13 +29,13 @@ Assistant's `channel_list` / `channel_update` tools. Read
 [the channel policy standard](docs/standards/channel-decision-policy.md) and
 [its browser evaluation](docs/testing/channel-decisions.md) before changing them.
 
-Executor pairing, independent account/server connections on each platform, and live account-menu presence follow [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md), including their browser verification.
+Executor pairing, independent account/server connections on each platform, and live presence on the computers lists follow [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md), including their browser verification.
 
 The shared macOS/Windows console and machine-only, per-team resource permissions follow [local executor controls](docs/executor-local-controls.md).
 Direct machine access from private agent chat and its self-reminders follows [executor sharing](docs/standards/executor-sharing.md); named internal links and `nessie_link` follow [agent voice](docs/standards/agent-voice.md).
 Authorized executor access has no additional private-conversation write veto; output disclosure still follows [the disclosure standard](docs/standards/disclosure-boundaries.md).
 
-Sequential Task Sets, their native agent tools and the configured
+Sequential Task Sets (Batch jobs in the admin), their native agent tools and the configured
 `serve-ollama-search-mcp` executor bridge follow
 [docs/standards/task-sets.md](docs/standards/task-sets.md).
 
@@ -228,7 +228,7 @@ sentence changes only if the invariant itself did.
 - **DeepWater research coverage:** run
   `pnpm --filter @nessie/admin test:e2e:research-brief`. A pure fixture suite
   (`NESSIE_RESEARCH_BRIEF_E2E_FIXTURE`) over the real brief dialog, research
-  card, Knowledge › Research and `/apps/deep-water` hero; The manual harness runs it after the
+  card, Knowledge › Research and `/admin/apps/deep-water` hero; The manual harness runs it after the
   agent-triggers one. The runner plays the server through `window.__research`
   (the planner answering, a launch landing, a revision conflict, DeepWater's
   progress pushes as `integration.run.updated` frames) and pins the whole
@@ -362,3 +362,5 @@ Executor sharing is direct: people receive use or admin access, projects and the
 Existing Codex/Claude session discovery and experimental Queue/Push use the
 existing executor authorization and one default-on local disable switch; see
 [existing coding sessions](docs/plans/2026-09-26-existing-coding-sessions/overview.md).
+
+Executor CLI packages, Homebrew app casks and WinGet manifests follow [package distribution](docs/releasing-executor-packages.md).

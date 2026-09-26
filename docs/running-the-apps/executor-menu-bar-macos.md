@@ -53,8 +53,8 @@ describes the same pairing in its terminal form.
 
 ## Installing it
 
-The download is `Nessie-Executor-macOS-Apple-Silicon.dmg` or
-`Nessie-Executor-macOS-Intel.dmg` from the GitHub release. **Open it, drag the
+The download is `Nessie-Executor-macOS-Apple-Silicon.dmg`
+from the GitHub release. **Open it, drag the
 app onto the Applications folder beside it, and launch it.** There is no
 right-click-Open, no `xattr -d`, no Gatekeeper bypass and no security-settings
 detour: the image is signed with the Nessie `Developer ID Application`
@@ -62,8 +62,8 @@ certificate, notarized by Apple, and has its notarization ticket stapled to both
 the image and the app inside it. If macOS ever refuses one of these downloads,
 that is a defect in the release, not a step for the person installing it.
 
-Two DMGs exist because the app carries its own pinned Node, and that binary is
-the build host's own. An Apple Silicon Mac wants the Apple Silicon image.
+The standalone executor app requires an Apple Silicon Mac and carries its own
+pinned Node runtime.
 
 The mounted volume holds exactly two things: the app, and a symlink to
 `/Applications` to drop it on. There is no scripted Finder window with a
@@ -94,13 +94,13 @@ Nessie Desktop's Developer ID build carries a copy of this app inside its own
 bundle, at `Contents/Library/LoginItems/Nessie Executor.app` — the location
 macOS intends for a menu bar helper, and the only one `SMAppService` can
 register for launch at login. A Mac with that Desktop installed needs no second
-download: **Agents → Executors** has an **Open Nessie Executor** button, and
+download: **Admin › Computers** has an **Open Nessie Executor** button, and
 clicking it puts the icon in the status bar.
 
 The DMG above is still the right download for two Macs: one that runs only the
 executor and has no reason to have the chat app on it, and one running the
-published direct-download Desktop DMG, which is ad-hoc signed and therefore
-offers no executor controls at all.
+signed direct-download Desktop DMG, which uses the separate menu bar app
+for its local console. Install it with `brew install --cask unlikeotherai/tap/nessie-executor-app`.
 
 Both copies share one bundle identifier, one state directory and one daemon
 lease, so **there is only ever one icon.** Whichever copy is launched second
@@ -122,7 +122,7 @@ for the lease. A daemon Desktop started itself stays Desktop's to stop.
 In the menu bar app, choose **Add team**, choose the folder this Mac may read,
 and click **Get pairing code**. The app displays eight digits in large black
 text with a Copy button and countdown, followed by its name and fingerprint.
-In Nessie, open **Agents → Executors → Add executor** and enter those digits.
+In Nessie, open **Admin › Computers › Pair a computer** and enter those digits.
 Check the current team and review the machine fingerprint.
 
 The Mac then names that organisation and team beside its machine fingerprint.
@@ -205,7 +205,7 @@ part of it is a copy of anything Nessie owns.
 1. Quit the app from the status bar menu. The Quit item says what it does to the
    running daemon; a stop is the daemon's own graceful teardown, with the same
    ten-second budget as every other host, and is never a `SIGKILL`.
-2. Remove the executor in Nessie (**Agents → Executors**), so the control plane
+2. Remove the executor in Nessie (**Admin › Computers**), so the control plane
    stops offering it work.
 3. Drag `/Applications/Nessie Executor.app` to the Trash.
 4. The pairing state survives on purpose, so a reinstall does not re-pair. To
@@ -305,13 +305,10 @@ the bundle targets — or the packaged runtime will pin a different one.
 
 ### In CI
 
-`.github/workflows/release.yml` → **macOS Executor menu bar** builds both
-architectures on a tag, in the same workflow as every other direct download, so
-it inherits the tag immutability, the "this tag is main's tip" preflight, and
-the `direct-download-release` environment. It deliberately does **not** inherit
-the neighbouring **macOS** job's stance: that DMG is ad-hoc signed on purpose
-and asserts that Gatekeeper rejects it, while this one asserts the opposite and
-must be installable with no bypass at all.
+`.github/workflows/release.yml` → **macOS Executor menu bar** builds the Apple
+Silicon installer on a tag. It shares the protected Developer ID credential
+setup and inside-out signer with the desktop DMG. Both must pass Gatekeeper;
+Homebrew casks are generated only from those verified installers.
 
 The job requires every credential by name before it builds, imports the
 `Developer ID` certificate into a temporary keychain, and after the build

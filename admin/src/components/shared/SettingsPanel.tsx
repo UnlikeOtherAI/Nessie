@@ -2,11 +2,27 @@ import type { ReactNode } from 'react'
 import { ScreenHeader } from './ScreenHeader'
 import type { PageHeaderAction } from './ResponsivePageHeader'
 
+/**
+ * A settings page that is one tab of a larger screen. The host owns the
+ * screen: its tab strip, its name and eyebrow, and — for a record's page — its
+ * Back. The page keeps its own header actions, subtitle and footer, because
+ * those depend on the page's own state (Notifications' Save button is bound to
+ * its form's hydration). Exactly one tab renders at a time, so there is still
+ * exactly one header on screen, and it names the screen rather than the tab.
+ */
+export type SettingsTabHostProps = {
+  backLabel?: string
+  eyebrow?: string
+  onBack?: () => void
+  tabs?: ReactNode
+  title?: string
+}
+
 interface SettingsPanelProps {
   eyebrow: string
   title: string
   actions?: PageHeaderAction[]
-  /** A settings page pushed from another one: Statuses → one status. */
+  /** A settings page pushed from another one: Status → one status. */
   backLabel?: string
   children: ReactNode
   /**
@@ -17,6 +33,11 @@ interface SettingsPanelProps {
    * is this frame's, so a caller passes the footer bare.
    */
   footer?: ReactNode
+  /**
+   * The screen hosting this page as one of its tabs. What it names wins over
+   * the page's own eyebrow, title and Back; its tab strip is the header's.
+   */
+  host?: SettingsTabHostProps
   onBack?: () => void
   /** The header's own description line, not a paragraph inside the body. */
   subtitle?: ReactNode
@@ -37,35 +58,27 @@ export const SettingsPanel = ({
   children,
   eyebrow,
   footer,
+  host,
   onBack,
   subtitle,
   tabs,
   title,
-}: SettingsPanelProps) => (
-  <section className="flex h-full min-h-0 flex-col">
-    {/* `backLabel` and `onBack` are spread rather than passed through: both are
-        string/function-typed on `ScreenHeader`, so an explicit `undefined`
-        would not satisfy them. `subtitle` and `tabs` are `ReactNode`, which
-        already includes it. */}
-    <ScreenHeader
-      actions={actions}
-      {...(backLabel ? { backLabel } : {})}
-      eyebrow={eyebrow}
-      {...(onBack ? { onBack } : {})}
-      subtitle={subtitle}
-      tabs={tabs}
-      title={title}
-    />
-    <div className="min-h-0 flex-1 overflow-y-auto px-[var(--page-gutter)] py-5">{children}</div>
-    {footer ? <div className="px-[var(--page-gutter)]">{footer}</div> : null}
-  </section>
-)
-
-/**
- * A settings page that is one tab of a larger settings screen. The parent owns
- * the tab strip and hands it down; the page keeps its own header, title and
- * actions, because those depend on the page's own state (Notifications' Save
- * button is bound to its form's hydration). Exactly one tab renders at a time,
- * so there is still exactly one header on screen.
- */
-export type SettingsTabHostProps = { tabs?: ReactNode }
+}: SettingsPanelProps) => {
+  const back = host?.onBack ?? onBack
+  const label = host?.onBack ? host.backLabel : backLabel
+  return (
+    <section className="flex h-full min-h-0 flex-col">
+      <ScreenHeader
+        actions={actions}
+        {...(label ? { backLabel: label } : {})}
+        eyebrow={host?.eyebrow ?? eyebrow}
+        {...(back ? { onBack: back } : {})}
+        subtitle={subtitle}
+        tabs={host?.tabs ?? tabs}
+        title={host?.title ?? title}
+      />
+      <div className="min-h-0 flex-1 overflow-y-auto px-[var(--page-gutter)] py-5">{children}</div>
+      {footer ? <div className="px-[var(--page-gutter)]">{footer}</div> : null}
+    </section>
+  )
+}

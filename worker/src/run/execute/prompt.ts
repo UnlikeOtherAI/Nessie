@@ -158,6 +158,8 @@ export const buildModelPrompt = (
     documents?: AgentDocumentsPromptFacts
     /** True when `card_post` is in this run's resolved builtin toolset. */
     hasCardTool?: boolean
+    /** True when the live account-metadata read is available to this run. */
+    hasAccountConnectionsTool?: boolean
     /** True when `browser_login_request` is in this run's resolved builtin toolset. */
     hasBrowserLoginRequestTool?: boolean
     /**
@@ -169,7 +171,7 @@ export const buildModelPrompt = (
      * the refusal.
      */
     canGrantBrowserTools?: boolean
-    /** One of Nessie's own agents, whose toolset the deployment fixes. */
+    /** A global specialist whose toolset the deployment fixes; excludes the PA. */
     ownToolsetFixed?: boolean
     /**
      * What the model can reach on a person's machine this turn, from the
@@ -205,6 +207,7 @@ export const buildModelPrompt = (
     options.documents ? buildAgentDocumentsBlock(options.documents) ?? '' : '',
     buildAgentCardsBlock({
       canGrantBrowserTools: options.canGrantBrowserTools ?? false,
+      hasAccountConnectionsTool: options.hasAccountConnectionsTool ?? false,
       hasBrowserLoginRequestTool: options.hasBrowserLoginRequestTool ?? false,
       hasCardTool: options.hasCardTool ?? false,
       ownToolsetFixed: options.ownToolsetFixed ?? false,

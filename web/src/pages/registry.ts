@@ -74,7 +74,7 @@ export const pages: Page[] = [
   {
     Component: ExecutorSetupPage,
     group: 'resources',
-    navLabel: 'Pair an executor',
+    navLabel: 'Install an executor',
     path: '/docs/executor-setup',
     summary: 'Install, pair and manage a computer that works with Nessie agents.',
     title: 'Set up a remote executor',

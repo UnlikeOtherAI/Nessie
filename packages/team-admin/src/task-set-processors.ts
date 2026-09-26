@@ -44,7 +44,7 @@ export const listTaskSetProcessors = async (
       localInferenceHostId: host.id,
       ...(host.inferenceResourceId ? { inferenceResourceId: host.inferenceResourceId } : {}),
       source: 'local', resourceLabel: host.displayLabel, available: reason === null,
-      reason, setupUrl: '/settings/executors',
+      reason, setupUrl: '/admin/computers',
     })
   }
   let hosted: TaskSetProcessorOption[] = []

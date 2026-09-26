@@ -895,7 +895,7 @@ Decided out of scope for this run, each one change away:
 ## Personalized homepage questions
 
 The agent DM homepage's three “Try asking” prompts use recent conversations in
-that DM, with a durable per-person/agent cache and a six-hour generation cooldown.
+that DM, with a durable per-person/agent cache and a one-hour generation cooldown.
 Opening the home alone never regenerates unchanged history. See the
 [completed home suggestions plan](../done/2026-09-26-agent-home-suggestions.md) for activity detection,
 source privacy, failure behavior and verification.

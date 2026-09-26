@@ -16,7 +16,7 @@ test('designer groups independent configuration into the shared tab bar', () => 
   assert.match(form, /label: 'Basics'/)
   assert.match(form, /label: 'Behavior'/)
   assert.match(form, /label: 'To-dos'/)
-  assert.match(form, /label: 'Tools'/)
+  assert.match(form, /label: 'Built-in tools'/)
 })
 
 test('section switches retain one designer draft and keep unavailable tools out of edit mode', () => {

@@ -1,6 +1,6 @@
 # Live terminal sessions
 
-The home is **Executors → Sessions**. It lists the latest 200 sessions the
+The home is **Admin › Computers › Sessions**. It lists the latest 200 sessions the
 person owns or has been explicitly invited to view, across their organisation.
 An executor's **Sessions** tab reuses that list, filtered to that machine.
 **View session** beside an open Local apps session, and the `viewPath` returned

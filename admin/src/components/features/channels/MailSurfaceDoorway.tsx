@@ -16,7 +16,7 @@ import { ConnectedMailComposeDialog } from '../connected-mail/ConnectedMailCompo
 import { ConnectedMailConversationView } from '../connected-mail/ConnectedMailConversation'
 import { MailboxThreadList, MailboxWorkspace, type MailboxThreadSummary } from '../mailbox/MailboxWorkspace'
 import { mailPath, useConnectedMailAccounts, useConnectedMailConversation, useConnectedMailThreads, useSelectedConnectedMailConversations } from '../../../facades/mail/hooks'
-import { connectedMailSettingsPath } from '../../../facades/mail/settings-path'
+import { useOpenMailSettings } from '../connected-mail/useOpenMailSettings'
 
 export type MailSurfaceDoorway = MailSurfaceDoorwayMetadata
 
@@ -195,6 +195,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   // rebuilt the storage key on every parent re-render.
   const doorway = useMemo(() => readMailSurfaceDoorway(metadata), [metadata])
   const navigate = useNavigate()
+  const openMailSettings = useOpenMailSettings()
   const layout = useNavigationLayout()
   const accounts = useConnectedMailAccounts(Boolean(doorway))
   const [open, setOpen] = useState(false)
@@ -300,7 +301,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
       <span className="text-xs text-[color:var(--tx2)]">{title}</span>
       {!isGmailDraftDoorway ? <button className="admin-button admin-button-secondary admin-button-compact" onClick={() => void checkAndOpen()} type="button">{doorway.mode === 'compose' ? 'Edit' : 'Open mail'}</button> : null}
       {accessError ? <span aria-live="polite" className="text-xs text-[color:var(--danger)]">{accessError}</span> : null}
-      {accessError && matchingAccount ? <button className="text-xs font-semibold text-[color:var(--accent)]" onClick={() => navigate(connectedMailSettingsPath(matchingAccount))} type="button">Open mailbox settings</button> : null}
+      {accessError && matchingAccount ? <button className="text-xs font-semibold text-[color:var(--accent)]" onClick={() => openMailSettings(matchingAccount)} type="button">Open mailbox settings</button> : null}
       {isGmailDraftDoorway && doorway.draftId && authorizedDoorwayAccount ? (
         <GmailDraftChatPreview
           canSend={authorizedDoorwayAccount.canSend}
@@ -325,7 +326,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
           address={{ accountId: authorizedDoorwayAccount.id, source: authorizedDoorwayAccount.source }}
           gmailDraftId={doorway.draftId}
           onClose={close}
-          onOpenSettings={() => navigate(connectedMailSettingsPath(authorizedDoorwayAccount))}
+          onOpenSettings={() => openMailSettings(authorizedDoorwayAccount)}
           onSent={close}
           onStartNewEmail={(id) => {
             close()
