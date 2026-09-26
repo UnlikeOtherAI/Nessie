@@ -49,7 +49,10 @@ const text = (html: string): string => html.replace(/<[^>]+>/g, '').replace(/&#x
 test('the reviewed policy names the coding agents, their stance and their folders', () => {
   const shown = text(renderReview(revision(facts)))
   assert.match(shown, /Coding agents on this computer: Claude Code \(accept edits, 3 pre-allowed commands\) in nessie/)
-  assert.match(shown, /They work as this computer’s user, with its files and logins\. Configuration sha256:1a2b3c4d5e6f/)
+  assert.match(
+    shown,
+    /They work as this computer’s user, with its files and logins\. Configuration sha256:1a2b3c4d5e6f/,
+  )
   assert.doesNotMatch(shown, /Given the variables/, 'no environment line when the configuration names none')
 })
 
