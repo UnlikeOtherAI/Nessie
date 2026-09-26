@@ -95,5 +95,41 @@
     "noResults": "Aucun résultat",
     "partialError": "La recherche a échoué dans certaines sections : {{error}}",
     "seeAllResults": "Voir tous les résultats"
+  },
+  "projects": {
+    "create": "Créer un projet",
+    "newProject": "Nouveau projet",
+    "empty": "Cette équipe ne comporte encore aucun projet.",
+    "browseAll": "Parcourir tous les projets",
+    "deleteFailed": "Échec de la suppression du projet",
+    "deleteError": "Impossible de supprimer le projet",
+    "expandChannels": "Développer les canaux de {{name}}",
+    "collapseChannels": "Réduire les canaux de {{name}}",
+    "actionsFor": "Actions du projet {{name}}",
+    "addChannelLabel": "Ajouter un canal au projet",
+    "addChannel": "Ajouter un canal au projet",
+    "renameIcon": "Modifier le nom et l’icône",
+    "noChannels": "Il n’y a pas encore de canaux.",
+    "deleteWarning": "Cette action est irréversible.",
+    "delete": "Supprimer",
+    "deleteNamed": "Supprimer le projet « {{name}} » ?"
+  },
+  "projectSections": {
+    "overview": "Vue d’ensemble",
+    "boards": "Tableaux",
+    "backlog": "Travail en attente",
+    "insights": "Analyses",
+    "docs": "Documents",
+    "dashboards": "Tableaux de bord",
+    "executors": "Exécuteurs",
+    "settings": "Paramètres",
+    "withCount": "{{label}} ({{total}})",
+    "collapseBoards": "Réduire les tableaux",
+    "expandBoards": "Développer les tableaux",
+    "newBoard": "Nouveau tableau",
+    "loadingBoards": "Chargement des tableaux…",
+    "loadError": "Impossible de charger les tableaux.",
+    "retry": "Réessayer",
+    "emptyBoards": "Il n’y a pas encore de tableaux."
   }
 }

@@ -95,5 +95,41 @@
     "noResults": "Nessun risultato",
     "partialError": "Impossibile cercare in alcune sezioni: {{error}}",
     "seeAllResults": "Vedi tutti i risultati"
+  },
+  "projects": {
+    "create": "Crea progetto",
+    "newProject": "Nuovo progetto",
+    "empty": "Non ci sono ancora progetti in questo team.",
+    "browseAll": "Esplora tutti i progetti",
+    "deleteFailed": "Impossibile eliminare il progetto",
+    "deleteError": "Impossibile eliminare il progetto",
+    "expandChannels": "Espandi i canali di {{name}}",
+    "collapseChannels": "Comprimi i canali di {{name}}",
+    "actionsFor": "Azioni del progetto {{name}}",
+    "addChannelLabel": "Aggiungi un nuovo canale al progetto",
+    "addChannel": "Aggiungi canale al progetto",
+    "renameIcon": "Modifica nome e icona",
+    "noChannels": "Non ci sono ancora canali.",
+    "deleteWarning": "Questa azione non può essere annullata.",
+    "delete": "Elimina",
+    "deleteNamed": "Eliminare il progetto “{{name}}”?"
+  },
+  "projectSections": {
+    "overview": "Panoramica",
+    "boards": "Bacheche",
+    "backlog": "Attività in sospeso",
+    "insights": "Analisi",
+    "docs": "Documenti",
+    "dashboards": "Dashboard",
+    "executors": "Esecutori",
+    "settings": "Impostazioni",
+    "withCount": "{{label}} ({{total}})",
+    "collapseBoards": "Comprimi le bacheche",
+    "expandBoards": "Espandi le bacheche",
+    "newBoard": "Nuova bacheca",
+    "loadingBoards": "Caricamento delle bacheche…",
+    "loadError": "Impossibile caricare le bacheche.",
+    "retry": "Riprova",
+    "emptyBoards": "Non ci sono ancora bacheche."
   }
 }

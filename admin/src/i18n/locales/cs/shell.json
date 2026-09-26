@@ -95,5 +95,41 @@
     "noResults": "Žádné výsledky",
     "partialError": "V některých sekcích se nepodařilo hledat: {{error}}",
     "seeAllResults": "Zobrazit všechny výsledky"
+  },
+  "projects": {
+    "create": "Vytvořit projekt",
+    "newProject": "Nový projekt",
+    "empty": "V tomto týmu zatím nejsou žádné projekty.",
+    "browseAll": "Procházet všechny projekty",
+    "deleteFailed": "Projekt se nepodařilo smazat",
+    "deleteError": "Projekt nelze smazat",
+    "expandChannels": "Rozbalit kanály v projektu {{name}}",
+    "collapseChannels": "Sbalit kanály v projektu {{name}}",
+    "actionsFor": "Akce projektu {{name}}",
+    "addChannelLabel": "Přidat nový kanál do projektu",
+    "addChannel": "Přidat kanál do projektu",
+    "renameIcon": "Změnit název a ikonu",
+    "noChannels": "Zatím tu nejsou žádné kanály.",
+    "deleteWarning": "Tuto akci nelze vrátit zpět.",
+    "delete": "Smazat",
+    "deleteNamed": "Smazat projekt „{{name}}“?"
+  },
+  "projectSections": {
+    "overview": "Přehled",
+    "boards": "Nástěnky",
+    "backlog": "Nevyřízené úkoly",
+    "insights": "Přehledy",
+    "docs": "Dokumenty",
+    "dashboards": "Řídicí panely",
+    "executors": "Executory",
+    "settings": "Nastavení",
+    "withCount": "{{label}} ({{total}})",
+    "collapseBoards": "Sbalit nástěnky",
+    "expandBoards": "Rozbalit nástěnky",
+    "newBoard": "Nová nástěnka",
+    "loadingBoards": "Načítání nástěnek…",
+    "loadError": "Nástěnky se nepodařilo načíst.",
+    "retry": "Zkusit znovu",
+    "emptyBoards": "Zatím tu nejsou žádné nástěnky."
   }
 }

@@ -95,5 +95,41 @@
     "noResults": "Sin resultados",
     "partialError": "No se pudo buscar en algunas secciones: {{error}}",
     "seeAllResults": "Ver todos los resultados"
+  },
+  "projects": {
+    "create": "Crear proyecto",
+    "newProject": "Nuevo proyecto",
+    "empty": "Todavía no hay proyectos en este equipo.",
+    "browseAll": "Explorar todos los proyectos",
+    "deleteFailed": "No se pudo eliminar el proyecto",
+    "deleteError": "No se pudo eliminar el proyecto",
+    "expandChannels": "Expandir los canales de {{name}}",
+    "collapseChannels": "Contraer los canales de {{name}}",
+    "actionsFor": "Acciones del proyecto {{name}}",
+    "addChannelLabel": "Añadir un canal al proyecto",
+    "addChannel": "Añadir canal al proyecto",
+    "renameIcon": "Cambiar nombre e icono",
+    "noChannels": "Todavía no hay canales.",
+    "deleteWarning": "Esta acción no se puede deshacer.",
+    "delete": "Eliminar",
+    "deleteNamed": "¿Eliminar el proyecto «{{name}}»?"
+  },
+  "projectSections": {
+    "overview": "Resumen",
+    "boards": "Tableros",
+    "backlog": "Tareas pendientes",
+    "insights": "Análisis",
+    "docs": "Documentos",
+    "dashboards": "Paneles",
+    "executors": "Ejecutores",
+    "settings": "Configuración",
+    "withCount": "{{label}} ({{total}})",
+    "collapseBoards": "Contraer tableros",
+    "expandBoards": "Expandir tableros",
+    "newBoard": "Nuevo tablero",
+    "loadingBoards": "Cargando tableros…",
+    "loadError": "No se pudieron cargar los tableros.",
+    "retry": "Reintentar",
+    "emptyBoards": "Todavía no hay tableros."
   }
 }
