@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Sheet } from '../../components/overlays/Sheet';
+import { useTranslation } from 'react-i18next';
 
 type MobileNavDrawerProps = {
   open: boolean;
@@ -12,8 +13,9 @@ type MobileNavDrawerProps = {
 // AdminSidebarNav, …) which already carry their own width / background / scroll,
 // so the sheet takes the `auto` geometry and stays narrower than the viewport —
 // the scrim beside it is the tap target that closes it.
-export const MobileNavDrawer = ({ open, onClose, children }: MobileNavDrawerProps) => (
-  <Sheet onClose={onClose} open={open} side="left" size="auto" title="Navigation">
+export const MobileNavDrawer = ({ open, onClose, children }: MobileNavDrawerProps) => {
+  const { t } = useTranslation('shell');
+  return <Sheet onClose={onClose} open={open} side="left" size="auto" title={t('navigation.title')}>
     <div
       className="flex min-h-0 flex-1 shadow-[0_24px_80px_var(--scrim-strong)]"
       style={{
@@ -23,5 +25,5 @@ export const MobileNavDrawer = ({ open, onClose, children }: MobileNavDrawerProp
     >
       {children}
     </div>
-  </Sheet>
-);
+  </Sheet>;
+};

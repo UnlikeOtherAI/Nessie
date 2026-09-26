@@ -15,6 +15,7 @@ import { SidebarMenuSection } from './SidebarMenuSection';
 import { SidebarAgentSessions } from './SidebarAgentSessions';
 import { useLocation } from 'react-router-dom';
 import { parseThreadIdFromPath } from '../../lib/channel-route';
+import { useTranslation } from 'react-i18next';
 import type { SidebarAgentDm, StarredItem, VisibleStarredEntry } from './types';
 
 type SidebarStarredSectionProps = {
@@ -52,6 +53,7 @@ export const SidebarStarredSection = ({
   toggleStarredCollapsed,
   unreadCountByChannelId,
 }: SidebarStarredSectionProps) => {
+  const { t } = useTranslation('shell');
   const { token } = useAuthSession();
   const { pathname } = useLocation();
   const selectedSessionId = parseThreadIdFromPath(pathname);
@@ -70,7 +72,7 @@ export const SidebarStarredSection = ({
       id="sidebar-nav-starred"
       isCollapsed={starredCollapsed}
       onToggle={toggleStarredCollapsed}
-      title="Starred"
+      title={t('sidebar.starred')}
       titleIcon={
         <svg
           className="h-3.5 w-3.5 flex-shrink-0 text-[color:var(--warning-text)]"

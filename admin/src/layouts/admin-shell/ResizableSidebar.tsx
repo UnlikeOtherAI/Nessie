@@ -5,6 +5,7 @@ import { useFullScreenSidePanelOpen } from '../../hooks/useSidePanelGeometry'
 import { useViewport } from '../../hooks/useViewport'
 import { getCookie, setCookie } from '../../lib/storage'
 import { useNativeListColumnBridge } from './native-list-column'
+import { useTranslation } from 'react-i18next'
 
 // The pre-section cookie. It is still read as the starting point for a
 // section a person has never resized, so the one width they had chosen
@@ -91,6 +92,7 @@ const SectionResizableSidebar = ({
   fixed = false,
   section,
 }: ResizableSidebarProps) => {
+  const { t } = useTranslation('shell')
   const sidebarRef = useRef<HTMLDivElement>(null)
   // The native shells draw their own chrome over this column, and only the
   // document knows where a resizable, per-section width ended up.
@@ -243,7 +245,7 @@ const SectionResizableSidebar = ({
       {children}
       {!fixed && !sidePanelCoversShell ? (
         <div
-          aria-label="Resize sidebar"
+          aria-label={t('sidebar.resize')}
           aria-orientation="vertical"
           aria-valuemax={MAX_SIDEBAR_WIDTH_PERCENT}
           aria-valuemin={Math.ceil(minimumSidebarWidthPercent(viewportWidth))}

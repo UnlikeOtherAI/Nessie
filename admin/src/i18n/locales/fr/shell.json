@@ -5,7 +5,8 @@
     "knowledge": "Connaissances",
     "admin": "Administration",
     "search": "Rechercher",
-    "main": "Navigation principale"
+    "main": "Navigation principale",
+    "title": "Navigation"
   },
   "focus": {
     "turnOff": "Désactiver le mode concentration",
@@ -16,7 +17,14 @@
   },
   "sidebar": {
     "threads": "Fils de discussion",
-    "unreadMessages": "Messages non lus"
+    "unreadMessages": "Messages non lus",
+    "createChannel": "Créer un canal",
+    "sharedChannels": "Canaux partagés",
+    "noSharedChannels": "Il n’y a pas encore de canaux partagés.",
+    "startNewChat": "Démarrer une nouvelle discussion",
+    "directMessages": "Messages directs",
+    "starred": "Favoris",
+    "resize": "Redimensionner la barre latérale"
   },
   "create": {
     "title": "Créer",
@@ -77,5 +85,15 @@
     },
     "fullRefresh": "Actualiser complètement",
     "failedWorkflowRuns": "Exécutions de flux de travail en échec : {{total}}"
+  },
+  "search": {
+    "close": "Fermer la recherche",
+    "placeholderNamed": "Rechercher dans {{name}}",
+    "hybridDescription": "La recherche hybride ajoute des correspondances de sens tout en conservant les correspondances exactes.",
+    "fullTextDescription": "La recherche en texte intégral cherche les mots saisis dans toutes les sections.",
+    "searching": "Recherche en cours…",
+    "noResults": "Aucun résultat",
+    "partialError": "La recherche a échoué dans certaines sections : {{error}}",
+    "seeAllResults": "Voir tous les résultats"
   }
 }

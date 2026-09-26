@@ -5,7 +5,8 @@
     "knowledge": "Znalosti",
     "admin": "Správa",
     "search": "Hledat",
-    "main": "Hlavní navigace"
+    "main": "Hlavní navigace",
+    "title": "Navigace"
   },
   "focus": {
     "turnOff": "Vypnout režim soustředění",
@@ -16,7 +17,14 @@
   },
   "sidebar": {
     "threads": "Vlákna",
-    "unreadMessages": "Nepřečtené zprávy"
+    "unreadMessages": "Nepřečtené zprávy",
+    "createChannel": "Vytvořit kanál",
+    "sharedChannels": "Sdílené kanály",
+    "noSharedChannels": "Zatím žádné sdílené kanály.",
+    "startNewChat": "Zahájit nový chat",
+    "directMessages": "Soukromé zprávy",
+    "starred": "Označené hvězdičkou",
+    "resize": "Změnit šířku postranního panelu"
   },
   "create": {
     "title": "Vytvořit",
@@ -77,5 +85,15 @@
     },
     "fullRefresh": "Úplně obnovit",
     "failedWorkflowRuns": "Neúspěšné běhy pracovních postupů: {{total}}"
+  },
+  "search": {
+    "close": "Zavřít hledání",
+    "placeholderNamed": "Hledat v {{name}}",
+    "hybridDescription": "Hybridní hledání přidává shody podle významu a zachovává přesné shody.",
+    "fullTextDescription": "Fulltextové hledání vyhledává zadaná slova ve všech sekcích.",
+    "searching": "Hledání…",
+    "noResults": "Žádné výsledky",
+    "partialError": "V některých sekcích se nepodařilo hledat: {{error}}",
+    "seeAllResults": "Zobrazit všechny výsledky"
   }
 }

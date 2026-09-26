@@ -5,7 +5,8 @@
     "knowledge": "Knowledge",
     "admin": "Admin",
     "search": "Search",
-    "main": "Main navigation"
+    "main": "Main navigation",
+    "title": "Navigation"
   },
   "focus": {
     "turnOff": "Turn off focus mode",
@@ -16,7 +17,14 @@
   },
   "sidebar": {
     "threads": "Threads",
-    "unreadMessages": "Unread messages"
+    "unreadMessages": "Unread messages",
+    "createChannel": "Create channel",
+    "sharedChannels": "Shared channels",
+    "noSharedChannels": "There are no shared channels yet.",
+    "startNewChat": "Start new chat",
+    "directMessages": "Direct messages",
+    "starred": "Starred",
+    "resize": "Resize sidebar"
   },
   "create": {
     "title": "Create",
@@ -77,5 +85,15 @@
     },
     "fullRefresh": "Full refresh",
     "failedWorkflowRuns": "Failed workflow runs: {{total}}"
+  },
+  "search": {
+    "close": "Close search",
+    "placeholderNamed": "Search {{name}}",
+    "hybridDescription": "Hybrid search adds meaning-based matches while keeping exact matches.",
+    "fullTextDescription": "Full text searches the words you entered across every section.",
+    "searching": "Searching…",
+    "noResults": "No results",
+    "partialError": "Some sections could not be searched: {{error}}",
+    "seeAllResults": "See all results"
   }
 }

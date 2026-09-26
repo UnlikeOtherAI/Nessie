@@ -5,7 +5,8 @@
     "knowledge": "Wissen",
     "admin": "Verwaltung",
     "search": "Suchen",
-    "main": "Hauptnavigation"
+    "main": "Hauptnavigation",
+    "title": "Navigation"
   },
   "focus": {
     "turnOff": "Fokusmodus ausschalten",
@@ -16,7 +17,14 @@
   },
   "sidebar": {
     "threads": "Threads",
-    "unreadMessages": "Ungelesene Nachrichten"
+    "unreadMessages": "Ungelesene Nachrichten",
+    "createChannel": "Kanal erstellen",
+    "sharedChannels": "Gemeinsame Kanäle",
+    "noSharedChannels": "Noch keine gemeinsamen Kanäle vorhanden.",
+    "startNewChat": "Neuen Chat beginnen",
+    "directMessages": "Direktnachrichten",
+    "starred": "Mit Stern markiert",
+    "resize": "Seitenleiste vergrößern oder verkleinern"
   },
   "create": {
     "title": "Erstellen",
@@ -77,5 +85,15 @@
     },
     "fullRefresh": "Vollständig neu laden",
     "failedWorkflowRuns": "Fehlgeschlagene Workflow-Ausführungen: {{total}}"
+  },
+  "search": {
+    "close": "Suche schließen",
+    "placeholderNamed": "{{name}} durchsuchen",
+    "hybridDescription": "Die hybride Suche findet auch sinngemäße Treffer und behält genaue Übereinstimmungen bei.",
+    "fullTextDescription": "Die Volltextsuche sucht die eingegebenen Wörter in allen Bereichen.",
+    "searching": "Suche läuft …",
+    "noResults": "Keine Ergebnisse",
+    "partialError": "Einige Bereiche konnten nicht durchsucht werden: {{error}}",
+    "seeAllResults": "Alle Ergebnisse anzeigen"
   }
 }

@@ -4,6 +4,7 @@ import { isReactNativeWebView } from '../../lib/native-shell'
 import { useNativeIPadApp } from '../../navigation/mobile-shell'
 import { TopBarSearch } from './TopBarSearch'
 import { useTransientMenu } from './TransientMenuContext'
+import { useTranslation } from 'react-i18next'
 
 type RnWindow = Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void }
@@ -21,6 +22,7 @@ const postOverlayState = (active: boolean) => {
 }
 
 export const NativeSearchOverlay = () => {
+  const { t } = useTranslation('shell')
   const location = useLocation()
   const nativeIPadApp = useNativeIPadApp()
   const { close, isOpen: open, open: openMenu } = useTransientMenu()
@@ -54,13 +56,13 @@ export const NativeSearchOverlay = () => {
   return (
     <div className="native-search-overlay" role="presentation">
       <button
-        aria-label="Close search"
+        aria-label={t('search.close')}
         className="native-search-overlay-backdrop"
         onClick={close}
         type="button"
       />
       <div
-        aria-label="Search"
+        aria-label={t('navigation.search')}
         aria-modal="true"
         className="native-search-overlay-panel"
         role="dialog"
