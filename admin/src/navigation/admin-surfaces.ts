@@ -156,7 +156,7 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     intent: {
       consume: ['create'],
       state: [
-        'tab', 'status', 'search', 'type',
+        'tab', 'status', 'search', 'type', 'trigger',
         'template', 'installation', 'run', 'failedRuns', 'demonstrationDrafts',
       ],
     },
