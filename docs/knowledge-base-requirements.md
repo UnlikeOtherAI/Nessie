@@ -458,6 +458,8 @@ that column):
     fills the whole main area as a borderless writing canvas: the title and body
     are edited in place with descriptive placeholders, labels and the optional
     change comment sit below the body, and there is no separate Summary field.
+    While editing, its header shows a non-interactive, truncated location trail
+    from the space through ancestor folders to the current draft title.
     Typing a comma or space commits a label into a removable chip beside the
     input, matching its saved appearance. An unfinished label is included when
     the document is saved; previously saved labels containing spaces remain intact.

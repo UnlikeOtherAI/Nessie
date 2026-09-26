@@ -49,6 +49,7 @@ export type ResponsivePageHeaderProps = {
   leading?: ReactNode
   onBack?: () => void
   title: string
+  titleAside?: ReactNode
   titleId?: string
   titleInput?: {
     ariaLabel: string
@@ -134,6 +135,7 @@ export const ResponsivePageHeader = ({
   leading,
   onBack,
   title,
+  titleAside,
   titleId,
   titleInput,
   titleTone = 'page',
@@ -336,29 +338,32 @@ export const ResponsivePageHeader = ({
               ) : null}
             </div>
           ) : null}
-          <div className="min-w-0 flex-1">
-            {eyebrow ? (
-              <div className="truncate text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-                {eyebrow}
-              </div>
-            ) : null}
-            {titleInput ? (
-              <input
-                aria-label={titleInput.ariaLabel}
-                className="w-full border-none bg-transparent text-[15px] font-semibold text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
-                onChange={(event) => titleInput.onChange(event.target.value)}
-                placeholder={titleInput.placeholder}
-                value={titleInput.value}
-              />
-            ) : titleTone === 'section' ? (
-              <SectionLabel as="h2" className="truncate">
-                {title}
-              </SectionLabel>
-            ) : (
-              <Heading className="truncate text-[17px] font-bold text-[color:var(--tx)]" id={titleId}>
-                {title}
-              </Heading>
-            )}
+          <div className="flex min-w-0 flex-1 items-center gap-4">
+            <div className={titleAside ? 'min-w-0 flex-1 md:flex-shrink-0' : 'min-w-0 flex-1'}>
+              {eyebrow ? (
+                <div className="truncate text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
+                  {eyebrow}
+                </div>
+              ) : null}
+              {titleInput ? (
+                <input
+                  aria-label={titleInput.ariaLabel}
+                  className="w-full border-none bg-transparent text-[15px] font-semibold text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
+                  onChange={(event) => titleInput.onChange(event.target.value)}
+                  placeholder={titleInput.placeholder}
+                  value={titleInput.value}
+                />
+              ) : titleTone === 'section' ? (
+                <SectionLabel as="h2" className="truncate">
+                  {title}
+                </SectionLabel>
+              ) : (
+                <Heading className="truncate text-[17px] font-bold text-[color:var(--tx)]" id={titleId}>
+                  {title}
+                </Heading>
+              )}
+            </div>
+            {titleAside ? <div className="hidden min-w-0 flex-1 md:block">{titleAside}</div> : null}
           </div>
         </div>
 
@@ -424,6 +429,9 @@ export const ResponsivePageHeader = ({
         ) : null}
       </div>
 
+      {titleAside ? (
+        <div className="min-w-0 px-[var(--page-gutter)] pb-2 md:hidden">{titleAside}</div>
+      ) : null}
       {below ? <div className="min-w-0 px-[var(--page-gutter)] pb-2">{below}</div> : null}
 
       <div

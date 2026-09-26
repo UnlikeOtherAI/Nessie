@@ -11,6 +11,7 @@ import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 import { FormError } from '../../shared/FormActions'
 import { Pill } from '../../primitives/Pill'
 import { KnowledgePane } from './KnowledgePane'
+import { knowledgePageAncestors } from './page-ancestors'
 import { RichTextEditor } from './RichTextEditor'
 
 // One unsent page edit. Kept whole so leaving the editor loses nothing,
@@ -127,6 +128,12 @@ export const PageEditor = ({
   const setBody = useCallback((next: string) => patchDraft({ body: next }), [patchDraft])
   const committedLabels = splitLabels(labels)
   const labelInput = pageDraft.draft.labelInput ?? ''
+  const pageById = new Map(pages.map((candidate) => [candidate.id, candidate]))
+  const location = [
+    spaceName,
+    ...knowledgePageAncestors(page ?? undefined, (id) => pageById.get(id)).map((ancestor) => ancestor.title),
+    title || 'Untitled document',
+  ].join(' / ')
 
   const updateLabelInput = (value: string) => {
     const parts = value.split(/[,\s]+/)
@@ -233,6 +240,11 @@ export const PageEditor = ({
         actions={actions}
         onBack={onBack}
         title={mode === 'create' ? 'New document' : 'Edit document'}
+        titleAside={mode === 'edit' ? (
+          <nav aria-label="Document location" className="truncate text-sm text-[color:var(--tx3)]" title={location}>
+            {location}
+          </nav>
+        ) : undefined}
       >
         <div className="h-full overflow-y-auto">
           <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-6 py-10 sm:px-10 sm:py-14 lg:px-16">
