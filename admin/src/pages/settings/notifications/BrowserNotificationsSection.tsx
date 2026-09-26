@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   useSubscribeWebPush,
   useUnsubscribeWebPush,
@@ -24,6 +25,7 @@ const getNotificationPermission = (): NotificationPermission | null =>
  * alone. Gracefully degrades when web push is unavailable.
  */
 export const BrowserNotificationsSection = () => {
+  const { t } = useTranslation('settings')
   const { data: config, isLoading: configLoading } = useWebPushConfig()
   const subscribeWebPush = useSubscribeWebPush()
   const unsubscribeWebPush = useUnsubscribeWebPush()
@@ -58,20 +60,20 @@ export const BrowserNotificationsSection = () => {
 
   const describeState = (): string => {
     if (!supported) {
-      return 'This browser does not support web push notifications.'
+      return t('notifications.browserUnsupported')
     }
     if (configLoading) {
-      return 'Checking availability…'
+      return t('notifications.checkingAvailability')
     }
     if (!configEnabled) {
-      return 'Browser notifications are not configured on this instance.'
+      return t('notifications.browserNotConfigured')
     }
     if (denied) {
-      return 'Notifications are blocked. Allow them in your browser settings to enable.'
+      return t('notifications.browserBlocked')
     }
     return subscribed
-      ? 'Enabled for this organization on this browser'
-      : 'Disabled for this organization'
+      ? t('notifications.browserEnabled')
+      : t('notifications.browserDisabled')
   }
 
   const handleToggle = async (next: boolean) => {
@@ -80,23 +82,23 @@ export const BrowserNotificationsSection = () => {
     try {
       if (next) {
         if (!publicKey) {
-          throw new Error('Browser notifications are not configured on this instance.')
+          throw new Error(t('notifications.browserNotConfigured'))
         }
         const subscription = await subscribeBrowser(publicKey)
         const registration = await subscribeWebPush.mutateAsync(subscription)
         setBrowserEndpoint(registration.endpoint)
-        setFeedback({ kind: 'success', message: 'Browser notifications enabled.' })
+        setFeedback({ kind: 'success', message: t('notifications.browserEnabledToast') })
       } else {
         if (browserEndpoint) {
           await unsubscribeWebPush.mutateAsync({ endpoint: browserEndpoint })
         }
-        setFeedback({ kind: 'success', message: 'Browser notifications disabled for this organization.' })
+        setFeedback({ kind: 'success', message: t('notifications.browserDisabledToast') })
       }
     } catch (error) {
       setFeedback({
         kind: 'error',
         message:
-          error instanceof Error ? error.message : 'Failed to update browser notifications.',
+          error instanceof Error ? error.message : t('notifications.browserUpdateFailed'),
       })
     } finally {
       setBusy(false)
@@ -105,16 +107,16 @@ export const BrowserNotificationsSection = () => {
 
   return (
     <section className="admin-card p-4">
-      <SectionLabel>Browser notifications</SectionLabel>
+      <SectionLabel>{t('notifications.browserNotifications')}</SectionLabel>
       <div className="mt-4 flex items-center justify-between gap-4">
         <div>
-          <div className="font-semibold text-[color:var(--tx)]">Browser notifications</div>
+          <div className="font-semibold text-[color:var(--tx)]">{t('notifications.browserNotifications')}</div>
           <div className="mt-1 text-sm text-[color:var(--tx2)]">{describeState()}</div>
         </div>
         <Switch
           checked={subscribed}
           disabled={toggleDisabled}
-          label="Toggle browser notifications"
+          label={t('notifications.toggleBrowser')}
           onChange={(next) => void handleToggle(next)}
         />
       </div>

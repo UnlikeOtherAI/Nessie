@@ -5,7 +5,8 @@
     "knowledge": "Knowledge",
     "admin": "Admin",
     "search": "Search",
-    "main": "Main navigation"
+    "main": "Main navigation",
+    "title": "Navigation"
   },
   "focus": {
     "turnOff": "Turn off focus mode",
@@ -16,7 +17,14 @@
   },
   "sidebar": {
     "threads": "Threads",
-    "unreadMessages": "Unread messages"
+    "unreadMessages": "Unread messages",
+    "createChannel": "Create channel",
+    "sharedChannels": "Shared channels",
+    "noSharedChannels": "There are no shared channels yet.",
+    "startNewChat": "Start new chat",
+    "directMessages": "Direct messages",
+    "starred": "Starred",
+    "resize": "Resize sidebar"
   },
   "create": {
     "title": "Create",
@@ -30,5 +38,98 @@
     "agentDescription": "Create a private or shared agent",
     "new": "Create new",
     "tooltipDescription": "Start a message, channel, project, or agent."
+  },
+  "alerts": {
+    "title": "Alerts",
+    "markAllRead": "Mark all read",
+    "empty": "No alerts yet"
+  },
+  "recentChannels": {
+    "title": "Recent channels",
+    "empty": "No recent channels"
+  },
+  "history": {
+    "back": "Back",
+    "forward": "Forward"
+  },
+  "adminNav": {
+    "groups": {
+      "agents": "Agents",
+      "user": "User",
+      "team": "Team",
+      "organization": "Organization",
+      "governance": "Governance",
+      "platform": "Platform"
+    },
+    "items": {
+      "agents": "Agents",
+      "workflows": "Workflows",
+      "taskSets": "Task Sets",
+      "triggers": "Triggers",
+      "tools": "Tools",
+      "executors": "Executors",
+      "apps": "Apps",
+      "settings": "Settings",
+      "secrets": "Secrets",
+      "connectedAccounts": "Connected accounts",
+      "pairedAgents": "Paired agents",
+      "statuses": "Statuses",
+      "models": "Models",
+      "members": "Members",
+      "creditsBilling": "Credits & billing",
+      "health": "Health",
+      "pushCredentials": "Push credentials",
+      "auditLog": "Audit log",
+      "policy": "Policy",
+      "operationalUsage": "Operational usage"
+    },
+    "fullRefresh": "Full refresh",
+    "failedWorkflowRuns": "Failed workflow runs: {{total}}"
+  },
+  "search": {
+    "close": "Close search",
+    "placeholderNamed": "Search {{name}}",
+    "hybridDescription": "Hybrid search adds meaning-based matches while keeping exact matches.",
+    "fullTextDescription": "Full text searches the words you entered across every section.",
+    "searching": "Searching…",
+    "noResults": "No results",
+    "partialError": "Some sections could not be searched: {{error}}",
+    "seeAllResults": "See all results"
+  },
+  "projects": {
+    "create": "Create project",
+    "newProject": "New project",
+    "empty": "There are no projects in this team yet.",
+    "browseAll": "Browse all projects",
+    "deleteFailed": "Failed to delete project",
+    "deleteError": "Could not delete project",
+    "expandChannels": "Expand channels in {{name}}",
+    "collapseChannels": "Collapse channels in {{name}}",
+    "actionsFor": "Project actions for {{name}}",
+    "addChannelLabel": "Add a new channel within this project",
+    "addChannel": "Add channel to project",
+    "renameIcon": "Rename and icon",
+    "noChannels": "There are no channels yet.",
+    "deleteWarning": "This cannot be undone.",
+    "delete": "Delete",
+    "deleteNamed": "Delete project “{{name}}”?"
+  },
+  "projectSections": {
+    "overview": "Overview",
+    "boards": "Boards",
+    "backlog": "Backlog",
+    "insights": "Insights",
+    "docs": "Docs",
+    "dashboards": "Dashboards",
+    "executors": "Executors",
+    "settings": "Settings",
+    "withCount": "{{label}} ({{total}})",
+    "collapseBoards": "Collapse boards",
+    "expandBoards": "Expand boards",
+    "newBoard": "New board",
+    "loadingBoards": "Loading boards…",
+    "loadError": "Could not load boards.",
+    "retry": "Retry",
+    "emptyBoards": "There are no boards yet."
   }
 }

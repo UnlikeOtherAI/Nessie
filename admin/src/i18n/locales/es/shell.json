@@ -5,7 +5,8 @@
     "knowledge": "Conocimiento",
     "admin": "Administración",
     "search": "Buscar",
-    "main": "Navegación principal"
+    "main": "Navegación principal",
+    "title": "Navegación"
   },
   "focus": {
     "turnOff": "Desactivar el modo de concentración",
@@ -16,7 +17,14 @@
   },
   "sidebar": {
     "threads": "Hilos",
-    "unreadMessages": "Mensajes sin leer"
+    "unreadMessages": "Mensajes sin leer",
+    "createChannel": "Crear canal",
+    "sharedChannels": "Canales compartidos",
+    "noSharedChannels": "Todavía no hay canales compartidos.",
+    "startNewChat": "Iniciar un chat nuevo",
+    "directMessages": "Mensajes directos",
+    "starred": "Destacados",
+    "resize": "Cambiar el tamaño de la barra lateral"
   },
   "create": {
     "title": "Crear",
@@ -30,5 +38,98 @@
     "agentDescription": "Crear un agente privado o compartido",
     "new": "Crear nuevo",
     "tooltipDescription": "Crear un mensaje, un canal, un proyecto o un agente."
+  },
+  "alerts": {
+    "title": "Alertas",
+    "markAllRead": "Marcar todo como leído",
+    "empty": "Aún no hay alertas"
+  },
+  "recentChannels": {
+    "title": "Canales recientes",
+    "empty": "No hay canales recientes"
+  },
+  "history": {
+    "back": "Atrás",
+    "forward": "Adelante"
+  },
+  "adminNav": {
+    "groups": {
+      "agents": "Agentes",
+      "user": "Usuario",
+      "team": "Equipo",
+      "organization": "Organización",
+      "governance": "Gobernanza",
+      "platform": "Plataforma"
+    },
+    "items": {
+      "agents": "Agentes",
+      "workflows": "Flujos de trabajo",
+      "taskSets": "Conjuntos de tareas",
+      "triggers": "Disparadores",
+      "tools": "Herramientas",
+      "executors": "Ejecutores",
+      "apps": "Aplicaciones",
+      "settings": "Configuración",
+      "secrets": "Secretos",
+      "connectedAccounts": "Cuentas conectadas",
+      "pairedAgents": "Agentes vinculados",
+      "statuses": "Estados",
+      "models": "Modelos",
+      "members": "Miembros",
+      "creditsBilling": "Créditos y facturación",
+      "health": "Estado del sistema",
+      "pushCredentials": "Credenciales push",
+      "auditLog": "Registro de auditoría",
+      "policy": "Políticas",
+      "operationalUsage": "Uso operativo"
+    },
+    "fullRefresh": "Recargar por completo",
+    "failedWorkflowRuns": "Ejecuciones fallidas de flujos de trabajo: {{total}}"
+  },
+  "search": {
+    "close": "Cerrar la búsqueda",
+    "placeholderNamed": "Buscar en {{name}}",
+    "hybridDescription": "La búsqueda híbrida añade coincidencias por significado y conserva las coincidencias exactas.",
+    "fullTextDescription": "La búsqueda de texto completo busca las palabras introducidas en todas las secciones.",
+    "searching": "Buscando…",
+    "noResults": "Sin resultados",
+    "partialError": "No se pudo buscar en algunas secciones: {{error}}",
+    "seeAllResults": "Ver todos los resultados"
+  },
+  "projects": {
+    "create": "Crear proyecto",
+    "newProject": "Nuevo proyecto",
+    "empty": "Todavía no hay proyectos en este equipo.",
+    "browseAll": "Explorar todos los proyectos",
+    "deleteFailed": "No se pudo eliminar el proyecto",
+    "deleteError": "No se pudo eliminar el proyecto",
+    "expandChannels": "Expandir los canales de {{name}}",
+    "collapseChannels": "Contraer los canales de {{name}}",
+    "actionsFor": "Acciones del proyecto {{name}}",
+    "addChannelLabel": "Añadir un canal al proyecto",
+    "addChannel": "Añadir canal al proyecto",
+    "renameIcon": "Cambiar nombre e icono",
+    "noChannels": "Todavía no hay canales.",
+    "deleteWarning": "Esta acción no se puede deshacer.",
+    "delete": "Eliminar",
+    "deleteNamed": "¿Eliminar el proyecto «{{name}}»?"
+  },
+  "projectSections": {
+    "overview": "Resumen",
+    "boards": "Tableros",
+    "backlog": "Tareas pendientes",
+    "insights": "Análisis",
+    "docs": "Documentos",
+    "dashboards": "Paneles",
+    "executors": "Ejecutores",
+    "settings": "Configuración",
+    "withCount": "{{label}} ({{total}})",
+    "collapseBoards": "Contraer tableros",
+    "expandBoards": "Expandir tableros",
+    "newBoard": "Nuevo tablero",
+    "loadingBoards": "Cargando tableros…",
+    "loadError": "No se pudieron cargar los tableros.",
+    "retry": "Reintentar",
+    "emptyBoards": "Todavía no hay tableros."
   }
 }

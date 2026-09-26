@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { UserAvatar } from '../../shared/UserAvatar'
 import { AvatarUploadPanel } from '../../shared/AvatarUploadPanel'
 import {
@@ -22,17 +23,8 @@ import { useAuthSession } from '../../../providers/AuthSessionProvider'
 
 // Describe which image the person currently sees, so the resolution order the
 // avatar actually uses is visible rather than guessed at.
-const localSourceHint = (hasCustom: boolean, hasProvider: boolean): string => {
-  if (hasCustom) return 'Using your uploaded photo. Remove it to fall back to your account picture.'
-  if (hasProvider) return 'Using your sign-in provider photo. Upload one to override it.'
-  return 'Using your initials. Upload a photo to use your own.'
-}
-
-const UOA_HINT =
-  'Your photo is held by UnlikeOtherAI, which manages your profile. '
-  + 'Changing it here changes it everywhere you use that account.'
-
 export const AvatarPanel = () => {
+  const { t } = useTranslation('settings')
   const { me, token } = useAuthSession()
   const revision = useMyAvatarRevision()
   const updateAvatar = useUpdateMyAvatar()
@@ -64,7 +56,7 @@ export const AvatarPanel = () => {
         await updateAvatar.mutateAsync(attachment.id)
       }
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Failed to save photo')
+      setError(saveError instanceof Error ? saveError.message : t('avatar.saveFailed'))
       throw saveError
     } finally {
       setUploading(false)
@@ -74,7 +66,7 @@ export const AvatarPanel = () => {
   const handleRemove = () => {
     setError(null)
     const onError = (removeError: unknown) =>
-      setError(removeError instanceof Error ? removeError.message : 'Failed to remove photo')
+      setError(removeError instanceof Error ? removeError.message : t('avatar.removeFailed'))
     if (managedByUoa) {
       removeUoaAvatar.mutate(undefined, { onError })
       return
@@ -85,14 +77,22 @@ export const AvatarPanel = () => {
   return (
     <AvatarUploadPanel
       busy={busy}
-      cropperDescription="Drag to reposition, scroll or use the slider to zoom. The rounded square becomes your photo."
-      cropperTitle="Edit profile photo"
+      confirmationBody={t('avatar.removeConfirmation', { title: t('avatar.title').toLowerCase() })}
+      confirmationTitle={t('avatar.removeConfirmationTitle')}
+      cropperDescription={t('avatar.cropperDescription')}
+      cropperTitle={t('avatar.editPhoto')}
       error={error}
       // UOA always resolves an image for a person it knows (uploaded, proxied
       // or generated) and does not tell the browser which, so the remove
       // control stays available: it clears whatever was uploaded there.
       hasCustom={managedByUoa || hasCustom}
-      hint={managedByUoa ? UOA_HINT : localSourceHint(hasCustom, hasProvider)}
+      hint={managedByUoa
+        ? t('avatar.uoaHint')
+        : hasCustom
+          ? t('avatar.customHint')
+          : hasProvider
+            ? t('avatar.providerHint')
+            : t('avatar.initialsHint')}
       preview={
         <UserAvatar
           avatarAttachmentId={me.user.avatarAttachmentId}
@@ -105,8 +105,12 @@ export const AvatarPanel = () => {
           userId={me.user.id}
         />
       }
-      saveLabel="Save photo"
-      title="Profile photo"
+      saveLabel={t('avatar.savePhoto')}
+      title={t('avatar.title')}
+      helperText={t('avatar.fileHint')}
+      removeLabel={t('avatar.remove')}
+      replaceLabel={t('avatar.replacePhoto')}
+      uploadLabel={t('avatar.uploadPhoto')}
       onRemove={handleRemove}
       onSave={handleSave}
     />

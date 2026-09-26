@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuthProviders } from '../../facades/auth/hooks'
 import { useCurrentOrganization } from '../../facades/organization/hooks'
 import { useTeams } from '../../facades/projects/hooks'
@@ -24,6 +25,7 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
 }
 
 export const SettingsProfilePage = ({ tabs }: SettingsTabHostProps) => {
+  const { t } = useTranslation('settings')
   const navigate = useNavigate()
   const { me, logout } = useAuthSession()
   const statusesQuery = useStatuses()
@@ -63,12 +65,12 @@ export const SettingsProfilePage = ({ tabs }: SettingsTabHostProps) => {
 
   return (
     <SettingsPanel
-      eyebrow="User"
-      title="Profile"
+      eyebrow={t('common.user')}
+      title={t('profile.title')}
       actions={[
         {
           id: 'sign-out',
-          label: 'Sign out',
+          label: t('profile.signOut'),
           onSelect: () => void logout().then(() => navigate('/login', { replace: true })),
           priority: 100,
         } satisfies PageHeaderAction,
@@ -77,7 +79,7 @@ export const SettingsProfilePage = ({ tabs }: SettingsTabHostProps) => {
       {tabs}
       {hasLoadError && (
         <Notice className="mb-4" role="alert" tone="danger">
-          Some account details failed to load.{' '}
+          {t('profile.loadFailed')}{' '}
           <button
             className="underline"
             onClick={() => {
@@ -88,7 +90,7 @@ export const SettingsProfilePage = ({ tabs }: SettingsTabHostProps) => {
             }}
             type="button"
           >
-            Retry
+            {t('common.retry')}
           </button>
         </Notice>
       )}
@@ -99,7 +101,7 @@ export const SettingsProfilePage = ({ tabs }: SettingsTabHostProps) => {
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Card variant="section">
-          <SectionLabel>Profile</SectionLabel>
+          <SectionLabel>{t('profile.title')}</SectionLabel>
           <div className="mt-4 text-2xl font-semibold text-[color:var(--tx)]">
             {me.user.displayName}
             {activeStatus?.emoji && (
@@ -117,10 +119,10 @@ export const SettingsProfilePage = ({ tabs }: SettingsTabHostProps) => {
           <KeyValueList
             className="mt-4"
             items={[
-              { label: 'Organisation', value: organizationName },
-              { label: 'Team', value: teamName },
+              { label: t('profile.organisation'), value: organizationName },
+              { label: t('profile.team'), value: teamName },
               {
-                label: 'Provider',
+                label: t('profile.provider'),
                 value: providerUrl ? (
                   <>
                     {providerName}
@@ -134,13 +136,13 @@ export const SettingsProfilePage = ({ tabs }: SettingsTabHostProps) => {
         </Card>
 
         <Card variant="section">
-          <SectionLabel>Session</SectionLabel>
+          <SectionLabel>{t('profile.session')}</SectionLabel>
           <KeyValueList
             className="mt-4"
             items={[
-              { label: 'Session ID', mono: true, value: me.session.sessionId },
-              { label: 'Issued', value: new Date(me.session.issuedAt).toLocaleString() },
-              { label: 'Auto redirect', value: me.auth.autoRedirectToSso ? 'Enabled' : 'Disabled' },
+              { label: t('profile.sessionId'), mono: true, value: me.session.sessionId },
+              { label: t('profile.issued'), value: new Date(me.session.issuedAt).toLocaleString() },
+              { label: t('profile.autoRedirect'), value: me.auth.autoRedirectToSso ? t('common.enabled') : t('common.disabled') },
             ]}
           />
         </Card>

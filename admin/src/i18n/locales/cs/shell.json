@@ -5,7 +5,8 @@
     "knowledge": "Znalosti",
     "admin": "Správa",
     "search": "Hledat",
-    "main": "Hlavní navigace"
+    "main": "Hlavní navigace",
+    "title": "Navigace"
   },
   "focus": {
     "turnOff": "Vypnout režim soustředění",
@@ -16,7 +17,14 @@
   },
   "sidebar": {
     "threads": "Vlákna",
-    "unreadMessages": "Nepřečtené zprávy"
+    "unreadMessages": "Nepřečtené zprávy",
+    "createChannel": "Vytvořit kanál",
+    "sharedChannels": "Sdílené kanály",
+    "noSharedChannels": "Zatím žádné sdílené kanály.",
+    "startNewChat": "Zahájit nový chat",
+    "directMessages": "Soukromé zprávy",
+    "starred": "Označené hvězdičkou",
+    "resize": "Změnit šířku postranního panelu"
   },
   "create": {
     "title": "Vytvořit",
@@ -30,5 +38,98 @@
     "agentDescription": "Vytvořit soukromého nebo sdíleného agenta",
     "new": "Vytvořit nový",
     "tooltipDescription": "Vytvořit zprávu, kanál, projekt nebo agenta."
+  },
+  "alerts": {
+    "title": "Upozornění",
+    "markAllRead": "Označit vše jako přečtené",
+    "empty": "Zatím žádná upozornění"
+  },
+  "recentChannels": {
+    "title": "Nedávné kanály",
+    "empty": "Žádné nedávné kanály"
+  },
+  "history": {
+    "back": "Zpět",
+    "forward": "Vpřed"
+  },
+  "adminNav": {
+    "groups": {
+      "agents": "Agenti",
+      "user": "Uživatel",
+      "team": "Tým",
+      "organization": "Organizace",
+      "governance": "Řízení",
+      "platform": "Platforma"
+    },
+    "items": {
+      "agents": "Agenti",
+      "workflows": "Pracovní postupy",
+      "taskSets": "Sady úkolů",
+      "triggers": "Spouštěče",
+      "tools": "Nástroje",
+      "executors": "Executors",
+      "apps": "Aplikace",
+      "settings": "Nastavení",
+      "secrets": "Tajné údaje",
+      "connectedAccounts": "Připojené účty",
+      "pairedAgents": "Spárovaní agenti",
+      "statuses": "Stavy",
+      "models": "Modely",
+      "members": "Členové",
+      "creditsBilling": "Kredity a fakturace",
+      "health": "Stav systému",
+      "pushCredentials": "Přístupové údaje pro push oznámení",
+      "auditLog": "Protokol auditu",
+      "policy": "Zásady",
+      "operationalUsage": "Provozní využití"
+    },
+    "fullRefresh": "Úplně obnovit",
+    "failedWorkflowRuns": "Neúspěšné běhy pracovních postupů: {{total}}"
+  },
+  "search": {
+    "close": "Zavřít hledání",
+    "placeholderNamed": "Hledat v {{name}}",
+    "hybridDescription": "Hybridní hledání přidává shody podle významu a zachovává přesné shody.",
+    "fullTextDescription": "Fulltextové hledání vyhledává zadaná slova ve všech sekcích.",
+    "searching": "Hledání…",
+    "noResults": "Žádné výsledky",
+    "partialError": "V některých sekcích se nepodařilo hledat: {{error}}",
+    "seeAllResults": "Zobrazit všechny výsledky"
+  },
+  "projects": {
+    "create": "Vytvořit projekt",
+    "newProject": "Nový projekt",
+    "empty": "V tomto týmu zatím nejsou žádné projekty.",
+    "browseAll": "Procházet všechny projekty",
+    "deleteFailed": "Projekt se nepodařilo smazat",
+    "deleteError": "Projekt nelze smazat",
+    "expandChannels": "Rozbalit kanály v projektu {{name}}",
+    "collapseChannels": "Sbalit kanály v projektu {{name}}",
+    "actionsFor": "Akce projektu {{name}}",
+    "addChannelLabel": "Přidat nový kanál do projektu",
+    "addChannel": "Přidat kanál do projektu",
+    "renameIcon": "Změnit název a ikonu",
+    "noChannels": "Zatím tu nejsou žádné kanály.",
+    "deleteWarning": "Tuto akci nelze vrátit zpět.",
+    "delete": "Smazat",
+    "deleteNamed": "Smazat projekt „{{name}}“?"
+  },
+  "projectSections": {
+    "overview": "Přehled",
+    "boards": "Nástěnky",
+    "backlog": "Nevyřízené úkoly",
+    "insights": "Přehledy",
+    "docs": "Dokumenty",
+    "dashboards": "Řídicí panely",
+    "executors": "Executory",
+    "settings": "Nastavení",
+    "withCount": "{{label}} ({{total}})",
+    "collapseBoards": "Sbalit nástěnky",
+    "expandBoards": "Rozbalit nástěnky",
+    "newBoard": "Nová nástěnka",
+    "loadingBoards": "Načítání nástěnek…",
+    "loadError": "Nástěnky se nepodařilo načíst.",
+    "retry": "Zkusit znovu",
+    "emptyBoards": "Zatím tu nejsou žádné nástěnky."
   }
 }

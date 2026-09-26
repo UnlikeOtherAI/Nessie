@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useUpdatePreferences } from '../../facades/auth/hooks'
 import { useChannels, useSetChannelMute } from '../../facades/channels/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
@@ -18,6 +19,7 @@ const getBrowserTimeZone = (): string =>
   Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
 export const NotificationsPage = ({ tabs }: SettingsTabHostProps) => {
+  const { t } = useTranslation('settings')
   const { me } = useAuthSession()
   const { focusModeEnabled, setFocusModeEnabled, updating: focusModeUpdating } = useFocusMode()
   const channelsQuery = useChannels()
@@ -44,26 +46,26 @@ export const NotificationsPage = ({ tabs }: SettingsTabHostProps) => {
     try {
       const result = await setChannelMute.mutateAsync({ channelId, muted: nextMuted })
       setChannelMuteOverrides((current) => ({ ...current, [channelId]: result.muted }))
-      setChannelFeedback({ kind: 'success', message: 'Channel notification setting saved.' })
+      setChannelFeedback({ kind: 'success', message: t('notifications.channelSaved') })
     } catch (error) {
       setChannelMuteOverrides((current) => ({ ...current, [channelId]: previousMuted }))
       setChannelFeedback({
         kind: 'error',
-        message: error instanceof Error ? error.message : 'Failed to save channel setting.',
+        message: error instanceof Error ? error.message : t('notifications.channelSaveFailed'),
       })
     }
   }
 
   return (
     <SettingsPanel
-      eyebrow="User"
-      title="Notifications"
+      eyebrow={t('common.user')}
+      title={t('notifications.title')}
       actions={[
         {
           disabled: updatePreferences.isPending,
           form: 'notification-preferences-form',
           id: 'save-preferences',
-          label: updatePreferences.isPending ? 'Saving…' : 'Save preferences',
+          label: updatePreferences.isPending ? t('common.saving') : t('notifications.savePreferences'),
           onSelect: () => undefined,
           primary: true,
           priority: 100,
@@ -78,20 +80,20 @@ export const NotificationsPage = ({ tabs }: SettingsTabHostProps) => {
             preferences form's `key={me.user.id}` remount boundary below. */}
         <div className="grid gap-4">
           <section className="admin-card p-4">
-            <SectionLabel>Focus mode</SectionLabel>
+            <SectionLabel>{t('notifications.focusMode')}</SectionLabel>
             <div className="mt-4 flex items-center justify-between gap-4">
               <div>
-                <div className="font-semibold text-[color:var(--tx)]">Pause distractions</div>
+                <div className="font-semibold text-[color:var(--tx)]">{t('notifications.pauseDistractions')}</div>
                 <div className="mt-1 text-sm text-[color:var(--tx2)]">
                   {focusModeEnabled
-                    ? 'Push notifications, app badges, and unread emphasis are paused on every Nessie device.'
-                    : 'Pause push notifications and mute attention cues on every device while you work.'}
+                    ? t('notifications.focusEnabledDescription')
+                    : t('notifications.focusDisabledDescription')}
                 </div>
               </div>
               <Switch
                 checked={focusModeEnabled}
                 disabled={focusModeUpdating}
-                label="Toggle focus mode"
+                label={t('notifications.toggleFocus')}
                 onChange={setFocusModeEnabled}
               />
             </div>
@@ -106,19 +108,19 @@ export const NotificationsPage = ({ tabs }: SettingsTabHostProps) => {
         </div>
 
         <Card variant="section">
-          <SectionLabel>Muted channels</SectionLabel>
+          <SectionLabel>{t('notifications.mutedChannels')}</SectionLabel>
           <div className="mt-4">
             <QueryState
               className="py-4"
-              errorLabel="Failed to load channels."
-              loadingLabel="Loading channels…"
+              errorLabel={t('notifications.channelsLoadFailed')}
+              loadingLabel={t('notifications.channelsLoading')}
               query={channelsQuery}
             >
               {() =>
                 channels.length === 0 ? (
-                  <EmptyState>No channels available.</EmptyState>
+                  <EmptyState>{t('notifications.noChannels')}</EmptyState>
                 ) : (
-                  <RowList label="Muted channels">
+                  <RowList label={t('notifications.mutedChannels')}>
                     {channels.map((channel) => {
                       const muted = channelMuteOverrides[channel.id] ?? channel.muted ?? false
                       const pending =
@@ -128,20 +130,20 @@ export const NotificationsPage = ({ tabs }: SettingsTabHostProps) => {
                       return (
                         <Row
                           key={channel.id}
-                          subtitle={muted ? 'Muted' : channel.visibility}
+                          subtitle={muted ? t('notifications.muted') : channel.visibility}
                           title={`#${channel.label}`}
                           trailing={
                             <>
                               <Switch
                                 checked={muted}
                                 disabled={pending}
-                                label={`Toggle ${channel.label} notifications`}
+                                label={t('notifications.toggleChannel', { channel: channel.label })}
                                 onChange={(nextMuted) =>
                                   void saveChannelMute(channel.id, muted, nextMuted)}
                               />
                               {pending ? (
                                 <span className="sr-only" role="status">
-                                  Saving channel notification setting
+                                  {t('notifications.savingChannel')}
                                 </span>
                               ) : null}
                             </>

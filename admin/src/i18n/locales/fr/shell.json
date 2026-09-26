@@ -5,7 +5,8 @@
     "knowledge": "Connaissances",
     "admin": "Administration",
     "search": "Rechercher",
-    "main": "Navigation principale"
+    "main": "Navigation principale",
+    "title": "Navigation"
   },
   "focus": {
     "turnOff": "Désactiver le mode concentration",
@@ -16,7 +17,14 @@
   },
   "sidebar": {
     "threads": "Fils de discussion",
-    "unreadMessages": "Messages non lus"
+    "unreadMessages": "Messages non lus",
+    "createChannel": "Créer un canal",
+    "sharedChannels": "Canaux partagés",
+    "noSharedChannels": "Il n’y a pas encore de canaux partagés.",
+    "startNewChat": "Démarrer une nouvelle discussion",
+    "directMessages": "Messages directs",
+    "starred": "Favoris",
+    "resize": "Redimensionner la barre latérale"
   },
   "create": {
     "title": "Créer",
@@ -30,5 +38,98 @@
     "agentDescription": "Créer un agent privé ou partagé",
     "new": "Créer un élément",
     "tooltipDescription": "Créer un message, un canal, un projet ou un agent."
+  },
+  "alerts": {
+    "title": "Alertes",
+    "markAllRead": "Tout marquer comme lu",
+    "empty": "Aucune alerte pour le moment"
+  },
+  "recentChannels": {
+    "title": "Canaux récents",
+    "empty": "Aucun canal récent"
+  },
+  "history": {
+    "back": "Retour",
+    "forward": "Suivant"
+  },
+  "adminNav": {
+    "groups": {
+      "agents": "Agents",
+      "user": "Utilisateur",
+      "team": "Équipe",
+      "organization": "Organisation",
+      "governance": "Gouvernance",
+      "platform": "Plateforme"
+    },
+    "items": {
+      "agents": "Agents",
+      "workflows": "Flux de travail",
+      "taskSets": "Ensembles de tâches",
+      "triggers": "Déclencheurs",
+      "tools": "Outils",
+      "executors": "Exécuteurs",
+      "apps": "Applications",
+      "settings": "Paramètres",
+      "secrets": "Secrets",
+      "connectedAccounts": "Comptes connectés",
+      "pairedAgents": "Agents associés",
+      "statuses": "Statuts",
+      "models": "Modèles",
+      "members": "Membres",
+      "creditsBilling": "Crédits et facturation",
+      "health": "État du système",
+      "pushCredentials": "Identifiants de notifications push",
+      "auditLog": "Journal d’audit",
+      "policy": "Politique",
+      "operationalUsage": "Utilisation opérationnelle"
+    },
+    "fullRefresh": "Actualiser complètement",
+    "failedWorkflowRuns": "Exécutions de flux de travail en échec : {{total}}"
+  },
+  "search": {
+    "close": "Fermer la recherche",
+    "placeholderNamed": "Rechercher dans {{name}}",
+    "hybridDescription": "La recherche hybride ajoute des correspondances de sens tout en conservant les correspondances exactes.",
+    "fullTextDescription": "La recherche en texte intégral cherche les mots saisis dans toutes les sections.",
+    "searching": "Recherche en cours…",
+    "noResults": "Aucun résultat",
+    "partialError": "La recherche a échoué dans certaines sections : {{error}}",
+    "seeAllResults": "Voir tous les résultats"
+  },
+  "projects": {
+    "create": "Créer un projet",
+    "newProject": "Nouveau projet",
+    "empty": "Cette équipe ne comporte encore aucun projet.",
+    "browseAll": "Parcourir tous les projets",
+    "deleteFailed": "Échec de la suppression du projet",
+    "deleteError": "Impossible de supprimer le projet",
+    "expandChannels": "Développer les canaux de {{name}}",
+    "collapseChannels": "Réduire les canaux de {{name}}",
+    "actionsFor": "Actions du projet {{name}}",
+    "addChannelLabel": "Ajouter un canal au projet",
+    "addChannel": "Ajouter un canal au projet",
+    "renameIcon": "Modifier le nom et l’icône",
+    "noChannels": "Il n’y a pas encore de canaux.",
+    "deleteWarning": "Cette action est irréversible.",
+    "delete": "Supprimer",
+    "deleteNamed": "Supprimer le projet « {{name}} » ?"
+  },
+  "projectSections": {
+    "overview": "Vue d’ensemble",
+    "boards": "Tableaux",
+    "backlog": "Travail en attente",
+    "insights": "Analyses",
+    "docs": "Documents",
+    "dashboards": "Tableaux de bord",
+    "executors": "Exécuteurs",
+    "settings": "Paramètres",
+    "withCount": "{{label}} ({{total}})",
+    "collapseBoards": "Réduire les tableaux",
+    "expandBoards": "Développer les tableaux",
+    "newBoard": "Nouveau tableau",
+    "loadingBoards": "Chargement des tableaux…",
+    "loadError": "Impossible de charger les tableaux.",
+    "retry": "Réessayer",
+    "emptyBoards": "Il n’y a pas encore de tableaux."
   }
 }

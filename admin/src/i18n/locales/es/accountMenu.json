@@ -1,0 +1,15 @@
+{
+  "accountMenu": "Menú de cuenta",
+  "feedback": "Comentarios",
+  "accountSettings": "Configuración de la cuenta",
+  "logOut": "Cerrar sesión",
+  "language": "Idioma",
+  "status": "Estado",
+  "setUpStatus": "Configurar un estado",
+  "active": "Activo",
+  "clearStatus": "Borrar estado",
+  "editStatuses": "Editar estados",
+  "availabilityStatus": "Disponibilidad — {{status}}",
+  "availabilityChoice": { "auto": "Automático", "active": "Activo", "away": "Ausente" },
+  "availabilityState": { "active": "Activo", "away": "Ausente", "offline": "Desconectado" }
+}

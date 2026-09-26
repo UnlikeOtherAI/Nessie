@@ -118,6 +118,7 @@ These are the only top-level React providers Phase 1 should need in `/admin`:
 - `ApiClientProvider`
 - `QueryProvider`
 - `ThemeProvider`
+- `LocalizationProvider`
 
 Optional later:
 

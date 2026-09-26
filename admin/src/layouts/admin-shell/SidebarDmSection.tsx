@@ -18,6 +18,7 @@ import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarAgentSessions } from './SidebarAgentSessions';
 import { useLocation } from 'react-router-dom';
 import { parseThreadIdFromPath } from '../../lib/channel-route';
+import { useTranslation } from 'react-i18next';
 import type {
   SidebarAgentDm,
   SidebarGroupDm,
@@ -90,6 +91,7 @@ export const SidebarDmSection = ({
   toggleDmCollapsed,
   unreadCountByChannelId,
 }: SidebarDmSectionProps) => {
+  const { t } = useTranslation('shell');
   const { token } = useAuthSession();
   const prewarm = usePrewarm();
   const getPresence = usePresenceLookup();
@@ -101,10 +103,10 @@ export const SidebarDmSection = ({
     <SidebarMenuSection
       action={
         <button
-          aria-label="Start new chat"
+          aria-label={t('sidebar.startNewChat')}
           className="admin-sidebar-plus"
           onClick={onStartNewConversation}
-          title="Start new chat"
+          title={t('sidebar.startNewChat')}
           type="button"
         >
           <SidebarPlusIcon />
@@ -114,7 +116,7 @@ export const SidebarDmSection = ({
       id="sidebar-nav-direct-messages"
       isCollapsed={dmCollapsed}
       onToggle={toggleDmCollapsed}
-      title="Direct messages"
+      title={t('sidebar.directMessages')}
     >
       {!(
         (personalAssistantAgent && starredAgentIds.has(personalAssistantAgent.id))

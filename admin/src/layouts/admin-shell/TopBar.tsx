@@ -4,6 +4,7 @@ import { TopBarSearch } from './TopBarSearch'
 import { RecentChannelsControl } from './topbar-navigation'
 import { usePhoneNavigation } from './PhoneNavigationProvider'
 import { UserMenuTrigger } from './UserMenuTrigger'
+import { useTranslation } from 'react-i18next'
 
 const iconProps = {
   fill: 'none',
@@ -36,6 +37,7 @@ type TopBarProps = {
 // the desktop (Tauri) app it doubles as the window title bar, with dedicated
 // drag regions around the interactive search field and buttons.
 export const TopBar = ({ hideSearch = false, onLogout, showAccountMenu }: TopBarProps) => {
+  const { t } = useTranslation('shell')
   const { desktopPlatform } = useShellEnvironment()
   const desktop = desktopPlatform !== null
   // History controls read the one ledger the phone Back uses; they walk it
@@ -60,21 +62,21 @@ export const TopBar = ({ hideSearch = false, onLogout, showAccountMenu }: TopBar
 
       <div className="hidden items-center gap-1 md:flex">
         <button
-          aria-label="Back"
+          aria-label={t('history.back')}
           className="admin-topbar-btn"
           disabled={!canBack}
           onClick={goBack}
-          title="Back"
+          title={t('history.back')}
           type="button"
         >
           <ChevronLeft />
         </button>
         <button
-          aria-label="Forward"
+          aria-label={t('history.forward')}
           className="admin-topbar-btn"
           disabled={!canForward}
           onClick={goForward}
-          title="Forward"
+          title={t('history.forward')}
           type="button"
         >
           <ChevronRight />

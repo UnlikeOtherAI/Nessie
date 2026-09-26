@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { PushQuietHours, UserPreferences } from '@nessie/schemas'
 import type { useUpdatePreferences } from '../../../facades/auth/hooks'
 import { requestNotificationPermission } from '../../../facades/notifications/permission'
@@ -93,6 +94,7 @@ export const NotificationPreferencesForm = ({
   preferences,
   updatePreferences,
 }: NotificationPreferencesFormProps) => {
+  const { t } = useTranslation('settings')
   const [pushEnabled, setPushEnabled] = useState(() => preferences.pushEnabled ?? true)
   const [pushMessages, setPushMessages] = useState(() => preferences.pushMessages ?? true)
   const [pushMentions, setPushMentions] = useState(() => preferences.pushMentions ?? true)
@@ -162,11 +164,11 @@ export const NotificationPreferencesForm = ({
         pushPublishedKnowledge,
         quietHours,
       }))
-      setPreferenceFeedback({ kind: 'success', message: 'Notification preferences saved.' })
+      setPreferenceFeedback({ kind: 'success', message: t('notifications.preferencesSaved') })
     } catch (error) {
       setPreferenceFeedback({
         kind: 'error',
-        message: error instanceof Error ? error.message : 'Failed to save notification preferences.',
+        message: error instanceof Error ? error.message : t('notifications.preferencesSaveFailed'),
       })
     }
   }
@@ -203,25 +205,25 @@ export const NotificationPreferencesForm = ({
       />
 
       <section className="admin-card p-4">
-        <SectionLabel>Quiet hours</SectionLabel>
+        <SectionLabel>{t('notifications.quietHours')}</SectionLabel>
         <div className="mt-4 flex items-center justify-between gap-4">
           <div>
-            <div className="font-semibold text-[color:var(--tx)]">Quiet hours</div>
+            <div className="font-semibold text-[color:var(--tx)]">{t('notifications.quietHours')}</div>
             <div className="mt-1 text-sm text-[color:var(--tx2)]">
-              {quietHoursEnabled ? 'Enabled' : 'Disabled'}
+              {quietHoursEnabled ? t('common.enabled') : t('common.disabled')}
             </div>
           </div>
           <Switch
             checked={quietHoursEnabled}
             disabled={updatePreferences.isPending}
-            label="Toggle quiet hours"
+            label={t('notifications.toggleQuietHours')}
             onChange={setQuietHoursEnabled}
           />
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-            Start
+            {t('notifications.start')}
             <input
               className="admin-input"
               disabled={!quietHoursEnabled || updatePreferences.isPending}
@@ -232,7 +234,7 @@ export const NotificationPreferencesForm = ({
             />
           </label>
           <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-            End
+            {t('notifications.end')}
             <input
               className="admin-input"
               disabled={!quietHoursEnabled || updatePreferences.isPending}
@@ -243,7 +245,7 @@ export const NotificationPreferencesForm = ({
             />
           </label>
           <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-            Timezone
+            {t('notifications.timezone')}
             <select
               className="admin-input"
               disabled={!quietHoursEnabled || updatePreferences.isPending}

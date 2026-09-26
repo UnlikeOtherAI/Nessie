@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { channelHashClassName, projectSelectionClassName, renderUnreadCount } from './SidebarRow';
 import { ChannelGlyph } from '../../components/shared/RoomVisibilityGlyph';
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
@@ -126,6 +127,7 @@ export const SidebarProjectsSection = ({
   toggleProjectsCollapsed,
   visibleSidebarProjects,
 }: SidebarProjectsSectionProps) => {
+  const { t } = useTranslation('shell');
   const { token } = useAuthSession();
   const prewarm = usePrewarm();
   const [collapsedProjectIds, setCollapsedProjectIds] = useState(() =>
@@ -192,7 +194,7 @@ export const SidebarProjectsSection = ({
     <SidebarMenuSection
       action={
         <button
-          aria-label="Create project"
+          aria-label={t('projects.create')}
           className="admin-sidebar-plus"
           onClick={onOpenCreateProject}
           type="button"
@@ -204,10 +206,10 @@ export const SidebarProjectsSection = ({
       isCollapsed={projectsCollapsed}
       onToggle={toggleProjectsCollapsed}
       className="sidebar-projects-section"
-      title="Projects"
+      title={t('navigation.projects')}
     >
       {visibleSidebarProjects.length === 0 ? (
-        <SidebarEmptyNote>There are no projects in this team yet.</SidebarEmptyNote>
+        <SidebarEmptyNote>{t('projects.empty')}</SidebarEmptyNote>
       ) : visibleSidebarProjects.map((project) => {
         const isStarredProject = starredProjectIds.has(project.id);
         const isProjectCollapsed = collapsedProjectIds.has(project.id);
@@ -231,7 +233,9 @@ export const SidebarProjectsSection = ({
               <button
                 aria-controls={projectChannelsId}
                 aria-expanded={!isProjectCollapsed}
-                aria-label={`${isProjectCollapsed ? 'Expand' : 'Collapse'} ${project.name} channels`}
+                aria-label={isProjectCollapsed
+                  ? t('projects.expandChannels', { name: project.name })
+                  : t('projects.collapseChannels', { name: project.name })}
                 className="admin-sidebar-more sidebar-project-disclosure flex-shrink-0"
                 onClick={(event) => {
                   event.stopPropagation();
@@ -275,7 +279,7 @@ export const SidebarProjectsSection = ({
               </span>
               <span className="relative ml-1 flex-shrink-0">
                 <span
-                  aria-label={`Project actions for ${project.name}`}
+                  aria-label={t('projects.actionsFor', { name: project.name })}
                   aria-expanded={isProjectMenuOpen}
                   aria-haspopup="menu"
                   className={[
@@ -317,7 +321,7 @@ export const SidebarProjectsSection = ({
                           style={menuPosition}
                         >
                           <span
-                            aria-label="Add new channel within project"
+                            aria-label={t('projects.addChannelLabel')}
                             onClick={(e) => {
                               e.stopPropagation();
                               closeProjectMenu();
@@ -331,7 +335,7 @@ export const SidebarProjectsSection = ({
                             tabIndex={0}
                           >
                             <AddChannelIcon />
-                            <span>Add channel to project</span>
+                            <span>{t('projects.addChannel')}</span>
                           </span>
                           <span
                             onClick={(e) => {
@@ -343,7 +347,7 @@ export const SidebarProjectsSection = ({
                             tabIndex={0}
                           >
                             <EditProjectIcon />
-                            <span>Rename &amp; icon</span>
+                            <span>{t('projects.renameIcon')}</span>
                           </span>
                         </span>
                       </>,
@@ -356,7 +360,7 @@ export const SidebarProjectsSection = ({
             {!isProjectCollapsed ? (
               <SidebarTreeChildren className="sidebar-project-children" id={projectChannelsId}>
                 {project.channels.length === 0 ? (
-                  <SidebarEmptyNote indent="child">There are no channels yet.</SidebarEmptyNote>
+                  <SidebarEmptyNote indent="child">{t('projects.noChannels')}</SidebarEmptyNote>
                 ) : null}
                 {project.channels.map((channel) => {
                   const isStarredChannel = starredChannelIds.has(channel.id);

@@ -1,0 +1,60 @@
+{
+  "boardDirectory": {
+    "new": "Neues Board",
+    "back": "Zurück zum Board",
+    "title": "Boards",
+    "error": "Boards konnten nicht geladen werden.",
+    "loading": "Boards werden geladen …",
+    "empty": "Noch keine Boards vorhanden.",
+    "emptyDescription": "Erstelle ein Board für die Tickets dieses Projekts.",
+    "board": "Board",
+    "default": "Standard",
+    "notDefault": "Nicht als Standard festgelegt",
+    "actions": "Aktionen",
+    "open": "Board öffnen",
+    "settings": "Einstellungen",
+    "tableLabel": "Projekt-Boards",
+    "columnCount_one": "{{count}} Spalte",
+    "columnCount_other": "{{count}} Spalten",
+    "columnCount_few": "{{count}} Spalten",
+    "columnCount_many": "{{count}} Spalten",
+    "iterations": "Iterationen",
+    "kanban": "Kanban",
+    "columnCount": "{{count}} Spalten"
+  },
+  "board": {
+    "sprintsError": "Sprints konnten nicht geladen werden.",
+    "loadingSprints": "Sprints werden geladen …",
+    "noActiveSprint": "Kein aktiver Sprint.",
+    "planSprint": "Sprint planen",
+    "refreshWarning": "Dieses Board konnte nicht aktualisiert werden. Die zuletzt geladenen Karten werden angezeigt.",
+    "retry": "Erneut versuchen",
+    "tasksError": "Aufgaben konnten nicht geladen werden.",
+    "loadingTasks": "Aufgaben werden geladen …",
+    "showAllAssignees": "Alle Zuständigen anzeigen",
+    "noCardsForAssignee": "Keine Karten für diese zuständige Person.",
+    "filteredEmptyDescription": "Auf diesem Board gibt es Karten, aber keine davon ist der im Filter ausgewählten Person zugewiesen.",
+    "addColumns": "Spalten hinzufügen",
+    "noColumns": "Dieses Board hat noch keine Spalten.",
+    "noColumnsDescription": "Füge für jede Phase, die dieses Board anzeigen soll, eine Spalte hinzu."
+  },
+  "directory": {
+    "back": "Zurück zu Projekten",
+    "subtitle": "Alle Projekte in deiner Organisation. Bitte ein Mitglied, dich zu einem Projekt hinzuzufügen, in dem du noch nicht bist.",
+    "title": "Alle Projekte",
+    "error": "Projekte konnten nicht geladen werden.",
+    "loading": "Projekte werden geladen …",
+    "empty": "In dieser Organisation gibt es noch keine Projekte.",
+    "listLabel": "Projekte in dieser Organisation",
+    "member": "Du bist Mitglied",
+    "adminAccess": "Als Organisationsadministrator kannst du dieses Projekt öffnen",
+    "protected": "Geschützt — bitte ein Mitglied, dich hinzuzufügen",
+    "notMember": "Du bist kein Mitglied",
+    "membersOf": "Mitglieder von {{name}}",
+    "noMembers": "Keine Mitglieder"
+  },
+  "navigation": {
+    "sections": "Projektbereiche",
+    "openNamed": "{{label}} öffnen"
+  }
+}

@@ -12,9 +12,27 @@ import {
 // request header. It used to reopen with no `Last-Event-ID`, so every renewal
 // (about every 28 minutes) had the hub replay the user's whole retained
 // backlog, and each replayed frame refetched its queries in the same instant —
-// the burst that reached UOA as ~100 `/org/me` reads per renewal.
+// the burst that reached UOA as ~100 `/org/me` reads per renewal. The cursor
+// belongs to one session scope (sub/org/proj/team), though: a team or account
+// switch swaps the token for a different tenant's without passing through
+// null, and resuming there would skip replaying that tenant's backlog.
 
 type Opened = { authorization: string | null; lastEventId: string | null }
+
+const baseClaims = {
+  org: 'org-1',
+  proj: 'proj-1',
+  sub: 'user-1',
+  team: 'team-1',
+}
+
+// A real-shaped unsigned JWT: the scope decoder reads only the payload, so
+// the signature can be anything.
+const tokenFor = (claims: Record<string, unknown>): string => {
+  const encode = (value: unknown): string =>
+    Buffer.from(JSON.stringify(value)).toString('base64url')
+  return `${encode({ alg: 'none', typ: 'JWT' })}.${encode(claims)}.test-signature`
+}
 
 const waitFor = async (condition: () => boolean): Promise<void> => {
   for (let tries = 0; tries < 200 && !condition(); tries += 1) {
@@ -23,7 +41,9 @@ const waitFor = async (condition: () => boolean): Promise<void> => {
   assert.ok(condition(), 'timed out waiting for the stream')
 }
 
-test('a rotated token resumes after the last delivered event; signing out starts afresh', async () => {
+// Each connection delivers exactly one frame with an increasing id, then
+// holds the stream open until aborted.
+const stubStream = (): { opened: Opened[]; restore: () => void } => {
   const opened: Opened[] = []
   const encoder = new TextEncoder()
   let nextId = 41
@@ -46,35 +66,124 @@ test('a rotated token resumes after the last delivered event; signing out starts
     })
     return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
   }) as typeof fetch
-
-  const received: Array<{ frame: SseFrame; connection: EventStreamConnection }> = []
-  const listener = (frame: SseFrame, connection: EventStreamConnection) => {
-    received.push({ frame, connection })
+  return {
+    opened,
+    restore: () => {
+      globalThis.fetch = originalFetch
+    },
   }
+}
 
+type Received = Array<{ frame: SseFrame; connection: EventStreamConnection }>
+
+const recorder = (into: Received) => (frame: SseFrame, connection: EventStreamConnection) => {
+  into.push({ frame, connection })
+}
+
+test('a renewal with the same sub/org/proj/team resumes after the last delivered event', async () => {
+  const { opened, restore } = stubStream()
+  const received: Received = []
   try {
-    let leave = attachEventStream('token-a', listener)
-    await waitFor(() => received.length === 1)
-    assert.deepEqual(opened[0], { authorization: 'Bearer token-a', lastEventId: null })
+    let leave = attachEventStream(tokenFor({ ...baseClaims, iat: 1 }), recorder(received))
+    await waitFor(() => received.length >= 1)
+    assert.equal(opened[0]?.lastEventId, null)
     assert.equal(received[0]?.connection.resumed, false)
 
-    // Renewal: the effect leaves with the old token and joins with the new one.
+    // Renewal: same session scope, new token string.
     leave()
-    leave = attachEventStream('token-b', listener)
-    await waitFor(() => received.length === 2)
-    assert.deepEqual(opened[1], { authorization: 'Bearer token-b', lastEventId: '42' })
+    leave = attachEventStream(tokenFor({ ...baseClaims, iat: 2 }), recorder(received))
+    await waitFor(() => received.length >= 2)
+    assert.equal(opened[1]?.lastEventId, '42')
     assert.equal(received[1]?.connection.resumed, true)
-
-    // Sign-out, then a new session: nothing carries over.
-    leave()
-    forgetEventStreamPosition()
-    leave = attachEventStream('token-c', listener)
-    await waitFor(() => received.length === 3)
-    assert.deepEqual(opened[2], { authorization: 'Bearer token-c', lastEventId: null })
-    assert.equal(received[2]?.connection.resumed, false)
     leave()
   } finally {
-    globalThis.fetch = originalFetch
+    restore()
+    forgetEventStreamPosition()
+  }
+})
+
+test('a switch to a different org, project or team starts cold', async () => {
+  const { opened, restore } = stubStream()
+  const received: Received = []
+  try {
+    let leave = attachEventStream(tokenFor({ ...baseClaims, iat: 1 }), recorder(received))
+    await waitFor(() => received.length >= 1)
+    assert.equal(received[0]?.connection.resumed, false)
+
+    for (const changed of [
+      { ...baseClaims, org: 'org-2' },
+      { ...baseClaims, proj: 'proj-2' },
+      { ...baseClaims, team: 'team-2' },
+    ]) {
+      const framesBefore = received.length
+      leave()
+      leave = attachEventStream(tokenFor({ ...changed, iat: 2 }), recorder(received))
+      await waitFor(() => received.length >= framesBefore + 1)
+      assert.equal(opened.at(-1)?.lastEventId, null)
+      assert.equal(received.at(-1)?.connection.resumed, false)
+    }
+    leave()
+  } finally {
+    restore()
+    forgetEventStreamPosition()
+  }
+})
+
+test('a switch to a different sub starts cold', async () => {
+  const { opened, restore } = stubStream()
+  const received: Received = []
+  try {
+    let leave = attachEventStream(tokenFor({ ...baseClaims, iat: 1 }), recorder(received))
+    await waitFor(() => received.length >= 1)
+
+    leave()
+    leave = attachEventStream(tokenFor({ ...baseClaims, sub: 'user-2', iat: 2 }), recorder(received))
+    await waitFor(() => received.length >= 2)
+    assert.equal(opened[1]?.lastEventId, null)
+    assert.equal(received[1]?.connection.resumed, false)
+    leave()
+  } finally {
+    restore()
+    forgetEventStreamPosition()
+  }
+})
+
+test('an undecodable token starts cold', async () => {
+  const { opened, restore } = stubStream()
+  const received: Received = []
+  try {
+    let leave = attachEventStream(tokenFor({ ...baseClaims, iat: 1 }), recorder(received))
+    await waitFor(() => received.length >= 1)
+
+    leave()
+    leave = attachEventStream('not-a-jwt', recorder(received))
+    await waitFor(() => received.length >= 2)
+    assert.equal(opened[1]?.lastEventId, null)
+    assert.equal(received[1]?.connection.resumed, false)
+    leave()
+  } finally {
+    restore()
+    forgetEventStreamPosition()
+  }
+})
+
+test('sign-out via forgetEventStreamPosition starts the next session cold', async () => {
+  const { opened, restore } = stubStream()
+  const received: Received = []
+  try {
+    let leave = attachEventStream(tokenFor({ ...baseClaims, iat: 1 }), recorder(received))
+    await waitFor(() => received.length >= 1)
+
+    // Sign-out, then a new session with the very same scope: nothing carries.
+    leave()
+    forgetEventStreamPosition()
+    leave = attachEventStream(tokenFor({ ...baseClaims, iat: 2 }), recorder(received))
+    await waitFor(() => received.length >= 2)
+    assert.equal(opened[1]?.lastEventId, null)
+    assert.equal(received[1]?.connection.resumed, false)
+    leave()
+  } finally {
+    restore()
     forgetEventStreamPosition()
   }
 })

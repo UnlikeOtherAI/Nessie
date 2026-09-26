@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 import { HighlightedText } from '../../components/features/search/HighlightedText'
 import { SearchModeToggle } from '../../components/features/search/SearchModeToggle'
@@ -33,6 +34,7 @@ export const TopBarSearch = ({
   onDismiss,
   variant = 'topbar',
 }: TopBarSearchProps) => {
+  const { t } = useTranslation('shell')
   const navigate = useNavigate()
   const { data: organization } = useCurrentOrganization()
   const [query, setQuery] = useState('')
@@ -140,7 +142,7 @@ export const TopBarSearch = ({
           aria-autocomplete="list"
           aria-controls={showDropdown ? listboxId : undefined}
           aria-expanded={showDropdown}
-          aria-label="Search"
+          aria-label={t('navigation.search')}
           className="admin-topbar-search-input"
           maxLength={200}
           onChange={(event) => {
@@ -149,7 +151,9 @@ export const TopBarSearch = ({
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder={organization?.name ? `Search ${organization.name}` : 'Search'}
+          placeholder={organization?.name
+            ? t('search.placeholderNamed', { name: organization.name })
+            : t('navigation.search')}
           ref={inputRef}
           role="combobox"
           type="search"
@@ -168,8 +172,8 @@ export const TopBarSearch = ({
         <div className="admin-topbar-results" id={listboxId} role="listbox">
           <p className="px-3 pb-2 pt-1 text-xs text-[color:var(--tx3)]">
             {mode === 'semantic'
-              ? 'Hybrid search adds meaning-based matches while keeping exact matches.'
-              : 'Full text searches the words you entered across every section.'}
+              ? t('search.hybridDescription')
+              : t('search.fullTextDescription')}
           </p>
           {results.errorMessage && items.length === 0 ? (
             <p className="px-3 py-4 text-sm text-[color:var(--danger)]">
@@ -177,13 +181,13 @@ export const TopBarSearch = ({
             </p>
           ) : items.length === 0 ? (
             <p className="px-3 py-4 text-sm text-[color:var(--tx3)]">
-              {results.isLoading ? 'Searching…' : 'No results'}
+              {results.isLoading ? t('search.searching') : t('search.noResults')}
             </p>
           ) : (
             <>
               {results.errorMessage ? (
                 <p className="px-3 pb-2 text-xs text-[color:var(--danger)]">
-                  Some sections could not be searched: {results.errorMessage}
+                  {t('search.partialError', { error: results.errorMessage })}
                 </p>
               ) : null}
               {items.map((item, index) => {
@@ -234,7 +238,7 @@ export const TopBarSearch = ({
                 }}
                 type="button"
               >
-                See all results
+                {t('search.seeAllResults')}
               </button>
             </>
           )}

@@ -5,6 +5,9 @@ Authoritative standard, moved verbatim out of
 rather than loaded into every session. `CLAUDE.md` carries the one-line
 summary and points here; **this file is the rule**.
 
+Account-menu language selection and feature-owned translation catalogs follow
+the [localization standard](localization.md).
+
 
 - The admin is fully color-themed via CSS custom properties. **All color lives in
   `admin/src/styles.css`** — the base `:root` is the default "nebula" theme, and

@@ -5,7 +5,8 @@
     "knowledge": "Wissen",
     "admin": "Verwaltung",
     "search": "Suchen",
-    "main": "Hauptnavigation"
+    "main": "Hauptnavigation",
+    "title": "Navigation"
   },
   "focus": {
     "turnOff": "Fokusmodus ausschalten",
@@ -16,7 +17,14 @@
   },
   "sidebar": {
     "threads": "Threads",
-    "unreadMessages": "Ungelesene Nachrichten"
+    "unreadMessages": "Ungelesene Nachrichten",
+    "createChannel": "Kanal erstellen",
+    "sharedChannels": "Gemeinsame Kanäle",
+    "noSharedChannels": "Noch keine gemeinsamen Kanäle vorhanden.",
+    "startNewChat": "Neuen Chat beginnen",
+    "directMessages": "Direktnachrichten",
+    "starred": "Mit Stern markiert",
+    "resize": "Seitenleiste vergrößern oder verkleinern"
   },
   "create": {
     "title": "Erstellen",
@@ -30,5 +38,98 @@
     "agentDescription": "Privaten oder gemeinsamen Agenten erstellen",
     "new": "Neu erstellen",
     "tooltipDescription": "Nachricht, Kanal, Projekt oder Agenten erstellen."
+  },
+  "alerts": {
+    "title": "Benachrichtigungen",
+    "markAllRead": "Alle als gelesen markieren",
+    "empty": "Noch keine Benachrichtigungen"
+  },
+  "recentChannels": {
+    "title": "Zuletzt besuchte Kanäle",
+    "empty": "Keine zuletzt besuchten Kanäle"
+  },
+  "history": {
+    "back": "Zurück",
+    "forward": "Vorwärts"
+  },
+  "adminNav": {
+    "groups": {
+      "agents": "Agenten",
+      "user": "Benutzer",
+      "team": "Team",
+      "organization": "Organisation",
+      "governance": "Governance",
+      "platform": "Plattform"
+    },
+    "items": {
+      "agents": "Agenten",
+      "workflows": "Workflows",
+      "taskSets": "Aufgabensätze",
+      "triggers": "Auslöser",
+      "tools": "Werkzeuge",
+      "executors": "Executors",
+      "apps": "Apps",
+      "settings": "Einstellungen",
+      "secrets": "Geheimnisse",
+      "connectedAccounts": "Verbundene Konten",
+      "pairedAgents": "Gekoppelte Agenten",
+      "statuses": "Status",
+      "models": "Modelle",
+      "members": "Mitglieder",
+      "creditsBilling": "Guthaben und Abrechnung",
+      "health": "Systemzustand",
+      "pushCredentials": "Push-Zugangsdaten",
+      "auditLog": "Auditprotokoll",
+      "policy": "Richtlinien",
+      "operationalUsage": "Betriebsnutzung"
+    },
+    "fullRefresh": "Vollständig neu laden",
+    "failedWorkflowRuns": "Fehlgeschlagene Workflow-Ausführungen: {{total}}"
+  },
+  "search": {
+    "close": "Suche schließen",
+    "placeholderNamed": "{{name}} durchsuchen",
+    "hybridDescription": "Die hybride Suche findet auch sinngemäße Treffer und behält genaue Übereinstimmungen bei.",
+    "fullTextDescription": "Die Volltextsuche sucht die eingegebenen Wörter in allen Bereichen.",
+    "searching": "Suche läuft …",
+    "noResults": "Keine Ergebnisse",
+    "partialError": "Einige Bereiche konnten nicht durchsucht werden: {{error}}",
+    "seeAllResults": "Alle Ergebnisse anzeigen"
+  },
+  "projects": {
+    "create": "Projekt erstellen",
+    "newProject": "Neues Projekt",
+    "empty": "In diesem Team gibt es noch keine Projekte.",
+    "browseAll": "Alle Projekte durchsuchen",
+    "deleteFailed": "Projekt konnte nicht gelöscht werden",
+    "deleteError": "Projekt konnte nicht gelöscht werden",
+    "expandChannels": "Kanäle in {{name}} aufklappen",
+    "collapseChannels": "Kanäle in {{name}} zuklappen",
+    "actionsFor": "Projektaktionen für {{name}}",
+    "addChannelLabel": "Neuen Kanal im Projekt hinzufügen",
+    "addChannel": "Kanal zum Projekt hinzufügen",
+    "renameIcon": "Name und Symbol ändern",
+    "noChannels": "Es gibt noch keine Kanäle.",
+    "deleteWarning": "Diese Aktion kann nicht rückgängig gemacht werden.",
+    "delete": "Löschen",
+    "deleteNamed": "Projekt „{{name}}“ löschen?"
+  },
+  "projectSections": {
+    "overview": "Übersicht",
+    "boards": "Boards",
+    "backlog": "Backlog",
+    "insights": "Analysen",
+    "docs": "Dokumente",
+    "dashboards": "Dashboards",
+    "executors": "Executors",
+    "settings": "Einstellungen",
+    "withCount": "{{label}} ({{total}})",
+    "collapseBoards": "Boards zuklappen",
+    "expandBoards": "Boards aufklappen",
+    "newBoard": "Neues Board",
+    "loadingBoards": "Boards werden geladen…",
+    "loadError": "Boards konnten nicht geladen werden.",
+    "retry": "Erneut versuchen",
+    "emptyBoards": "Es gibt noch keine Boards."
   }
 }

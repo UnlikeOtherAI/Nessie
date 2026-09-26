@@ -1,0 +1,15 @@
+{
+  "accountMenu": "Kontomenü",
+  "feedback": "Feedback",
+  "accountSettings": "Kontoeinstellungen",
+  "logOut": "Abmelden",
+  "language": "Sprache",
+  "status": "Status",
+  "setUpStatus": "Status einrichten",
+  "active": "Aktiv",
+  "clearStatus": "Status löschen",
+  "editStatuses": "Status bearbeiten",
+  "availabilityStatus": "Verfügbarkeit — {{status}}",
+  "availabilityChoice": { "auto": "Automatisch", "active": "Aktiv", "away": "Abwesend" },
+  "availabilityState": { "active": "Aktiv", "away": "Abwesend", "offline": "Offline" }
+}

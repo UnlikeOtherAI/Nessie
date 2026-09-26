@@ -8,6 +8,7 @@ import { SidebarEmptyNote } from './SidebarEmptyNote';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import { SidebarPlusIcon } from './SidebarPlusIcon';
 import type { CreateChannelTarget } from './types';
+import { useTranslation } from 'react-i18next';
 
 type SidebarChannelsSectionProps = {
   channelsCollapsed: boolean;
@@ -30,13 +31,14 @@ export const SidebarChannelsSection = ({
   starredChannelIds,
   toggleChannelsCollapsed,
 }: SidebarChannelsSectionProps) => {
+  const { t } = useTranslation('shell');
   const prewarm = usePrewarm();
 
   return (
     <SidebarMenuSection
       action={
         <button
-          aria-label="Create channel"
+          aria-label={t('sidebar.createChannel')}
           className="admin-sidebar-plus"
           onClick={() => onOpenCreateChannel({ scope: 'standalone' })}
           type="button"
@@ -48,10 +50,10 @@ export const SidebarChannelsSection = ({
       isCollapsed={channelsCollapsed}
       onToggle={toggleChannelsCollapsed}
       className="sidebar-shared-section"
-      title="Shared channels"
+      title={t('sidebar.sharedChannels')}
     >
       {standaloneChannels.length === 0 ? (
-        <SidebarEmptyNote>There are no shared channels yet.</SidebarEmptyNote>
+        <SidebarEmptyNote>{t('sidebar.noSharedChannels')}</SidebarEmptyNote>
       ) : null}
       {standaloneChannels.map((channel) => {
         const isStarredChannel = starredChannelIds.has(channel.id);

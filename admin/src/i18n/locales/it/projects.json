@@ -1,0 +1,60 @@
+{
+  "boardDirectory": {
+    "new": "Nuova bacheca",
+    "back": "Torna alla bacheca",
+    "title": "Bacheche",
+    "error": "Impossibile caricare le bacheche.",
+    "loading": "Caricamento delle bacheche…",
+    "empty": "Non ci sono ancora bacheche.",
+    "emptyDescription": "Crea una bacheca per le attività di questo progetto.",
+    "board": "Bacheca",
+    "default": "Predefinita",
+    "notDefault": "Non predefinita",
+    "actions": "Azioni",
+    "open": "Apri bacheca",
+    "settings": "Impostazioni",
+    "tableLabel": "Bacheche del progetto",
+    "columnCount_one": "{{count}} colonna",
+    "columnCount_other": "{{count}} colonne",
+    "columnCount_few": "{{count}} colonne",
+    "columnCount_many": "{{count}} colonne",
+    "iterations": "Iterazioni",
+    "kanban": "Kanban",
+    "columnCount": "{{count}} colonne"
+  },
+  "board": {
+    "sprintsError": "Impossibile caricare gli sprint.",
+    "loadingSprints": "Caricamento degli sprint…",
+    "noActiveSprint": "Nessuno sprint attivo.",
+    "planSprint": "Pianifica uno sprint",
+    "refreshWarning": "Impossibile aggiornare questa bacheca. Sono mostrate le ultime schede caricate.",
+    "retry": "Riprova",
+    "tasksError": "Impossibile caricare le attività.",
+    "loadingTasks": "Caricamento delle attività…",
+    "showAllAssignees": "Mostra tutti gli assegnatari",
+    "noCardsForAssignee": "Nessuna scheda per questo assegnatario.",
+    "filteredEmptyDescription": "Questa bacheca contiene schede, ma nessuna è assegnata alla persona selezionata nel filtro.",
+    "addColumns": "Aggiungi colonne",
+    "noColumns": "Questa bacheca non contiene ancora colonne.",
+    "noColumnsDescription": "Aggiungi una colonna per ogni fase che questa bacheca deve mostrare."
+  },
+  "directory": {
+    "back": "Torna ai progetti",
+    "subtitle": "Tutti i progetti della tua organizzazione. Chiedi a un membro di aggiungerti a un progetto di cui non fai parte.",
+    "title": "Tutti i progetti",
+    "error": "Impossibile caricare i progetti.",
+    "loading": "Caricamento dei progetti…",
+    "empty": "Questa organizzazione non ha ancora progetti.",
+    "listLabel": "Progetti di questa organizzazione",
+    "member": "Sei un membro",
+    "adminAccess": "Puoi aprire questo progetto come amministratore dell’organizzazione",
+    "protected": "Protetto — chiedi a un membro di aggiungerti",
+    "notMember": "Non sei un membro",
+    "membersOf": "Membri di {{name}}",
+    "noMembers": "Nessun membro"
+  },
+  "navigation": {
+    "sections": "Sezioni del progetto",
+    "openNamed": "Apri {{label}}"
+  }
+}

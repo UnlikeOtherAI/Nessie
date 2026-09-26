@@ -1,0 +1,60 @@
+{
+  "boardDirectory": {
+    "new": "Nouveau tableau",
+    "back": "Retour au tableau",
+    "title": "Tableaux",
+    "error": "Impossible de charger les tableaux.",
+    "loading": "Chargement des tableaux…",
+    "empty": "Aucun tableau pour le moment.",
+    "emptyDescription": "Créez un tableau pour les tickets de ce projet.",
+    "board": "Tableau",
+    "default": "Par défaut",
+    "notDefault": "Pas défini par défaut",
+    "actions": "Actions",
+    "open": "Ouvrir le tableau",
+    "settings": "Paramètres",
+    "tableLabel": "Tableaux du projet",
+    "columnCount_one": "{{count}} colonne",
+    "columnCount_other": "{{count}} colonnes",
+    "columnCount_few": "{{count}} colonnes",
+    "columnCount_many": "{{count}} colonnes",
+    "iterations": "Itérations",
+    "kanban": "Kanban",
+    "columnCount": "{{count}} colonnes"
+  },
+  "board": {
+    "sprintsError": "Impossible de charger les sprints.",
+    "loadingSprints": "Chargement des sprints…",
+    "noActiveSprint": "Aucun sprint actif.",
+    "planSprint": "Planifier un sprint",
+    "refreshWarning": "Impossible d’actualiser ce tableau. Les dernières cartes chargées sont affichées.",
+    "retry": "Réessayer",
+    "tasksError": "Impossible de charger les tâches.",
+    "loadingTasks": "Chargement des tâches…",
+    "showAllAssignees": "Afficher toutes les personnes assignées",
+    "noCardsForAssignee": "Aucune carte pour cette personne assignée.",
+    "filteredEmptyDescription": "Ce tableau contient des cartes, mais aucune n’est attribuée à la personne sélectionnée dans le filtre.",
+    "addColumns": "Ajouter des colonnes",
+    "noColumns": "Ce tableau ne contient encore aucune colonne.",
+    "noColumnsDescription": "Ajoutez une colonne pour chaque étape que ce tableau doit afficher."
+  },
+  "directory": {
+    "back": "Retour aux projets",
+    "subtitle": "Tous les projets de votre organisation. Demandez à un membre de vous ajouter à un projet dont vous ne faites pas partie.",
+    "title": "Tous les projets",
+    "error": "Impossible de charger les projets.",
+    "loading": "Chargement des projets…",
+    "empty": "Cette organisation ne contient encore aucun projet.",
+    "listLabel": "Projets de cette organisation",
+    "member": "Vous êtes membre",
+    "adminAccess": "Vous pouvez ouvrir ce projet en tant qu’administrateur de l’organisation",
+    "protected": "Protégé — demandez à un membre de vous ajouter",
+    "notMember": "Vous n’êtes pas membre",
+    "membersOf": "Membres de {{name}}",
+    "noMembers": "Aucun membre"
+  },
+  "navigation": {
+    "sections": "Sections du projet",
+    "openNamed": "Ouvrir {{label}}"
+  }
+}

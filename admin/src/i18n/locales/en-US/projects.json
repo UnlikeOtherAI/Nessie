@@ -1,0 +1,60 @@
+{
+  "boardDirectory": {
+    "empty": "No boards yet.",
+    "notDefault": "Not default",
+    "actions": "Actions",
+    "default": "Default",
+    "new": "New board",
+    "loading": "Loading boards…",
+    "board": "Board",
+    "columnCount_other": "{{count}} columns",
+    "error": "Couldn't load boards.",
+    "back": "Back to board",
+    "open": "Open board",
+    "settings": "Settings",
+    "title": "Boards",
+    "columnCount_one": "{{count}} column",
+    "emptyDescription": "Create a board to organize this project's tickets.",
+    "tableLabel": "Project boards",
+    "columnCount_few": "{{count}} columns",
+    "columnCount_many": "{{count}} columns",
+    "iterations": "Iterations",
+    "kanban": "Kanban",
+    "columnCount": "{{count}} columns"
+  },
+  "board": {
+    "refreshWarning": "Could not refresh this board. Showing the last loaded cards.",
+    "loadingTasks": "Loading tasks…",
+    "retry": "Retry",
+    "noColumnsDescription": "Add a column for each stage this board should show.",
+    "planSprint": "Plan a sprint",
+    "tasksError": "Could not load tasks.",
+    "addColumns": "Add columns",
+    "sprintsError": "Could not load sprints.",
+    "showAllAssignees": "Show all assignees",
+    "noColumns": "This board has no columns yet.",
+    "noActiveSprint": "No active sprint.",
+    "noCardsForAssignee": "No cards for this assignee.",
+    "loadingSprints": "Loading sprints…",
+    "filteredEmptyDescription": "This board has cards, but none are assigned to the person selected in the filter."
+  },
+  "navigation": {
+    "sections": "Project sections",
+    "openNamed": "Open {{label}}"
+  },
+  "directory": {
+    "notMember": "You are not a member",
+    "subtitle": "Every project in your organization. Ask a member to add you to one you are not in.",
+    "error": "Projects could not be loaded.",
+    "noMembers": "No members",
+    "loading": "Loading projects…",
+    "membersOf": "Members of {{name}}",
+    "member": "You are a member",
+    "listLabel": "Projects in this organization",
+    "adminAccess": "You can open this as an organization admin",
+    "protected": "Protected — ask a member to add you",
+    "title": "All projects",
+    "back": "Back to Projects",
+    "empty": "There are no projects in this organization yet."
+  }
+}

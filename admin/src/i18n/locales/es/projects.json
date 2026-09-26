@@ -1,0 +1,60 @@
+{
+  "boardDirectory": {
+    "new": "Nuevo tablero",
+    "back": "Volver al tablero",
+    "title": "Tableros",
+    "error": "No se pudieron cargar los tableros.",
+    "loading": "Cargando tableros…",
+    "empty": "Todavía no hay tableros.",
+    "emptyDescription": "Crea un tablero para las tareas de este proyecto.",
+    "board": "Tablero",
+    "default": "Predeterminado",
+    "notDefault": "No predeterminado",
+    "actions": "Acciones",
+    "open": "Abrir tablero",
+    "settings": "Configuración",
+    "tableLabel": "Tableros del proyecto",
+    "columnCount_one": "{{count}} columna",
+    "columnCount_other": "{{count}} columnas",
+    "columnCount_few": "{{count}} columnas",
+    "columnCount_many": "{{count}} columnas",
+    "iterations": "Iteraciones",
+    "kanban": "Kanban",
+    "columnCount": "{{count}} columnas"
+  },
+  "board": {
+    "sprintsError": "No se pudieron cargar los sprints.",
+    "loadingSprints": "Cargando sprints…",
+    "noActiveSprint": "No hay ningún sprint activo.",
+    "planSprint": "Planificar un sprint",
+    "refreshWarning": "No se pudo actualizar el tablero. Se muestran las últimas tarjetas cargadas.",
+    "retry": "Reintentar",
+    "tasksError": "No se pudieron cargar las tareas.",
+    "loadingTasks": "Cargando tareas…",
+    "showAllAssignees": "Mostrar todas las personas asignadas",
+    "noCardsForAssignee": "No hay tarjetas para esta persona asignada.",
+    "filteredEmptyDescription": "Este tablero tiene tarjetas, pero ninguna está asignada a la persona seleccionada en el filtro.",
+    "addColumns": "Añadir columnas",
+    "noColumns": "Este tablero todavía no tiene columnas.",
+    "noColumnsDescription": "Añade una columna por cada etapa que deba mostrar este tablero."
+  },
+  "directory": {
+    "back": "Volver a Proyectos",
+    "subtitle": "Todos los proyectos de tu organización. Pide a un miembro que te añada a un proyecto del que todavía no formes parte.",
+    "title": "Todos los proyectos",
+    "error": "No se pudieron cargar los proyectos.",
+    "loading": "Cargando proyectos…",
+    "empty": "Esta organización todavía no tiene proyectos.",
+    "listLabel": "Proyectos de esta organización",
+    "member": "Eres miembro",
+    "adminAccess": "Puedes abrir este proyecto como administrador de la organización",
+    "protected": "Protegido — pide a un miembro que te añada",
+    "notMember": "No eres miembro",
+    "membersOf": "Miembros de {{name}}",
+    "noMembers": "Sin miembros"
+  },
+  "navigation": {
+    "sections": "Secciones del proyecto",
+    "openNamed": "Abrir {{label}}"
+  }
+}

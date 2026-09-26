@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { KanbanBoard } from '../../components/features/projects/kanban/KanbanBoard'
 import { ALL_ASSIGNEES } from '../../components/features/projects/kanban/board-assignee-filter'
@@ -23,6 +24,7 @@ type ProjectBoardTabProps = {
 }
 
 export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTabProps) => {
+  const { t } = useTranslation('projects')
   // The header owns the controls; this owns the board. Both read the same URL
   // and the same query cache through `useBoardChrome`, so there is one answer
   // to what is on screen rather than a prop chain through the page.
@@ -56,7 +58,7 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
     return <Skeleton variant="board" />
   }
   if (isScrum && iterationsQuery.isError && !iterationsQuery.data) {
-    return <QueryState errorLabel="Could not load sprints." loadingLabel="Loading sprints…" query={iterationsQuery}>
+    return <QueryState errorLabel={t('board.sprintsError')} loadingLabel={t('board.loadingSprints')} query={iterationsQuery}>
       {() => null}
     </QueryState>
   }
@@ -66,12 +68,12 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
   if (isScrum && !activeIteration) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
-        <div className="text-sm text-[color:var(--tx2)]">No active sprint.</div>
+        <div className="text-sm text-[color:var(--tx2)]">{t('board.noActiveSprint')}</div>
         <Link
           className="admin-button admin-button-primary"
           to={`/projects/${projectId}/backlog`}
         >
-          Plan a sprint
+          {t('board.planSprint')}
         </Link>
       </div>
     )
@@ -84,8 +86,8 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
     <div className="flex h-full min-h-0 flex-col gap-3 px-4 pt-4">
       {tasksQuery.isError && tasksQuery.data ? (
         <Notice role="alert" tone="warning">
-          Could not refresh this board. Showing the last loaded cards.{' '}
-          <button className="underline" onClick={() => void tasksQuery.refetch()} type="button">Retry</button>
+          {t('board.refreshWarning')}{' '}
+          <button className="underline" onClick={() => void tasksQuery.refetch()} type="button">{t('board.retry')}</button>
         </Notice>
       ) : null}
       {isScrum && activeIteration ? (
@@ -101,7 +103,7 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
       ) : null}
       <div className="min-h-0 flex-1">
         {tasksQuery.isError && !tasksQuery.data ? (
-          <QueryState errorLabel="Could not load tasks." loadingLabel="Loading tasks…" query={tasksQuery}>
+          <QueryState errorLabel={t('board.tasksError')} loadingLabel={t('board.loadingTasks')} query={tasksQuery}>
             {() => null}
           </QueryState>
         ) : visibleTasks.length === 0 && tasks.length > 0 ? (
@@ -114,13 +116,12 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
                 onClick={() => setAssignee(ALL_ASSIGNEES)}
                 type="button"
               >
-                Show all assignees
+                {t('board.showAllAssignees')}
               </button>
             }
-            title="No cards for this assignee."
+            title={t('board.noCardsForAssignee')}
           >
-            This board has {tasks.length} {tasks.length === 1 ? 'card' : 'cards'}, none
-            of them assigned to whoever the filter names.
+          {t('board.filteredEmptyDescription')}
           </EmptyState>
         ) : columns.length === 0 ? (
           <EmptyState
@@ -129,12 +130,12 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
                 className="admin-button admin-button-primary"
                 to={`/projects/${projectId}/boards/${board.id}/settings?tab=columns`}
               >
-                Add columns
+                {t('board.addColumns')}
               </Link>
             }
-            title="This board has no columns yet."
+            title={t('board.noColumns')}
           >
-            Add a column for each stage this board should show.
+            {t('board.noColumnsDescription')}
           </EmptyState>
         ) : (
           <KanbanBoard

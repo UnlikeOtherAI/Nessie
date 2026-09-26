@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAttentionSummary } from '../../facades/alerts/hooks'
 import { useProjectBoards, type BoardRecord } from '../../facades/boards/hooks'
 import { useDeleteProject, useProjects } from '../../facades/projects/hooks'
@@ -60,6 +61,7 @@ export const ProjectsSidebarNav = ({
   starredProjectIds,
   toggleStarredCollapsed,
 }: ProjectsSidebarNavProps) => {
+  const { t } = useTranslation('shell')
   const navigate = useNavigate()
   const { search } = useLocation()
   const boardSettingsMatch = /^\/projects\/[^/]+\/boards\/([^/]+)\/settings$/.exec(pathname)
@@ -185,8 +187,8 @@ export const ProjectsSidebarNav = ({
     deleteProject.mutate(project.id, {
       onError: (error) =>
         pushToast({
-          body: error instanceof Error ? error.message : 'Failed to delete project',
-          title: 'Could not delete project',
+          body: error instanceof Error ? error.message : t('projects.deleteFailed'),
+          title: t('projects.deleteError'),
         }),
     })
   }
@@ -244,7 +246,7 @@ export const ProjectsSidebarNav = ({
             id="projects-nav-starred"
             isCollapsed={starredCollapsed}
             onToggle={toggleStarredCollapsed}
-            title="Starred"
+            title={t('sidebar.starred')}
             titleIcon={
               <svg
                 className="h-3.5 w-3.5 flex-shrink-0 text-[color:var(--warning-text)]"
@@ -266,7 +268,7 @@ export const ProjectsSidebarNav = ({
           // doorway is offered to everyone the list is shown to.
           action={
             <button
-              aria-label="New project"
+              aria-label={t('projects.newProject')}
               className="admin-sidebar-plus"
               onClick={() => setCreateOpen(true)}
               type="button"
@@ -277,10 +279,10 @@ export const ProjectsSidebarNav = ({
           id="projects-nav-projects"
           isCollapsed={collapsedSections.projects ?? false}
           onToggle={() => toggleSection('projects')}
-          title="Projects"
+          title={t('navigation.projects')}
         >
           {projects.length === 0 ? (
-            <SidebarEmptyNote>There are no projects in this team yet.</SidebarEmptyNote>
+            <SidebarEmptyNote>{t('projects.empty')}</SidebarEmptyNote>
           ) : (
             // Empty when every project is starred — they are all in Starred
             // above, so there is nothing left to say here.
@@ -303,7 +305,7 @@ export const ProjectsSidebarNav = ({
                 className="sidebar-project-link"
                 to="/projects/directory"
               >
-                <span className="min-w-0 flex-1 truncate text-[color:var(--tx3)]">Browse all projects</span>
+                <span className="min-w-0 flex-1 truncate text-[color:var(--tx3)]">{t('projects.browseAll')}</span>
               </Link>
             </div>
           </div>

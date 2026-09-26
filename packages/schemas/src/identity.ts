@@ -72,6 +72,7 @@ export const PushSurfaceSchema = z.discriminatedUnion('kind', [
 export type PushSurface = z.infer<typeof PushSurfaceSchema>
 
 export const UserPreferencesSchema = z.object({
+  language: z.enum(['en-GB', 'en-US', 'cs', 'de', 'fr', 'it', 'es']).optional(),
   starred: z.array(z.object({
     type: z.enum(['channel', 'project', 'user']),
     id: z.string(),
