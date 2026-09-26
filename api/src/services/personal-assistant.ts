@@ -4,6 +4,7 @@ import {
   acquireAgentToolPolicyLock,
   assertGenericAgentToolPolicyInput,
   ensureDefaultThread,
+  ensureSystemTeam,
   loadTeamProjectScope,
   mergeGenericAgentToolPolicy,
 } from '@nessie/team-admin'
@@ -37,7 +38,6 @@ type PersonalAssistantAgentCurrentConfig = {
 export type PersonalAssistantBootstrapInput = {
   agentConfig?: PersonalAssistantAgentConfig
   organizationId: string
-  teamId: string
   userId: string
 }
 
@@ -46,57 +46,6 @@ export type PersonalAssistantBootstrapResult = {
   channelId: string
   threadId: string
 }
-
-const ensurePersonalAssistantSystemTeam = async (
-  prisma: PrismaClient,
-  input: {
-    organizationId: string
-    teamId: string
-  },
-): Promise<string> =>
-  prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`
-      SELECT pg_advisory_xact_lock(
-        hashtext(${input.organizationId}),
-        hashtext('personal_assistant_system_team')
-      )
-    `
-
-    const existing = await tx.team.findFirst({
-      where: {
-        name: PERSONAL_ASSISTANT_SYSTEM_TEAM_NAME,
-        project: { organizationId: input.organizationId },
-        systemManaged: true,
-      },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    })
-    if (existing) {
-      return existing.id
-    }
-
-    const seedTeam = await tx.team.findFirst({
-      where: {
-        id: input.teamId,
-        project: { organizationId: input.organizationId },
-      },
-      select: { projectId: true },
-    })
-    if (!seedTeam) {
-      throw new Error('PERSONAL_ASSISTANT_SYSTEM_TEAM_CONTEXT_NOT_FOUND')
-    }
-
-    const team = await tx.team.create({
-      data: {
-        name: PERSONAL_ASSISTANT_SYSTEM_TEAM_NAME,
-        projectId: seedTeam.projectId,
-        systemManaged: true,
-      },
-      select: { id: true },
-    })
-
-    return team.id
-  })
 
 const createPersonalAssistantAgentData = (
   organizationId: string,
@@ -211,33 +160,36 @@ export const ensurePersonalAssistantChannel = async (
     throw new Error('Personal Assistant team does not belong to this organization')
   }
 
+  // Bootstrap repairs its own DM: nothing legitimate archives or deletes a
+  // system DM (`canModifyChannel` refuses both), so either stamp is collateral
+  // — a project deletion took the whole seed project's channels with it once —
+  // and would otherwise hide the one conversation a person has with their
+  // assistant.
+  const channelData = {
+    archivedAt: null,
+    deletedAt: null,
+    label: PERSONAL_ASSISTANT_NAME,
+    type: 'dm' as const,
+    organizationId: input.organizationId,
+    projectId: teamProject.projectId,
+    teamId: input.teamId,
+    visibility: 'private' as const,
+    systemChannelType: PERSONAL_ASSISTANT_CHANNEL_TYPE,
+  }
+
   try {
     const channel = await prisma.channel.upsert({
       where: { dmKey },
       create: {
-        label: PERSONAL_ASSISTANT_NAME,
-        type: 'dm',
-        organizationId: input.organizationId,
-        projectId: teamProject.projectId,
-        teamId: input.teamId,
-        visibility: 'private',
+        ...channelData,
         dmKey,
-        systemChannelType: PERSONAL_ASSISTANT_CHANNEL_TYPE,
         members: {
           create: {
             userId: input.userId,
           },
         },
       },
-      update: {
-        label: PERSONAL_ASSISTANT_NAME,
-        type: 'dm',
-        organizationId: input.organizationId,
-        projectId: teamProject.projectId,
-        teamId: input.teamId,
-        visibility: 'private',
-        systemChannelType: PERSONAL_ASSISTANT_CHANNEL_TYPE,
-      },
+      update: channelData,
       select: { id: true },
     })
 
@@ -277,15 +229,7 @@ export const ensurePersonalAssistantChannel = async (
 
       await prisma.channel.update({
         where: { id: fallback.id },
-        data: {
-          label: PERSONAL_ASSISTANT_NAME,
-          type: 'dm',
-          organizationId: input.organizationId,
-          projectId: teamProject.projectId,
-          teamId: input.teamId,
-          visibility: 'private',
-          systemChannelType: PERSONAL_ASSISTANT_CHANNEL_TYPE,
-        },
+        data: channelData,
       })
 
       await prisma.channelMember.upsert({
@@ -335,9 +279,10 @@ export const ensurePersonalAssistantBootstrap = async (
   prisma: PrismaClient,
   input: PersonalAssistantBootstrapInput,
 ): Promise<PersonalAssistantBootstrapResult> => {
-  const systemTeamId = await ensurePersonalAssistantSystemTeam(prisma, {
+  const systemTeamId = await ensureSystemTeam(prisma, {
+    lockKey: 'personal_assistant_system_team',
+    name: PERSONAL_ASSISTANT_SYSTEM_TEAM_NAME,
     organizationId: input.organizationId,
-    teamId: input.teamId,
   })
   const agentId = await ensurePersonalAssistantAgent(prisma, input.organizationId, input.agentConfig)
   const channelId = await ensurePersonalAssistantChannel(prisma, {

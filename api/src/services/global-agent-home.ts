@@ -20,7 +20,7 @@ import type { ChannelRecord } from '@nessie/schemas'
  */
 export const openGlobalAgentHome = async (
   prisma: PrismaClient,
-  input: { organizationId: string; slug: string; teamId: string; userId: string },
+  input: { organizationId: string; slug: string; userId: string },
 ): Promise<{ agentId: string; channel: ChannelRecord; threadId: string } | null> => {
   const blueprint = getGlobalAgentBlueprint(input.slug)
   if (!blueprint) return null
@@ -28,7 +28,6 @@ export const openGlobalAgentHome = async (
   const bootstrap = await ensureGlobalAgentBootstrap(prisma, {
     blueprint,
     organizationId: input.organizationId,
-    teamId: input.teamId,
     userId: input.userId,
   })
 

@@ -187,7 +187,6 @@ const createHarness = (options: HarnessOptions = {}) => {
         beforeEnqueue: async (_tx, context) => beforeEnqueue(context),
         content: message.content,
         metadata: {},
-        teamId,
       },
     )
 

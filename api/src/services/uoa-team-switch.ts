@@ -188,11 +188,7 @@ export const materializeUoaTeam = async (
   // see `attemptSystemAgentsBootstrap`.
   await attemptSystemAgentsBootstrap(
     prisma,
-    {
-      organizationId: context.organizationId,
-      teamId: context.teamId,
-      userId: input.userId,
-    },
+    { organizationId: context.organizationId, userId: input.userId },
     input.onSystemAgentsBootstrapError,
   )
 }

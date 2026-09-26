@@ -118,31 +118,12 @@ export const continueDesignInChat = async (
     )
   }
 
-  // The hidden system team is seeded from a real team's project the first time
-  // any global agent is bootstrapped in this organisation; afterwards the seed
-  // is found by name and this value is unused. The session tenant usually
-  // carries one, but it is optional on the context, so fall back to a team this
-  // person actually belongs to rather than inventing one.
-  const seedTeamId = tenant.teamId ?? (await prisma.teamMember.findFirst({
-    where: { team: { project: { organizationId: tenant.organizationId } }, userId },
-    orderBy: { createdAt: 'asc' },
-    select: { teamId: true },
-  }))?.teamId
-  if (!seedTeamId) {
-    throw new GlobalAgentChatError(
-      409,
-      'GLOBAL_AGENT_NO_TEAM',
-      'You are not in a team in this organisation yet, so there is nowhere to open '
-      + 'the conversation.',
-    )
-  }
-
   // Idempotent, and the same bootstrap login runs — the person may never have
-  // opened this DM.
+  // opened this DM. A home DM hangs from the organisation's own system team,
+  // so a person in no team of this organisation yet still has one to open.
   const home = await ensureGlobalAgentBootstrap(prisma, {
     blueprint,
     organizationId: tenant.organizationId,
-    teamId: seedTeamId,
     userId,
   })
 

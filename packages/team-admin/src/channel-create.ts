@@ -13,7 +13,13 @@ import {
 } from './channel-slugs.js'
 
 const STANDALONE_CHANNEL_PROJECT_NAME = 'Standalone channels'
-const STANDALONE_CHANNEL_TEAM_NAME = 'Standalone channels'
+/**
+ * The name that tells the root's own team apart from the other `systemManaged`
+ * teams under the same project — the Personal Assistant's, the global agents',
+ * an external product's (`ensureSystemTeam`). Migration
+ * `20260914120000_default_shared_channels` wrote it into every backfilled root.
+ */
+export const STANDALONE_CHANNEL_TEAM_NAME = 'Standalone channels'
 
 /**
  * The caller named a team they have no standing in. Thrown rather than folded
@@ -104,6 +110,12 @@ const seedDefaultSharedChannels = async (
  * empty "Shared channels" section, including a root an older release created
  * empty. Serialised per organisation by an advisory lock; call it inside the
  * transaction that creates or signs in to the organisation.
+ *
+ * The project is resolved first and its team by name: the root also holds the
+ * other system teams (`ensureSystemTeam`), so "any `systemManaged` team under
+ * the root" would hand standalone channels to the Personal Assistant's team,
+ * and a root whose own team was missing used to get a second root project
+ * created beside it rather than the team it lacked.
  */
 export const ensureSharedChannelRootInTransaction = async (
   transaction: Prisma.TransactionClient,
@@ -116,28 +128,11 @@ export const ensureSharedChannelRootInTransaction = async (
     )
   `)
 
-  const existing = await transaction.team.findFirst({
-    where: {
-      project: { channelRoot: true, organizationId },
-      systemManaged: true,
-    },
-    select: { id: true, projectId: true },
-  })
-  if (existing) {
-    const everHeld = await transaction.channel.count({
-      where: { projectId: existing.projectId, type: 'standard' },
-    })
-    if (everHeld === 0) {
-      await seedDefaultSharedChannels(transaction, {
-        organizationId,
-        projectId: existing.projectId,
-        teamId: existing.id,
-      })
-    }
-    return { projectId: existing.projectId, teamId: existing.id }
-  }
-
-  const project = await transaction.project.create({
+  const project = await transaction.project.findFirst({
+    where: { channelRoot: true, organizationId },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  }) ?? await transaction.project.create({
     data: {
       channelRoot: true,
       name: STANDALONE_CHANNEL_PROJECT_NAME,
@@ -145,7 +140,15 @@ export const ensureSharedChannelRootInTransaction = async (
     },
     select: { id: true },
   })
-  const team = await transaction.team.create({
+  const team = await transaction.team.findFirst({
+    where: {
+      name: STANDALONE_CHANNEL_TEAM_NAME,
+      projectId: project.id,
+      systemManaged: true,
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  }) ?? await transaction.team.create({
     data: {
       name: STANDALONE_CHANNEL_TEAM_NAME,
       projectId: project.id,
@@ -153,11 +156,17 @@ export const ensureSharedChannelRootInTransaction = async (
     },
     select: { id: true },
   })
-  await seedDefaultSharedChannels(transaction, {
-    organizationId,
-    projectId: project.id,
-    teamId: team.id,
+
+  const everHeld = await transaction.channel.count({
+    where: { projectId: project.id, type: 'standard' },
   })
+  if (everHeld === 0) {
+    await seedDefaultSharedChannels(transaction, {
+      organizationId,
+      projectId: project.id,
+      teamId: team.id,
+    })
+  }
   return { projectId: project.id, teamId: team.id }
 }
 

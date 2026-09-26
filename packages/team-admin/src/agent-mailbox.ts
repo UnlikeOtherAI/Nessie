@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { STANDALONE_CHANNEL_TEAM_NAME } from './channel-create.js'
 import {
   buildAddress,
   localPartRejectionMessage,
@@ -286,11 +287,16 @@ const resolveMailboxScope = async (
   if (agent.projectId && agent.teamId) {
     return { projectId: agent.projectId, teamId: agent.teamId }
   }
+  // By name: the root also holds the other system teams (`ensureSystemTeam`),
+  // and a mailbox belongs beside the standalone channels, not in the Personal
+  // Assistant's team.
   const team = await prisma.team.findFirst({
     where: {
+      name: STANDALONE_CHANNEL_TEAM_NAME,
       project: { channelRoot: true, organizationId: agent.organizationId ?? undefined },
       systemManaged: true,
     },
+    orderBy: { createdAt: 'asc' },
     select: { id: true, projectId: true },
   })
   if (team) return { projectId: team.projectId, teamId: team.id }

@@ -48,7 +48,6 @@ dbTest('the personal-assistant state parses its own contract, every required fie
     await ensurePersonalAssistantBootstrap(prisma, {
       organizationId,
       projectId: project.id,
-      teamId: team.id,
       userId,
     })
 

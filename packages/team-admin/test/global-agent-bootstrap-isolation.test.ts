@@ -24,13 +24,12 @@ import { listGlobalAgentBlueprints } from '../src/global-agent-blueprints.js'
 
 const input = {
   organizationId: '00000000-0000-4000-8000-000000000001',
-  teamId: '00000000-0000-4000-8000-000000000003',
   userId: '00000000-0000-4000-8000-000000000002',
 }
 
 test('every blueprint is attempted, and the failures are reported together', async () => {
   let attempts = 0
-  // `ensureGlobalAgentSystemTeam` is the first thing each bootstrap does, so a
+  // `ensureSystemTeam` is the first thing each bootstrap does, so a
   // transaction that always throws fails each blueprint at the same point.
   const prisma = {
     $transaction: async () => {

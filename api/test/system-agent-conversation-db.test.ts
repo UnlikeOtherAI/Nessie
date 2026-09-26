@@ -76,12 +76,11 @@ const teardown = async (context: Seed): Promise<void> => {
 
 dbTest('a member addressing a global agent lands in their own home DM', async () => {
   const context = await seed('system-agent-address-member')
-  const { memberUserId, organizationId, ownerUserId, prisma, teamId } = context
+  const { memberUserId, organizationId, ownerUserId, prisma } = context
 
   try {
     const [designerHome] = await ensureGlobalAgentsForUser(prisma, {
       organizationId,
-      teamId,
       userId: memberUserId,
     })
     assert.ok(designerHome)
@@ -89,7 +88,6 @@ dbTest('a member addressing a global agent lands in their own home DM', async ()
     const outcome = await resolveSystemAgentConversation(prisma, {
       agentIds: [designerHome.agentId],
       organizationId,
-      teamId,
       userId: memberUserId,
       userIds: [],
     })
@@ -120,7 +118,6 @@ dbTest('a member addressing a global agent lands in their own home DM', async ()
     const ownerOutcome = await resolveSystemAgentConversation(prisma, {
       agentIds: [designerHome.agentId],
       organizationId,
-      teamId,
       userId: ownerUserId,
       userIds: [],
     })
@@ -133,7 +130,7 @@ dbTest('a member addressing a global agent lands in their own home DM', async ()
 
 dbTest('addressing provisions the home DM and is idempotent', async () => {
   const context = await seed('system-agent-address-idempotent')
-  const { memberUserId, organizationId, prisma, teamId } = context
+  const { memberUserId, organizationId, prisma } = context
 
   try {
     // Deliberately bootstrapped for somebody else first: the agent row exists,
@@ -141,7 +138,6 @@ dbTest('addressing provisions the home DM and is idempotent', async () => {
     // so the branch must ensure rather than assume.
     const [ownerHome] = await ensureGlobalAgentsForUser(prisma, {
       organizationId,
-      teamId,
       userId: context.ownerUserId,
     })
     assert.ok(ownerHome)
@@ -149,14 +145,12 @@ dbTest('addressing provisions the home DM and is idempotent', async () => {
     const first = await resolveSystemAgentConversation(prisma, {
       agentIds: [ownerHome.agentId],
       organizationId,
-      teamId,
       userId: memberUserId,
       userIds: [],
     })
     const second = await resolveSystemAgentConversation(prisma, {
       agentIds: [ownerHome.agentId],
       organizationId,
-      teamId,
       userId: memberUserId,
       userIds: [],
     })
@@ -182,12 +176,11 @@ dbTest('addressing provisions the home DM and is idempotent', async () => {
 
 dbTest('a global agent cannot be added to a group conversation', async () => {
   const context = await seed('system-agent-address-exclusive')
-  const { memberUserId, organizationId, ownerUserId, prisma, teamId } = context
+  const { memberUserId, organizationId, ownerUserId, prisma } = context
 
   try {
     const [home] = await ensureGlobalAgentsForUser(prisma, {
       organizationId,
-      teamId,
       userId: memberUserId,
     })
     assert.ok(home)
@@ -195,7 +188,6 @@ dbTest('a global agent cannot be added to a group conversation', async () => {
     const withPerson = await resolveSystemAgentConversation(prisma, {
       agentIds: [home.agentId],
       organizationId,
-      teamId,
       userId: memberUserId,
       userIds: [ownerUserId],
     })
@@ -210,7 +202,6 @@ dbTest('a global agent cannot be added to a group conversation', async () => {
     const withAgent = await resolveSystemAgentConversation(prisma, {
       agentIds: [home.agentId, ordinaryAgent.id],
       organizationId,
-      teamId,
       userId: memberUserId,
       userIds: [],
     })
@@ -220,7 +211,6 @@ dbTest('a global agent cannot be added to a group conversation', async () => {
     const withSelf = await resolveSystemAgentConversation(prisma, {
       agentIds: [home.agentId],
       organizationId,
-      teamId,
       userId: memberUserId,
       userIds: [memberUserId],
     })
@@ -232,7 +222,7 @@ dbTest('a global agent cannot be added to a group conversation', async () => {
 
 dbTest('an ordinary agent still falls through to the owner gate', async () => {
   const context = await seed('system-agent-address-ordinary')
-  const { memberUserId, organizationId, prisma, teamId } = context
+  const { memberUserId, organizationId, prisma } = context
 
   try {
     const ordinaryAgent = await prisma.agent.create({
@@ -243,7 +233,6 @@ dbTest('an ordinary agent still falls through to the owner gate', async () => {
     const outcome = await resolveSystemAgentConversation(prisma, {
       agentIds: [ordinaryAgent.id],
       organizationId,
-      teamId,
       userId: memberUserId,
       userIds: [],
     })
@@ -263,7 +252,6 @@ dbTest('a system agent from another organisation is not addressable', async () =
   try {
     const [foreignHome] = await ensureGlobalAgentsForUser(other.prisma, {
       organizationId: other.organizationId,
-      teamId: other.teamId,
       userId: other.memberUserId,
     })
     assert.ok(foreignHome)
@@ -271,7 +259,6 @@ dbTest('a system agent from another organisation is not addressable', async () =
     const outcome = await resolveSystemAgentConversation(context.prisma, {
       agentIds: [foreignHome.agentId],
       organizationId: context.organizationId,
-      teamId: context.teamId,
       userId: context.memberUserId,
       userIds: [],
     })
@@ -289,7 +276,6 @@ dbTest('the Personal Assistant resolves to its own DM, and built-ins are listed 
   try {
     const pa = await ensurePersonalAssistantBootstrap(prisma, {
       organizationId,
-      teamId,
       userId: memberUserId,
     })
     await ensureGlobalAgentsForUser(prisma, { organizationId, teamId, userId: memberUserId })
@@ -297,7 +283,6 @@ dbTest('the Personal Assistant resolves to its own DM, and built-ins are listed 
     const outcome = await resolveSystemAgentConversation(prisma, {
       agentIds: [pa.agentId],
       organizationId,
-      teamId,
       userId: memberUserId,
       userIds: [],
     })

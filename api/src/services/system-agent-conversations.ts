@@ -78,7 +78,6 @@ const openSystemAgentHome = async (
   input: {
     agent: SystemAgentRow
     organizationId: string
-    teamId: string
     userId: string
   },
 ): Promise<ChannelRecord | null> => {
@@ -86,7 +85,6 @@ const openSystemAgentHome = async (
     const home = await openGlobalAgentHome(prisma, {
       organizationId: input.organizationId,
       slug: input.agent.systemSlug,
-      teamId: input.teamId,
       userId: input.userId,
     })
     return home?.channel ?? null
@@ -94,7 +92,6 @@ const openSystemAgentHome = async (
 
   const bootstrap = await ensurePersonalAssistantBootstrap(prisma, {
     organizationId: input.organizationId,
-    teamId: input.teamId,
     userId: input.userId,
   })
   const channel = await prisma.channel.findUniqueOrThrow({
@@ -117,7 +114,6 @@ export const resolveSystemAgentConversation = async (
   input: {
     agentIds: string[]
     organizationId: string
-    teamId: string
     userId: string
     userIds: string[]
   },
@@ -140,7 +136,6 @@ export const resolveSystemAgentConversation = async (
   const channel = await openSystemAgentHome(prisma, {
     agent,
     organizationId: input.organizationId,
-    teamId: input.teamId,
     userId: input.userId,
   })
   return channel ? { channel, kind: 'channel' } : { kind: 'none' }
