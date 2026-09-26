@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { RunExecuteJobPayload } from '@nessie/schemas'
+import {
+  RUN_AUTO_CONTINUATION_TOPIC,
+  type RunAutoContinuationJobPayload,
+  type RunExecuteJobPayload,
+} from '@nessie/schemas'
 import { loadRunCheckpointForRun } from './checkpoint.js'
-import { enqueueAutoContinuation, isInteractiveRun, shouldAutoContinue } from './continuation.js'
+import {
+  enqueueAutoContinuation,
+  isInteractiveRun,
+  shouldAutoContinue,
+  startAutoContinuation,
+} from './continuation.js'
 import { resolveReplyRootMessageId } from './reply-placement.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 
@@ -83,7 +92,10 @@ test('peer continuations retain channel placement and the original requester', a
       },
       findFirst: async () => null,
     },
-    runCheckpoint: { updateMany: async () => ({ count: 1 }) },
+    runCheckpoint: {
+      findUnique: async () => ({ consumedByRunId: null }),
+      updateMany: async () => ({ count: 1 }),
+    },
     task: { create: async () => ({ id: '00000000-0000-4000-8000-000000000099' }) },
     taskEvent: { create: async () => ({}) },
   }
@@ -178,6 +190,10 @@ test('peer continuations retain channel placement and the original requester', a
     // Nor did it call a local program.
     toolCall: { findMany: async () => [] },
   } as never, {
+    agentId: ids.agent,
+    principalUserId: null,
+    // An auto-continuation is unattended: it resumes only what was claimed for it.
+    resumer: null,
     rootMessageId: resolveReplyRootMessageId(
       { id: ids.trigger, rootMessageId: null },
       null,
@@ -191,7 +207,97 @@ test('peer continuations retain channel placement and the original requester', a
     { sourceAuthorUserId: ids.human, sourceChannelId: ids.channel },
   ])
   assert.deepEqual(checkpointWhere, {
-    OR: [{ consumedByRunId: firstRunId }, { consumedByRunId: null, rootMessageId: null }],
-    reason: { not: 'crash' }, threadId: ids.thread,
+    consumedByRunId: firstRunId, reason: { not: 'crash' }, threadId: ids.thread,
   })
+})
+
+// A stopped run's continuation, `attempt` tries in, and a transaction whose
+// thread slot is taken or free and whose checkpoint is resumed or not.
+const CHECKPOINT_ID = '00000000-0000-4000-8000-0000000000c1'
+const continuationOf = (attempt: number): RunAutoContinuationJobPayload => ({
+  attempt,
+  checkpointId: CHECKPOINT_ID,
+  source: {
+    actorContext: {
+      actionContext: { requestId: 'continuation-test' },
+      actor: { actorId: '00000000-0000-4000-8000-0000000000a1', actorType: 'agent' },
+      tenant: { organizationId: '00000000-0000-4000-8000-0000000000a5' },
+    },
+    agentId: '00000000-0000-4000-8000-0000000000a1',
+    messageId: '00000000-0000-4000-8000-0000000000a2',
+    runId: '00000000-0000-4000-8000-0000000000a4',
+    taskId: '00000000-0000-4000-8000-0000000000a7',
+    threadId: '00000000-0000-4000-8000-0000000000a6',
+  } as unknown as RunExecuteJobPayload,
+  stoppedRun: {
+    agentId: '00000000-0000-4000-8000-0000000000a1',
+    channelId: '00000000-0000-4000-8000-0000000000a3',
+    id: '00000000-0000-4000-8000-0000000000a4',
+    organizationId: '00000000-0000-4000-8000-0000000000a5',
+    principalUserId: null,
+    replyPlacement: 'channel',
+    threadId: '00000000-0000-4000-8000-0000000000a6',
+  },
+})
+
+const slotWith = (input: { busy: boolean; consumedByRunId: string | null }) => {
+  const statements: Array<{ values?: unknown[] }> = []
+  const created: unknown[] = []
+  const tx = {
+    $executeRaw: async (sql: { values?: unknown[] }) => {
+      statements.push(sql)
+      return 1
+    },
+    run: {
+      create: async ({ data }: { data: unknown }) => {
+        created.push(data)
+        return { id: '00000000-0000-4000-8000-0000000000b1' }
+      },
+      findFirst: async () => (input.busy ? { id: '00000000-0000-4000-8000-0000000000b2' } : null),
+    },
+    runCheckpoint: {
+      findUnique: async () => ({ consumedByRunId: input.consumedByRunId }),
+      updateMany: async () => ({ count: 1 }),
+    },
+    task: { create: async () => ({ id: '00000000-0000-4000-8000-0000000000b4' }) },
+    taskEvent: { create: async () => ({}) },
+  }
+  const waits = () => statements.filter((sql) => sql.values?.[0] === RUN_AUTO_CONTINUATION_TOPIC)
+  return { created, prisma: { $transaction: async <T>(work: (inner: typeof tx) => Promise<T>) => work(tx) }, waits }
+}
+
+// The run holding the slot resumes no checkpoint it was not handed, so a
+// continuation that left the work to it used to leave it to nobody.
+test('a continuation that finds its thread busy waits for it', async () => {
+  const slot = slotWith({ busy: true, consumedByRunId: null })
+  assert.equal(await startAutoContinuation(slot.prisma as never, continuationOf(1)), null)
+  assert.deepEqual(slot.created, [])
+
+  const [wait] = slot.waits()
+  assert.ok(wait, 'it queues itself again')
+  const [, encoded, , delayMs, key] = wait.values ?? []
+  assert.equal((JSON.parse(encoded as string) as RunAutoContinuationJobPayload).attempt, 2)
+  assert.equal(delayMs, 15_000)
+  assert.equal(key, `run:continue:wait:${CHECKPOINT_ID}:2`)
+})
+
+test('a continuation stops once its checkpoint is resumed, and after its last wait', async () => {
+  const resumed = slotWith({ busy: false, consumedByRunId: '00000000-0000-4000-8000-0000000000b3' })
+  assert.equal(await startAutoContinuation(resumed.prisma as never, continuationOf(3)), null)
+  assert.deepEqual(resumed.created, [])
+  assert.deepEqual(resumed.waits(), [])
+
+  const exhausted = slotWith({ busy: true, consumedByRunId: null })
+  assert.equal(await startAutoContinuation(exhausted.prisma as never, continuationOf(12)), null)
+  assert.deepEqual(exhausted.waits(), [], 'the checkpoint stays for a Continue press or reply')
+})
+
+test('a waiting continuation starts once its thread is free', async () => {
+  const slot = slotWith({ busy: false, consumedByRunId: null })
+  assert.equal(
+    await startAutoContinuation(slot.prisma as never, continuationOf(4)),
+    '00000000-0000-4000-8000-0000000000b1',
+  )
+  assert.equal(slot.created.length, 1)
+  assert.deepEqual(slot.waits(), [])
 })
