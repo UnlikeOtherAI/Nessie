@@ -22,6 +22,12 @@ function interpolationTokens(value) {
     .sort();
 }
 
+function nativeInterpolationTokens(value) {
+  return [...value.matchAll(/(?<!{){([a-zA-Z][a-zA-Z0-9_]*)}(?!})/g)]
+    .map((match) => match[1])
+    .sort();
+}
+
 async function jsonFiles(directory) {
   try {
     return (await readdir(directory, { withFileTypes: true }))
@@ -165,9 +171,53 @@ export async function checkTranslations(i18nRoot, sourceRoot) {
   return errors;
 }
 
+/** Verify one native wrapper catalog across every supported language. */
+export async function checkNativeCatalogs(catalogRoot, label) {
+  const errors = [];
+  const reference = new Map();
+  for (const locale of LOCALES) {
+    const path = join(catalogRoot, locale, 'native.json');
+    let parsed;
+    try {
+      parsed = JSON.parse(await readFile(path, 'utf8'));
+    } catch (error) {
+      errors.push(`${label}/${locale}/native.json: ${error.code === 'ENOENT' ? 'missing catalog' : `invalid JSON (${error.message})`}`);
+      continue;
+    }
+    const leaves = flatten(parsed);
+    if (!leaves.size) errors.push(`${label}/${locale}/native.json: catalog has no string values`);
+    for (const [key, value] of leaves) {
+      if (!value.trim()) errors.push(`${label}/${locale}/native.json: ${key} has an empty translation`);
+    }
+    if (locale === 'en-GB') {
+      for (const entry of leaves) reference.set(...entry);
+      continue;
+    }
+    for (const [key, sourceValue] of reference) {
+      if (!leaves.has(key)) {
+        errors.push(`${label}/${locale}/native.json: missing key ${key}`);
+        continue;
+      }
+      const expected = nativeInterpolationTokens(sourceValue);
+      const actual = nativeInterpolationTokens(leaves.get(key));
+      if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+        errors.push(`${label}/${locale}/native.json: ${key} interpolation tokens differ`);
+      }
+    }
+    for (const key of leaves.keys()) {
+      if (!reference.has(key)) errors.push(`${label}/${locale}/native.json: unexpected key ${key}`);
+    }
+  }
+  return errors;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const root = process.cwd();
-  const errors = await checkTranslations(join(root, 'admin/src/i18n'), join(root, 'admin/src'));
+  const errors = [
+    ...await checkTranslations(join(root, 'admin/src/i18n'), join(root, 'admin/src')),
+    ...await checkNativeCatalogs(join(root, 'mobile/src/i18n/locales'), 'mobile'),
+    ...await checkNativeCatalogs(join(root, 'desktop/src-tauri/locales'), 'desktop'),
+  ];
   if (errors.length) {
     console.error(`Translation lint failed (${errors.length} issue${errors.length === 1 ? '' : 's'}):`);
     for (const error of errors) console.error(`  - ${error}`);

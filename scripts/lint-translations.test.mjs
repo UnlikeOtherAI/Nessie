@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { checkTranslations, LOCALES } from './lint-translations.mjs';
+import { checkNativeCatalogs, checkTranslations, LOCALES } from './lint-translations.mjs';
 
 async function fixture(t, { catalogs = {}, source = "const { t } = useTranslation('accountMenu'); t('greeting', { name });" } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'nessie-i18n-'));
@@ -62,4 +62,22 @@ test('rejects malformed JSON and mismatched namespace files', async (t) => {
   assert.ok(errors.some((error) => error.includes('invalid JSON')));
   assert.ok(errors.some((error) => error.includes('catalog is not registered')));
   assert.ok(errors.some((error) => error.includes('missing namespace file')));
+});
+
+test('checks native wrapper catalog keys, values, and named placeholders', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'nessie-native-i18n-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const locale of LOCALES) {
+    await mkdir(join(root, locale), { recursive: true });
+    await writeFile(join(root, locale, 'native.json'), JSON.stringify({
+      prompt: 'Ready for {version}', action: 'Update',
+    }));
+  }
+  assert.deepEqual(await checkNativeCatalogs(root, 'mobile'), []);
+  await writeFile(join(root, 'fr', 'native.json'), JSON.stringify({ prompt: 'Prêt pour {release}', action: ' ' }));
+  await writeFile(join(root, 'it', 'native.json'), JSON.stringify({ prompt: 'Pronto per {version}' }));
+  const errors = await checkNativeCatalogs(root, 'mobile');
+  assert.ok(errors.some((error) => error.includes('fr/native.json: prompt interpolation tokens differ')));
+  assert.ok(errors.some((error) => error.includes('fr/native.json: action has an empty translation')));
+  assert.ok(errors.some((error) => error.includes('it/native.json: missing key action')));
 });

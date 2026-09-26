@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { toFormErrors } from '../../facades/forms/form-errors'
 import {
@@ -52,6 +53,7 @@ export const CreateTeamDialog = ({
   open,
   organizationName,
 }: CreateTeamDialogProps) => {
+  const { t } = useTranslation('shell')
   // The chosen tab, or `null` for "whatever this person's authority defaults
   // to". Not seeded into state at mount: `canCreateTeam` depends on a
   // permissions read that can still be in flight when the shell first renders
@@ -104,7 +106,7 @@ export const CreateTeamDialog = ({
     } catch (error) {
       setFormError(
         toFormErrors(error).formError
-          ?? 'Could not create it. Nothing was changed — try again.',
+          ?? t('teams.createFailed'),
       )
     }
   }
@@ -117,21 +119,21 @@ export const CreateTeamDialog = ({
       initialFocusRef={nameRef}
       onClose={handleClose}
       open={open}
-      title={scope === 'organization' ? 'Create an organisation' : 'Create a team'}
+      title={scope === 'organization' ? t('teams.createOrganizationTitle') : t('teams.createTeamTitle')}
     >
       <form className="grid gap-4" onSubmit={handleSubmit}>
         {/* Omitted entirely when only one flow is open to this person: a strip
             with one option is a label pretending to be a choice. */}
         {canCreateTeam ? (
           <TabBar
-            ariaLabel="What to create"
+            ariaLabel={t('teams.whatToCreate')}
             fullWidth
             items={[
               {
-                label: inOrganization ? `In ${inOrganization}` : 'In this organisation',
+                label: inOrganization ? t('teams.inOrganization', { name: inOrganization }) : t('teams.inThisOrganization'),
                 value: 'team',
               },
-              { label: 'New organisation', value: 'organization' },
+              { label: t('teams.newOrganization'), value: 'organization' },
             ]}
             onChange={(next) => {
               if (pending) return
@@ -143,11 +145,11 @@ export const CreateTeamDialog = ({
           />
         ) : null}
 
-        <FormField label="Name" required>
+        <FormField label={t('teams.name')} required>
           <Input
             autoComplete="off"
             onChange={(event) => setName(event.target.value)}
-            placeholder={scope === 'organization' ? 'e.g. Acme Ltd' : 'e.g. Design'}
+            placeholder={scope === 'organization' ? t('teams.organizationExample') : t('teams.teamExample')}
             ref={nameRef}
             value={name}
           />
@@ -164,8 +166,8 @@ export const CreateTeamDialog = ({
 
         <p className="text-xs text-[color:var(--tx3)]">
           {scope === 'organization'
-            ? 'Creates the organisation in UnlikeOtherAI with you as its owner, and opens its first team.'
-            : 'Adds a team to your current organisation and opens it.'}
+            ? t('teams.organizationExplanation')
+            : t('teams.teamExplanation')}
         </p>
 
         <FormError>{formError}</FormError>
@@ -177,7 +179,7 @@ export const CreateTeamDialog = ({
             onClick={handleClose}
             type="button"
           >
-            Cancel
+            {t('teams.cancel')}
           </button>
           <button
             className="admin-button admin-button-primary"
@@ -185,8 +187,8 @@ export const CreateTeamDialog = ({
             type="submit"
           >
             {pending
-              ? 'Creating…'
-              : scope === 'organization' ? 'Create organisation' : 'Create team'}
+              ? t('teams.creating')
+              : scope === 'organization' ? t('teams.createOrganization') : t('teams.createTeam')}
           </button>
         </FormActions>
       </form>
