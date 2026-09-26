@@ -206,7 +206,16 @@ toggle never targets a scope the address does not name. Test is the owner's at
 either scope, so a team admin sees it disabled, saying who may send one. Each
 scope carries its own "AI on people's own computers" policy
 (`LocalInferenceEnablement` at `organization` or `team`), shown only to the
-sign-in provider's organisation-administration standing its reads require.
+organisation-administration standing its reads require: on an organisation
+bound to the sign-in provider, that provider's live capability, which owner or
+admin alone is not; on an unbound local install, the local owner or admin
+role. The server decides both with `resolveOrganizationAdministrationAccess`
+and `/api/organizations/current` answers with the same resolver, so the admin
+reads that one status (`useOrganizationAdministration`) and never re-derives
+it — a local admin sees and sets the policy exactly as the routes allow. A
+team's Overrides row into the policy follows the same answer: without the
+standing it is greyed, saying who holds it, rather than a doorway into a
+refusal.
 
 Registered in `admin/src/router-lazy-pages.ts`, `admin/src/router.tsx`,
 `admin/src/layouts/admin-shell/admin-nav-items.tsx` and

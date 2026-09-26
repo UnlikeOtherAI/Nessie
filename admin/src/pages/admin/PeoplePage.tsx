@@ -6,7 +6,10 @@ import { useAdminScope } from '../../components/features/settings/useAdminScope'
 import { Notice } from '../../components/primitives/Notice'
 import { SettingsPanel, type SettingsTabHostProps } from '../../components/shared/SettingsPanel'
 import { useIsOwner } from '../../facades/auth/hooks'
-import { useCurrentOrganization } from '../../facades/organization/hooks'
+import {
+  useCurrentOrganization,
+  useOrganizationAdministration,
+} from '../../facades/organization/hooks'
 import { useTeams } from '../../facades/projects/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { OrganizationAdministrationGate } from '../settings/OrganizationAdministrationGate'
@@ -36,18 +39,19 @@ export const PeoplePage = () => {
   const { me } = useAuthSession()
   const isOwner = useIsOwner()
   const organization = useCurrentOrganization()
+  const administration = useOrganizationAdministration()
   const teams = useTeams()
   const isUoaSession = me?.auth.providerType === 'uoa'
-  // The organisation's roster is UOA's to answer on an SSO session, and the
-  // local install's is the owner's to manage.
-  const canSeeOrganization = isUoaSession
-    ? organization.data?.administration.status === 'allowed'
-    : isOwner
   const settled = teams.isFetched && (!isUoaSession || organization.isFetched)
 
+  // Whose the organisation's roster is — the provider's roster to the
+  // administration standing, the local roster to its owner — is decided in
+  // `scope-entitlements.ts`, beside the other pages' scopes.
   const options = useMemo(
-    () => (settled && teams.data ? peopleScopeOptions({ canSeeOrganization }, teams.data) : null),
-    [canSeeOrganization, settled, teams.data],
+    () => (settled && teams.data
+      ? peopleScopeOptions({ administration, isOwner, isUoaSession }, teams.data)
+      : null),
+    [administration, isOwner, isUoaSession, settled, teams.data],
   )
   const { resolution, strip } = useAdminScope({
     ariaLabel: 'Whose people',
