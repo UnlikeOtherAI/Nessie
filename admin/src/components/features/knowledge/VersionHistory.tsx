@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react'
 import { ChoiceGroup } from '../../shared/ChoiceGroup'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { downloadAuthedPath } from '../../../lib/uploads'
+import { versionDownloadPath } from '../../../facades/knowledge/file-hooks'
 import type {
   KnowledgePageRecord,
   KnowledgeVersionRecord,
@@ -64,6 +67,7 @@ export const VersionHistory = ({
   pending,
   versions,
 }: VersionHistoryProps) => {
+  const { token } = useAuthSession()
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null)
   const selectedVersion =
     versions.find((version) => version.id === selectedVersionId) ?? versions[0] ?? null
@@ -75,7 +79,7 @@ export const VersionHistory = ({
   )
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-col">
       <div className="border-b border-[color:var(--sep)] p-4">
         <ChoiceGroup
           label="Versions"
@@ -99,36 +103,51 @@ export const VersionHistory = ({
             {selectedVersion.changeComment ? (
               <div className="mt-2">{selectedVersion.changeComment}</div>
             ) : null}
-            {canRestore ? (
-              <button
-                className="admin-button admin-button-secondary mt-3"
-                disabled={pending || selectedVersion.id === page.latestVersion?.id}
-                onClick={() => onRestore(selectedVersion.id)}
-                type="button"
-              >
-                Restore as new version
-              </button>
-            ) : null}
-          </div>
-          <div className="min-h-0 flex-1 overflow-auto p-4">
-            <div className="grid min-w-[520px] grid-cols-2 overflow-hidden rounded border border-[color:var(--sep)]">
-              <div className="border-b border-r border-[color:var(--sep)] px-3 py-2 text-xs text-[color:var(--tx3)]">
-                Selected
-              </div>
-              <div className="border-b border-[color:var(--sep)] px-3 py-2 text-xs text-[color:var(--tx3)]">
-                Current
-              </div>
-              <div className="border-r border-[color:var(--sep)]">
-                {renderSide(diff, 'old')}
-              </div>
-              {renderSide(diff, 'current')}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {page.kind === 'file' && selectedVersion.attachmentId ? (
+                <button
+                  className="admin-button admin-button-secondary"
+                  onClick={() => void downloadAuthedPath(
+                    versionDownloadPath(page.id, selectedVersion.id), page.title, token,
+                  )}
+                  type="button"
+                >
+                  Download this version
+                </button>
+              ) : null}
+              {canRestore ? (
+                <button
+                  className="admin-button admin-button-secondary"
+                  disabled={pending || selectedVersion.id === page.latestVersion?.id}
+                  onClick={() => onRestore(selectedVersion.id)}
+                  type="button"
+                >
+                  Restore as new version
+                </button>
+              ) : null}
             </div>
-            <p className="mt-3 text-xs text-[color:var(--tx3)]">
-              <span className="mr-3 text-[color:var(--danger-text)]">Removed</span>
-              <span className="mr-3 text-[color:var(--success-text)]">Added</span>
-              <span className="text-[color:var(--accent)]">Formatting changed</span>
-            </p>
           </div>
+          {page.kind !== 'file' ? (
+            <div className="min-h-0 overflow-auto p-4">
+              <div className="grid min-w-[520px] grid-cols-2 overflow-hidden rounded border border-[color:var(--sep)]">
+                <div className="border-b border-r border-[color:var(--sep)] px-3 py-2 text-xs text-[color:var(--tx3)]">
+                  Selected
+                </div>
+                <div className="border-b border-[color:var(--sep)] px-3 py-2 text-xs text-[color:var(--tx3)]">
+                  Current
+                </div>
+                <div className="border-r border-[color:var(--sep)]">
+                  {renderSide(diff, 'old')}
+                </div>
+                {renderSide(diff, 'current')}
+              </div>
+              <p className="mt-3 text-xs text-[color:var(--tx3)]">
+                <span className="mr-3 text-[color:var(--danger-text)]">Removed</span>
+                <span className="mr-3 text-[color:var(--success-text)]">Added</span>
+                <span className="text-[color:var(--accent)]">Formatting changed</span>
+              </p>
+            </div>
+          ) : null}
         </>
       ) : (
         <div className="p-4 text-sm text-[color:var(--tx3)]">No versions yet</div>

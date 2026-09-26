@@ -10,17 +10,15 @@ const readSource = (relativePath: string): string =>
 
 const team = readSource('../src/components/features/knowledge/KnowledgeWorkspace.tsx')
 
-// Knowledge's inner screens are nested stages (docs/navigation/overview.md §6): the
-// stack owns their layers, and each registers its own Back through
-// NestedStage. The team itself registers nothing.
+// Knowledge's document and editor are nested stages (docs/navigation/overview.md §6).
+// History uses Dialog's overlay Back registration.
 
-test('each knowledge screen is a nested stage with its pinned id and priority', () => {
+test('the knowledge document and editor keep their nested stage ids and priorities', () => {
   // `knowledge:folder` is deliberately absent: the Finder sits on
   // `ColumnBrowserViewport`, whose columns are already `column:<k>` stages on
   // `single`, so a folder is a layer without this file owning one.
   const stages = [
     ['knowledge:document', 'knowledgeDocument', 'label={documentBackLabel}'],
-    ['knowledge:history', 'knowledgeHistory', 'Back from version history'],
     ['knowledge:editor', 'knowledgeEditor', 'Back from page editor'],
   ] as const
 
@@ -42,8 +40,9 @@ test('each knowledge screen is a nested stage with its pinned id and priority', 
   }
 })
 
-test('the team registers no Back owner of its own — the stages do', () => {
+test('knowledge stages and the history dialog own Back through navigation primitives', () => {
   assert.doesNotMatch(team, /useLocalBack/)
+  assert.match(team, /<Dialog[\s\S]*title="Version history"/)
   assert.match(team, /import \{ NestedStage, useNestedStageHosted \}/)
 
   // NestedStage is what registers, and only where a stack hosts the stage.
@@ -52,10 +51,9 @@ test('the team registers no Back owner of its own — the stages do', () => {
   assert.match(stage, /id: `stage:\$\{id\}`/)
 })
 
-test('every stage unwinds exactly one level, deepest first', () => {
+test('each knowledge stage unwinds exactly one level', () => {
   const actions = [
     'onBack={closeDocument}',
-    'onBack={closeHistory}',
     'onBack={closeEditor}',
   ]
   let cursor = -1
@@ -95,7 +93,7 @@ test('inner knowledge surfaces render or publish the stage Back from one action'
   // native iOS publishes it into the native bar, while web/Android paint it
   // in the pane header instead of relying on the retained route off-screen.
   const handoffs = team.match(/onBack=\{stacked \? undefined :/g) ?? []
-  assert.ok(handoffs.length >= 2, `expected pane handoffs stack-gated, found ${handoffs.length}`)
+  assert.ok(handoffs.length >= 1, `expected pane handoffs stack-gated, found ${handoffs.length}`)
   const documentPane = readSource('../src/components/features/knowledge/KnowledgeDocumentPane.tsx')
   assert.match(documentPane, /onBack\?: \(\) => void/)
 
@@ -113,15 +111,14 @@ test('inner knowledge surfaces render or publish the stage Back from one action'
 
 test('an inline host delegates document placement to the active Finder view', () => {
   // Tree keeps its hierarchy visible while Columns/List keep the established
-  // full-surface detail. Editor and history remain separate full-width stages.
-  assert.match(team, /const historyOpen = Boolean\(historyPage\) && \(stacked \|\| !editorOpen\)/)
+  // full-surface detail. History remains an overlay over either Finder view.
   assert.match(
     team,
-    /const documentOpen = Boolean\(current\) && \(stacked \|\| !\(editorOpen \|\| historyOpen\)\)/,
+    /const documentOpen = Boolean\(current\) && \(stacked \|\| !editorOpen\)/,
   )
   assert.match(
     team,
-    /const browserVisible = stacked \|\| !\(editorOpen \|\| historyOpen\)/,
+    /const browserVisible = stacked \|\| !editorOpen/,
   )
   assert.match(team, /documentPane=\{!stacked && documentOpen \? documentPane : undefined\}/)
   assert.match(team, /<div className="relative h-full min-h-0 w-full">\{browser\}<\/div>/)

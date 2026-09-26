@@ -598,6 +598,8 @@ Two file concepts live in the knowledge base alongside rich-text pages:
   (`KnowledgePageVersion.attachmentId`); the admin shows a per-MIME FontAwesome
   icon, an inline viewer (image/PDF/text/CSV) or a typed download card, and an
   **Upload new version** action (a drag-drop / tap popup).
+  Version history opens in the same centred dialog shell and lets the reader
+  download an older file version or restore it as a new version when permitted.
 - **Attachments** — any node (document or file node) can carry extra files,
   linked via `Attachment.knowledgePageId` and surfaced below the detail content,
   with list/grid display and an Add attachment control.
