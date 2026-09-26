@@ -8,6 +8,7 @@ export type ChannelRegistration = {
 }
 
 export type ChannelEvent = {
+  queuedAt: number
   commandId: string
   sessionId: string
   incarnation: string

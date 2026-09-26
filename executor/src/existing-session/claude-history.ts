@@ -1,5 +1,6 @@
-import { open } from 'node:fs/promises'
-import { join } from 'node:path'
+import { constants } from 'node:fs'
+import { open, realpath } from 'node:fs/promises'
+import { isAbsolute, join, relative } from 'node:path'
 
 import { objectOf, textOf, type ExistingSession } from './types.js'
 
@@ -7,7 +8,13 @@ import { objectOf, textOf, type ExistingSession } from './types.js'
 export const readClaudeRecentMessages = async (profile: string, session: ExistingSession) => {
   const project = session.cwd.replace(/[^A-Za-z0-9]/gu, '-')
   const path = join(profile, 'projects', project, `${session.nativeId}.jsonl`)
-  const file = await open(path, 'r').catch(() => undefined)
+  const canonical = await realpath(path).catch(() => undefined)
+  const root = await realpath(join(profile, 'projects')).catch(() => undefined)
+  const local = root && canonical ? relative(root, canonical) : undefined
+  if (!local || local.startsWith('..') || isAbsolute(local) || canonical !== join(root!, project, `${session.nativeId}.jsonl`)) {
+    return { recentMessages: [], historyAvailable: false }
+  }
+  const file = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)).catch(() => undefined)
   if (!file) return { recentMessages: [], historyAvailable: false }
   try {
     const info = await file.stat()

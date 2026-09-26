@@ -195,6 +195,7 @@ const openContext = async (browser, {
     return route.fulfill({ status: 500, json: { error: { code: 'UNEXPECTED', message: path } } })
   })
   const page = await context.newPage()
+  await page.clock.setFixedTime(new Date(now))
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
   const dropClosing = () => { for (const id of state.closing) state.dropped.add(id) }
@@ -350,7 +351,7 @@ try {
     assert.match(await linked.innerText(),
       /Fix the invoice rounding\s*working\s*Claude Code in billing · driven by CTO/)
     const link = linked.getByRole('link', { name: ticketTitle })
-    assert.equal(await link.getAttribute('href'), `/projects/${projectId}/board?task=${taskId}`,
+    assert.equal(await link.getAttribute('href'), `#/projects/${projectId}/board?task=${taskId}`,
       'the ticket opens on its own board')
     assert.equal((await linked.getByTestId('executor-coding-session-ticket').innerText()).trim(),
       `${ticketTitle} · ticket work under Ondrej’s standing access`)
@@ -405,7 +406,7 @@ try {
     await native.page.getByRole('heading', { name: existing.title }).waitFor()
     assert.equal(await noOverflow(native.page), true)
     await native.page.screenshot({ fullPage: true, path: resolve(output, `existing-session-${width}.png`) })
-    await native.page.getByRole('button', { name: 'Back to sessions' }).click()
+    await native.page.getByRole('button', { name: width < 768 ? 'Sessions' : 'Back to sessions', exact: true }).click()
     await native.page.goBack()
     await native.page.getByRole('heading', { name: existing.title }).waitFor()
     assert.deepEqual(native.errors, [])

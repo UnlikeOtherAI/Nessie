@@ -56,10 +56,12 @@ export const serveExistingClaudeChannel = async (stateDir: string): Promise<void
       })
       else await unlink(registration).catch(() => undefined)
       const files = (await readdir(inbox)).filter((name) => /^[a-f0-9-]+\.pending$/u.test(name)).sort().slice(0, 32)
-      for (const name of files) {
-        const path = join(inbox, name)
-        const event = await readJson<ChannelEvent>(path)
-        if (!event) continue
+      const events = await Promise.all(files.map(async (name) => ({
+        path: join(inbox, name), event: await readJson<ChannelEvent>(join(inbox, name)),
+      })))
+      events.sort((left, right) => (left.event?.queuedAt ?? 0) - (right.event?.queuedAt ?? 0))
+      for (const { path, event } of events) {
+        if (!event) { await unlink(path); continue }
         const resultPath = path.replace(/\.pending$/u, '.result')
         const valid = enabled && event.sessionId === session.sessionId && event.incarnation === session.incarnation
           && event.expiresAt > Date.now() && typeof event.message === 'string' && event.message.length <= 33_000
@@ -67,6 +69,7 @@ export const serveExistingClaudeChannel = async (stateDir: string): Promise<void
         await rename(path, path.replace(/\.pending$/u, '.claimed'))
         if (!valid) {
           await writeJsonAtomic(resultPath, { state: 'cancelled', providerMessageId: event.commandId })
+          await unlink(path.replace(/\.pending$/u, '.claimed'))
           continue
         }
         await server.notification({ method: 'notifications/claude/channel', params: {

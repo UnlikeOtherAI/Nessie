@@ -244,3 +244,21 @@ saved history. A fresh Codex metadata server's `notLoaded` is reported as
 unknown. Claude's native registry returned eight current sessions on macOS,
 with seven idle and one busy at the observation time; all correctly reported
 Push unavailable because none had the Nessie channel connected.
+
+## Executor adapter verification, 26 September 2026
+
+The implemented `ExistingSessions` adapter queued one uniquely marked message
+into a manually opened Codex CLI conversation on macOS. The original client
+answered in the same native thread. Repeating the same executor command ID
+returned the saved receipt without adding a second native message. No resume,
+thread start, or native process termination was used.
+
+The implemented Nessie Claude channel delivered a uniquely marked event into a
+manually opened Claude Code 2.1.283 conversation. That conversation answered the
+token. Its local journal advanced from `accepted_locally` to
+`written_to_transport`; the reply was verified separately in the bounded native
+transcript read. This probe used a disposable pairing fixture and simulated
+existing heartbeat receipts, so it proves the provider adapter, not a live
+production control-plane round trip. Claude's own development-channel startup
+flag was required. Its initial startup failure was a malformed test fixture
+with no workspace; the corrected fixture connected successfully.

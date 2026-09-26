@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -10,7 +9,7 @@ import { createJsonExclusive, ensureCodingStateDir } from '../coding-session/ses
 import { channelInboxDir } from './channel-files.js'
 import { ExistingClaude } from './claude.js'
 import { ExistingCodex } from './codex.js'
-import { deliverOnce } from './delivery.js'
+import { deliverOnce, latestExistingDelivery } from './delivery.js'
 import { findProviderProgram } from './programs.js'
 import { existingSessionsEnabled } from './settings.js'
 import type { ExistingSession } from './types.js'
@@ -25,6 +24,7 @@ export class ExistingSessions {
   private providerStatus: Record<string, string> = {}
   private readonly discovered = new Map<string, ExistingSession>()
   private refreshing: Promise<ExistingSession[]> | undefined
+  private lastQueuedAt = 0
   private serial: Promise<unknown> = Promise.resolve()
 
   constructor(private readonly stateDir: string, private readonly providerFactory?: () => Promise<Providers>) {}
@@ -78,14 +78,21 @@ export class ExistingSessions {
   async page(provider?: 'codex' | 'claude', cursor?: string, search?: string): Promise<Record<string, unknown>> {
     if (!await this.enabled()) return { sessions: [], disabled: true }
     const providers = await this.connect()
-    const rows = cursor || search ? [
-      ...(provider !== 'claude' ? await providers.codex?.list(cursor, search) ?? [] : []),
-      ...(!cursor && provider !== 'codex' ? (await providers.claude?.list() ?? []).filter((row) => (
+    const selected = (['codex', 'claude'] as const).filter((name) => !provider || name === provider)
+    const results = await Promise.allSettled(selected.map(async (name) => {
+      if (name === 'codex') return await providers.codex?.list(cursor, search) ?? []
+      return (await providers.claude?.list() ?? []).filter((row) => (
         !search || row.title.toLocaleLowerCase().includes(search.toLocaleLowerCase())
-      )) : []),
-    ] : await this.list()
+      ))
+    }))
+    selected.forEach((name, index) => {
+      this.providerStatus[name] = !providers[name] ? 'not_installed'
+        : results[index]!.status === 'fulfilled' ? 'available' : 'unavailable'
+    })
+    const rows = results.flatMap((result) => result.status === 'fulfilled' ? result.value : [])
+    if (!await this.enabled()) return { sessions: [], disabled: true }
     this.remember(rows)
-    return { providers: this.providerStatus, sessions: rows.filter((row) => !provider || row.provider === provider),
+    return { providers: this.providerStatus, sessions: rows,
       ...(provider !== 'claude' && providers.codex?.nextCursor
         ? { nextCursor: providers.codex.nextCursor, nextCursorProvider: 'codex' } : {}) }
   }
@@ -107,9 +114,11 @@ export class ExistingSessions {
       throw new CodingBridgeError('coding_session_not_found', 'Existing session is unavailable or access is disabled.')
     }
     const providers = await this.connect()
-    if (session.provider === 'codex' && providers.codex) return providers.codex.read(session, includeText)
-    if (providers.claude) return providers.claude.read(session, includeText)
-    throw new CodingBridgeError('coding_session_not_found', 'The provider connection is unavailable.')
+    const result = session.provider === 'codex' && providers.codex
+      ? await providers.codex.read(session, includeText) : await providers.claude?.read(session, includeText)
+    if (!result) throw new CodingBridgeError('coding_session_not_found', 'The provider connection is unavailable.')
+    const lastDelivery = await latestExistingDelivery(this.stateDir, id)
+    return { ...result, ...(lastDelivery ? { lastDelivery } : {}) }
   }
 
   async send(
@@ -121,8 +130,8 @@ export class ExistingSessions {
       const session = current.find((row) => row.sessionId === id)
         ?? (remembered?.provider === 'codex' ? remembered : undefined)
       if (!session) {
-      throw new CodingBridgeError('coding_session_not_found', 'Existing session is unavailable or access is disabled.')
-    }
+        throw new CodingBridgeError('coding_session_not_found', 'Existing session is unavailable or access is disabled.')
+      }
       if ((action !== 'queue' || !session.capabilities.queue) && (action !== 'push' || !session.capabilities.push)) {
         throw new CodingBridgeError('coding_session_action_unavailable', session.capabilities.reason)
       }
@@ -130,7 +139,7 @@ export class ExistingSessions {
       if (session.provider === 'codex') await providers.codex?.read(session, false)
       const attributed = `[Nessie · ${ownerKey.slice(7, 19)} · ${commandId}]\n${message}`
       return deliverOnce({
-        stateDir: this.stateDir, commandId, ownerKey, sessionId: id, action, message, send: async () => {
+        stateDir: this.stateDir, commandId, ownerKey, sessionId: id, action, message, send: async (eventId) => {
         if (!await this.enabled()) return { state: 'cancelled', reason: 'Existing coding sessions were disabled.' }
         if (action === 'queue' && providers.codex) return providers.codex.queue(session, attributed, commandId)
         const inbox = channelInboxDir(this.stateDir, id)
@@ -138,8 +147,9 @@ export class ExistingSessions {
         if ((await readdir(inbox)).filter((name) => name.endsWith('.pending')).length >= 32) {
           return { state: 'failed', reason: 'The Claude channel already has 32 pending events.' }
         }
-        const eventId = randomUUID()
+        this.lastQueuedAt = Math.max(Date.now(), this.lastQueuedAt + 1)
         await createJsonExclusive(join(inbox, `${eventId}.pending`), {
+          queuedAt: this.lastQueuedAt,
           commandId, sessionId: id, incarnation: session.incarnation, message: attributed,
           expiresAt: Date.now() + 60_000,
         })

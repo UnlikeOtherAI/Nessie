@@ -93,3 +93,50 @@ test('default-on discovery, disable, idempotent dispatch and unknown outcomes pr
     assert.equal(await existingSessionsEnabled(directory), false)
   } finally { await manager.close(); await rm(directory, { recursive: true, force: true }) }
 })
+
+test('Claude delivery receipts survive restart and never turn a transport write into consumption', async () => {
+  const { deliverOnce, latestExistingDelivery } = await import('../src/existing-session/delivery.js')
+  const { channelInboxDir } = await import('../src/existing-session/channel-files.js')
+  const { mkdir } = await import('node:fs/promises')
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-delivery-'))
+  const sessionId = randomUUID()
+  const commandId = randomUUID()
+  let eventId = ''
+  let writes = 0
+  const input = { stateDir: directory, sessionId, commandId, ownerKey: 'owner-123', action: 'push', message: 'hello',
+    send: async (id: string) => { writes += 1; eventId = id; return { state: 'accepted_locally', providerMessageId: commandId } } }
+  try {
+    assert.equal((await deliverOnce(input)).state, 'accepted_locally')
+    const inbox = channelInboxDir(directory, sessionId)
+    await mkdir(inbox, { recursive: true })
+    await writeFile(join(inbox, `${eventId}.result`), JSON.stringify({
+      state: 'written_to_transport', providerMessageId: commandId,
+    }))
+    assert.equal((await latestExistingDelivery(directory, sessionId))?.state, 'written_to_transport')
+    assert.equal((await deliverOnce(input)).state, 'written_to_transport')
+    assert.equal(writes, 1)
+    await assert.rejects(deliverOnce({ ...input, message: 'changed' }), /already used/u)
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('a definitive native queue rejection is failed, while secret projection preserves opaque IDs', async () => {
+  const { deliverOnce } = await import('../src/existing-session/delivery.js')
+  const { CodexOperationRejected } = await import('../src/existing-session/codex-rpc.js')
+  const { createExistingProjection } = await import('../src/existing-session/projection.js')
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-rejected-'))
+  try {
+    const result = await deliverOnce({ stateDir: directory, sessionId: randomUUID(), commandId: randomUUID(),
+      ownerKey: 'owner-123', action: 'queue', message: 'hello', send: async () => {
+        throw new CodexOperationRejected('Codex rejected the input.')
+      } })
+    assert.equal(result.state, 'failed')
+    const identity = (value: string): string => value
+    const project = createExistingProjection({ rewrite: identity, rewritePaths: identity, rewriteBranch: identity })
+    const value = { sessionId: NATIVE, title: 'secret ghp_123456789012345678901234567890',
+      recentMessages: [{ role: 'assistant', text: 'API_KEY=supersecretvalue' }] }
+    const scrubbed = project(value)
+    assert.equal(scrubbed.sessionId, NATIVE)
+    assert.equal(scrubbed.title, 'secret <secret>')
+    assert.equal(scrubbed.recentMessages[0]?.text, 'API_KEY=<secret>')
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})

@@ -28,7 +28,8 @@ export class ExistingCodex {
       sessionId: existingSessionId('codex', this.profile, thread.id), nativeId: thread.id, provider: 'codex',
       title: textOf(thread.name || thread.preview) || 'Codex session', cwd: textOf(thread.cwd, 4_096),
       status: 'unknown', updatedAt: observed.toISOString(), client: textOf(thread.source) || 'Codex',
-      capabilities: { queue: this.queueSupported === true && thread.canAcceptDirectInput !== false, push: false, steer: false, interrupt: false,
+      capabilities: { queue: this.queueSupported === true && thread.canAcceptDirectInput !== false,
+        push: false, steer: false, interrupt: false,
         reason: this.queueSupported ? QUEUE_BEHAVIOR : 'This Codex build does not expose the experimental native queue.' },
     }
   }

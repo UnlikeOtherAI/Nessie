@@ -172,3 +172,15 @@ session regressions, database privacy/sharing tests, rendered session and local
 console flows, native Windows/Linux/macOS tests, Kimix review, green required
 checks and the single merged feature PR. Actual installation and release status
 must be reported separately from source and test status.
+
+### Delivery journal and output bounds
+
+The owner-private journal retains at most 4,096 command receipts per pairing.
+At capacity it refuses new input rather than evicting command IDs and allowing
+an old command to be sent twice. The session overview and status expose the
+latest delivery receipt. Claude receipts distinguish a local acceptance from
+an actual channel write; a missing receipt expires to `outcome_unknown` and is
+never replayed. Temporary inbox files are removed when their receipt is read.
+Native text uses the existing credential and host-path projection before it
+leaves the executor. Explicit Claude detail reads take at most 128 KiB from the
+native transcript and return at most four text messages.

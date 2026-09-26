@@ -3,6 +3,8 @@ import { createInterface } from 'node:readline'
 
 import { objectOf } from './types.js'
 
+export class CodexOperationRejected extends Error {}
+
 /** This helper reads the native store and queues native input. It never resumes a thread. */
 export class CodexRpc {
   private child: ChildProcessWithoutNullStreams | undefined
@@ -32,7 +34,7 @@ export class CodexRpc {
         const pending = this.pending.get(message.id)
         if (!pending) return
         this.pending.delete(message.id)
-        if (message.error) pending.reject(new Error('Codex refused this experimental operation.'))
+        if (message.error) pending.reject(new CodexOperationRejected('Codex refused this experimental operation; no input was queued.'))
         else pending.resolve(message.result)
       })
       const ended = (): void => {
