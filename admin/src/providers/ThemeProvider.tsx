@@ -89,6 +89,11 @@ const BUILT_IN_THEMES = [
     label: 'Daylight',
   },
   {
+    description: 'Paper-white surfaces with black and grey controls.',
+    id: 'blckwhte',
+    label: 'Blckwhte',
+  },
+  {
     description: 'Deep green-charcoal surfaces with a calm emerald accent.',
     id: 'forest',
     label: 'Forest',

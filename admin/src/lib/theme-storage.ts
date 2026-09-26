@@ -15,6 +15,7 @@ export type Theme =
   | 'nebula'
   | 'midnight'
   | 'daylight'
+  | 'blckwhte'
   | 'forest'
   | 'ocean'
   | 'sunset'
@@ -32,7 +33,7 @@ export type Theme =
 export type SignInTheme = Exclude<Theme, 'organization' | 'system'>
 
 export const THEME_IDS: readonly Theme[] = [
-  'organization', 'nessie', 'nebula', 'midnight', 'daylight', 'forest', 'ocean',
+  'organization', 'nessie', 'nebula', 'midnight', 'daylight', 'blckwhte', 'forest', 'ocean',
   'sunset', 'rose', 'graphite', 'sandstone', 'contrast', 'system',
 ]
 

@@ -114,6 +114,19 @@ export const UOA_SIGN_IN_THEMES = {
       danger_text: '#b91c1c',
     },
   },
+  blckwhte: {
+    colors: {
+      primary: '#050505',
+      bg: '#f8f8f9',
+      surface: '#ffffff',
+      text: '#101010',
+      primary_text: '#ffffff',
+      muted: '#929292',
+      border: '#e5e6e9',
+      danger: '#252525',
+      danger_text: '#292929',
+    },
+  },
   forest: {
     colors: {
       primary: '#047857',

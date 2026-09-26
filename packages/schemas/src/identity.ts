@@ -107,6 +107,7 @@ export const UserPreferencesSchema = z.object({
     'nebula',
     'midnight',
     'daylight',
+    'blckwhte',
     'forest',
     'ocean',
     'sunset',

@@ -34,6 +34,7 @@
     'nebula',
     'midnight',
     'daylight',
+    'blckwhte',
     'forest',
     'ocean',
     'sunset',

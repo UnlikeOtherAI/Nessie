@@ -29,6 +29,7 @@ summary and points here; **this file is the rule**.
   `UserPreferencesSchema` in `@nessie/schemas`, and `SsoThemeSchema` +
   `UOA_SIGN_IN_THEMES` in the API, which hand the hosted sign-in page concrete
   colours.
+  `blckwhte` is the paper-white, near-black and grey built-in palette.
 - **The default theme is `nessie`** (`DEFAULT_THEME`, `theme-resolution.ts`):
   the icon's navy (`#0b172a`) for the top bar and rail, a lighter violet-leaning
   navy (`#232646`) for the sidebars, and a white work surface. The text tokens are global — the sidebar draws `--tx` on `--sb`
