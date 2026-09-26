@@ -890,3 +890,12 @@ Decided out of scope for this run, each one change away:
   points at a global agent's DM (a channel); a conversation ref points at a
   thread. One renderer parameterised by target is the Rule-zero shape; kept
   separate here so the handoff's own tests stay untouched.
+
+
+## Personalized homepage questions
+
+The agent DM homepage's three “Try asking” prompts use recent conversations in
+that DM, with a durable per-person/agent cache and a six-hour generation cooldown.
+Opening the home alone never regenerates unchanged history. See the
+[home suggestions plan](2026-09-26-agent-home-suggestions.md) for activity detection,
+source privacy, failure behavior and verification.

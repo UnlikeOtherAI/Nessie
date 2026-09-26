@@ -1,8 +1,10 @@
+import { useAgentConversationSuggestions } from '../../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../../lib/api-client'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
 import { AgentAvatar } from '../../../shared/AgentAvatar'
 
 export type AgentSessionHomeProps = {
+  channelId: string
   agent: AgentRecord
   busy: boolean
   error: string | null
@@ -10,9 +12,10 @@ export type AgentSessionHomeProps = {
 }
 
 /** The agent's home when no session has been selected. */
-export const AgentSessionHome = ({ agent, busy, error, onStart }: AgentSessionHomeProps) => {
+export const AgentSessionHome = ({ agent, channelId, busy, error, onStart }: AgentSessionHomeProps) => {
   const { token } = useAuthSession()
-  const ideas = agent.agentKind === 'personal_assistant'
+  const suggestions = useAgentConversationSuggestions(agent.id, channelId)
+  const genericIdeas = agent.agentKind === 'personal_assistant'
     ? [
         'Help me plan my next steps',
         'Summarize what I need to know',
@@ -23,6 +26,9 @@ export const AgentSessionHome = ({ agent, busy, error, onStart }: AgentSessionHo
         'Help me make a plan',
         'Summarize the relevant context',
       ]
+
+  const ideas = !suggestions.isError && suggestions.data?.questions.length === 3
+    ? suggestions.data.questions : genericIdeas
 
   return (
     <div className="flex min-h-full items-center justify-center px-6 py-10" data-testid="agent-session-home">

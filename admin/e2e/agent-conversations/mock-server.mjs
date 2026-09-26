@@ -70,6 +70,11 @@ const decide = (body, plan) => {
   const user = textOf(lastOfRole(messages, 'user'))
   const hasTools = Array.isArray(body.tools) && body.tools.length > 0
 
+  if (!hasTools && system.startsWith('[nessie.agent_home_suggestions.v1]')) {
+    plan.suggestionCalls = (plan.suggestionCalls ?? 0) + 1
+    return { latencyMs: 0, text: JSON.stringify({ questions: plan.suggestionQuestions ?? [] }) }
+  }
+
   if (!hasTools) {
     const completionCheck = messages[0]?.role === 'system'
       && textOf(messages[0]).startsWith(FOLLOW_UP_REVIEW_MARKER)

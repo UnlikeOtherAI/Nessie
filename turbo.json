@@ -72,6 +72,12 @@
         "NESSIE_TEST_PRISTINE_DATABASE"
       ]
     },
+    "test:agent-suggestions": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "outputs": [],
+      "env": ["DATABASE_URL"]
+    },
     "test:task-sets": {
       "dependsOn": ["^build"],
       "cache": false,

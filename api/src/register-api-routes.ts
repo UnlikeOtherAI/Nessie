@@ -1,3 +1,4 @@
+import { registerAgentConversationSuggestionRoutes } from './routes/agent-conversation-suggestions.js'
 import type { FastifyInstance } from 'fastify'
 
 import { registerActivityRoutes } from './routes/activity.js'
@@ -131,6 +132,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerCallRoutes(app, deps)
   registerAgentRoutes(app, deps)
   registerAgentConversationRoutes(app, deps)
+  registerAgentConversationSuggestionRoutes(app, deps)
   registerDemonstrationRoutes(app, deps)
   registerAgentTodoRoutes(app, deps)
   registerTriggerRoutes(app, deps)
