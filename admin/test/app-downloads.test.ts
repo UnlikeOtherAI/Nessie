@@ -9,7 +9,7 @@ import {
   APP_DOWNLOADS,
   EXECUTOR_DOWNLOADS,
   LATEST_RELEASE_DOWNLOAD_BASE,
-  LATEST_RELEASE_PAGE,
+  RELEASES_PAGE,
   downloadUrl,
 } from '@nessie/sign-in-surface'
 
@@ -63,9 +63,16 @@ const renderDownloads = async (): Promise<string> => {
   return html
 }
 
-test('every download points at a release asset on the one base', () => {
+test('Android points at its published APK and other downloads use the latest release', () => {
+  assert.equal(
+    downloadUrl(APP_DOWNLOADS.android),
+    'https://github.com/UnlikeOtherAI/Nessie/releases/download/android-v0.1.2-4/Nessie-Android.apk',
+  )
   for (const download of [
-    ...Object.values(APP_DOWNLOADS),
+    APP_DOWNLOADS.linux,
+    APP_DOWNLOADS.macAppleSilicon,
+    APP_DOWNLOADS.macIntel,
+    APP_DOWNLOADS.windows,
     ...Object.values(EXECUTOR_DOWNLOADS),
   ]) {
     assert.equal(downloadUrl(download), `${LATEST_RELEASE_DOWNLOAD_BASE}/${download.asset}`)
@@ -109,7 +116,7 @@ test('the release page is linked once, under the downloads', async () => {
   const html = await renderDownloads()
   // The whole href, not a substring: the release page's URL is a prefix of every
   // asset URL, so counting the bare address counts every download as well.
-  const releaseHref = `href="${LATEST_RELEASE_PAGE}"`
+  const releaseHref = `href="${RELEASES_PAGE}"`
   const links = html.match(new RegExp(releaseHref.replace(/[/."]/g, '\\$&'), 'g')) ?? []
   assert.equal(links.length, 1)
   assert.match(html, /Checksums and earlier releases on GitHub/)

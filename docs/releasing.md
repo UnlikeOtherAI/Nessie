@@ -58,10 +58,17 @@ monorepo convention rather than one release of everything — is
 - `latest.json` — signed release metadata for desktop update checks and the
   direct Android APK handoff.
 
-The stable asset names deliberately power the homepage URLs under
-`/releases/latest/download/`; a new published release automatically becomes
-the download without a website change. Mac is two assets because its packaged
-Node executor runtime must match the processor architecture.
+The stable desktop asset names power downloads under
+`/releases/latest/download/`. Mac is two assets because its packaged Node
+executor runtime must match the processor architecture. The Android link on
+the public homepage and admin sign-in currently points at the Android-only
+[`android-v0.1.2-4` release](https://github.com/UnlikeOtherAI/Nessie/releases/tag/android-v0.1.2-4)
+instead. Its signed `Nessie-Android.apk` was built locally from source commit
+`38937d7b78021de385c350720777becd9816d53a` and published as a prerelease,
+so it does not become the desktop `/releases/latest` target or invoke the `v*`
+all-platform workflow. The release page records its SHA-256 checksum and signing
+certificate. Future Android releases must update the shared download URL and
+increase `versionCode`.
 
 The landing page opens a Mac download menu at a reliably detected Apple Silicon
 or Intel choice, while still exposing both installers. It deliberately shows
@@ -88,7 +95,9 @@ choices. **Update** opens the official signed APK in Android's package installer
 where Android asks the person to confirm the replacement. It never silently
 installs a package. The direct Android build sets
 `EXPO_PUBLIC_RELEASE_CHANNEL=direct`; a future Play build must set it to
-`store`, so Google Play handles its updates.
+`store`, so Google Play handles its updates. The Android-only prerelease has no
+`latest.json`, so this first public APK is installed or updated from its GitHub
+download link until an all-platform stable release publishes update metadata.
 The Mac App Store build also omits the `direct-updater` Cargo feature and its
 native commands, not merely the popup.
 

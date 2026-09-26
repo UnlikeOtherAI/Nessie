@@ -7,7 +7,7 @@ export {
   APP_DOWNLOADS,
   EXECUTOR_DOWNLOADS,
   LATEST_RELEASE_DOWNLOAD_BASE,
-  LATEST_RELEASE_PAGE,
+  RELEASES_PAGE,
   downloadUrl,
 } from './downloads'
 export type { AppDownload } from './downloads'

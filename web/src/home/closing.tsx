@@ -3,6 +3,7 @@ import { faGithub } from '@fortawesome/free-brands-svg-icons'
 import { faArrowRight, faPlay } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
+  androidDownloadUrl,
   docsUrl,
   finalCta,
   footerColumns,
@@ -105,6 +106,7 @@ export function FinalCta() {
       <div className="n-actions">
         <Button href={signInUrl} light>Get started</Button>
         <Button ghost href={docsUrl} icon={faGithub} light>Open source</Button>
+        <Button ghost href={androidDownloadUrl} light>Download Android</Button>
       </div>
     </section>
   )
