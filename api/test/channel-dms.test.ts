@@ -19,6 +19,13 @@ const channelId = '00000000-0000-4000-8000-000000000010'
 const threadId = '00000000-0000-4000-8000-000000000011'
 const legacyChannelId = '00000000-0000-4000-8000-000000000012'
 
+// The channel projection reads these delegates even for DMs, where
+// announcement controls remain unavailable.
+const announcementRead = {
+  organization: { findUnique: async () => ({ externalOrgId: null }) },
+  teamMember: { findUnique: async () => null },
+}
+
 type ChannelUpsertArgs = {
   create: {
     dmKey: string
@@ -32,11 +39,13 @@ test('findOrCreateDmChannel creates a one-member self DM', async () => {
   let upsertArgs: ChannelUpsertArgs | null = null
 
   const prisma = {
+    ...announcementRead,
     // `mapChannelRecord` also answers `viewerIsMember` — the field the composer
     // rides on — with a `channelMember.count`. A DM's participants are written
     // by the upsert under test, so the viewer is in it.
     channelMember: { count: async () => 1 },
     organizationMember: {
+      findUnique: async () => null,
       count: async ({ where }: { where: { userId: { in: string[] } } }) =>
         where.userId.in.includes(userId) ? 1 : 0,
       // `mapChannelRecord`'s `viewerCanManageAgents` asks whether this viewer
@@ -138,7 +147,9 @@ test('findOrCreateDmChannel migrates a legacy one-member self DM key', async () 
   })
 
   const prisma = {
+    ...announcementRead,
     organizationMember: {
+      findUnique: async () => null,
       count: async ({ where }: { where: { userId: { in: string[] } } }) =>
         where.userId.in.includes(userId) ? 1 : 0,
       // `mapChannelRecord` computes `viewerCanManage` via `canModifyChannel`,
@@ -162,6 +173,7 @@ test('findOrCreateDmChannel migrates a legacy one-member self DM key', async () 
     },
     teamMember: {
       findFirst: async () => null,
+      findUnique: async () => null,
     },
     channelMember: {
       findUnique: async () => null,
@@ -211,11 +223,13 @@ test('findOrCreateAgentDmChannel creates a one-user agent DM', async () => {
   const bindingRows: Array<{ agentId: string; channelId: string }> = []
 
   const prisma = {
+    ...announcementRead,
     // `mapChannelRecord` also answers `viewerIsMember` — the field the composer
     // rides on — with a `channelMember.count`. A DM's participants are written
     // by the upsert under test, so the viewer is in it.
     channelMember: { count: async () => 1 },
     organizationMember: {
+      findUnique: async () => null,
       count: async () => 1,
       // See the note above: `viewerCanManageAgents` reads the viewer's
       // organisation role, and a missing delegate is a TypeError, not a false.
@@ -339,6 +353,7 @@ test('findOrCreatePrivateConversationChannel creates a private mixed group DM', 
   } | null = null
 
   const prisma = {
+    ...announcementRead,
     // `mapChannelRecord` also answers `viewerIsMember` — the field the composer
     // rides on — with a `channelMember.count`. A DM's participants are written
     // by the upsert under test, so the viewer is in it.
@@ -347,6 +362,7 @@ test('findOrCreatePrivateConversationChannel creates a private mixed group DM', 
     // organisation role, and a missing delegate is a TypeError, not a false.
     organizationMember: {
       findFirst: async () => null,
+      findUnique: async () => null,
     },
     user: {
       findMany: async () => [

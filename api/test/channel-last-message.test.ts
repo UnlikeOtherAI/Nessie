@@ -51,6 +51,7 @@ const answerRawQuery = (
 
 test('the channel list carries lastMessageAt, null for a channel with no messages', async () => {
   const prisma = {
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
     channel: {
       findMany: async () => [
         {
@@ -110,12 +111,13 @@ test('the channel list carries lastMessageAt, null for a channel with no message
 // lastMessageAt-focused cases; a missing channel row is enough to make
 // `canModifyChannel` return `null`, so `viewerCanManage` comes back `false`.
 const noManagementAuthority = {
+  organization: { findUnique: async () => ({ externalOrgId: null }) },
   channel: { findUnique: async () => null },
   // `count` answers `viewerIsMember`, which the composer rides on; `findUnique`
   // answers `canModifyChannel`. Two reads, two delegates, both modelled.
   channelMember: { findUnique: async () => null, count: async () => 0 },
-  organizationMember: { findFirst: async () => null },
-  teamMember: { findFirst: async () => null },
+  organizationMember: { findFirst: async () => null, findUnique: async () => null },
+  teamMember: { findFirst: async () => null, findUnique: async () => null },
 }
 
 test('a single channel record carries lastMessageAt too, so a mutation response never blanks it', async () => {

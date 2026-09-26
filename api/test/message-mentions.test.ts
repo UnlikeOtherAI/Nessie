@@ -5,6 +5,8 @@ import type { PrismaClient } from '@prisma/client'
 
 import { createThreadMessage } from '../src/services/message-create.js'
 
+const ordinaryChannelPolicy = { adminOnlyPosting: false, mandatoryAnnouncements: false }
+
 // A channel with one bound agent ("Bound"); the org also has a shared agent
 // "Scout" that is NOT a member of this channel.
 const makePrisma = () => {
@@ -22,6 +24,7 @@ const makePrisma = () => {
       findUnique: async () => ({
         channel: {
           id: 'channel-1',
+          ...ordinaryChannelPolicy,
           agentBindings: [
             {
               agent: {
@@ -85,6 +88,8 @@ const makePrisma = () => {
     messageThreadFollow: {
       createMany: async () => ({ count: 0 }),
     },
+    $queryRaw: async () => [{ admin_only_posting: false, mandatory_announcements: false }],
+    $executeRaw: async () => 1,
     $transaction: async (callback: (tx: unknown) => Promise<unknown>) => callback(prisma),
   } as unknown as PrismaClient
   return { prisma, calls }
@@ -141,6 +146,7 @@ test('a structured mention selects one bound agent when an unbound agent has the
   fake.thread.findUnique = async () => ({
     channel: {
       id: 'channel-1',
+      ...ordinaryChannelPolicy,
       agentBindings: [{
         agent: {
           agentKind: 'shared',
@@ -207,6 +213,7 @@ test('a PA mention is validated by its binding ids and stored as structured meta
   fake.thread.findUnique = async () => ({
     channel: {
       id: 'channel-1',
+      ...ordinaryChannelPolicy,
       agentBindings: [{
         agent: {
           agentKind: 'personal_assistant',

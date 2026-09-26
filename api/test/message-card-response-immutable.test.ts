@@ -27,9 +27,11 @@ const makePrisma = (row: {
     deletedAt: row.deletedAt ?? null,
     id: 'message-1',
     metadata: 'metadata' in row ? row.metadata : null,
+    requiresConfirmation: false,
+    thread: { channel: { adminOnlyPosting: false } },
     userId: row.userId ?? AUTHOR,
   }
-  const prisma = {
+  const delegates = {
     message: {
       findFirst: async (args: { select?: Record<string, boolean> }) => {
         calls.findFirst.push(args)
@@ -45,6 +47,10 @@ const makePrisma = (row: {
         return { ...existing, basisScopes: [], reactions: [] }
       },
     },
+  }
+  const prisma = {
+    ...delegates,
+    $transaction: async <T>(run: (tx: typeof delegates) => Promise<T>): Promise<T> => run(delegates),
   }
   return { calls, prisma: prisma as unknown as PrismaClient }
 }
@@ -76,7 +82,9 @@ test('editing a research card is refused and writes nothing; deleting it stays a
   const result = await updateMessage(prisma, { ...input, content: 'Another topic' })
   assert.deepEqual(result, { kind: 'immutable', record: 'research_card' })
   assert.equal(calls.update.length, 0)
-  const deleted = await softDeleteMessage(prisma, { messageId: input.messageId, threadId: input.threadId, userId: AUTHOR })
+  const deleted = await softDeleteMessage(prisma, {
+    messageId: input.messageId, threadId: input.threadId, userId: AUTHOR,
+  })
   assert.equal(deleted.kind, 'deleted')
   // Its author is the only one who could edit it, so anyone else is still told 403 first.
   const other = makePrisma({ metadata: researchCard, userId: '00000000-0000-4000-8000-000000000002' })

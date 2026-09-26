@@ -32,6 +32,8 @@ const makeMessagePrisma = (input: {
       findUnique: async () => ({
         channel: {
           id: 'channel-1',
+          adminOnlyPosting: false,
+          mandatoryAnnouncements: false,
           organizationId: 'org-1',
           systemChannelType: null,
           agentBindings: [],
@@ -76,6 +78,8 @@ const makeMessagePrisma = (input: {
     messageThreadFollow: {
       createMany: async () => ({ count: 0 }),
     },
+    $queryRaw: async () => [{ admin_only_posting: false, mandatory_announcements: false }],
+    $executeRaw: async () => 1,
     $transaction: async (callback: (tx: unknown) => Promise<unknown>) => callback(prisma),
   } as unknown as PrismaClient
   return { prisma, calls }
@@ -173,6 +177,7 @@ const seedAlerts = (store: TenantStore) =>
       organizationId: 'org-1',
       userId: 'user-1',
       kind: 'mention',
+      isAnnouncement: false,
       messageId: null,
       threadId: null,
       channelId: 'channel-1',
@@ -186,6 +191,7 @@ const seedAlerts = (store: TenantStore) =>
       organizationId: 'org-1',
       userId: 'user-1',
       kind: 'mention',
+      isAnnouncement: false,
       messageId: null,
       threadId: null,
       channelId: 'channel-2',
@@ -199,6 +205,7 @@ const seedAlerts = (store: TenantStore) =>
       organizationId: 'org-1',
       userId: 'user-1',
       kind: 'mention',
+      isAnnouncement: false,
       messageId: null,
       threadId: null,
       channelId: 'channel-1',
@@ -213,6 +220,7 @@ const seedAlerts = (store: TenantStore) =>
       organizationId: 'org-2',
       userId: 'user-1',
       kind: 'mention',
+      isAnnouncement: false,
       messageId: null,
       threadId: null,
       channelId: 'channel-9',
@@ -350,6 +358,7 @@ const seedRouteAlerts = (store: TenantStore) =>
       organizationId: ROUTE_ORG,
       userId: ROUTE_USER,
       kind: 'mention',
+      isAnnouncement: false,
       messageId: null,
       threadId: null,
       channelId: ROUTE_CHANNEL_1,
@@ -363,6 +372,7 @@ const seedRouteAlerts = (store: TenantStore) =>
       organizationId: ROUTE_ORG,
       userId: ROUTE_USER,
       kind: 'mention',
+      isAnnouncement: false,
       messageId: null,
       threadId: null,
       channelId: ROUTE_CHANNEL_2,

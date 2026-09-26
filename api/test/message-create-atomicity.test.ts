@@ -55,11 +55,15 @@ const makePrisma = () => {
     },
     messageThreadFollow: { createMany: async () => ({ count: 0 }) },
     userAlert: { createMany: async ({ data }: { data: unknown[] }) => ({ count: data.length }) },
-    $queryRaw: async () => [{
-      last_reply_at: new Date('2026-09-05T10:00:00.000Z'),
-      reply_count: 1,
-      reply_participant_ids: ['user-1'],
-    }],
+    $queryRaw: async (query: { sql?: string; 0?: string }) =>
+      (query.sql ?? query[0] ?? '').includes('admin_only_posting')
+      ? [{ admin_only_posting: false, mandatory_announcements: false }]
+      : [{
+        last_reply_at: new Date('2026-09-05T10:00:00.000Z'),
+        reply_count: 1,
+        reply_participant_ids: ['user-1'],
+      }],
+    $executeRaw: async () => 1,
   }
   const prisma = {
     thread: {
@@ -76,6 +80,8 @@ const makePrisma = () => {
             principalUserId: null,
           }],
           id: 'channel-1',
+          adminOnlyPosting: false,
+          mandatoryAnnouncements: false,
           members: [{ user: { id: 'user-1', displayName: 'User One' } }],
           organizationId: 'org-1',
           systemChannelType: null,

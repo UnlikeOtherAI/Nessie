@@ -35,12 +35,17 @@ test('org demotion uses a new signed UOA read on the very next request', async (
     assert.equal(new URL(url).pathname, '/org/me')
     const headers = new Headers(init?.headers)
     assert.ok(headers.get('x-uoa-subject-assertion'))
-    return json({ org: { org_id: 'org_acme', org_role: role } })
+    return json({ org: { org_id: 'org_acme', org_role: role,
+      team_roles: { team_one: 'admin', team_other: 'member' } } })
   }) as PinnedFetch)
 
-  assert.deepEqual(await authorizeUoaRequest('org_acme', identity, deps), { status: 'allowed', role: 'owner' })
+  assert.deepEqual(await authorizeUoaRequest('org_acme', identity, deps), {
+    status: 'allowed', role: 'owner', teamRoles: { team_one: 'admin', team_other: 'member' },
+  })
   role = 'member'
-  assert.deepEqual(await authorizeUoaRequest('org_acme', identity, deps), { status: 'allowed', role: 'member' })
+  assert.deepEqual(await authorizeUoaRequest('org_acme', identity, deps), {
+    status: 'allowed', role: 'member', teamRoles: { team_one: 'admin', team_other: 'member' },
+  })
   assert.equal(calls, 2)
 })
 
@@ -62,7 +67,7 @@ test('a burst of concurrent requests from one session costs UOA one read', async
   release()
 
   for (const result of await Promise.all(burst)) {
-    assert.deepEqual(result, { status: 'allowed', role: 'admin' })
+    assert.deepEqual(result, { status: 'allowed', role: 'admin', teamRoles: {} })
   }
   assert.equal(calls, 1)
 })
@@ -79,7 +84,9 @@ test('outages fail closed and a recovery is checked afresh', async () => {
   const deps = requestDeps((async () => json({ org: { org_id: 'org_acme', org_role: 'admin' } }, status)) as PinnedFetch)
   assert.deepEqual(await authorizeUoaRequest('org_acme', identity, deps), { status: 'unavailable' })
   status = 200
-  assert.deepEqual(await authorizeUoaRequest('org_acme', identity, deps), { status: 'allowed', role: 'admin' })
+  assert.deepEqual(await authorizeUoaRequest('org_acme', identity, deps), {
+    status: 'allowed', role: 'admin', teamRoles: {},
+  })
 })
 
 test('missing identity and cross-organisation credentials never reach UOA', async () => {

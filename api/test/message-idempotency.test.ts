@@ -38,6 +38,8 @@ const makePrisma = (seed: StoredMessage[] = []) => {
       findUnique: async () => ({
         channel: {
           id: 'channel-1',
+          adminOnlyPosting: false,
+          mandatoryAnnouncements: false,
           agentBindings: [],
           members: [{ user: { id: 'user-1', displayName: 'User One' } }],
           organizationId: 'org-1',
@@ -97,6 +99,8 @@ const makePrisma = (seed: StoredMessage[] = []) => {
     agent: { findMany: async () => [] },
     userAlert: { createMany: async ({ data }: { data: unknown[] }) => ({ count: data.length }) },
     messageThreadFollow: { createMany: async () => ({ count: 0 }) },
+    $queryRaw: async () => [{ admin_only_posting: false, mandatory_announcements: false }],
+    $executeRaw: async () => 1,
     $transaction: async (callback: (tx: unknown) => Promise<unknown>) => callback(prisma),
   } as unknown as PrismaClient
 

@@ -41,16 +41,18 @@ const actorContextFor = (userId: string): AuthorizedActionContext => ({
   actionContext: { requestId: `req-channel-notifications-${userId}` },
 })
 
-const makeApp = (userId: string, rows: ChannelMemberRow[]) => {
+const makeApp = (userId: string, rows: ChannelMemberRow[], mandatoryAnnouncements = false) => {
   const prisma = {
     channelMember: {
-      findFirst: async ({ where }: FindFirstArgs) =>
-        rows.find(
+      findFirst: async ({ where }: FindFirstArgs) => {
+        const row = rows.find(
           (row) =>
             row.channelId === where.channelId
             && row.userId === where.userId
             && row.organizationId === where.channel.is.organizationId,
-        ) ?? null,
+        )
+        return row ? { ...row, channel: { mandatoryAnnouncements } } : null
+      },
       update: async ({ where, data }: UpdateArgs) => {
         const row = rows.find((candidate) => candidate.id === where.id)
         if (!row) {
@@ -106,6 +108,23 @@ test('PATCH /api/channels/:channelId/notifications returns 404 when caller is no
   })
 
   assert.equal(response.statusCode, 404)
+  assert.equal(rows[0]?.muted, false)
+  await app.close()
+})
+
+test('PATCH /api/channels/:channelId/notifications refuses to mute a mandatory channel', async () => {
+  const rows: ChannelMemberRow[] = [
+    { id: 'member-a', channelId, organizationId, userId: userA, muted: false },
+  ]
+  const app = makeApp(userA, rows, true)
+
+  const response = await app.inject({
+    method: 'PATCH',
+    url: `/api/channels/${channelId}/notifications`,
+    payload: { muted: true },
+  })
+
+  assert.equal(response.statusCode, 409)
   assert.equal(rows[0]?.muted, false)
   await app.close()
 })
