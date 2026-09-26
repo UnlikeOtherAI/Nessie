@@ -34,7 +34,7 @@ import { StatusScheduleForm } from './statuses/StatusScheduleForm'
  * One status: what it is called, whether its response agent answers, and the
  * schedules and contact rules that make it worth having.
  *
- * Reached by opening a row in the Statuses table. "Set active" and Delete are
+ * Reached by opening a row in the Status table. "Set active" and Delete are
  * the screen's own header actions rather than controls buried in the editor,
  * so what changes the world sits apart from what edits a draft.
  */
