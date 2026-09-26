@@ -138,11 +138,14 @@ sentence changes only if the invariant itself did.
 - **Browser UI suites are manual local checks, outside GitHub Actions.**
   Use the existing `pnpm --filter @nessie/admin test:e2e:<suite>` commands.
   No browser workflow is dispatched or required before merge.
-- **CI delivery:** main CI saves production images for gated promotion without
+- **CI delivery:** every CI run that builds the production images saves them
+  (main for seven days, a branch for one) for gated promotion without
   rebuilding; [redeploying](docs/deployment/redeploying.md) defines the contract.
-  CI overlaps API and worker tests on separate databases through
-  `scripts/ci-tests.mjs`; [testing](docs/standards/testing.md) defines the local
-  verification path and preserves ordinary shared-database test ordering.
+  CI splits the package suites into seven test legs on their own runners and
+  databases through `scripts/ci-tests.mjs`, behind the required `Test` check;
+  [testing](docs/standards/testing.md) defines the local verification path and
+  preserves ordinary shared-database test ordering. The Linux Desktop Bundle
+  and Windows Native checks run in the separate Desktop CI workflow.
   Worker-only tests also build the real executor bridge fixture dependency.
   The Linux desktop workflow generates Prisma, builds `@nessie/executor` with
   its workspace dependencies, and prepares the packaged runtime before Tauri
@@ -317,9 +320,10 @@ sentence changes only if the invariant itself did.
   stays put once the servers are up; the full rule is in
   [`AGENTS.md`](AGENTS.md) → "Ports".
 - **Production promotion uses the exact-SHA gate:** Deploy promotes the newest
-  `main` commit with its own successful trusted main CI run — the tip when its
-  CI is green, otherwise the newest verified ancestor — including on manual
-  dispatch. A run that promotes nothing says so in its title and summary, and a
+  `main` commit CI has verified — by its own successful trusted main CI run, or
+  by a successful branch run on its identical tree — the tip when it is
+  verified, otherwise the newest verified ancestor — on a push to `main`, a
+  green main CI run and manual dispatch alike. A run that promotes nothing says so in its title and summary, and a
   stall fails the run. Read
   [`docs/deployment/redeploying.md`](docs/deployment/redeploying.md)
   before changing deployment automation.

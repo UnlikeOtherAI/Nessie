@@ -4,15 +4,43 @@ Chapter of [deployment.md](../deployment.md). Images build on GitHub and the hos
 
 ## Redeploying a new version
 
-**Automatic (default):** a completed `CI` run for `main` wakes
-`.github/workflows/deploy.yml`. Before the build job receives package-write
-permission or the deploy job receives SSH secrets, its read-only gate picks the
-**newest commit on `main` that has a successful `push` CI run for that exact
-SHA from this repository** — the tip when the tip's own CI is green, otherwise
-the newest verified ancestor under it. It then checks out that SHA, downloads
-its images from the selected successful CI run, tags, syncs and promotes them. A failed, cancelled, forked, wrong-branch or stale
-CI event cannot promote an image, and a commit that is not on `main` is never a
-candidate however green its CI.
+**Automatic (default):** a push to `main` or a completed `CI` run for `main`
+wakes `.github/workflows/deploy.yml`. Before the build job receives
+package-write permission or the deploy job receives SSH secrets, its read-only
+gate picks the **newest commit on `main` that CI has verified** — the tip when
+the tip is verified, otherwise the newest verified ancestor under it. It then
+checks out that SHA, downloads its images from the selected successful CI run,
+tags, syncs and promotes them. A failed, cancelled, forked, wrong-branch or
+stale CI event cannot promote an image, and a commit that is not on `main`'s
+first-parent history is never a candidate however green its CI — including a
+branch commit a merge brought in.
+
+A commit on `main` is verified in one of two ways:
+
+- **Its own run:** a successful `push` CI run for that exact SHA from this
+  repository.
+- **Its tree:** a successful `push` CI run on a branch of this repository
+  whose head commit has the **identical Git tree**, that saved all three
+  production images, and whose main commit's first parent is itself verified.
+  A tree ID names every byte of the content, so that run checked exactly what
+  `main` holds; the parent condition covers what branch CI's `--affected`
+  scope left out. A commit whose own main CI run **failed** is never verified
+  through a branch.
+
+Most merges land exactly the tree their branch's last run passed (38 of 89
+merges on 22–25 September did, 43%), so the tree route ships a merge on its
+push, about five minutes after merging, instead of after `main` rebuilds and
+retests the same tree for 25–30 minutes. Merging `main` into the branch before
+merging, and letting its CI finish, makes it apply. The images promoted are
+the branch run's, published under the `main` SHA; their OCI revision label
+still names the branch commit that built them.
+
+An automatic wake-up never ships the commit that is already live, nor anything
+older: the gate reads the SHA the newest successful deploy job shipped (its
+job name, `Deploy <sha> to Hetzner`) and declines a candidate at or below it on
+`main`, so a tree-verified merge is not redeployed when its own CI completes,
+and a delayed older event never rolls production back. A manual dispatch
+always ships.
 
 The candidate list is one page of `main`'s history against one page of
 completed CI runs (100 each), so a verified commit older than either page is
@@ -48,7 +76,8 @@ the run on it: that state must never again be reported as a successful deploy.
 
 **Manual:** use **Run workflow** for `Deploy` from `main`. It uses the same CI
 gate and does not promote the UI-selected revision or bypass a
-failed/cancelled CI run. Routine production promotion must not use direct host
+failed/cancelled CI run; unlike an automatic wake-up it ships even when the
+commit is already live. Routine production promotion must not use direct host
 commands.
 
 After the gate, the workflow rsyncs the proven tree to `/srv/nessie` and runs
@@ -91,16 +120,20 @@ data live in named Docker volumes outside the synced tree.
 
 ### Images are built on GitHub, never on the production host
 
-Main CI's `Production Image` matrix builds `app`, `admin`, and `web` once,
+CI's `Production Image` matrix builds `app`, `admin`, and `web` once per run,
 exports Docker archives with an exact-SHA tag and OCI revision label, and saves
-`production-image-{app,admin,web}` artifacts for 7 days. Branch CI still builds
-the Dockerfiles but publishes no images or production artifacts. Only main
+`production-image-{app,admin,web}` artifacts: for 7 days on `main`, for 1 day
+on a branch, whenever the run's scope built them. A branch artifact is only
+ever promoted through the gate's tree rule, for a `main` commit with the
+identical tree; nothing from a branch is pushed to a registry. Only main
 refreshes the per-image `type=gha` build cache.
 
 Deploy's `build` job downloads from the **selected trusted successful CI run
 ID**, which can differ from the event that woke Deploy. It loads each image,
-checks its revision label against the gated SHA, and pushes that same image to
-`ghcr.io/unlikeotherai/nessie-{app,admin,web}:<sha>` without recompiling.
+checks its revision label against the commit that run built (the gated SHA, or
+for a tree-verified promotion the branch commit), and pushes that same image to
+`ghcr.io/unlikeotherai/nessie-{app,admin,web}:<sha>` under the gated SHA
+without recompiling.
 A missing, expired or mismatched artifact fails promotion; rerun CI for that
 SHA to regenerate expired artifacts. Full CI reruns replace the same named
 artifacts; failed-job reruns reuse the images that already passed in that run.

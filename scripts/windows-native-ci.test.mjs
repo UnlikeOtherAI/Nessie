@@ -13,8 +13,10 @@ const normalizeLineEndings = (text) => text.replace(/\r\n?/g, "\n");
 const readWorkflow = async (path) =>
   normalizeLineEndings(await readFile(path, "utf8"));
 
+// The Windows Native check runs in Desktop CI, beside the Linux desktop bundle,
+// so a desktop build never holds a server deploy.
 const ciWorkflow = await readWorkflow(
-  resolve(repositoryDirectory, ".github/workflows/ci.yml"),
+  resolve(repositoryDirectory, ".github/workflows/desktop-ci.yml"),
 );
 const releaseWorkflow = await readWorkflow(
   resolve(repositoryDirectory, ".github/workflows/desktop-windows.yml"),

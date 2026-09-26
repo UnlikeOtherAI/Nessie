@@ -15,16 +15,27 @@ file is the rule.**
 
 ## CI with isolated databases
 
-`node scripts/ci-tests.mjs` requires both `DATABASE_URL` and
-`WORKER_TEST_DATABASE_URL`, with distinct database names. CI migrates the first
-and clones its pristine schema into `nessie_test_worker` before tests connect.
-The runner reads the original Turbo test graph (including dependency-added
-worker tests and affected-package scope), finishes its prerequisite builds,
-then runs worker, API and remaining tests concurrently through Turbo `--only`.
-Worker receives its exclusive database; API and other suites share the first.
-At most four package test tasks overlap (one worker, one API, two others).
-All groups finish even if one fails, and any failure fails the job. Tests stay
-uncached. No build runs while tests import its output.
+CI runs the package suites as seven legs of the `test-legs` job, each on its
+own runner with its own freshly migrated Postgres, and the required `Test`
+check passes only when every leg did. `CI_TEST_GROUP` selects a leg and
+`CI_TEST_SHARD` (`i/n`) splits it: the API suite in three shards, the worker's
+unit suite, its database suite in two shards, and every other package. A leg
+reads the scoped Turbo test graph (including affected-package scope), stops at
+once when the scope left it nothing, builds only the closure its own tests
+need, then runs them: the API and worker suites through their own package
+scripts with Node's `--test-shard` inserted after `node --test` (a script of
+any other shape fails the leg rather than running unsplit), everything else
+through Turbo `--only`. The split replaced one runner that held every suite
+and took 25-31 minutes. Tests stay uncached. No build runs while tests import
+its output.
+
+Without `CI_TEST_GROUP`, `node scripts/ci-tests.mjs` is the one-runner path:
+it requires both `DATABASE_URL` and `WORKER_TEST_DATABASE_URL`, with distinct
+database names, finishes the graph's prerequisite builds, then runs worker, API
+and remaining tests concurrently through Turbo `--only`. Worker receives its
+exclusive database; API and other suites share the first. At most four package
+test tasks overlap (one worker, one API, two others). All groups finish even if
+one fails, and any failure fails the run.
 
 For local verification, create and migrate two dedicated disposable databases,
 export both URLs and run the same script, optionally with Turbo `--filter`

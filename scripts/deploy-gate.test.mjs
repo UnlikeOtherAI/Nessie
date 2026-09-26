@@ -66,6 +66,8 @@ test('accepts the exact current main SHA after its trusted CI push succeeds', ()
     eligible: true,
     reason: 'current main tip passed trusted CI',
     sha: mainSha,
+    sourceSha: mainSha,
+    verifiedBy: 'own',
   })
 })
 
@@ -118,6 +120,8 @@ test('promotes the newest verified ancestor while the tip CI is still running', 
     eligible: true,
     reason: 'main tip has no successful trusted CI push run yet — promoting the newest verified ancestor, 1 commit(s) behind the tip',
     sha: middleSha,
+    sourceSha: middleSha,
+    verifiedBy: 'own',
   })
 })
 
@@ -210,17 +214,150 @@ test('the workflow fails the run on a stall and publishes the decision', () => {
 test('the actual workflow concurrency expression keeps eligible runs together and ignores others', () => {
   const manual = concurrencyGroup(githubEvent({ eventName: 'workflow_dispatch', runId: 1 }))
   const automatic = concurrencyGroup(githubEvent({ eventName: 'workflow_run', runId: 2, workflowRun: successfulRun() }))
+  const pushed = concurrencyGroup(githubEvent({ eventName: 'push', runId: 6 }))
   const ignored = [
     githubEvent({ eventName: 'workflow_run', runId: 3, workflowRun: successfulRun(olderSha, { conclusion: 'failure' }) }),
     githubEvent({ eventName: 'workflow_run', runId: 4, workflowRun: successfulRun(olderSha, { conclusion: 'cancelled' }) }),
     githubEvent({ eventName: 'workflow_dispatch', ref: 'refs/heads/release', runId: 5 }),
+    githubEvent({ eventName: 'push', ref: 'refs/heads/feature', runId: 7 }),
   ].map(concurrencyGroup)
 
   assert.equal(manual, 'deploy-production')
   assert.equal(automatic, 'deploy-production')
+  // A push to main is an eligible wake-up too: waiting behind a running
+  // deploy, it may replace a pending one, so it must resolve the newest
+  // verified commit exactly as that one would have.
+  assert.equal(pushed, 'deploy-production')
   assert.deepEqual(ignored, [
     'deploy-production-ignored-3',
     'deploy-production-ignored-4',
     'deploy-production-ignored-5',
+    'deploy-production-ignored-7',
   ])
+})
+
+// ——— Tree-verified promotion ———
+// main, newest first, with its first parents and trees: the tip merged a
+// branch whose head (branchSha) has the tip's exact tree; the branch head's
+// own history is a second parent and never main's state.
+const tree = 'f'.repeat(40)
+const branchSha = '5'.repeat(40)
+const lineage = [
+  { sha: mainSha, tree, parents: [middleSha, branchSha] },
+  { sha: branchSha, tree, parents: [olderSha] },
+  { sha: middleSha, tree: 'e'.repeat(40), parents: [olderSha] },
+  { sha: olderSha, tree: 'd'.repeat(40), parents: [] },
+]
+const branchRun = (overrides = {}) => ({
+  ...successfulRun(branchSha, { head_branch: 'feat/x', id: 900 }),
+  head_commit: { tree_id: tree },
+  ...overrides,
+})
+const decideTree = (overrides = {}) => decide({
+  branchRuns: [branchRun()],
+  eventName: 'push',
+  imageRunIds: [900],
+  mainCommits: lineage,
+  workflowRun: undefined,
+  workflowRuns: [successfulRun(middleSha, { id: 200 })],
+  ...overrides,
+})
+
+test('a push whose exact tree passed branch CI promotes that run’s images at once', () => {
+  assert.deepEqual(decideTree(), {
+    behind: 0,
+    ciRunId: 900,
+    eligible: true,
+    reason: 'current main tip passed trusted CI on an identical tree (its tree passed CI on feat/x at 5555555555555555555555555555555555555555; that run\'s images are promoted)',
+    sha: mainSha,
+    sourceSha: branchSha,
+    verifiedBy: 'tree',
+  })
+})
+
+test('a tree match without the branch run’s saved images waits for main CI', () => {
+  const result = decideTree({ imageRunIds: [] })
+  assert.equal(result.sha, middleSha)
+  assert.equal(result.verifiedBy, 'own')
+})
+
+// Branch CI tests only what differs from main, so the parent carries the rest.
+test('a tree match needs its first parent verified too', () => {
+  const result = decideTree({ workflowRuns: [successfulRun(olderSha, { id: 100 })] })
+  assert.equal(result.sha, olderSha)
+  assert.equal(result.behind, 2)
+  assert.equal(result.verifiedBy, 'own')
+})
+
+test('a verified parent can itself be tree-verified', () => {
+  const middleTree = 'e'.repeat(40)
+  const result = decideTree({
+    branchRuns: [branchRun(), branchRun({ head_sha: '6'.repeat(40), id: 901, head_commit: { tree_id: middleTree } })],
+    imageRunIds: [900, 901],
+    workflowRuns: [successfulRun(olderSha, { id: 100 })],
+  })
+  assert.equal(result.sha, mainSha)
+  assert.equal(result.ciRunId, 900)
+})
+
+test('a commit whose own main CI failed is never verified through a branch', () => {
+  const result = decideTree({
+    workflowRuns: [successfulRun(middleSha, { id: 200 }), successfulRun(mainSha, { conclusion: 'failure', id: 201 })],
+  })
+  assert.equal(result.sha, middleSha)
+})
+
+test('only a trusted successful branch push run of CI can vouch for a tree', () => {
+  for (const overrides of [
+    { conclusion: 'failure' },
+    { event: 'pull_request' },
+    { name: 'Desktop CI' },
+    { head_branch: 'main' },
+    { head_repository: { full_name: 'attacker/Nessie' } },
+    { head_commit: { tree_id: 'a'.repeat(40) } },
+  ]) {
+    assert.equal(decideTree({ branchRuns: [branchRun(overrides)] }).sha, middleSha, JSON.stringify(overrides))
+  }
+})
+
+test('a branch commit reachable only through a merge is never a candidate', () => {
+  // The branch head has its own identical-tree run and a verified parent, but
+  // it was never main's state: only the first-parent chain is promotable.
+  const result = decideTree({
+    branchRuns: [branchRun()],
+    imageRunIds: [900],
+    mainCommits: lineage,
+    workflowRuns: [successfulRun(olderSha, { id: 100 })],
+  })
+  assert.equal(result.sha, olderSha)
+  assert.equal(result.verifiedBy, 'own')
+})
+
+test('a push is only a wake-up for main', () => {
+  assert.deepEqual(decideTree({ ref: 'refs/heads/feature' }), { eligible: false, reason: 'push is not to main' })
+})
+
+// ——— What is already live ———
+test('an automatic wake-up does not ship what production already runs', () => {
+  assert.deepEqual(decide({ liveSha: mainSha }), { eligible: false, reason: `${mainSha} is already live` })
+  assert.deepEqual(decideTree({ liveSha: mainSha }), { eligible: false, reason: `${mainSha} is already live` })
+})
+
+test('an automatic wake-up never rolls production back', () => {
+  const result = decide({
+    liveSha: mainSha,
+    workflowRun: successfulRun(olderSha),
+    workflowRuns: [successfulRun(olderSha)],
+  })
+  assert.deepEqual(result, {
+    eligible: false,
+    reason: `production already runs ${mainSha}, newer than the newest verified commit ${olderSha}`,
+  })
+})
+
+test('a newer verified commit ships over the live one, and a manual dispatch always ships', () => {
+  assert.equal(decide({ liveSha: middleSha }).sha, mainSha)
+  assert.equal(decide({ eventName: 'workflow_dispatch', liveSha: mainSha, workflowRun: undefined }).sha, mainSha)
+  // A live commit outside main's page cannot be ordered, so it does not block.
+  assert.equal(decide({ liveSha: foreignSha }).sha, mainSha)
 })
