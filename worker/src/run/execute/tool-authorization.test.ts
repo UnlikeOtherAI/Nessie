@@ -422,6 +422,7 @@ const runLoop = async (input: {
       liveRequester: true,
       initialMessages: [{ content: 'go', role: 'user' }],
       inference: {
+        decide: null,
         consumeStreamedFlag: () => false,
         runMain: async () => {
           mainTurn += 1

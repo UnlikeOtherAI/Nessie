@@ -1,3 +1,4 @@
+import { judgeWatchDisposition, type RunDecisionEvaluator } from '@nessie/runtime'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 
 import { isInteractiveRun } from './continuation.js'
@@ -10,8 +11,9 @@ import { classifyWatchDisposition, isRollingStatusEnabled } from './watch-status
  * Two gates, in order. First structural, and cheap: only an unattended run
  * belonging to a recurring trigger that has not opted out is eligible, so an
  * @mention or a workflow step can never be folded away. Only then does the
- * model judge the text — one small utility call, and it fails open, because a
- * missed finding is far worse than one redundant message.
+ * model judge the text: Jev when it is sure, otherwise one small utility call,
+ * which fails open, because a missed finding is far worse than one redundant
+ * message.
  */
 export const resolveRollingWatch = async (
   deps: ExecutionDependencies,
@@ -19,6 +21,7 @@ export const resolveRollingWatch = async (
   context: RunContext,
   input: {
     responseText: string
+    decide?: RunDecisionEvaluator | null
     runUtility: (
       messages: Array<{ content: string; role: 'system' | 'user' }>,
       tools: [],
@@ -42,9 +45,7 @@ export const resolveRollingWatch = async (
   if (trigger.type !== 'interval' && trigger.type !== 'scheduled') return null
   if (!isRollingStatusEnabled(trigger.config)) return null
 
-  const disposition = await classifyWatchDisposition(
-    input.runUtility,
-    input.responseText,
-  )
+  const disposition = (input.decide ? await judgeWatchDisposition(input.decide, input.responseText) : null)
+    ?? await classifyWatchDisposition(input.runUtility, input.responseText)
   return disposition === 'status' ? { triggerId: run.triggerId } : null
 }

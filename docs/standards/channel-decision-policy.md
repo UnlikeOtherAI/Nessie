@@ -58,8 +58,8 @@ Below it, automatic effects are skipped; explicit structured mentions and
 structurally addressed conversations remain answerable. Model errors do not
 fall back to a generative classifier. A notice explains missing evaluation
 access, exhausted credits, or oversized inputs. Agent-authored messages never
-trigger another policy evaluation. Disabled or absent policies retain normal
-engagement behavior, and system DMs keep their structural addressing (a
+trigger another policy evaluation. Disabled or absent policies keep the room's
+default engagement ("Rooms without a policy", below), and system DMs keep their structural addressing (a
 one-on-one room's reply shape and place are Jev's, as above).
 The saved snapshot retains each selected option, probability and threshold
 result, distinguishing deliberate no-action choices from uncertain abstentions
@@ -169,3 +169,32 @@ checks the authorizer can still read the checkpoint's run basis. Current
 channel configuration never replaces replay authority. Revoked authority,
 removed bindings, ambiguous decisions and altered instructions return a
 specific HTTP 403 before a new run or checkpoint claim is written.
+
+## Rooms without a policy
+
+A shared room with no enabled policy — a standard channel, or a DM with more
+than one person in it — still asks who should answer each human message.
+Structural answers come first and are never classified: a composer @mention,
+an `@Name` in the text, an @mention of people only (no agent answers), a
+system DM's own agent, and a conversation thread's own agent. Past those, an
+installation that reaches Ledger asks Jev once
+(`judgeChannelEngagement`, `packages/runtime/src/engagement-decisions.ts`):
+whether an agent should reply, only react, or stay out; which agent (asked
+only when the room has more than one, with agents already in the thread
+marked); thread or channel placement; and 👍, 🎉 or ❤️ for a reaction. A
+choice counts at 0.8 (`ENGAGEMENT_MINIMUM_PROBABILITY`).
+
+A sure "stay out" is final. A sure reply or reaction by a sure agent is used
+as it stands; an unsure placement keeps the reply in its thread and an unsure
+reaction is 👍. Everything else — an unsure engagement, an unsure or `none`
+agent under a reply, a timeout (4 s), any Ledger error, an input over Jev's
+limits — hands the message to the generative orchestrator
+(`decideAgentEngagement`, `packages/runtime/src/orchestrator.ts`), which
+decides exactly as it did before Jev. Exhausted credits are the exception:
+they are surfaced, because the generative model would refuse too. Nothing is
+pinned on the message, as before: a redelivered job asks again.
+
+The reason is cost and latency, not a different judgement: the generative
+orchestrator spends a reasoning-model call on every human message in every
+shared room, most of them people talking to each other, while Jev answers in
+a few hundred milliseconds for about $0.00003.

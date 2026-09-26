@@ -241,6 +241,8 @@ when one changes, the same turn updates it, not this section.
   before writing code here.
 - **Jev channel decisions.** Channel settings and the Personal Assistant share
   the enum policy; configured work carries its authorizer through queued runs.
+  A room without a policy asks Jev first and the generative orchestrator only
+  on Jev's doubt; a run's completion review and watch disposition do the same.
   Read [`docs/standards/channel-decision-policy.md`](docs/standards/channel-decision-policy.md)
   before changing classification, policy editing or its execution.
 - **A recurring watch keeps one rolling status message.** A sweep that finds

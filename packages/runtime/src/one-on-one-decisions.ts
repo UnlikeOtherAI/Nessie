@@ -1,6 +1,9 @@
 import type { ChannelDecisionChoice } from '@nessie/schemas'
 
 import type { DecisionAnswer, DecisionModelClient, DecisionQuestion } from './decision-model.js'
+import {
+  choice, confidentChoice, DECISION_REACTIONS, evaluatedChoices, excerpt, reactionFor, reactionQuestion,
+} from './decision-questions.js'
 import type { LedgerAttribution } from './ledger.js'
 
 /**
@@ -45,20 +48,7 @@ export type OneOnOneJudgement =
 export const ONE_ON_ONE_MINIMUM_PROBABILITY = 0.8
 
 /** The reactions an acknowledgement may use, keyed by the choice Jev returns. */
-export const ONE_ON_ONE_REACTIONS = {
-  agree: '👍',
-  celebrate: '🎉',
-  thanks: '❤️',
-} as const
-
-/** The acknowledgement for an uncertain reaction choice: neutral, never wrong. */
-const DEFAULT_REACTION = ONE_ON_ONE_REACTIONS.agree
-
-const excerpt = (value: string, limit: number): string =>
-  value.length <= limit ? value : `${value.slice(0, limit)} [excerpt]`
-
-const choice = (instructions: string, criteria: Record<string, string>): DecisionQuestion =>
-  ({ type: 'choice', instructions, criteria })
+export const ONE_ON_ONE_REACTIONS = DECISION_REACTIONS
 
 const earlierKey = (index: number): string => `m${index + 1}`
 
@@ -71,11 +61,7 @@ const questionsFor = (earlier: readonly OneOnOneEarlierMessage[]): Record<string
     acknowledge: 'With a reaction only: thanks, an FYI or a settled decision that '
       + 'needs nothing done and nothing said.',
   }),
-  reaction: choice('If the agent only reacts, which reaction fits the latest message?', {
-    agree: `${ONE_ON_ONE_REACTIONS.agree} Agreement, a confirmation or a noted FYI.`,
-    celebrate: `${ONE_ON_ONE_REACTIONS.celebrate} Good news or a success.`,
-    thanks: `${ONE_ON_ONE_REACTIONS.thanks} Thanks or appreciation.`,
-  }),
+  reaction: reactionQuestion('If the agent only reacts, which reaction fits the latest message?'),
   ...(earlier.length > 0
     ? {
         earlier: choice(
@@ -101,12 +87,8 @@ const questionsFor = (earlier: readonly OneOnOneEarlierMessage[]): Record<string
     : {}),
 })
 
-const confident = (answers: Record<string, DecisionAnswer>, id: string): string | undefined => {
-  const answer = answers[id]
-  return answer && (answer.probabilities[answer.choice] ?? 0) >= ONE_ON_ONE_MINIMUM_PROBABILITY
-    ? answer.choice
-    : undefined
-}
+const confident = (answers: Record<string, DecisionAnswer>, id: string): string | undefined =>
+  confidentChoice(answers, id, ONE_ON_ONE_MINIMUM_PROBABILITY)
 
 const isReference = (value: string | undefined): value is OneOnOneReference =>
   value === 'mention' || value === 'link' || value === 'thread'
@@ -143,24 +125,11 @@ export const judgeOneOnOneTurn = async (
     ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
     usage: input.usage,
   })
-  const choices = Object.keys(questions).map((questionId) => {
-    const answer = answers[questionId]!
-    const probability = answer.probabilities[answer.choice] ?? 0
-    return {
-      questionId,
-      choice: answer.choice,
-      probability,
-      meetsThreshold: probability >= ONE_ON_ONE_MINIMUM_PROBABILITY,
-    }
-  })
+  const choices = evaluatedChoices(questions, answers, ONE_ON_ONE_MINIMUM_PROBABILITY)
 
   const response = confident(answers, 'response')
   if (response === 'acknowledge') {
-    const reaction = confident(answers, 'reaction')
-    const emoji = reaction && reaction in ONE_ON_ONE_REACTIONS
-      ? ONE_ON_ONE_REACTIONS[reaction as keyof typeof ONE_ON_ONE_REACTIONS]
-      : DEFAULT_REACTION
-    return { choices, judgement: { shape: 'acknowledge', emoji } }
+    return { choices, judgement: { shape: 'acknowledge', emoji: reactionFor(confident(answers, 'reaction')) } }
   }
 
   const shape = response === 'act' ? 'act' : 'reply'
