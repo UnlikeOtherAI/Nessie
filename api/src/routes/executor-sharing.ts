@@ -1,10 +1,10 @@
 import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import { ExecutorSharingUpdateSchema, ExecutorSharingViewSchema } from '@nessie/schemas'
-import { getExecutorSharing, setExecutorAgentAccess, updateExecutorSharing } from '@nessie/executor-manage'
-import { applyExecutorAccessChangeEffects } from '@nessie/team-admin'
+import { getExecutorSharing, updateExecutorSharing } from '@nessie/executor-manage'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { AgentToolPolicyError } from '../services/agent-tool-policy.js'
+import { applyExecutorAgentAccessChange } from './executor-agent-access-change.js'
 import { sendExecutorError } from './executor-route-errors.js'
 import { notifyExecutorStatus } from './executor-status-events.js'
 import { notifyExecutorLeaseChanges } from './executor-leases.js'
@@ -47,13 +47,7 @@ export const registerExecutorSharingRoutes = (app: FastifyInstance, deps: RouteD
     const body = parseInput(AgentChange, request.body, reply)
     if (!params || !body) return reply
     try {
-      const changed = await setExecutorAgentAccess(deps.prisma, actor, { ...params, ...body }, (tx) =>
-        applyExecutorAccessChangeEffects(tx, {
-          actorContext: actor, executorId: params.executorId, ledgerSigningConfigured: false,
-          change: { kind: 'agent_executor_access', ...body },
-        }))
-      await notifyExecutorLeaseChanges(deps, request.log, changed.endedLeases)
-      await notifyExecutorStatus(deps, request.log, params.executorId, actor.tenant.organizationId)
+      await applyExecutorAgentAccessChange(deps, request.log, actor, { ...params, ...body })
       return createApiResponse({ updated: true })
     } catch (error) {
       if (error instanceof AgentToolPolicyError) {

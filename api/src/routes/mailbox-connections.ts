@@ -58,6 +58,49 @@ const STATUS_BY_REFUSAL: Record<string, number> = {
   test_failed: 400,
 }
 
+/**
+ * A mailbox service refusal in the error envelope; false for anything else.
+ * Shared with the one grant write, so a refused mailbox reads the same there.
+ */
+export const sendMailboxConnectionRefusal = (
+  reply: Parameters<typeof sendApiError>[0],
+  error: unknown,
+): boolean => {
+  if (!(error instanceof MailboxConnectionError)) return false
+  sendApiError(
+    reply,
+    STATUS_BY_REFUSAL[error.refusal] ?? 400,
+    error.refusal.toUpperCase(),
+    error.message,
+    undefined,
+    // Per-leg, so the form can ask for the one setting still missing. It
+    // carries hostnames and ports only — the ones the person supplied or
+    // that were derived from their own address domain.
+    error.diagnosis,
+  )
+  return true
+}
+
+/**
+ * The role the API already re-resolved for this request. `requireActorContext`
+ * re-reads the live membership rather than trusting a session claim, so this
+ * is current — a demoted admin loses the shared-mailbox routes immediately.
+ * Exported so the one grant write (`PUT /api/accounts/:id/agents/:agentId`)
+ * asks the mailbox's own question rather than a copy of it.
+ */
+export const mailboxActingMember = (
+  actorContext: AuthorizedActionContext,
+): MailboxActingMember => ({
+  // `isAdminActor` is the shared contract for "manages team-wide settings"
+  // (`@nessie/schemas`); spelling it inline here was one of four spellings of
+  // one predicate (2026-09-05 review, FO1-3). Owner is still distinguished
+  // because the record carries the role, not just the verdict.
+  role: (actorContext.actor.roles ?? []).includes('owner')
+    ? 'owner'
+    : isAdminActor(actorContext) ? 'admin' : 'member',
+  userId: actorContext.actor.actorId,
+})
+
 export const registerMailboxConnectionRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
@@ -76,38 +119,10 @@ export const registerMailboxConnectionRoutes = (
     },
   })
 
-  /**
-   * The role the API already re-resolved for this request. `requireActorContext`
-   * re-reads the live membership rather than trusting a session claim, so this
-   * is current — a demoted admin loses the shared-mailbox routes immediately.
-   */
-  const actingMember = (
-    actorContext: AuthorizedActionContext,
-  ): MailboxActingMember => ({
-    // `isAdminActor` is the shared contract for "manages team-wide settings"
-    // (`@nessie/schemas`); spelling it inline here was one of four spellings of
-    // one predicate (2026-09-05 review, FO1-3). Owner is still distinguished
-    // because the record carries the role, not just the verdict.
-    role: (actorContext.actor.roles ?? []).includes('owner')
-      ? 'owner'
-      : isAdminActor(actorContext) ? 'admin' : 'member',
-    userId: actorContext.actor.actorId,
-  })
+  const actingMember = mailboxActingMember
 
   const refuse = (reply: Parameters<typeof sendApiError>[0], error: unknown): unknown => {
-    if (error instanceof MailboxConnectionError) {
-      return sendApiError(
-        reply,
-        STATUS_BY_REFUSAL[error.refusal] ?? 400,
-        error.refusal.toUpperCase(),
-        error.message,
-        undefined,
-        // Per-leg, so the form can ask for the one setting still missing. It
-        // carries hostnames and ports only — the ones the person supplied or
-        // that were derived from their own address domain.
-        error.diagnosis,
-      )
-    }
+    if (sendMailboxConnectionRefusal(reply, error)) return reply
     throw error
   }
 
