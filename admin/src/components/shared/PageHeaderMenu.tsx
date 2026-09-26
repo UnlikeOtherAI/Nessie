@@ -1,10 +1,10 @@
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type {
   PageHeaderAction,
   PageHeaderButtonAction,
   PageHeaderMenuButtonItem,
   PageHeaderToggleAction,
 } from './ResponsivePageHeader'
+import { MenuGlyph } from '../primitives/MenuGlyph'
 
 type PageHeaderMenuProps = {
   action: PageHeaderAction
@@ -69,6 +69,9 @@ export const PageHeaderMenu = ({ action, onSelect }: PageHeaderMenuProps) => {
           )
         }
         const icon = item.icon
+        const iconClass = action.kind === 'menu' && action.menuStyle === 'sidebar'
+          ? 'h-4 w-4'
+          : 'h-3 w-3'
         if ('href' in item) {
           return (
             <a
@@ -80,7 +83,7 @@ export const PageHeaderMenu = ({ action, onSelect }: PageHeaderMenuProps) => {
               target={item.target}
               title={item.title}
             >
-              {icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={icon} /> : null}
+              {icon ? <MenuGlyph className={iconClass} icon={icon} /> : null}
               {menuRowText(item)}
             </a>
           )
@@ -117,7 +120,7 @@ export const PageHeaderMenu = ({ action, onSelect }: PageHeaderMenuProps) => {
             title={item.title}
             type="button"
           >
-            {icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={icon} /> : null}
+            {icon ? <MenuGlyph className={iconClass} icon={icon} /> : null}
             {menuRowText(item)}
             {checked ? <span aria-hidden="true">✓</span> : null}
           </button>

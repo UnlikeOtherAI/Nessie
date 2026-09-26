@@ -1,6 +1,5 @@
 import {
   faArrowDownWideShort,
-  faFolderPlus,
   faGear,
   faPlus,
 } from '@fortawesome/free-solid-svg-icons'
@@ -18,7 +17,7 @@ import {
   type FinderSortKey,
 } from './finder-sort'
 import { finderViewOptions, type FinderView } from './finder-view'
-import { newFileTypeItems } from './new-file-types'
+import { NEW_FOLDER_ICON, newFileTypeItems } from './new-file-types'
 
 /**
  * Every header action the Finder's toolbar has (browser-ui.md §6), in one
@@ -146,7 +145,7 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
           items: [
             ...(writable || input.isRootColumn
               ? [{
-                  icon: faFolderPlus,
+                  icon: NEW_FOLDER_ICON,
                   id: 'new-folder',
                   // At the Knowledge root there is no space to create a folder
                   // in. The row being added is a space, which needs a visibility

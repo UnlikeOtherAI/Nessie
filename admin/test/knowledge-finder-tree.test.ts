@@ -75,11 +75,20 @@ test('agents and their documents stay in the Tree hierarchy', () => {
 
 test('Tree rows use channel-style icons and contextual selection', () => {
   const tree = readSource('../src/components/features/knowledge/finder/FinderTreeView.tsx')
+  const sidebar = readSource('../src/components/features/knowledge/finder/FinderTreeSidebar.tsx')
   const styles = readSource('../src/styles.css')
 
   assert.match(tree, /const TreeItemIcon/)
   assert.match(tree, /kind === 'spreadsheet'/)
   assert.match(tree, /<TreeItemIcon kind=\{page\.kind\}/)
+  assert.match(tree, /data-knowledge-file-glyph="image"/)
+  assert.match(tree, /data-knowledge-file-glyph="document"/)
+  assert.doesNotMatch(sidebar, /iconTone="--accent"/)
+  assert.doesNotMatch(sidebar, /text-\[color:var\(--accent\)\]/)
+  assert.match(sidebar, /treeIcon\(History\)/)
+  assert.match(sidebar, /treeIcon\(Share2\)/)
+  assert.match(sidebar, /treeIcon\(House\)/)
+  assert.match(sidebar, /text-\[color:var\(--tx3\)\]/)
   assert.match(tree, /tree\s+variant="item"/)
   assert.match(styles, /data-finder-tree-row='true'/)
   assert.match(styles, /color-mix\(in srgb, var\(--sb-active\) 20%, transparent\)/)

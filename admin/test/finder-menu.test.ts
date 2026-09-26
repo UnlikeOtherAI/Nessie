@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { isValidElement } from 'react'
 
 import {
   buildFinderMenu,
@@ -335,6 +336,7 @@ test('New offers exactly the kinds this build can actually make', () => {
     NEW_FILE_TYPES.map((type) => type.label),
     ['Document', 'Spreadsheet', 'Spreadsheet from a file…', 'Upload…'],
   )
+  assert.ok(NEW_FILE_TYPES.every((type) => isValidElement(type.icon)))
 })
 
 test('a New kind invokes the doorway it names and nothing else', () => {

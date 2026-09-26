@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject } from 'react'
-import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 import { faCheck } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useViewport } from '../../hooks/useViewport'
 import { useNavigationLayout } from '../../navigation/mobile-shell'
 import { shortcutLabel } from '../../lib/platform'
 import { Popover } from './Popover'
 import { Sheet } from './Sheet'
 import type { ContextMenuAnchor } from './useContextMenu'
+import { MenuGlyph, type MenuGlyphIcon } from '../primitives/MenuGlyph'
 
 /**
  * The admin's right-click menu — the one kind of overlay it did not have.
@@ -33,7 +32,7 @@ export type ContextMenuItem =
       kind: 'item'
       id: string
       label: string
-      icon?: IconDefinition
+      icon?: MenuGlyphIcon
       shortcut?: string
       disabled?: boolean
       // Why it is greyed. Offering an edit the server will refuse is the
@@ -302,7 +301,7 @@ export const ContextMenu = ({
         type="button"
       >
         <span className={`w-4 shrink-0 ${subtleClass(disabled)}`}>
-          {icon ? <FontAwesomeIcon className="h-4 w-4" icon={icon} /> : null}
+          {icon ? <MenuGlyph className="h-4 w-4" icon={icon} /> : null}
         </span>
         <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
         {item.kind === 'item' && item.shortcut && showShortcuts ? (

@@ -9,7 +9,6 @@ import {
   faFileArrowUp,
   faFileLines,
   faFolderOpen,
-  faFolderPlus,
   faLink,
   faLocationCrosshairs,
   faPenToSquare,
@@ -28,7 +27,7 @@ import type {
 } from '@nessie/schemas'
 import { LEGACY_XLS_REASON, spreadsheetSourceFor } from '../../../shared/file-icons'
 import type { ContextMenuItem } from '../../../overlays/ContextMenu'
-import { newFileTypeItems, type NewFileTypeContext } from './new-file-types'
+import { NEW_FOLDER_ICON, newFileTypeItems, type NewFileTypeContext } from './new-file-types'
 
 /**
  * What a right-click offers, as data (menus-and-dialogs.md §2).
@@ -305,7 +304,7 @@ const pageItems = (
     // (standing somewhere else) does not have.
     ...(folder && !virtual && mayEdit
       ? [item('new-folder-inside', 'New folder inside', on.newFolderInside, {
-        icon: faFolderPlus,
+        icon: NEW_FOLDER_ICON,
       })]
       : []),
     ...(mayEdit ? [item('rename', 'Rename', on.rename, {
@@ -419,7 +418,7 @@ const backgroundItems = (
     return tidy([
       ...(on.newSharedFolder
         ? [item('new-shared-folder', 'New space…', on.newSharedFolder, {
-          icon: faFolderPlus,
+          icon: NEW_FOLDER_ICON,
         })]
         : []),
       SEPARATOR,
@@ -449,7 +448,7 @@ const backgroundItems = (
       ? [
         ...(on.newFolder
           ? [item('new-folder', 'New folder', on.newFolder, {
-            icon: faFolderPlus,
+            icon: NEW_FOLDER_ICON,
             shortcut: 'Mod+Shift+N',
           })]
           : []),

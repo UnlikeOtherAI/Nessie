@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
-import { iconForFilename } from '../../../shared/file-icons'
+import { familyForFilename } from '../../../shared/file-icons'
 import { SidebarTreeChevron, SidebarTreeChildren, SidebarTreeLeading, SidebarTreeNode } from '../../../primitives/SidebarTree'
 import { FinderRow } from './FinderRow'
 import { NewFolderRow } from './NewFolderRow'
@@ -35,7 +34,32 @@ const TreeItemIcon = ({ kind, title }: { kind: KnowledgePageRecord['kind']; titl
     )
   }
   if (kind === 'file') {
-    return <FontAwesomeIcon aria-hidden="true" className="knowledge-tree-file-glyph" icon={iconForFilename(title)} />
+    if (familyForFilename(title) === 'image') {
+      return (
+        <svg
+          aria-hidden="true"
+          className="knowledge-tree-glyph"
+          data-knowledge-file-glyph="image"
+          fill="none"
+          viewBox="0 0 20 20"
+        >
+          <path d="M5 2.75h6l4 4v10.5H5V2.75Z" />
+          <path d="M11 2.75v4h4M7 14l2.25-2.5 1.75 1.75 1.25-1.25L15 15M8 8.5h.01" />
+        </svg>
+      )
+    }
+    return (
+      <svg
+        aria-hidden="true"
+        className="knowledge-tree-glyph"
+        data-knowledge-file-glyph="document"
+        fill="none"
+        viewBox="0 0 20 20"
+      >
+        <path d="M5 2.75h6l4 4v10.5H5V2.75Z" />
+        <path d="M11 2.75v4h4M7.5 10h5M7.5 13h5" />
+      </svg>
+    )
   }
   return (
     <svg aria-hidden="true" className="knowledge-tree-glyph" fill="none" viewBox="0 0 20 20">
