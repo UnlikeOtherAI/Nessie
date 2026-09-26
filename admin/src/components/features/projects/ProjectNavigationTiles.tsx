@@ -1,4 +1,5 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { useTranslation } from 'react-i18next'
 import { useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useProjectBoards } from '../../../facades/boards/hooks'
@@ -42,6 +43,7 @@ type ProjectNavigationTilesProps = {
  * shell's own — so the counts cost no extra request.
  */
 export const ProjectNavigationTiles = ({ className, projectId }: ProjectNavigationTilesProps) => {
+  const { t } = useTranslation('projects')
   const { data: projects = [] } = useProjects()
   const { data: boards = [] } = useProjectBoards(projectId)
   const { data: members = [] } = useProjectMembers(projectId)
@@ -68,7 +70,7 @@ export const ProjectNavigationTiles = ({ className, projectId }: ProjectNavigati
 
   return (
     <>
-      <nav aria-label="Project sections" className={['project-nav-grid', className ?? ''].join(' ')}>
+      <nav aria-label={t('Project sections')} className={['project-nav-grid', className ?? ''].join(' ')}>
         {tiles.map((tile) => (
           <Tile key={tile.key} onOpenMembers={() => setMembersOpen(true)} tile={tile} />
         ))}
@@ -96,6 +98,7 @@ export const ProjectNavigationTiles = ({ className, projectId }: ProjectNavigati
  * readable one.
  */
 const DashboardTile = ({ tile }: { tile: ProjectNavigationTile }) => {
+  const { t } = useTranslation('projects')
   const navigate = useNavigate()
   const { data: dashboard } = useDashboard(tile.dashboardId)
   const frameRef = useRef<HTMLDivElement | null>(null)
@@ -130,7 +133,7 @@ const DashboardTile = ({ tile }: { tile: ProjectNavigationTile }) => {
     >
       {dashboard ? (
         <ScaledDashboard
-          ariaLabel={`Open ${tile.label}`}
+          ariaLabel={t('Open {{label}}', { label: tile.label })}
           dashboard={dashboard}
           fill
           onOpen={open}

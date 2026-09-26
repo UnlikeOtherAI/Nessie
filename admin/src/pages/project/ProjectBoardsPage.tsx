@@ -1,5 +1,6 @@
 import { faPlus } from '@fortawesome/free-solid-svg-icons'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { BoardCreateDialog } from '../../components/features/projects/kanban/BoardCreateDialog'
 import { BoardIcon } from '../../components/features/projects/kanban/BoardIcon'
@@ -20,11 +21,9 @@ const boardPath = (projectId: string, board: BoardRecord): string =>
     ? `/projects/${projectId}/board`
     : `/projects/${projectId}/board?board=${encodeURIComponent(board.id)}`
 
-const styleLabel = (board: BoardRecord): string =>
-  board.style === 'scrum' ? 'Iterations' : 'Kanban'
-
 /** The project's board directory: a person can see every board and choose its next action. */
 export const ProjectBoardsPage = () => {
+  const { t } = useTranslation('projects')
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
   const { data: projects = [] } = useProjects()
@@ -53,7 +52,7 @@ export const ProjectBoardsPage = () => {
         {
           icon: faPlus,
           id: 'new-board',
-          label: 'New board',
+          label: t('New board'),
           onSelect: () => setCreateOpen(true),
           primary: true,
           priority: 100,
@@ -66,16 +65,16 @@ export const ProjectBoardsPage = () => {
     <section className="flex h-full min-h-0 flex-col">
       <ProjectPageHeader
         actions={actions}
-        backLabel="Back to board"
+        backLabel={t('Back to board')}
         onBack={() => void navigate(`/projects/${projectId}/board`)}
         project={project}
         subtitle={project?.name}
-        title="Boards"
+        title={t('Boards')}
       />
       <PageBody>
         <QueryState
-          errorLabel="Couldn't load boards."
-          loadingLabel="Loading boards…"
+          errorLabel={t("Couldn't load boards.")}
+          loadingLabel={t('Loading boards…')}
           query={boardsQuery}
         >
           {() => boards.length === 0 ? (
@@ -87,19 +86,19 @@ export const ProjectBoardsPage = () => {
                     onClick={() => setCreateOpen(true)}
                     type="button"
                   >
-                    New board
+                    {t('New board')}
                   </button>
                 ) : undefined
               }
-              title="No boards yet."
+              title={t('No boards yet.')}
             >
-              Create a board to organise this project's tickets.
+              {t("Create a board to organise this project's tickets.")}
             </EmptyState>
           ) : (
             <DataTable
             columns={[
               {
-                header: 'Board',
+                header: t('Board'),
                 key: 'name',
                 render: (board) => (
                   <span className="flex min-w-0 flex-col gap-0.5">
@@ -108,13 +107,13 @@ export const ProjectBoardsPage = () => {
                       <span className="break-words">{board.name}</span>
                     </span>
                     <span className="text-xs text-[color:var(--tx3)]">
-                      {styleLabel(board)} · {board.isDefault ? 'Default' : 'Not default'} · {board.columns.length} columns
+                      {board.style === 'scrum' ? t('Iterations') : t('Kanban')} · {board.isDefault ? t('Default') : t('Not default')} · {t('column', { count: board.columns.length })}
                     </span>
                   </span>
                 ),
               },
               {
-                header: 'Actions',
+                header: t('Actions'),
                 key: 'actions',
                 render: (board) => (
                   <span className="inline-flex flex-col items-start gap-0.5">
@@ -123,7 +122,7 @@ export const ProjectBoardsPage = () => {
                       to={boardPath(projectId, board)}
                       {...prewarmRowHandlers(prewarm, boardPath(projectId, board))}
                     >
-                      Open board
+                      {t('Open board')}
                     </Link>
                     <Link
                       className="admin-link inline-flex min-h-11 items-center"
@@ -133,7 +132,7 @@ export const ProjectBoardsPage = () => {
                         `/projects/${projectId}/boards/${board.id}/settings`,
                       )}
                     >
-                      Settings
+                      {t('Settings')}
                     </Link>
                   </span>
                 ),
@@ -141,7 +140,7 @@ export const ProjectBoardsPage = () => {
               },
             ]}
             expandable
-            label="Project boards"
+            label={t('Project boards')}
             layout="fixed"
             rowKey={(board) => board.id}
             rows={boards}
