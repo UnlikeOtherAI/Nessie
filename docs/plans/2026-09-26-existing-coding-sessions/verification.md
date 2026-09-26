@@ -48,6 +48,8 @@ helper build finished.
   worker build passed.
 - Executor management suite: 166 tests passed without skips, including private
   and shared connection scope, external-session privacy and sharing refusal.
+- Shared schema suite: 410 tests passed without skips. The seven focused signed
+  heartbeat and session HTTP cases passed, including private and shared scopes.
 - Changed-package type checks passed; the root lint gate passed across 42 tasks.
 - Admin headless browser suite passed at 390 and 1,280 pixels: native overview,
   capabilities, absence of managed Share/Close, reload, Back and Forward.

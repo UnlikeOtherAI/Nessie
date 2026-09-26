@@ -1,4 +1,3 @@
-import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { EXISTING_CODING_SESSION_OWNER_KEY } from '@nessie/schemas'
@@ -7,6 +6,7 @@ import { buildAgentEnvironment } from '../coding-session/agent-env.js'
 import { CodingBridgeError } from '../coding-session/bridge-tools.js'
 import { createJsonExclusive, ensureCodingStateDir } from '../coding-session/session-files.js'
 import { existingAuthorityIsLive } from './authority.js'
+import { pendingClaudeEvents } from './channel-delivery.js'
 import { channelInboxDir } from './channel-files.js'
 import { ExistingClaude } from './claude.js'
 import { ExistingCodex } from './codex.js'
@@ -149,7 +149,7 @@ export class ExistingSessions {
         if (session.provider === 'codex') return providers.codex!.queue(session, attributed, commandId)
         const inbox = channelInboxDir(this.stateDir, id)
         await ensureCodingStateDir(inbox)
-        if ((await readdir(inbox)).filter((name) => name.endsWith('.pending')).length >= 32) {
+        if (await pendingClaudeEvents(inbox) >= 32) {
           return { state: 'failed', reason: 'The Claude channel already has 32 pending events.' }
         }
         this.lastQueuedAt = Math.max(Date.now(), this.lastQueuedAt + 1)

@@ -199,7 +199,7 @@ const openContext = async (browser, {
   const page = await context.newPage()
   await page.clock.setFixedTime(new Date(now))
   const errors = []
-  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('pageerror', (error) => { errors.push(error.message); console.error(error.message) })
   const dropClosing = () => { for (const id of state.closing) state.dropped.add(id) }
   return { context, dropClosing, errors, page, state, unexpected }
 }

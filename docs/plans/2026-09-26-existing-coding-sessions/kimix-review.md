@@ -88,3 +88,25 @@ response schema also needed the additive `existingSessionsAllowed` field.
 The shared wire schema now retains both boolean values, and the HTTP route
 regression verifies private `true` and shared `false` responses. Testing only
 the management function would not have caught the route serialization failure.
+
+The independent follow-up reviewed `85acfd8ae..32bf2e773` and confirmed all
+nine implementation findings resolved. Its remaining findings were checked
+against the integrated code:
+
+- The strict heartbeat response defect is fixed as described above; all seven
+  focused signed HTTP route cases passed.
+- Expired Claude events now release queue capacity even when no channel is
+  draining. Cleanup claims each file before recording cancellation.
+- Concurrent channel drains tolerate another process claiming the same event.
+  A durable regression checks that both drains finish and each event is sent once.
+- Windows Codex installations are sorted before limiting executable candidates
+  to 64, so an older directory listing cannot hide the newest installation.
+- An earlier development commit used a different receipt shape. That commit
+  never shipped; disposable test state was replaced, and no production
+  compatibility layer was added.
+
+The follow-up's runtime caveats were based on its earlier review snapshot.
+Subsequent Windows and Linux native results are recorded in
+[verification](verification.md). A new executor connected to an older server
+keeps native discovery and channel delivery off until the server supplies the
+existing-scope heartbeat field; deploy the server before updating executors.
