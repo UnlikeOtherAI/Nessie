@@ -30,7 +30,9 @@ export const NewsNotificationBridge = () => {
       pushToast({
         title: 'New in News',
         body: newest?.title ?? 'Open News from your account menu.',
-        onOpen: () => navigate('/news'),
+        onOpen: () => navigate('/news', {
+          state: { returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}` },
+        }),
       })
     }
     initialized.current = true

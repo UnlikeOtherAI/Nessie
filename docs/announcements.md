@@ -27,6 +27,8 @@ needs at least one content item. Uploaded images are stored once per article and
 served only to signed-in readers after publication. News is a chronological
 article list. If an article has a YouTube link, its image (or YouTube thumbnail)
 is a preview button. The YouTube player is loaded only when the reader taps it.
+The editor keeps the selected article in the page URL so returning from News
+restores the article being edited.
 
 **News** is in the account menu. On a single-column mobile layout it opens a
 full page with the navigation framework's Back to the actual origin. On wider

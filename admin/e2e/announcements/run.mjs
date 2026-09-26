@@ -107,6 +107,13 @@ try {
     await page.getByRole('button', { name: 'Save article' }).click()
     await page.getByText('Article published.').waitFor()
     await page.getByRole('button', { name: /Release notes.*Published/ }).waitFor()
+    await page.getByRole('button', { name: /New in News.*Release notes/ }).click()
+    const operatorNews = page.getByRole('dialog', { name: 'News' })
+    await operatorNews.getByRole('heading', { name: 'Release notes' }).waitFor()
+    await operatorNews.getByRole('button', { name: 'Close' }).click()
+    await page.waitForFunction(() => location.pathname === '/admin/advanced/announcements')
+    assert.equal(await page.getByLabel('Header').inputValue(), 'Release notes',
+      'closing News restores the article being edited')
     const firstPublication = await call('/api/news', { token: seed.token })
     await page.getByLabel('Text').fill('The release notes now have an updated preview.')
     await page.getByLabel('Image file (optional)').setInputFiles({
@@ -122,7 +129,8 @@ try {
     assert.equal(editedPublication.articles[0]?.publicationVersion,
       firstPublication.articles[0].publicationVersion,
       'editing a published article in the new-article editor does not create new news')
-    await page.waitForFunction(() => !document.querySelector('input[type="file"][accept*="image"]')?.files?.length)
+    assert.equal(editedPublication.articles[0]?.body,
+      'The release notes now have an updated preview.', 'the editor saved the update')
     await page.screenshot({ path: resolve(shots, 'operator-news-editor.png'), fullPage: true })
 
     const reader = await visit(readerContext, `/channels/${seed.channels[0].id}`)
@@ -163,8 +171,15 @@ try {
 
     const phone = await visit(phoneContext, `/channels/${seed.channels[0].id}`)
     const phonePage = phone.page
-    await phonePage.getByRole('button', { name: 'Account menu' }).click()
-    await phonePage.getByRole('button', { name: 'News' }).getByLabel('2 unread news articles').waitFor()
+    try {
+      await phonePage.getByRole('button', { name: 'Account menu' }).click()
+    } catch (error) {
+      console.error('phone page:', phonePage.url(), (await phonePage.locator('body').innerText()).slice(0, 1200))
+      console.error('phone page errors:', phone.errors.slice(0, 4))
+      await phonePage.screenshot({ path: resolve(shots, 'phone-load-failure.png') })
+      throw error
+    }
+    await phonePage.getByRole('button', { name: 'News' }).getByLabel('1 unread news articles').waitFor()
     await phonePage.getByRole('button', { name: 'News' }).click()
     await phonePage.waitForURL('**/news')
     await phonePage.getByRole('heading', { name: 'Second publication' }).waitFor()
@@ -220,6 +235,7 @@ try {
       'a publication arriving after the visible feed remains unread')
 
     await page.getByRole('button', { name: 'New article' }).click()
+    await page.getByRole('heading', { name: 'New article' }).waitFor()
     await page.getByLabel('Header').fill('Image-only update')
     await page.getByLabel('Image file (optional)').setInputFiles({
       name: 'image-only.png', mimeType: 'image/png', buffer: png,

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { TabBar } from '../components/primitives/TabBar'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import { FormActions, FormError, FormSuccess } from '../components/shared/FormActions'
@@ -73,9 +74,13 @@ const EMPTY_ARTICLE: ArticleInput = {
 const NewsEditor = ({
   article,
   onDeleted,
+  onSaved,
+  successMessage,
 }: {
   article: NewsArticle | null
   onDeleted: () => void
+  onSaved: (id: string, published: boolean) => void
+  successMessage: string | null
 }) => {
   const [currentId, setCurrentId] = useState(article?.id ?? null)
   const [draft, setDraft] = useState<ArticleInput>(() => article ? {
@@ -85,7 +90,7 @@ const NewsEditor = ({
     youtubeUrl: article.youtubeUrl,
     published: article.publishedAt !== null,
   } : EMPTY_ARTICLE)
-  const [feedback, setFeedback] = useState<{ error?: string; success?: string }>({})
+  const [feedback, setFeedback] = useState<{ error?: string }>({})
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [fileInputVersion, setFileInputVersion] = useState(0)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -124,7 +129,7 @@ const NewsEditor = ({
           await save.mutateAsync({ id: saved.id, input: completedDraft })
         }
       }
-      setFeedback({ success: draft.published ? 'Article published.' : 'Draft saved.' })
+      onSaved(saved.id, draft.published)
     } catch (error) {
       setFeedback({ error: error instanceof Error ? error.message : 'Could not save the article.' })
     }
@@ -186,7 +191,7 @@ const NewsEditor = ({
           Published for everyone
         </label>
         <FormError>{feedback.error}</FormError>
-        <FormSuccess>{feedback.success}</FormSuccess>
+        <FormSuccess>{successMessage}</FormSuccess>
         <FormActions destructive={currentId ? (
           <button className="admin-button admin-button-danger" onClick={() => setConfirmDelete(true)}
             type="button">Delete</button>
@@ -214,9 +219,20 @@ const NewsEditor = ({
 export const AnnouncementsPage = () => {
   const isSuperAdmin = useIsSuperAdmin()
   const query = useOperatorAnnouncements(isSuperAdmin)
-  const [tab, setTab] = useTabParam('tab', TABS, 'strip')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [tab, setTab] = useTabParam('tab', TABS, 'strip', { clears: ['article'] })
+  const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
+  const selectedId = searchParams.get('article')
+  const setSelectedId = (id: string | null) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      if (id) next.set('article', id)
+      else next.delete('article')
+      return next
+    }, { replace: true, state: location.state })
+  }
   const [newArticleVersion, setNewArticleVersion] = useState(0)
+  const [savedMessage, setSavedMessage] = useState<string | null>(null)
   const articles = query.data?.articles ?? []
   const selected = articles.find((article) => article.id === selectedId) ?? null
   const tabs = (
@@ -240,6 +256,7 @@ export const AnnouncementsPage = () => {
                     <button className="admin-button admin-button-secondary admin-button-compact"
                       onClick={() => {
                         setSelectedId(null)
+                        setSavedMessage(null)
                         setNewArticleVersion((version) => version + 1)
                       }} type="button">New article</button>
                   </div>
@@ -249,7 +266,10 @@ export const AnnouncementsPage = () => {
                         <li key={article.id}>
                           <button aria-current={selectedId === article.id ? 'true' : undefined}
                             className="w-full py-3 text-left hover:text-[color:var(--accent)]"
-                            onClick={() => setSelectedId(article.id)} type="button">
+                            onClick={() => {
+                              setSelectedId(article.id)
+                              setSavedMessage(null)
+                            }} type="button">
                             <span className="block font-medium">{article.title}</span>
                             <span className="text-xs text-[color:var(--tx3)]">
                               {article.publishedAt ? 'Published' : 'Draft'}
@@ -262,10 +282,15 @@ export const AnnouncementsPage = () => {
                 </div>
                 <div className="min-w-0 border-t border-[color:var(--sep)] pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
                   <NewsEditor article={selected} key={selected?.id ?? `new-${newArticleVersion}`}
+                    onSaved={(id, published) => {
+                      setSelectedId(id)
+                      setSavedMessage(published ? 'Article published.' : 'Draft saved.')
+                    }}
                     onDeleted={() => {
                       setSelectedId(null)
+                      setSavedMessage(null)
                       setNewArticleVersion((version) => version + 1)
-                    }} />
+                    }} successMessage={savedMessage} />
                 </div>
               </div>
             )}
