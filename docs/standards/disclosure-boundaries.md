@@ -112,8 +112,11 @@ Facts not restated there:
   public web. Launching local apps in a conversation — a person-launched
   executor run in it, from the launcher's **Local apps on this machine** — is
   the person's consent to show that machine's program output to that
-  conversation's audience, and nowhere else. An agent cannot bind an executor
-  on its own, so the consent is always a person's; for a standing policy, the
+  conversation's audience, and nowhere else. In a person's own private agent
+  chat, a direct assignment also permits run setup to bind available machines
+  on that person's live composer turn. It grants no new audience and no
+  unattended authority. Outside that path the launch remains the person's;
+  for a standing policy, the
   author's confirmation is that consent, host output comes only from the
   ticket's own coding sessions (no other program on the machine is offered
   to it), and it is admitted only to the ticket's comments and its work thread

@@ -416,6 +416,7 @@ export const prepareRunExecution = async (
     runId: context.run.id,
     standing: context.ticketWorkMachine,
     toolNames: executorToolset.handledNames,
+    machines: executorToolset.machines,
   })
 
   const effectiveUserId =

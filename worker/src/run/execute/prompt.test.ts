@@ -96,8 +96,9 @@ test('an agent with no speaking style carries no block at all', () => {
 
 test('the system prompt tells the agent to link to tool-sourced locations, not describe them', () => {
   const messages = buildModelPrompt([], makeContext('Aria'), 'hi', null)
-  assert.match(systemContent(messages), /link directly to it/)
-  assert.match(systemContent(messages), /link=` value/)
+  assert.match(systemContent(messages), /Link to the resource itself using the link returned by its lookup tool/)
+  assert.match(systemContent(messages), /use nessie_link with the returned name and identifiers/)
+  assert.match(systemContent(messages), /Use names and clickable links, not IDs or GUIDs, unless the person asks/)
 })
 
 test('an agent with card_post receives the compact secret-form instruction', () => {
@@ -581,6 +582,8 @@ test('machine-reach facts ride behind the clock and never touch the anchor or it
       /machine tools this turn|programs on the person's machine/.test(message.content ?? ''))
     const conversationIndex = messages.findIndex((message) => message.content === 'open the site again')
     assert.equal(messages[factsIndex]?.role, 'system', executorReach.kind)
+    assert.match(messages[factsIndex]?.content ?? '',
+      /^Executors are connected computers on which your assigned tools run commands and local apps\./)
     assert.equal(factsIndex, timeIndex + 1, 'the facts come straight after the clock')
     assert.ok(factsIndex < conversationIndex, 'and before the conversation window')
   }

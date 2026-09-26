@@ -260,7 +260,9 @@ export const buildModelPrompt = (
   // must never enter the anchor, or every follow-up would miss the cache.
   const executorReach = buildExecutorReachBlock(options.executorReach ?? null)
   if (executorReach) {
-    messages.push(coverProviderInputComponent({ content: executorReach, role: 'system' }, 'prompt_system'))
+    const content = 'Executors are connected computers on which your assigned tools run commands and local apps. '
+      + executorReach
+    messages.push(coverProviderInputComponent({ content, role: 'system' }, 'prompt_system'))
   }
 
   if (conversation.length > 0) {

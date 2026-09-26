@@ -1,4 +1,5 @@
 import { AGENT_ADMIN_TOOL_DEFINITIONS } from './builtin-agent-tools.js'
+import { NESSIE_LINK_TOOL_DEFINITION } from './builtin-navigation-tools.js'
 import { APP_SETUP_TOOL_DEFINITIONS } from './builtin-app-setup-tools.js'
 import {
   DASHBOARD_EMBED_TOOL_DEFINITIONS,
@@ -167,6 +168,7 @@ const DELEGATE_TOOL_DEFINITION: BuiltinToolDefinition = {
 }
 
 export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
+  NESSIE_LINK_TOOL_DEFINITION,
   {
     id: 'team_search',
     category: 'team',

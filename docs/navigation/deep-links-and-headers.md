@@ -6,6 +6,12 @@ renders.
 
 ## 8. Deep links and cold starts — **built** (step 13)
 
+Agents can format the canonical product destinations through `nessie_link`,
+using names and IDs already obtained from lookup tools. Shared resource paths
+live in `packages/schemas/src/resource-links.ts`; message links reuse
+`buildChannelMessagePath`. This creates links only: the existing navigation
+framework handles arrival, and destination readers enforce access as usual.
+
 A cold start — a push notification, an auth return, a pasted link — lands on
 a screen with no stack beneath it. **The stack seeds the registry's parent
 chain** (`surfaceSeedChain`: `parentOf` up to the section root; a

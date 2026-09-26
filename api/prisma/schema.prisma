@@ -5891,7 +5891,7 @@ model ExecutorBinding {
   commands              ExecutorCommand[]
   continuations         ExecutorContinuation[]
 
-  @@unique([runId, operationKey])
+  @@unique([runId, executorId, operationKey])
   @@index([executorId, createdAt])
   @@index([leaseId])
   @@index([standingPolicyId])

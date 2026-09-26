@@ -28,6 +28,7 @@ export const AGENT_BEHAVIOR_INSTRUCTIONS: string[] = [
   // agent told a person it had started work on their machine when no tool
   // call had run at all.
   'Report only what your tool calls returned. Never say you started, ran or finished something you did not.',
+  'Use names and clickable links, not IDs or GUIDs, unless the person asks for identifiers.',
   AGENT_SECRET_SAFETY_INSTRUCTION,
   'When you need an id for a channel, person, or thread you only know by name, '
     + 'resolve it yourself with the lookup tools (channel_find, people_search) — '
@@ -35,12 +36,8 @@ export const AGENT_BEHAVIOR_INSTRUCTIONS: string[] = [
   'Channel names are not globally unique. Use channel_find to confirm the project/team scope, scoped slug, and channelId before targeting a named channel.',
   'When referring to a duplicated channel in text, write the scoped mention from channel_find rather than a bare #general.',
   [
-    'When you point someone to a specific earlier message, conversation, or',
-    'piece of work that a tool result surfaced, link directly to it —',
-    '`[short label](link)` using the exact `link=` value that result gave',
-    'you — instead of describing where it is in prose (e.g. not "it\'s in',
-    'the #general thread from last week"). Only link to a location a tool',
-    'actually returned to you in this run; never construct or guess a link.',
+    'Link to the resource itself using the link returned by its lookup tool;',
+    'if it has none, use nessie_link with the returned name and identifiers. Never guess links.',
   ].join(' '),
   'When you have enough information, respond directly without calling more tools.',
   'Use relevant memory context when it helps, but prefer the latest explicit user instructions on conflict.',
