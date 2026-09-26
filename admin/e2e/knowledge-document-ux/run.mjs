@@ -148,12 +148,6 @@ try {
   await page.locator('[data-page-header-action="new"]:visible').last().click()
   await page.getByRole('menuitem', { name: 'Document' }).click()
   await page.getByRole('textbox', { name: 'Document title' }).fill(publishedTitle)
-  const labelField = page.getByRole('textbox', { name: 'Labels' })
-  await labelField.fill('discard, keep ')
-  await page.getByRole('button', { name: 'Remove discard' }).click()
-  assert.equal(await page.getByRole('button', { name: 'Remove keep' }).count(), 1)
-  await labelField.fill('last')
-  await page.screenshot({ path: '/private/tmp/nessie-knowledge-label-editor.png', fullPage: true })
   await page.getByRole('button', { name: 'Publish', exact: true }).click()
   await page.getByRole('heading', { name: publishedTitle, exact: true }).last().waitFor()
   assert.equal(await page.getByRole('button', { name: `Back from ${publishedTitle}` }).count(), 0,
@@ -163,7 +157,6 @@ try {
   })
   const published = publishedPages.find(({ title }) => title === publishedTitle)
   assert.equal(published?.status, 'published', 'primary creation action publishes immediately')
-  assert.deepEqual(published?.labels?.toSorted(), ['keep', 'last'], 'chips and unfinished text save as labels')
   const documentActions = page.locator('[data-testid="knowledge-detail-action-bar"]:visible').last()
   await documentActions.waitFor()
   assert.equal(await page.locator('header [data-page-header-action="history"]:visible').count(), 0,
@@ -225,6 +218,25 @@ try {
   })
   assert.equal(publishedDraft.find(({ id }) => id === draft.id)?.status, 'published',
     'Publish in the bottom action bar changes the selected document')
+
+  await go(projectPath)
+  await page.locator('[data-page-header-action="new"]:visible').last().click()
+  await page.getByRole('menuitem', { name: 'Document' }).click()
+  const labelTitle = `Labels as chips ${suffix}`
+  await page.getByRole('textbox', { name: 'Document title' }).fill(labelTitle)
+  const labelField = page.getByRole('textbox', { name: 'Labels' })
+  await labelField.fill('discard, keep ')
+  await page.getByRole('button', { name: 'Remove discard' }).click()
+  assert.equal(await page.getByRole('button', { name: 'Remove keep' }).count(), 1)
+  await labelField.fill('last')
+  await page.screenshot({ path: '/private/tmp/nessie-knowledge-label-editor.png', fullPage: true })
+  await page.getByRole('button', { name: 'Publish', exact: true }).click()
+  await page.getByRole('heading', { name: labelTitle, exact: true }).last().waitFor()
+  const labelPages = await call(`/api/knowledge-base/spaces/${projectRoot.space.spaceId}/pages`, {
+    token: seed.token,
+  })
+  assert.deepEqual(labelPages.find(({ title }) => title === labelTitle)?.labels?.toSorted(), ['keep', 'last'],
+    'chips and unfinished text save as labels')
   console.log(`Knowledge document UX passed at ${API_URL} and ${ADMIN_URL}`)
 } finally {
   await browser?.close()
