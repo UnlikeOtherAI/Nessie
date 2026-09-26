@@ -16,6 +16,7 @@
     "lint:breakpoints": "node scripts/lint-breakpoints.mjs",
     "lint:navigation-surfaces": "node scripts/lint-navigation-surfaces.mjs",
     "lint:translations": "node scripts/lint-translations.mjs",
+    "audit:raw-ui-strings": "node scripts/report-raw-ui-strings.mjs",
     "lint:layers": "node scripts/lint-layers.mjs",
     "lint:admin-layers": "node scripts/lint-admin-layers.mjs",
     "lint:test-globs": "node scripts/lint-test-globs.mjs",
