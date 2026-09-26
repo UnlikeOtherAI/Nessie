@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { TeamInvitationRecord } from '@nessie/schemas'
 
 import { Dialog } from '../../shared/Dialog'
@@ -16,6 +17,7 @@ export const MemberInvitationDetailsDialog = ({ invitation, canManage, onClose, 
   onClose: () => void
   scope: MemberRosterScope
 }) => {
+  const { t } = useTranslation('settings')
   const mutation = useMemberInvitationAction(scope)
   const { pushToast } = useToasts()
   const [error, setError] = useState<string | null>(null)
@@ -25,7 +27,7 @@ export const MemberInvitationDetailsDialog = ({ invitation, canManage, onClose, 
     setConfirmCancel(false)
   }, [invitation?.inviteId])
 
-  const name = memberDisplayName(invitation?.name, invitation?.email) ?? 'this person'
+  const name = memberDisplayName(invitation?.name, invitation?.email) ?? t('members.invitationDetails.thisPerson')
   // An invitation is identified by where it was sent, so the confirmation
   // names the address a person can check against their own records.
   const recipient = invitation?.email ?? name
@@ -33,7 +35,7 @@ export const MemberInvitationDetailsDialog = ({ invitation, canManage, onClose, 
   const act = async (action: 'resend' | 'revoke') => {
     if (!invitation || !canManage) return
     if (scope === 'organization' && !invitation.team?.id) {
-      setError('We can’t tell which team this invitation is for. Refresh the page and try again.')
+      setError(t('members.invitationDetails.teamUnknown'))
       return
     }
     setError(null)
@@ -48,7 +50,7 @@ export const MemberInvitationDetailsDialog = ({ invitation, canManage, onClose, 
         : invitationCancelledToast(recipient))
       onClose()
     } catch (caught) {
-      setError(formErrorMessage(caught, 'Couldn’t update this invitation. Try again.'))
+      setError(formErrorMessage(caught, t('members.invitationDetails.updateFailed')))
     }
   }
 
@@ -57,12 +59,12 @@ export const MemberInvitationDetailsDialog = ({ invitation, canManage, onClose, 
   const teamName = invitation?.team?.name
   return (
     <Dialog dismissDisabled={mutation.isPending} onClose={onClose} open={invitation !== null}
-      title={confirmCancel ? 'Cancel invitation?' : 'Pending invitation'}>
+      title={t(confirmCancel ? 'members.invitationDetails.cancelTitle' : 'members.invitationDetails.title')}>
       <div className="grid gap-5">
         <div>
           <p className="text-[color:var(--tx)]">
             {confirmCancel
-              ? `${name} won’t be able to use it to join ${teamName ?? 'the team'}.`
+              ? t('members.invitationDetails.cancelBody', { name, team: teamName ?? t('team.team') })
               : name}
           </p>
           {!confirmCancel && invitation?.email ? (
@@ -70,12 +72,12 @@ export const MemberInvitationDetailsDialog = ({ invitation, canManage, onClose, 
           ) : null}
           {confirmCancel ? (
             <p className="mt-1 text-sm text-[color:var(--tx2)]">
-              You can invite them again later.
+              {t('members.invitationDetails.inviteAgain')}
             </p>
           ) : null}
           {awaitingApproval ? (
             <p className="mt-2 text-sm text-[color:var(--tx3)]">
-              Waiting for an organisation admin to approve it.
+              {t('members.invitationDetails.awaitingApproval')}
             </p>
           ) : null}
         </div>
@@ -87,7 +89,7 @@ export const MemberInvitationDetailsDialog = ({ invitation, canManage, onClose, 
             onClick={confirmCancel ? () => setConfirmCancel(false) : onClose}
             type="button"
           >
-            {confirmCancel ? 'Keep invitation' : 'Close'}
+            {t(confirmCancel ? 'members.invitationDetails.keep' : 'common.cancel')}
           </button>
           {canManage && !awaitingApproval ? (
             <>
@@ -98,7 +100,7 @@ export const MemberInvitationDetailsDialog = ({ invitation, canManage, onClose, 
                   onClick={() => void act('resend')}
                   type="button"
                 >
-                  {pendingAction === 'resend' ? 'Sending…' : 'Resend'}
+                  {t(pendingAction === 'resend' ? 'members.invitationDetails.sending' : 'members.invitationDetails.resend')}
                 </button>
               ) : null}
               <button
@@ -107,7 +109,7 @@ export const MemberInvitationDetailsDialog = ({ invitation, canManage, onClose, 
                 onClick={() => confirmCancel ? void act('revoke') : setConfirmCancel(true)}
                 type="button"
               >
-                {pendingAction === 'revoke' ? 'Cancelling…' : 'Cancel invitation'}
+                {t(pendingAction === 'revoke' ? 'members.invitationDetails.cancelling' : 'members.invitationDetails.cancel')}
               </button>
             </>
           ) : null}

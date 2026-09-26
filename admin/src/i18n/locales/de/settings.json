@@ -680,6 +680,21 @@
       "nameOptional": "Name (optional)",
       "sending": "Wird gesendet…",
       "send": "Einladung senden"
+    },
+    "invitationDetails": {
+      "thisPerson": "diese Person",
+      "teamUnknown": "Das Team für diese Einladung ist nicht bekannt. Aktualisieren Sie die Seite und versuchen Sie es erneut.",
+      "updateFailed": "Die Einladung konnte nicht aktualisiert werden. Versuchen Sie es erneut.",
+      "cancelTitle": "Einladung abbrechen?",
+      "title": "Ausstehende Einladung",
+      "cancelBody": "{{name}} kann die Einladung nicht mehr verwenden, um dem Team {{team}} beizutreten.",
+      "inviteAgain": "Sie können die Person später erneut einladen.",
+      "awaitingApproval": "Warten auf die Genehmigung durch eine Organisationsverwaltung.",
+      "keep": "Einladung behalten",
+      "sending": "Wird gesendet…",
+      "resend": "Erneut senden",
+      "cancelling": "Wird abgebrochen…",
+      "cancel": "Einladung abbrechen"
     }
   }
 }

@@ -680,6 +680,21 @@
       "nameOptional": "Name (optional)",
       "sending": "Sending…",
       "send": "Send invitation"
+    },
+    "invitationDetails": {
+      "thisPerson": "this person",
+      "teamUnknown": "We can’t tell which team this invitation is for. Refresh the page and try again.",
+      "updateFailed": "Couldn’t update this invitation. Try again.",
+      "cancelTitle": "Cancel invitation?",
+      "title": "Pending invitation",
+      "cancelBody": "{{name}} won’t be able to use it to join {{team}}.",
+      "inviteAgain": "You can invite them again later.",
+      "awaitingApproval": "Waiting for an organization admin to approve it.",
+      "keep": "Keep invitation",
+      "sending": "Sending…",
+      "resend": "Resend",
+      "cancelling": "Cancelling…",
+      "cancel": "Cancel invitation"
     }
   }
 }

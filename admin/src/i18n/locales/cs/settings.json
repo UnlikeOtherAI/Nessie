@@ -680,6 +680,21 @@
       "nameOptional": "Jméno (nepovinné)",
       "sending": "Odesílání…",
       "send": "Odeslat pozvání"
+    },
+    "invitationDetails": {
+      "thisPerson": "tuto osobu",
+      "teamUnknown": "Nelze určit, kterého týmu se pozvání týká. Obnovte stránku a zkuste to znovu.",
+      "updateFailed": "Pozvání se nepodařilo aktualizovat. Zkuste to znovu.",
+      "cancelTitle": "Zrušit pozvání?",
+      "title": "Nevyřízené pozvání",
+      "cancelBody": "{{name}} už nebude moci použít pozvání pro připojení k týmu {{team}}.",
+      "inviteAgain": "Později ji můžete pozvat znovu.",
+      "awaitingApproval": "Čeká se na schválení správcem organizace.",
+      "keep": "Ponechat pozvání",
+      "sending": "Odesílání…",
+      "resend": "Poslat znovu",
+      "cancelling": "Rušení…",
+      "cancel": "Zrušit pozvání"
     }
   }
 }

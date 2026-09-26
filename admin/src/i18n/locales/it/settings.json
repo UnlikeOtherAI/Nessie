@@ -680,6 +680,21 @@
       "nameOptional": "Nome (facoltativo)",
       "sending": "Invio…",
       "send": "Invia invito"
+    },
+    "invitationDetails": {
+      "thisPerson": "questa persona",
+      "teamUnknown": "Non è possibile determinare il team di questo invito. Aggiorna la pagina e riprova.",
+      "updateFailed": "Impossibile aggiornare l’invito. Riprova.",
+      "cancelTitle": "Annullare l’invito?",
+      "title": "Invito in attesa",
+      "cancelBody": "{{name}} non potrà più usare l’invito per unirsi a {{team}}.",
+      "inviteAgain": "Potrai invitarla di nuovo più avanti.",
+      "awaitingApproval": "In attesa dell’approvazione di un amministratore dell’organizzazione.",
+      "keep": "Mantieni invito",
+      "sending": "Invio…",
+      "resend": "Invia di nuovo",
+      "cancelling": "Annullamento…",
+      "cancel": "Annulla invito"
     }
   }
 }

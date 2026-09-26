@@ -680,6 +680,21 @@
       "nameOptional": "Nombre (opcional)",
       "sending": "Enviando…",
       "send": "Enviar invitación"
+    },
+    "invitationDetails": {
+      "thisPerson": "esta persona",
+      "teamUnknown": "No se puede determinar a qué equipo corresponde esta invitación. Actualiza la página e inténtalo de nuevo.",
+      "updateFailed": "No se pudo actualizar la invitación. Inténtalo de nuevo.",
+      "cancelTitle": "¿Cancelar invitación?",
+      "title": "Invitación pendiente",
+      "cancelBody": "{{name}} ya no podrá usar esta invitación para unirse a {{team}}.",
+      "inviteAgain": "Puedes volver a invitarle más adelante.",
+      "awaitingApproval": "Esperando la aprobación de un administrador de la organización.",
+      "keep": "Conservar invitación",
+      "sending": "Enviando…",
+      "resend": "Volver a enviar",
+      "cancelling": "Cancelando…",
+      "cancel": "Cancelar invitación"
     }
   }
 }
