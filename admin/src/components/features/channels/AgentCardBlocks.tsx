@@ -1,4 +1,5 @@
 import type { PresentedAgentCardBlock } from '@nessie/schemas'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
 import { useAuthedObjectUrlFromPath } from '../../../lib/uploads'
@@ -219,7 +220,9 @@ export const AgentCardBlocks = ({
   /** The card reached a terminal state: show what was answered, not controls. */
   settled: boolean
   values: Record<string, AgentCardFieldValue>
-}) => (
+}) => {
+  const { t } = useTranslation('channels')
+  return (
   <div className="agent-card-blocks">
     {blocks.map((block, index) => {
       if (
@@ -314,7 +317,7 @@ export const AgentCardBlocks = ({
               onChange={(event) => onValueChange(block.key, event.target.value)}
               value={String(value ?? '')}
             >
-              <option value="">Choose…</option>
+              <option value="">{t('child.agentCard.choose')}</option>
               {(block.options ?? []).map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -348,4 +351,5 @@ export const AgentCardBlocks = ({
       )
     })}
   </div>
-)
+  )
+}

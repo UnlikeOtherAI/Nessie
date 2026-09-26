@@ -456,6 +456,24 @@
         "alreadyRunning": "V tomto kanálu už probíhá hovor.",
         "startFailed": "Hovor teď nelze zahájit. Zkuste to znovu."
       }
+    },
+    "agentCard": {
+      "choose": "Vyberte…",
+      "cancelled": "Zrušeno",
+      "expired": "Platnost vypršela",
+      "waiting": "Čeká",
+      "answered": "Zodpovězeno",
+      "privateAccessTitle": "Soukromý jednorázový přístup",
+      "privateAccessExpires": "Tento prohlížeč můžete otevřít pouze vy. Platnost skončí v {{time}}.",
+      "allowedOrigins": "Povoleno pro tento úkol: {{origins}}.",
+      "privateBrowserNotice": "Nessie předává vstup z prohlížeče soukromě; nikdy se nedostane do chatu ani kontextu agenta.",
+      "startingPrivateBrowser": "Spouštění soukromého prohlížeče…",
+      "startPrivateBrowser": "Spustit soukromý prohlížeč",
+      "cancelling": "Rušení…",
+      "cancelPrivateAccess": "Zrušit soukromý přístup",
+      "privateAccessCancelled": "Soukromý přístup byl zrušen. Požádejte agenta o jeho opětovné vyžádání.",
+      "waitingFor": "Čeká na {{names}}",
+      "waitingForAnswer": "Čeká na odpověď"
     }
   }
 }

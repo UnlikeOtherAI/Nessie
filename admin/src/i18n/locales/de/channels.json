@@ -456,6 +456,24 @@
         "alreadyRunning": "In diesem Kanal läuft bereits ein Anruf.",
         "startFailed": "Anruf kann gerade nicht gestartet werden. Versuche es erneut."
       }
+    },
+    "agentCard": {
+      "choose": "Auswählen…",
+      "cancelled": "Abgebrochen",
+      "expired": "Abgelaufen",
+      "waiting": "Wartet",
+      "answered": "Beantwortet",
+      "privateAccessTitle": "Privater einmaliger Zugriff",
+      "privateAccessExpires": "Nur du kannst diesen Browser öffnen. Er läuft um {{time}} ab.",
+      "allowedOrigins": "Für diese Aufgabe erlaubt: {{origins}}.",
+      "privateBrowserNotice": "Nessie leitet Browsereingaben privat weiter; sie gelangen nie in den Chat oder den Agentenkontext.",
+      "startingPrivateBrowser": "Privater Browser wird gestartet…",
+      "startPrivateBrowser": "Privaten Browser starten",
+      "cancelling": "Wird abgebrochen…",
+      "cancelPrivateAccess": "Privaten Zugriff abbrechen",
+      "privateAccessCancelled": "Privater Zugriff wurde abgebrochen. Bitte den Agenten, ihn erneut anzufordern.",
+      "waitingFor": "Wartet auf {{names}}",
+      "waitingForAnswer": "Wartet auf eine Antwort"
     }
   }
 }

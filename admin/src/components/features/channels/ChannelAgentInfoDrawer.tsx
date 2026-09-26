@@ -1,4 +1,5 @@
 import { useCallback, useMemo, type FormEvent, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import type {
   AgentRecord,
@@ -125,6 +126,7 @@ export const ChannelAgentInfoDrawer = ({
   threadMessageLoader,
   token,
 }: ChannelAgentInfoDrawerProps) => {
+  const { t } = useTranslation('channels')
   const {
     message,
     setMessage,
@@ -230,7 +232,7 @@ export const ChannelAgentInfoDrawer = ({
       avatarAttachmentId: agent.avatarAttachmentId,
       id: agent.agentId,
       name: agent.displayName,
-      role: 'Personal Assistant',
+      role: t('members.personalAssistant'),
     }
     return (
       <Sheet
@@ -254,7 +256,7 @@ export const ChannelAgentInfoDrawer = ({
                 <h2 className="truncate text-lg font-semibold text-[var(--tx)]">
                   {agent.displayName}
                 </h2>
-                <div className="text-xs text-[color:var(--tx3)]">Personal Assistant</div>
+                <div className="text-xs text-[color:var(--tx3)]">{t('members.personalAssistant')}</div>
               </div>
             </div>
             <button

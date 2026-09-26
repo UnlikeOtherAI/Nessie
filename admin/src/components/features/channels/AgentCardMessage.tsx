@@ -5,6 +5,7 @@ import {
   type AgentCardPresenter,
 } from '@nessie/schemas'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { useViewport, type ViewportSnapshot } from '../../../hooks/useViewport'
@@ -24,11 +25,11 @@ import { Pill, type PillTone } from '../../primitives/Pill'
 import { AgentCardBlocks, AgentCardProse, type AgentCardFieldValue } from './AgentCardBlocks'
 import { ChatCardShell } from './ChatCardShell'
 
-const statusCopy: Record<AgentCardPresenter['status'], string> = {
-  cancelled: 'Cancelled',
-  expired: 'Expired',
-  open: 'Waiting',
-  resolved: 'Answered',
+const statusKey: Record<AgentCardPresenter['status'], string> = {
+  cancelled: 'child.agentCard.cancelled',
+  expired: 'child.agentCard.expired',
+  open: 'child.agentCard.waiting',
+  resolved: 'child.agentCard.answered',
 }
 
 const statusTone: Record<AgentCardPresenter['status'], PillTone> = {
@@ -82,6 +83,7 @@ export const AgentCardMessage = ({
 }: {
   metadata: Record<string, unknown> | undefined
 }) => {
+  const { t, i18n } = useTranslation('channels')
   const parsed = AgentCardMessageMetadataSchema.safeParse(metadata)
   const cardId = parsed.success ? parsed.data.agentCard.cardId : undefined
   const { channelId } = useParams<{ channelId?: string }>()
@@ -199,7 +201,7 @@ export const AgentCardMessage = ({
               {card.title}
             </h3>
             <Pill size="sm" tone={statusTone[card.status]}>
-              {statusCopy[card.status]}
+              {t(statusKey[card.status])}
             </Pill>
           </div>
           {card.subtitle ? (
@@ -233,10 +235,10 @@ export const AgentCardMessage = ({
 
       {card.browserLogin ? (
         <div className="agent-card-notice">
-          <p>Private, one-time access</p>
-          <p>Only you can open this browser. It ends {new Date(card.browserLogin.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.</p>
-          <p>Allowed for this task: {card.browserLogin.origins.join(', ')}.</p>
-          <p>Nessie relays browser input privately; it never enters chat or the agent context.</p>
+          <p>{t('child.agentCard.privateAccessTitle')}</p>
+          <p>{t('child.agentCard.privateAccessExpires', { time: new Date(card.browserLogin.expiresAt).toLocaleTimeString(i18n.language, { hour: '2-digit', minute: '2-digit' }) })}</p>
+          <p>{t('child.agentCard.allowedOrigins', { origins: card.browserLogin.origins.join(', ') })}</p>
+          <p>{t('child.agentCard.privateBrowserNotice')}</p>
         </div>
       ) : null}
 
@@ -253,7 +255,7 @@ export const AgentCardMessage = ({
                   onClick={startPrivateBrowser}
                   type="button"
                 >
-                  {activateBrowser.isPending ? 'Starting private browser…' : 'Start private browser'}
+                  {t(activateBrowser.isPending ? 'child.agentCard.startingPrivateBrowser' : 'child.agentCard.startPrivateBrowser')}
                 </button>
               ) : null}
               {card.browserLogin && temporarySessionId ? (
@@ -263,10 +265,10 @@ export const AgentCardMessage = ({
                   onClick={cancelPrivateBrowser}
                   type="button"
                 >
-                  {revokeBrowser.isPending ? 'Cancelling…' : 'Cancel private access'}
+                  {t(revokeBrowser.isPending ? 'child.agentCard.cancelling' : 'child.agentCard.cancelPrivateAccess')}
                 </button>
               ) : null}
-              {loginCancelled ? <span className="text-xs text-[color:var(--tx2)]">Private access was cancelled. Ask the agent to request it again.</span> : null}
+              {loginCancelled ? <span className="text-xs text-[color:var(--tx2)]">{t('child.agentCard.privateAccessCancelled')}</span> : null}
               {card.actions.map((action) => (
               <button
                 className={actionClass(action.style)}
@@ -287,8 +289,8 @@ export const AgentCardMessage = ({
           ) : (
             <span className="text-xs text-[color:var(--tx2)]">
               {card.waitingFor.length > 0
-                ? `Waiting for ${card.waitingFor.join(', ')}`
-                : 'Waiting for an answer'}
+                ? t('child.agentCard.waitingFor', { names: card.waitingFor.join(', ') })
+                : t('child.agentCard.waitingForAnswer')}
             </span>
           )
         ) : card.resolution ? (
@@ -305,7 +307,7 @@ export const AgentCardMessage = ({
           </span>
         ) : (
           <span className="text-xs text-[color:var(--tx2)]">
-            {statusCopy[card.status]}
+            {t(statusKey[card.status])}
           </span>
         )}
       </footer>

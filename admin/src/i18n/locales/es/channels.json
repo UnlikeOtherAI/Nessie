@@ -456,6 +456,24 @@
         "alreadyRunning": "Ya hay una llamada en este canal.",
         "startFailed": "No se pudo iniciar la llamada. Inténtalo de nuevo."
       }
+    },
+    "agentCard": {
+      "choose": "Elegir…",
+      "cancelled": "Cancelada",
+      "expired": "Caducada",
+      "waiting": "En espera",
+      "answered": "Respondida",
+      "privateAccessTitle": "Acceso privado y de un solo uso",
+      "privateAccessExpires": "Solo tú puedes abrir este navegador. Caduca a las {{time}}.",
+      "allowedOrigins": "Permitido para esta tarea: {{origins}}.",
+      "privateBrowserNotice": "Nessie transmite la entrada del navegador en privado; nunca llega al chat ni al contexto del agente.",
+      "startingPrivateBrowser": "Iniciando navegador privado…",
+      "startPrivateBrowser": "Iniciar navegador privado",
+      "cancelling": "Cancelando…",
+      "cancelPrivateAccess": "Cancelar acceso privado",
+      "privateAccessCancelled": "Se canceló el acceso privado. Pide al agente que vuelva a solicitarlo.",
+      "waitingFor": "Esperando a {{names}}",
+      "waitingForAnswer": "Esperando una respuesta"
     }
   }
 }

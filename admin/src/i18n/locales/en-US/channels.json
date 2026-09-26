@@ -456,6 +456,24 @@
         "alreadyRunning": "A call is already happening in this channel.",
         "startFailed": "Unable to start a call right now. Try again."
       }
+    },
+    "agentCard": {
+      "choose": "Choose…",
+      "cancelled": "Canceled",
+      "expired": "Expired",
+      "waiting": "Waiting",
+      "answered": "Answered",
+      "privateAccessTitle": "Private, one-time access",
+      "privateAccessExpires": "Only you can open this browser. It ends {{time}}.",
+      "allowedOrigins": "Allowed for this task: {{origins}}.",
+      "privateBrowserNotice": "Nessie relays browser input privately; it never enters chat or the agent context.",
+      "startingPrivateBrowser": "Starting private browser…",
+      "startPrivateBrowser": "Start private browser",
+      "cancelling": "Canceling…",
+      "cancelPrivateAccess": "Cancel private access",
+      "privateAccessCancelled": "Private access was canceled. Ask the agent to request it again.",
+      "waitingFor": "Waiting for {{names}}",
+      "waitingForAnswer": "Waiting for an answer"
     }
   }
 }
