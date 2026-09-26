@@ -119,10 +119,14 @@ control: the same avatar, presence/status badges, and account menu used at the
 bottom of the desktop rail. A shell with that rail never renders a second
 top-bar account badge.
 
-On the native iPhone and Android first screen of **every tab** (Channels,
+On the native iPhone first screen of **every tab** (Channels,
 Projects, Knowledge, Admin, and Search, including ordinary query-string state),
 `NativePhoneConversationMenuChrome` adds a workspace header above the retained
-WebView. Its surface is the same `--rail` backing surface visible beneath the
+WebView. Android keeps this same team/account header on every screen with a
+bottom dock, including chats and other details; opening a conversation must
+never remove the account-menu doorway or shift the WebView's top edge. Login
+and the full-screen compose flow still hide both global bars.
+Its surface is the same `--rail` backing surface visible beneath the
 transparent iPad tab controls, and its controls use the theme's `--tx` colour;
 in particular, the default Sandstone header is the same warm light beige as
 that iPad background. On a portrait phone, the team/workspace switcher is at

@@ -59,8 +59,9 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   `shouldShowNativePhoneRootLanes` decides only what the band *carries*.
   **Android, iPad and mobile Safari are untouched** — every rule in this bullet
   and the three below is gated on the iOS phone shell
-  (`useNativeIOSPhoneApp`), and Android still shows its band only where it
-  shows the team and account controls. Full design and history:
+  (`useNativeIOSPhoneApp`). Android keeps its team/account band on every screen
+  with a tab dock, including details and tablet conversations beside a pinned
+  list. Its screen title, Back and actions remain in the WebView. Full design and history:
   [`docs/plans/2026-09-05-ios-native-navigation-bar.md`](../plans/2026-09-05-ios-native-navigation-bar.md).
 
 - **`nessie:screen-bar` — what the bar shows, per stack layer.**
