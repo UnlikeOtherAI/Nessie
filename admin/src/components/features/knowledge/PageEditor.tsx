@@ -294,6 +294,19 @@ export const PageEditor = ({
 
             <div className="mt-10 grid gap-2 border-t border-[color:var(--sep)] py-5">
               <div className="flex min-h-10 flex-wrap items-center gap-2 py-1">
+                <svg
+                  aria-hidden="true"
+                  className="h-4 w-4 shrink-0 text-[color:var(--tx3)]"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-8.2-8.2A2 2 0 0 1 1.8 11V4a2 2 0 0 1 2-2h7a2 2 0 0 1 1.4.6l8.4 8.4a2 2 0 0 1 0 2.8Z" />
+                  <circle cx="7" cy="7" r="1" />
+                </svg>
                 {committedLabels.map((label, index) => (
                   <Pill key={`${label}-${index}`} radius="chip" tone="muted" uppercase={false}>
                     {label}
@@ -316,13 +329,28 @@ export const PageEditor = ({
                   value={labelInput}
                 />
               </div>
-              <input
-                aria-label="Change comment"
-                className="w-full border-none bg-transparent py-2 text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
-                onChange={(event) => patchDraft({ changeComment: event.target.value })}
-                placeholder="Add a change comment (optional)"
-                value={changeComment}
-              />
+              <div className="flex items-center gap-3">
+                <svg
+                  aria-hidden="true"
+                  className="h-4 w-4 shrink-0 text-[color:var(--tx3)]"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10Z" />
+                  <path d="M8 10h9M8 14h6" />
+                </svg>
+                <input
+                  aria-label="Change comment"
+                  className="min-w-0 flex-1 border-none bg-transparent py-2 text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
+                  onChange={(event) => patchDraft({ changeComment: event.target.value })}
+                  placeholder="Add a change comment (optional)"
+                  value={changeComment}
+                />
+              </div>
             </div>
             <FormError className="mb-8">{formError}</FormError>
           </div>
