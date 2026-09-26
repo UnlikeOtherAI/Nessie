@@ -16,7 +16,7 @@ type AppConnectionManagementContext = {
 
 /**
  * The one authorisation predicate for an account-management control on
- * `/apps`. It reads the live membership row, matching the disconnect write, so
+ * `/admin/apps`. It reads the live membership row, matching the disconnect write, so
  * a row never offers an action the route will reject.
  */
 export const canManageAppConnectionScope = async (

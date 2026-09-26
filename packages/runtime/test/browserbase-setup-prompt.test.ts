@@ -21,7 +21,7 @@ test('a missing login-request tool cannot be replaced by a generic card', () => 
   const prompt = buildBrowserbaseSetupPrompt({ hasCardTool: true })
 
   assert.match(prompt, /`browser_login_request` is not in your toolset/)
-  assert.match(prompt, /enable `browser_login_request` at Agents → Tools/)
+  assert.match(prompt, /enable `browser_login_request` at Admin › Advanced › Tool registry/)
   assert.match(prompt, /Do not substitute card_post, prose, or a fabricated permission card/)
 })
 

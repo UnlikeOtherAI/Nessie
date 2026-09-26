@@ -61,18 +61,18 @@ test('an agent that works a board lives in one of that project\'s channels', () 
 // F9 took `agentId=` out of agent_create's output, so a later call finds the
 // id in the link. The model is told where; it is not left to guess.
 test('the ids later calls need are named as the links\' last segments', () => {
-  assert.match(prose, /the agentId that agent_bind_channel, agent_update, agent_trigger_create or executor_agent_grant_prepare takes is the last path segment of the \/agents\/<id> link agent_create or agent_list returned/)
+  assert.match(prose, /the agentId that agent_bind_channel, agent_update, agent_trigger_create or executor_agent_grant_prepare takes is the last path segment of the \/admin\/agents\/<id> link agent_create or agent_list returned/)
 })
 
-// A trigger's link is `/agents/triggers/<id>`, which "an /agents/… link" also
-// describes; agent_trigger_create's result prints it before the agent's. A
-// model reading that rule literally took the trigger's id as the agentId.
+// Trigger and agent links once shared one prefix, and agent_trigger_create's
+// result prints the trigger's before the agent's. A model reading the rule
+// literally took the trigger's id as the agentId, so the prose names both.
 test('a trigger link is never read as an agent\'s', () => {
   assert.ok(prose.includes(
-    '/agents/<id> link agent_create or agent_list returned '
-    + '(a /agents/triggers/… link is a trigger, never an agent)',
+    '/admin/agents/<id> link agent_create or agent_list returned '
+    + '(a /admin/automations/triggers/… link is a trigger, never an agent)',
   ))
-  assert.doesNotMatch(prose, /agentId[^.]*the last path segment of the \/agents\/… link/)
+  assert.doesNotMatch(prose, /agentId[^.]*the last path segment of the \/admin\/agents\/… link/)
 })
 
 // project_create, agent_list and agent_trigger_create stopped printing
@@ -80,7 +80,7 @@ test('a trigger link is never read as an agent\'s', () => {
 // so each is named with the link a later call reads its id from.
 test('a project and a trigger are read from their links too', () => {
   assert.match(prose, /the projectId channel_create or team_create takes the last segment of the \/projects\/… link project_create returned/)
-  assert.match(prose, /the triggerId agent_trigger_update or agent_trigger_delete takes the last segment of the \/agents\/triggers\/… link agent_trigger_create returned/)
+  assert.match(prose, /the triggerId agent_trigger_update or agent_trigger_delete takes the last segment of the \/admin\/automations\/triggers\/… link agent_trigger_create returned/)
 })
 
 // T1 of docs/plans/2026-09-23-ticket-driven-agents: an agent that picks up a
