@@ -12,7 +12,7 @@ test('agent detail keeps one full-height Design Assistant drawer beside every ta
   const drawer = readSource('../src/components/features/agents/designer/DesignerAssistantDock.tsx')
 
   assert.match(tabs, /pageContextForTab/)
-  assert.match(tabs, /title: 'Tools'/)
+  assert.match(tabs, /title: 'Built-in tools'/)
   assert.match(page, /<DesignerAssistantDock \/>/)
   assert.match(drawer, /aria-label="Design Assistant"/)
   assert.match(drawer, /Open Design Assistant/)
@@ -24,7 +24,7 @@ test('agent rows use detail as their only designer doorway', () => {
   const table = readSource('../src/components/features/agents/AgentsTable.tsx')
   const row = readSource('../src/components/features/agents/AgentListRow.tsx')
 
-  assert.match(list, /onOpen=\{\(agentId\) => void navigate\(`\/agents\/\$\{agentId\}`\)\}/)
+  assert.match(list, /onOpen=\{\(agentId\) => void navigate\(`\/admin\/agents\/\$\{agentId\}`\)\}/)
   assert.doesNotMatch(list, /\/agents\/designer\/\$\{agentId\}/)
   assert.doesNotMatch(table, /onEdit|showMenu/)
   assert.doesNotMatch(row, /AgentRowMenu|Edit in designer|Actions for/)

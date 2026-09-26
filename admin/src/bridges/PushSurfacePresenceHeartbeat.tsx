@@ -75,9 +75,12 @@ export const PushSurfacePresenceHeartbeat = () => {
   // background null signal win even if an earlier foreground request finishes
   // its server-side entitlement check later.
   const heartbeatSequence = useRef(Date.now() * 1_000)
+  // Only `?tab=` can change which surface a path is, so any other query change
+  // (a filter, an open ticket) keeps the surface and sends no extra heartbeat.
+  const tab = new URLSearchParams(location.search).get('tab')
   const surface = useMemo(
-    () => resolvePushSurface(location.pathname),
-    [location.pathname],
+    () => resolvePushSurface(location.pathname, tab),
+    [location.pathname, tab],
   )
   const route = useMemo(
     () => ({ pathname: location.pathname, search: location.search }),

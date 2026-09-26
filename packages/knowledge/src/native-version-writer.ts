@@ -481,6 +481,8 @@ export const updatePage = async (
       throw new KnowledgeConflictError('A folder page cannot carry content')
     }
     const createsVersion = existing.kind !== 'folder' && contentChanged
+    const publishOnSave = input.publishOnSave && existing.status === 'published'
+      && existing.kind === 'document' && input.authorType === 'user'
     let written: Parameters<typeof announceVersionCreated>[3] | null = null
     if (createsVersion) {
       const previous = await tx.knowledgePageVersion.findFirst({
@@ -520,7 +522,10 @@ export const updatePage = async (
         ...(input.metadata !== undefined ? { metadata: input.metadata as Prisma.InputJsonValue } : {}),
         ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
         ...(input.sensitivityTier !== undefined ? { sensitivityTier: input.sensitivityTier } : {}),
-        ...(createsVersion ? { status: 'draft' as const } : {}),
+        ...(createsVersion ? {
+          status: publishOnSave ? 'published' as const : 'draft' as const,
+          ...(publishOnSave && written ? { publishedVersionId: written.id } : {}),
+        } : {}),
         revision: { increment: 1 },
       },
     })
@@ -535,5 +540,12 @@ export const updatePage = async (
     await replaceLabels(tx, { labels: input.labels, organizationId: input.organizationId, pageId })
     // Announced last, so a watcher reads the page's labels as this save leaves them.
     if (written) await announceVersionCreated(tx, options, existing, written)
+    if (written && publishOnSave && options.onPagePublished) {
+      await options.onPagePublished(tx, {
+        actorUserId: input.authorId, organizationId: input.organizationId,
+        pageId, projectId: existing.projectId, spaceId: existing.spaceId,
+        versionId: written.id,
+      })
+    }
     return fetchPage(tx, input.organizationId, pageId)
   }))

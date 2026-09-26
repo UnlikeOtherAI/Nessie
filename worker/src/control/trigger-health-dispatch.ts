@@ -155,7 +155,7 @@ const buildAlertPayload = (
     kind: 'trigger_health',
     reason: payload.reason,
     triggerId: payload.triggerId,
-    url: '/agents/triggers',
+    url: '/admin/automations?tab=triggers',
   },
   collapseId: `trigger-health:${payload.triggerId}`,
 })
@@ -219,7 +219,7 @@ export const handleTriggerHealthAlert = async (
     payload: buildAlertPayload(payload, context),
     recipientIds: pushableIds,
     organizationId: context.organizationId,
-    deepLinkUrl: '/agents/triggers',
+    deepLinkUrl: '/admin/automations?tab=triggers',
     messageId: null,
     // `healthRevision` identifies the specific failure — the same fact this
     // topic's enqueue key uses — so a schedule that keeps failing the same way

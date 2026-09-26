@@ -56,12 +56,12 @@ test('app detail keeps Apps as its one visible return doorway', () => {
   // Step 9: the page's own Back moved into `ScreenHeader`'s leading lane. On
   // a phone the shared doorway renders it; on a wide layout the header renders
   // this `onBack` because the registry says the screen has a parent. Both run
-  // the one resolver — a hand-written `/apps` here would drop the `?filter=`
+  // the one resolver — a hand-written `/admin/apps` here would drop the `?filter=`
   // the catalogue keeps its view in (`apps-back-to-catalogue.test.ts`).
   const page = readSource('../src/pages/AppDetailPage.tsx')
   assert.match(page, /usePhoneNavigation/)
   assert.match(page, /phoneNavigation\.performBack\(\)/)
-  // No layout fork: a wide layout that navigated to its own `/apps` instead
+  // No layout fork: a wide layout that navigated to its own `/admin/apps` instead
   // dropped the `?filter=` the catalogue keeps its view in, and the reader
   // landed on the view the page was loaded with rather than the one they left.
   assert.doesNotMatch(page, /usePhoneLayout/)
@@ -107,7 +107,7 @@ test('a pushed column browser column owns Back through its stage, registered onc
 })
 
 // Triggers and Tools both left the column browser: each is its own route now
-// (`/agents/triggers/:triggerId`, `/agents/tools/:toolId`), so their Back is
+// (`/admin/automations/triggers/:triggerId`, `/admin/advanced/tools/:toolId`), so their Back is
 // the surface registry's rather than a column's. Workflows is the one stateful
 // column browser left, and it owns four.
 test('every stateful column-browser detail column owns exactly one Back action', () => {

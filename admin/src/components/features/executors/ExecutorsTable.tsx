@@ -18,7 +18,7 @@ const TableFrame = ({ children }: { children: React.ReactNode }) => (
   <ExpandableTable
     className="overflow-hidden rounded-xl border border-[color:var(--sep)]"
     expandable={false}
-    label="Executors table"
+    label="Computers table"
   >
     <table className="admin-table w-full border-collapse">{children}</table>
   </ExpandableTable>
@@ -32,7 +32,7 @@ const headerClass = [
 const HeaderRow = () => (
   <thead>
     <tr className="border-b border-[color:var(--sep)]">
-      <th className={`${headerClass} pl-4`} scope="col">Executor</th>
+      <th className={`${headerClass} pl-4`} scope="col">Computer</th>
       <th className={headerClass} scope="col">Status</th>
       <th className={`${headerClass} hidden md:table-cell`} scope="col">Scope</th>
       <th className={`${headerClass} hidden lg:table-cell`} scope="col">Last seen</th>

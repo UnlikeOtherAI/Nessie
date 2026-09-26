@@ -363,6 +363,7 @@ export type CloudBrowserScope = 'organization' | 'team' | 'user'
 export type CloudBrowserConnectionRecord = {
   id: string
   scope: CloudBrowserScope
+  teamId: string | null
   /** Null unless the connection predates the project id being dropped. */
   projectId: string | null
   status: 'active' | 'needs_attention' | 'disabled'

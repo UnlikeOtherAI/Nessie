@@ -52,7 +52,7 @@ export const isAgentsTabAvailable = (input: {
 
 // Messaging one agent directly is the place a person asks "what is it working
 // on?" and "what does it do on its own?", so the agent's own To-dos and
-// Triggers panels get a doorway here rather than only on `/agents/:id`. Both
+// Triggers panels get a doorway here rather than only on `/admin/agents/:id`. Both
 // are the *same* components that page renders, parameterised by this agent —
 // never a second implementation (Rule zero, check 4).
 //

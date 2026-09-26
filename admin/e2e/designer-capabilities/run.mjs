@@ -12,10 +12,12 @@ const screenshots = resolve(REPO_ROOT, 'e2e/screenshots/designer-capabilities')
 
 const showReply = async (page, text) => {
   const answer = page.getByText(text, { exact: true })
+  const replyLink = page.getByText('1 reply', { exact: true })
+  await answer.or(replyLink).first().waitFor({ timeout: 30_000 })
   if (!await answer.isVisible()) {
     // Agent conversations retain the root request in the feed; its answer is
     // in the reply drawer, the same surface shown in the reported incident.
-    await page.getByText('1 reply', { exact: true }).click({ timeout: 30_000 })
+    await replyLink.click({ timeout: 30_000 })
   }
   await answer.waitFor({ timeout: 30_000 })
 }
@@ -103,11 +105,14 @@ const main = async () => {
     const calls = await pipeline.prisma.toolCall.findMany({
       where: { runId: grantRun.id }, orderBy: { startedAt: 'asc' },
     })
-    for (const name of ['tool_spec', 'agent_tool_access_inspect', 'agent_tool_access_set', 'agent_update']) {
+    for (const name of ['tool_spec', 'account_connections_list', 'agent_tool_access_inspect', 'agent_tool_access_set', 'agent_update']) {
       const matches = calls.filter((call) => call.toolName === name)
       assert.equal(matches.length, 1, `${name} ran once without replay`)
       assert.equal(matches[0].success, true, `${name}: ${matches[0].outputPreview}`)
     }
+    const accounts = calls.find((call) => call.toolName === 'account_connections_list')
+    assert.match(accounts.outputPreview, /Browserbase: scope=team; status=active/)
+    assert.match(accounts.outputPreview, /Kimi for Coding: status=active/)
     const target = await pipeline.prisma.agent.findUniqueOrThrow({ where: { id: fixture.scope.agentId } })
     assert.equal(target.toolPolicy?.browser_open, true)
     assert.equal(target.voiceName, 'Puck')
@@ -144,10 +149,33 @@ const main = async () => {
     await page.reload()
     await showReply(page, REVOKED_ANSWER)
     await page.screenshot({ path: resolve(screenshots, 'desktop-revoked.png'), fullPage: true })
+    phase = 'accounts'
+    await page.goto(`${ADMIN_URL}/channels/${fixture.assistant.channelId}/threads/${fixture.assistant.threadId}`)
+    await submit(page, fixture.assistant.threadId, 'hey, got my brwser key n kimi plan already?')
+    const assistantRun = await waitForRun(pipeline.prisma, fixture.assistant.agentId, fixture.assistant.threadId)
+    runIds.push(assistantRun.id)
+    assert.equal(assistantRun.status, 'completed')
+    const assistantLookup = await pipeline.prisma.toolCall.findFirstOrThrow({
+      where: { runId: assistantRun.id, toolName: 'account_connections_list' },
+    })
+    assert.equal(assistantLookup.success, true)
+    assert.match(assistantLookup.outputPreview, /Browserbase: scope=team; status=active/)
+    assert.match(assistantLookup.outputPreview, /Kimi for Coding: status=active/)
+    await showReply(page, 'Your team browser account and Kimi plan are saved. Shall I ask Agent Designer to arrange access?')
+    await page.screenshot({ path: resolve(screenshots, 'assistant-accounts.png'), fullPage: true })
+
+    await page.goto(`${ADMIN_URL}/admin/connections?scope=team:${fixture.scope.teamId}`)
+    const panel = page.locator('#cloud-browsers-team')
+    await panel.getByText('Connected', { exact: true }).waitFor()
+    assert.equal(await panel.getByText('Disconnected', { exact: true }).count(), 0)
+    await page.screenshot({ path: resolve(screenshots, 'team-browser-connected.png'), fullPage: true })
+    await page.getByRole('radio', { name: 'Other browser team', exact: true }).click()
+    await panel.getByText('Disconnected', { exact: true }).waitFor()
+    await page.screenshot({ path: resolve(screenshots, 'other-team-browser-disconnected.png'), fullPage: true })
     await writeFile(resolve(screenshots, 'verification.json'), JSON.stringify({
       runIds, recoveries: truncatedInvocations, prematureFinalizations, result: 'passed', scriptedInference: true,
     }, null, 2))
-    console.log('Designer browser evaluation passed: private schema lookup, grants, voice, output recovery and revoke.')
+    console.log('Designer browser evaluation passed: account discovery, team settings, grants, voice, recovery and revoke.')
   } catch (error) {
     if (page) {
       await page.screenshot({ path: resolve(screenshots, 'failure.png'), fullPage: true }).catch(() => {})
@@ -161,7 +189,10 @@ const main = async () => {
     await browser?.close()
     await stopProcess(adminServer)
     await stopProcess(apiServer)
-    if (fixture) await cleanupScope(pipeline.prisma, pipeline.pool, fixture.scope, runIds)
+    if (fixture) {
+      await cleanupScope(pipeline.prisma, pipeline.pool, fixture.scope, runIds)
+      await pipeline.prisma.mcpOAuthSecret.deleteMany({ where: { ref: { in: fixture.secretRefs } } })
+    }
     await pipeline.stop()
     await model.close()
   }

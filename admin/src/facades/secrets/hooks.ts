@@ -22,9 +22,11 @@ export type CreateSecretInput = {
   locked?: boolean
 }
 
-export const useSecrets = () => {
+/** `enabled` lets a summary skip the read for a viewer it shows no keys to. */
+export const useSecrets = (enabled = true) => {
   const apiClient = useApiClient()
   return useQuery<SecretRecord[]>({
+    enabled,
     queryKey: secretKeys.all,
     queryFn: () => apiClient.get('/api/secrets'),
   })

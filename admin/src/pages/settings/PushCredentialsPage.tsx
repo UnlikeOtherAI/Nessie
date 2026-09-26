@@ -1,30 +1,26 @@
-import { Navigate } from 'react-router-dom'
 import { usePushStatus } from '../../facades/platform-push/hooks'
-import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { SuperAdminGate, useIsSuperAdmin } from '../../components/shared/SuperAdminGate'
 import { ApnsCard } from './push/ApnsCard'
 import { FcmCard } from './push/FcmCard'
 import { SettingsPanel } from '../../components/shared/SettingsPanel'
 
+/**
+ * Advanced › Mobile push setup: the deployment's own APNs and FCM credentials.
+ * Instance-wide, so it is the super-admin's; anyone else who follows a link
+ * here is told so under the page's own header rather than sent elsewhere.
+ */
 export const PushCredentialsPage = () => {
-  const { me } = useAuthSession()
-  const isSuperAdmin = me?.user.superAdmin ?? false
+  const isSuperAdmin = useIsSuperAdmin()
   const { data: status } = usePushStatus(isSuperAdmin)
 
-  if (!me) {
-    return null
-  }
-
-  // Platform push credentials are super-admin only; others go back to profile.
-  if (!isSuperAdmin) {
-    return <Navigate to="/settings/account" replace />
-  }
-
   return (
-    <SettingsPanel eyebrow="Platform" title="Push credentials">
-      <div className="grid gap-4 xl:grid-cols-2">
-        <ApnsCard status={status?.apns} />
-        <FcmCard status={status?.fcm} />
-      </div>
+    <SettingsPanel eyebrow="Advanced" title="Mobile push setup">
+      <SuperAdminGate>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <ApnsCard status={status?.apns} />
+          <FcmCard status={status?.fcm} />
+        </div>
+      </SuperAdminGate>
     </SettingsPanel>
   )
 }

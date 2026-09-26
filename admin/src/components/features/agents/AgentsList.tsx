@@ -35,7 +35,7 @@ export const AgentsList = () => {
 
   const [initialState] = useState(loadAgentsListState)
   // `scope` in the URL, seeded from the session ledger: a pasted
-  // `/agents?scope=personal` opens on Personal, and arriving with no param
+  // `/admin/agents?scope=personal` opens on Personal, and arriving with no param
   // restores the scope this reader left on (docs/navigation/overview.md §1, "Tab hosts").
   const [activeScope, setActiveScope] = useTabParam(
     'scope',
@@ -97,7 +97,7 @@ export const AgentsList = () => {
           icon: faPlus,
           id: 'new-agent',
           label: 'New agent',
-          onSelect: () => void navigate('/agents/designer'),
+          onSelect: () => void navigate('/admin/agents/designer'),
           primary: true,
           priority: 100,
         }]}
@@ -134,7 +134,7 @@ export const AgentsList = () => {
             setDeleteError(null)
             setPendingDelete(agent)
           }}
-          onOpen={(agentId) => void navigate(`/agents/${agentId}`)}
+          onOpen={(agentId) => void navigate(`/admin/agents/${agentId}`)}
           token={token}
         />
       </div>

@@ -6,7 +6,7 @@ import { useFocusMode } from '../../providers/FocusModeProvider'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { NotificationPreferencesForm } from './notifications/NotificationPreferencesForm'
 import { FeedbackBanner, type SettingsFeedback } from './FeedbackBanner'
-import { SettingsPanel, type SettingsTabHostProps } from '../../components/shared/SettingsPanel'
+import { SettingsPanel } from '../../components/shared/SettingsPanel'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { Switch } from '../../components/primitives/Switch'
 import { Card } from '../../components/shared/Card'
@@ -17,7 +17,7 @@ import { Row, RowList } from '../../components/shared/RowList'
 const getBrowserTimeZone = (): string =>
   Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
-export const NotificationsPage = ({ tabs }: SettingsTabHostProps) => {
+export const NotificationsPage = () => {
   const { me } = useAuthSession()
   const { focusModeEnabled, setFocusModeEnabled, updating: focusModeUpdating } = useFocusMode()
   const channelsQuery = useChannels()
@@ -56,7 +56,7 @@ export const NotificationsPage = ({ tabs }: SettingsTabHostProps) => {
 
   return (
     <SettingsPanel
-      eyebrow="User"
+      eyebrow="Your settings"
       title="Notifications"
       actions={[
         {
@@ -71,7 +71,6 @@ export const NotificationsPage = ({ tabs }: SettingsTabHostProps) => {
         } satisfies PageHeaderAction,
       ]}
     >
-      {tabs}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.8fr)]">
         {/* Focus Mode reads its own provider (not `me.user.preferences`) and
             stays mounted across a user switch, so it lives outside the

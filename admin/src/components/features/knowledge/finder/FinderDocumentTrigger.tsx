@@ -26,7 +26,7 @@ import type { FinderMenuHandlers } from './finder-menu'
  * project, and the agents offered first are the ones already in a public
  * channel here. It is offered only to people the Triggers routes let create
  * one (the space's Finder read says so), and only on a space a public project
- * channel may watch; the editor keeps its own draft, so the Triggers page's
+ * channel may watch; the editor keeps its own draft, so the Schedules and triggers page's
  * unsent create is never replaced.
  */
 

@@ -1,6 +1,6 @@
 import { faChevronDown, faEllipsis } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { Popover } from '../overlays/Popover'
 import { PageHeaderMenu } from './PageHeaderMenu'
 import { SectionLabel } from '../primitives/SectionLabel'
@@ -49,6 +49,7 @@ export type ResponsivePageHeaderProps = {
   leading?: ReactNode
   onBack?: () => void
   title: string
+  titleAside?: ReactNode
   titleId?: string
   titleInput?: {
     ariaLabel: string
@@ -74,6 +75,14 @@ const menuPanelClassName = [
 const menuClassName = (action: PageHeaderAction): string => action.kind === 'menu' && action.menuStyle === 'sidebar'
   ? 'w-[220px] rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] p-1.5 shadow-lg'
   : menuPanelClassName
+
+const actionIcon = (action: PageHeaderAction) => {
+  if (action.outlineIcon) {
+    const OutlineIcon = action.outlineIcon
+    return <OutlineIcon aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={2} />
+  }
+  return action.icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={action.icon} /> : null
+}
 
 // The action's role, not its colours. Which fill a role wears — and what a
 // theme does to it — belongs to `.admin-page-action*` in `styles.css`, where
@@ -113,6 +122,9 @@ const toggleClassName = (action: PageHeaderToggleAction): string => [
   action.disabled ? 'cursor-not-allowed opacity-50' : '',
 ].join(' ')
 
+const actionStyle = (action: PageHeaderAction): CSSProperties | undefined =>
+  action.fixedWidth ? { width: action.fixedWidth, flexShrink: 0 } : undefined
+
 // A shared header for dense admin surfaces. It measures the actual controls at
 // runtime, so the same action declarations remain usable in a wide team,
 // a narrow project tab, and a tablet WebView without brittle viewport rules.
@@ -126,6 +138,7 @@ export const ResponsivePageHeader = ({
   leading,
   onBack,
   title,
+  titleAside,
   titleId,
   titleInput,
   titleTone = 'page',
@@ -162,24 +175,25 @@ export const ResponsivePageHeader = ({
           data-page-header-action={action.id}
           href={action.href}
           rel={action.rel}
+          style={actionStyle(action)}
           target={action.target}
           title={action.title ?? action.label}
         >
-          {action.icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={action.icon} /> : null}
+          {actionIcon(action)}
           {action.compact ? null : <span>{action.label}</span>}
         </a>
       )
     }
     if (action.kind === 'custom') {
       return (
-        <span className="inline-flex items-center" data-page-header-action={action.id}>
+        <span className="inline-flex items-center" data-page-header-action={action.id} style={actionStyle(action)}>
           {action.render(measuring)}
         </span>
       )
     }
     if (action.kind === 'toggle') {
       return (
-        <span className={toggleClassName(action)} title={action.title ?? action.label}>
+        <span className={toggleClassName(action)} style={actionStyle(action)} title={action.title ?? action.label}>
           <span>{action.label}</span>
           {/* The switch's name stays the label whichever way it is thrown —
               `aria-checked` is what says on or off, so a name that flipped
@@ -223,10 +237,11 @@ export const ResponsivePageHeader = ({
         ref={(element) => {
           if (!measuring) triggerRefs.current[action.id] = element
         }}
+        style={actionStyle(action)}
         title={action.title ?? action.label}
         type={buttonAction?.submit ? 'submit' : 'button'}
       >
-        {action.icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={action.icon} /> : null}
+        {actionIcon(action)}
         {action.compact ? null : <span>{action.label}</span>}
         {isMenu && !action.compact ? (
           <FontAwesomeIcon className="h-2.5 w-2.5" icon={faChevronDown} />
@@ -243,7 +258,7 @@ export const ResponsivePageHeader = ({
         className="knowledge-floating-action-bar"
         ref={(element) => { headerRef.current = element }}
       >
-        <div aria-label={actionBarLabel} className="create-menu-panel knowledge-floating-action-bar-inner" data-testid="knowledge-detail-action-bar" role="toolbar">
+        <div aria-label={actionBarLabel} className="frosted-menu-panel knowledge-floating-action-bar-inner" data-testid="knowledge-detail-action-bar" role="toolbar">
         {visibleActions.map((action) => (
           <div className="relative" key={action.id}>
             {renderAction(action)}
@@ -328,29 +343,32 @@ export const ResponsivePageHeader = ({
               ) : null}
             </div>
           ) : null}
-          <div className="min-w-0 flex-1">
-            {eyebrow ? (
-              <div className="truncate text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-                {eyebrow}
-              </div>
-            ) : null}
-            {titleInput ? (
-              <input
-                aria-label={titleInput.ariaLabel}
-                className="w-full border-none bg-transparent text-[15px] font-semibold text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
-                onChange={(event) => titleInput.onChange(event.target.value)}
-                placeholder={titleInput.placeholder}
-                value={titleInput.value}
-              />
-            ) : titleTone === 'section' ? (
-              <SectionLabel as="h2" className="truncate">
-                {title}
-              </SectionLabel>
-            ) : (
-              <Heading className="truncate text-[17px] font-bold text-[color:var(--tx)]" id={titleId}>
-                {title}
-              </Heading>
-            )}
+          <div className="flex min-w-0 flex-1 items-center gap-4">
+            <div className={titleAside ? 'min-w-0 flex-1 md:flex-shrink-0' : 'min-w-0 flex-1'}>
+              {eyebrow ? (
+                <div className="truncate text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
+                  {eyebrow}
+                </div>
+              ) : null}
+              {titleInput ? (
+                <input
+                  aria-label={titleInput.ariaLabel}
+                  className="w-full border-none bg-transparent text-[15px] font-semibold text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
+                  onChange={(event) => titleInput.onChange(event.target.value)}
+                  placeholder={titleInput.placeholder}
+                  value={titleInput.value}
+                />
+              ) : titleTone === 'section' ? (
+                <SectionLabel as="h2" className="truncate">
+                  {title}
+                </SectionLabel>
+              ) : (
+                <Heading className="truncate text-[17px] font-bold text-[color:var(--tx)]" id={titleId}>
+                  {title}
+                </Heading>
+              )}
+            </div>
+            {titleAside ? <div className="hidden min-w-0 flex-1 md:block">{titleAside}</div> : null}
           </div>
         </div>
 
@@ -416,6 +434,9 @@ export const ResponsivePageHeader = ({
         ) : null}
       </div>
 
+      {titleAside ? (
+        <div className="min-w-0 px-[var(--page-gutter)] pb-2 md:hidden">{titleAside}</div>
+      ) : null}
       {below ? <div className="min-w-0 px-[var(--page-gutter)] pb-2">{below}</div> : null}
 
       <div

@@ -276,7 +276,7 @@ export const useFinderMenus = ({
         : undefined,
       openAgent: () => {
         const agentId = rootRow?.kind === 'space' ? rootRow.space.ownerAgentId : null
-        if (agentId) void navigate(`/agents/${agentId}`)
+        if (agentId) void navigate(`/admin/agents/${agentId}`)
       },
       openEditor: () => {
         if (first) knowledge.openEdit(first)
@@ -487,7 +487,7 @@ export const useFinderMenus = ({
           onClose={() => setDialog(null)}
           onOpenAgent={() => {
             const agentId = space?.ownerAgentId
-            if (agentId) void navigate(`/agents/${agentId}`)
+            if (agentId) void navigate(`/admin/agents/${agentId}`)
           }}
           onOpenProjectMembers={() => {
             if (space?.projectId) void navigate(`/projects/${space.projectId}?tab=members`)

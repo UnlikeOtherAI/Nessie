@@ -1,3 +1,4 @@
+import { runAccountConnectionsListTool } from './account-connections.js'
 import {
   runConnectorAuthorizeTool,
   runConnectorDiscoverTool,
@@ -19,6 +20,8 @@ export const connectorManagementTool = (
   context: BuiltinToolRuntimeContext,
 ): ConnectorToolThunk | null => {
   switch (toolName) {
+    case 'account_connections_list':
+      return () => runAccountConnectionsListTool(context)
     case 'connector_list':
       return () => runConnectorListTool(context)
     case 'connector_library_search':

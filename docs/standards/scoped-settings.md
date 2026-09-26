@@ -27,7 +27,28 @@ uses for the rest: `AGENTS.md` carries the one-line invariant and points here;
   from — greys it, makes the subtree genuinely `inert` through a ref rather
   than `pointer-events-none` alone (which still lets a keyboard user tab into a
   control they cannot operate), and says which level decided. Offering an edit
-  the server will refuse is the failure this replaces.
+  the server will refuse is the failure this replaces. The same treatment for
+  a control that is another role's rather than another level's — the
+  owner-only cloud browser account shown to an admin — is `InertGate`, which
+  `ScopedSettingGate` is built on, so there is one greyed-and-says-who look.
+- **A setting with levels is one page with a scope switch; a team's page only
+  summarises it.** The Organisation pages whose data exists at the
+  organisation and at each team — AI models, Company connections, Keys and
+  People — are each one page switched by `?scope=organisation|team:<id>`,
+  through one hook (`useAdminScope`; the rules in `admin/src/lib/admin-scope.ts`,
+  each page's scopes in `admin/src/pages/admin/scope-entitlements.ts`). The
+  scopes follow the API gate behind each one, never the session's team: one
+  the viewer could hold with more standing is listed disabled with the reason;
+  an address naming a team the page does not offer is an error, never a
+  fall-back to the organisation or the working team; and when the
+  organisation is not the viewer's, the team they land on is written into the
+  address before anything is shown, so a write always targets a scope the
+  address names. A team's page never re-implements a setting: its Overrides
+  tab reads each value at the team level and shows where it comes from and who
+  locked it as chips — "Set by organisation", "Set by this team", "Locked by
+  organisation", "Locked by this team", from the same `setAtScope` /
+  `lockedAtScope` answer `ScopedSettingGate` greys a control from — each row
+  opening the owning page at the team's scope.
 - **The team level must actually reach the person.** A personal surface passes
   the session's team down, or the middle of the cascade is invisible there and
   somebody whose team locked a setting connects an account their team's work
@@ -66,6 +87,18 @@ uses for the rest: `AGENTS.md` carries the one-line invariant and points here;
   organisation-administration authority required by its write is present. The
   route rejects a target on every other key, mixed-key request, and scope, so
   a policy control cannot turn into an arbitrary member-settings browser.
+- **The administration standing is decided once, on the server.** An
+  administrator-authored key (today the AI-on-own-computers policy) is read
+  and written only with organisation-administration standing:
+  `resolveOrganizationAdministrationAccess` answers from the sign-in
+  provider's live capability on a bound organisation, and from the local
+  owner or admin role on an unbound local install. `/api/organizations/current`
+  answers with that same resolver, so the admin reads the one status through
+  `useOrganizationAdministration` (`admin/src/facades/organization/hooks.ts`)
+  and never re-derives it from roles — a second derivation is how a local
+  admin would be refused a setting the route lets them change. A doorway into
+  such a setting follows the same answer: without the standing it is greyed
+  and says who holds it.
 
 - **A write is audited, never the value.** `PUT /api/settings/scoped/:key`
   (`api/src/routes/scoped-settings.ts`) emits `setting.scoped.written` with

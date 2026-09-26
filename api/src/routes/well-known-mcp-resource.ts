@@ -54,7 +54,7 @@ export const registerWellKnownMcpResourceRoutes = (
           bearer_methods_supported: ['header'],
           resource,
           resource_documentation: adminOrigin
-            ? `${adminOrigin}/settings/paired-agents`
+            ? `${adminOrigin}/settings/security`
             : undefined,
           // Not an OAuth authorization server. Naming the grant this resource
           // actually implements is what lets a client act rather than guess.

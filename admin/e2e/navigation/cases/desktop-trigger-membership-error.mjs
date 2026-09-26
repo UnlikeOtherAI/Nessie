@@ -15,7 +15,7 @@ export const desktopTriggerMembershipError = {
       localStorage.setItem('nessie.admin.token', token)
     }, membership.token)
 
-    await gotoPath(page, '/agents/triggers')
+    await gotoPath(page, '/admin/automations')
     const triggerRow = page.getByRole('row').filter({
       has: page.getByText(membership.title, { exact: true }),
     })
@@ -29,7 +29,7 @@ export const desktopTriggerMembershipError = {
     checks.equal('the stopped schedule has no runnable next time', await nextRunCell.textContent(), '—')
 
     await triggerRow.click()
-    await page.waitForURL(new RegExp(`/agents/triggers/${membership.triggerId}$`, 'u'))
+    await page.waitForURL(new RegExp(`/admin/automations/triggers/${membership.triggerId}$`, 'u'))
     await page.getByText('This schedule has stopped', { exact: true }).waitFor()
     const repair = page
       .getByRole('status')

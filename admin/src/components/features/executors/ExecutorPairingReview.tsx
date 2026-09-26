@@ -33,22 +33,22 @@ export const ExecutorPairingReview = ({ busy, error, onBack, onClaim, options, p
       <p>{options.organization.name} · {team?.name}</p>
       <p className="text-xs text-[color:var(--tx3)]">Code expires in {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}</p>
     </div>
-    <label className="grid gap-1 text-xs font-medium text-[color:var(--tx2)]">Machine name
+    <label className="grid gap-1 text-xs font-medium text-[color:var(--tx2)]">Computer name
       <input className="admin-input" maxLength={120} onChange={(event) => setLabel(event.target.value)} required value={label} />
     </label>
-    <p className="text-sm text-[color:var(--tx2)]">This executor starts with you. Add agents and share it with people, projects, or everyone in this team after pairing.</p>
+    <p className="text-sm text-[color:var(--tx2)]">This computer starts with you. Add agents and share it with people, projects, or everyone in this team after pairing.</p>
     <label className="grid gap-2 border-t border-[color:var(--sep)] pt-3 text-xs text-[color:var(--tx2)]">
       <span className="break-all font-mono text-[color:var(--tx3)]">{preview.fingerprint}</span>
       <span className="flex items-start gap-2">
         <input checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} type="checkbox" />
-        <span>The fingerprint matches the one shown on my machine.</span>
+        <span>The fingerprint matches the one shown on my computer.</span>
       </span>
     </label>
-    <FormError>{error ?? (!team ? 'Select a team in Nessie before pairing this executor.' : null)}</FormError>
+    <FormError>{error ?? (!team ? 'Select a team in Nessie before pairing this computer.' : null)}</FormError>
     <FormActions>
       <button className="admin-button admin-button-secondary" disabled={busy} onClick={onBack} type="button">Back</button>
       <button className="admin-button admin-button-primary" disabled={busy || !confirmed || !team || !label.trim()} type="submit">
-        {busy ? 'Pairing…' : 'Pair machine'}
+        {busy ? 'Pairing…' : 'Pair computer'}
       </button>
     </FormActions>
   </form>

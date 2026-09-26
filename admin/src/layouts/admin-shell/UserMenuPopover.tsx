@@ -1,12 +1,9 @@
-import { ExecutorSection } from './user-menu/ExecutorSection'
 import { type RefObject } from 'react'
 import { Link } from 'react-router-dom'
-import { faArrowRightFromBracket, faCircleQuestion, faGear } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { CircleHelp, LogOut, Settings } from 'lucide-react'
 import type { MeUser } from '@nessie/schemas'
 import { Popover } from '../../components/overlays/Popover'
 import { UserAvatar } from '../../components/shared/UserAvatar'
-import { DebugTokenButton } from '../../components/shared/DebugTokenButton'
 import { useFocusMode } from '../../providers/FocusModeProvider'
 import { PresenceControl } from './user-menu/PresenceControl'
 import { StatusSection } from './user-menu/StatusSection'
@@ -23,21 +20,14 @@ type UserMenuPopoverProps = {
   placement?: UserMenuPopoverPlacement
 }
 
-const rowClassName = [
-  'flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left',
-  'text-sm text-[color:var(--tx)] transition-colors hover:bg-[color:var(--overlay-weak)]',
-].join(' ')
-
-const panelClassName = [
-  'w-[252px] overflow-hidden rounded-xl border',
-  'border-[color:var(--sep)] bg-[color:var(--panel)] p-1.5',
-  'shadow-[0_16px_48px_var(--scrim-strong)]',
-].join(' ')
-
 // Avatar menu: shared by the desktop rail and native-shell top bar. It keeps
 // one set of account actions while opening away from the trigger in each shell
 // — beside it on the rail, beneath its right edge in the top bar — through the
 // one Popover primitive, so the flip and clamp are not its business.
+//
+// Availability · Status · Your settings · Send feedback · Sign out, and
+// nothing else: the computers a person paired are Your settings › Your
+// computers, and the session debug is Admin › Advanced.
 export const UserMenuPopover = ({
   anchorRef,
   user,
@@ -52,14 +42,14 @@ export const UserMenuPopover = ({
   return (
     <Popover
       anchorRef={anchorRef}
-      className={panelClassName}
+      className="admin-account-menu"
       label="Account menu"
       onClose={onClose}
       open={open}
       placement={placement === 'topbar' ? 'bottom-end' : 'right'}
       role="menu"
     >
-      <div className="flex items-center gap-3 px-2 py-2">
+      <div className="flex items-center gap-2.5 px-2.5 py-2">
         <UserAvatar
           avatarAttachmentId={user.avatarAttachmentId}
           avatarUrl={user.avatarUrl}
@@ -68,59 +58,49 @@ export const UserMenuPopover = ({
           ringColor="var(--panel)"
           showPresence
           showStatus
-          size={40}
+          size={32}
           token={token}
           userId={user.id}
         />
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-[color:var(--tx)]">
+          <div className="truncate text-[13px] font-semibold text-[color:var(--tx)]">
             {user.displayName}
           </div>
-          <div className="truncate text-xs text-[color:var(--tx3)]">{user.email}</div>
+          <div className="truncate text-[11px] text-[color:var(--tx3)]">{user.email}</div>
         </div>
       </div>
 
-      <div className="my-1 h-px bg-[color:var(--sep)]" />
+      <div className="admin-account-menu-divider" />
 
       <PresenceControl />
 
-      <div className="my-1 h-px bg-[color:var(--sep)]" />
+      <div className="admin-account-menu-divider" />
 
       <StatusSection onClose={onClose} />
 
-      <div className="my-1 h-px bg-[color:var(--sep)]" />
-      <ExecutorSection onClose={onClose} />
+      <div className="admin-account-menu-divider" />
 
-      <div className="my-1 h-px bg-[color:var(--sep)]" />
-
-      <Link className={rowClassName} onClick={onClose} to="/feedback">
-        <span>Feedback</span>
-        <FontAwesomeIcon
-          className="h-3.5 w-3.5 text-[color:var(--tx3)]"
-          icon={faCircleQuestion}
-        />
+      <Link className="admin-account-menu-row" onClick={onClose} to="/settings">
+        <Settings aria-hidden="true" strokeWidth={2} />
+        <span>Your settings</span>
       </Link>
-      <DebugTokenButton variant="menu" />
-
-      <div className="my-1 h-px bg-[color:var(--sep)]" />
-
-      <Link className={rowClassName} onClick={onClose} to="/settings/account">
-        <span>Account settings</span>
-        <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--tx3)]" icon={faGear} />
+      <Link className="admin-account-menu-row" onClick={onClose} to="/feedback">
+        <CircleHelp aria-hidden="true" strokeWidth={2} />
+        <span>Send feedback</span>
       </Link>
+
+      <div className="admin-account-menu-divider" />
+
       <button
-        className={rowClassName}
+        className="admin-account-menu-row"
         onClick={() => {
           onClose()
           onLogout()
         }}
         type="button"
       >
-        <span>Log out</span>
-        <FontAwesomeIcon
-          className="h-3.5 w-3.5 text-[color:var(--tx3)]"
-          icon={faArrowRightFromBracket}
-        />
+        <LogOut aria-hidden="true" strokeWidth={2} />
+        <span>Sign out</span>
       </button>
     </Popover>
   )

@@ -614,11 +614,11 @@ export const prepareRunExecution = async (
       hasCardTool: hasCardPromptTools(resolvedToolIds),
       hasBrowserLoginRequestTool: browserLoginRequestPromptTools(resolvedToolIds),
       // Structural, from the resolved toolset and the agent row: the grant
-      // verb is either in this run's schema or it is not, and a Nessie-managed
-      // agent's toolset is the deployment's — nobody can enable a tool on it.
+      // verb is either in this run's schema or it is not. Global specialists
+      // have fixed tools; an owner can change the PA's protected grants.
       canGrantBrowserTools: resolvedToolIds.has('agent_tool_access_set'),
-      ownToolsetFixed: context.agent.agentKind === 'personal_assistant'
-        || Boolean(context.agent.systemSlug),
+      ownToolsetFixed: Boolean(context.agent.systemSlug),
+      hasAccountConnectionsTool: resolvedToolIds.has('account_connections_list'),
       temporaryBrowserAccess,
       todoFacts,
       documents: documentsHome

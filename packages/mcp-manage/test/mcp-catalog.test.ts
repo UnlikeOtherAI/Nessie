@@ -265,7 +265,7 @@ test('publishCatalogEntry shares a private draft with the whole organisation', a
   assert.equal(result?.status, 'published')
   assert.equal(rows.get('entry-1')?.status, 'published')
   assert.equal(rows.get('entry-1')?.visibility, 'public')
-  // A colleague can now read it, which is what puts it on their `/apps`.
+  // A colleague can now read it, which is what puts it on their `/admin/apps`.
   assert.equal((await getAccessibleCatalogEntry(prisma, actorCtx(USER_B), 'entry-1'))?.id, 'entry-1')
 })
 

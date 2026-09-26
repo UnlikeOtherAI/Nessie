@@ -37,12 +37,14 @@ export const registerBrowserCloudConnectionRoutes = (app: FastifyInstance, deps:
     const connections = await listCloudBrowserConnections(prisma, {
       organizationId: actorContext.tenant.organizationId,
       userId: actorContext.actor.actorId,
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
     })
     return createApiResponse(
       CloudBrowserConnectionListSchema.parse({
         connections: connections.map((row) => ({
           id: row.id,
           scope: row.scope,
+          teamId: row.teamId,
           projectId: row.projectId,
           status: row.status,
           healthReason: row.healthReason,

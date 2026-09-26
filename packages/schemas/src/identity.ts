@@ -68,6 +68,8 @@ export const PushSurfaceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('ops_usage') }),
   z.object({ kind: z.literal('project_board'), projectId: ProjectIdSchema }),
   z.object({ kind: z.literal('knowledge_space'), spaceId: z.string().uuid() }),
+  // Automations' Schedules and triggers list: where a trigger-health push opens.
+  z.object({ kind: z.literal('triggers') }),
 ])
 export type PushSurface = z.infer<typeof PushSurfaceSchema>
 

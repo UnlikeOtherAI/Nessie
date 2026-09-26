@@ -356,7 +356,13 @@ const roomFixture = (options: {
   modelAnswer?: string
   /** The trigger is the answer to this agent's card, pressed under it. */
   pressedCardOf?: string
+  /**
+   * The trigger, a top-level message, became this agent's card answer while it
+   * was being judged: a concurrent delivery claimed the card.
+   */
+  claimedWhileJudgedBy?: string
 }) => {
+  let cardReads = 0
   const modelCalls: string[] = []
   const runs: Array<{ replyPlacement: string | null }> = []
   const tx = {
@@ -412,10 +418,12 @@ const roomFixture = (options: {
         }),
       },
       agentCard: {
-        findUnique: async ({ where }: { where: { responseMessageId: string } }) =>
-          options.pressedCardOf && where.responseMessageId === TRIGGER_ID
-            ? { agentId: options.pressedCardOf }
-            : null,
+        findUnique: async ({ where }: { where: { responseMessageId: string } }) => {
+          cardReads += 1
+          if (where.responseMessageId !== TRIGGER_ID) return null
+          if (options.pressedCardOf) return { agentId: options.pressedCardOf }
+          return options.claimedWhileJudgedBy && cardReads > 1 ? { agentId: options.claimedWhileJudgedBy } : null
+        },
       },
       $transaction: async (work: (client: unknown) => Promise<unknown>) => work(tx),
     },
@@ -470,11 +478,24 @@ test('a one-on-one turn Jev judged never reaches the engagement model', async ()
   assert.deepEqual(fixture.runs, [{ replyPlacement: 'channel' }])
 })
 
-test('without Jev an agent DM keeps its engagement judgement but answers in the main chat', async () => {
-  const fixture = roomFixture({ channel: { memberCount: 1, type: 'dm' }, modelAnswer: threadedModelAnswer })
+test('without Jev an agent DM still answers every message, in the main chat', async () => {
+  // The engagement model would stay out; a one-on-one room never asks it.
+  const fixture = roomFixture({ channel: { memberCount: 1, type: 'dm' }, modelAnswer: JSON.stringify({ action: 'none' }) })
   await executeOrchestrateDecideJob(fixture.deps, payload('co mám dnes na práci?'))
 
-  assert.deepEqual(fixture.modelCalls, ['chat'])
+  assert.deepEqual(fixture.modelCalls, [])
+  assert.deepEqual(fixture.runs, [{ replyPlacement: 'channel' }])
+})
+
+test('a failing Jev still leaves the one-on-one message answered', async () => {
+  const fixture = roomFixture({
+    channel: { memberCount: 1, type: 'dm' },
+    decisionClient: { evaluate: async () => { throw new Error('ledger down') } },
+    modelAnswer: JSON.stringify({ action: 'none' }),
+  })
+  await executeOrchestrateDecideJob(fixture.deps, payload('stihneš to do pátku?'))
+
+  assert.deepEqual(fixture.modelCalls, [])
   assert.deepEqual(fixture.runs, [{ replyPlacement: 'channel' }])
 })
 
@@ -616,4 +637,20 @@ test('a changed detail, doubt, or a card someone else must answer claims nothing
     await answerCard(room, jev({ response: ['reply', 0.9], ...answers }), 'pátek, ale ve tři?')
     assert.deepEqual(room.claims, [], JSON.stringify(card))
   }
+})
+
+test('a typed answer claimed while it was judged still gets its card\u2019s run', async () => {
+  // This delivery's judgement says "only react"; meanwhile a concurrent one
+  // claimed the card with this very message as its answer.
+  const judge = jev({ response: ['acknowledge', 0.95], reaction: ['agree', 0.9] })
+  const fixture = roomFixture({
+    channel: { memberCount: 1, type: 'dm' },
+    claimedWhileJudgedBy: AGENT_ID,
+    decisionClient: judge.client,
+    modelAnswer: JSON.stringify({ action: 'none' }),
+  })
+  await executeOrchestrateDecideJob(fixture.deps, payload('pátek se hodí'))
+
+  assert.equal(judge.calls.length, 1)
+  assert.deepEqual(fixture.runs, [{ replyPlacement: 'channel' }])
 })

@@ -1,3 +1,4 @@
+import { ACCOUNT_CONNECTIONS_TOOL_DEFINITION } from './builtin-account-tools.js'
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 /**
@@ -216,6 +217,7 @@ export const CONNECTOR_UNINSTALL_TOOL_DEFINITION: BuiltinToolDefinition = {
 }
 
 export const CONNECTOR_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
+  ACCOUNT_CONNECTIONS_TOOL_DEFINITION,
   CONNECTOR_LIST_TOOL_DEFINITION,
   CONNECTOR_LIBRARY_SEARCH_TOOL_DEFINITION,
   CONNECTOR_DISCOVER_TOOL_DEFINITION,

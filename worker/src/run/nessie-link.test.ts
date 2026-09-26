@@ -7,7 +7,7 @@ test('names link directly to documents, conversations, tickets and machines', ()
     [{ kind: 'space', id: 'space', name: 'CTO — Documents' }, '/knowledge-base/spaces/space'],
     [{ kind: 'document', id: 'page', spaceId: 'space', name: 'Plan' }, '/knowledge-base/spaces/space?pageId=page'],
     [{ kind: 'ticket', id: 'task', projectId: 'project', name: 'Fix' }, '/projects/project/board?task=task'],
-    [{ kind: 'terminal', id: 'session', executorId: 'machine', name: 'Minis' }, '/agents/executors/machine/sessions/session'],
+    [{ kind: 'terminal', id: 'session', executorId: 'machine', name: 'Minis' }, '/admin/computers/machine/sessions/session'],
     [{ kind: 'message', id: 'reply', rootMessageId: 'root', channelId: 'channel', threadId: 'thread', name: 'Answer' },
       '/channels/channel/threads/thread/replies/root'],
   ] as const

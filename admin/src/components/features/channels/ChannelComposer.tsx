@@ -51,7 +51,7 @@ interface ChannelComposerProps {
   researchButton?: ResearchComposerButton
   onOpenExecutorRun?: () => void
   /**
-   * The holder's live executor lease, drawn beside Run on executor. In the
+   * The holder's live executor lease, drawn beside Run on a computer. In the
    * toolbar, so it can never add a line to the composer at rest.
    */
   executorLeaseIndicator?: ReactNode
@@ -251,10 +251,10 @@ export const ChannelComposer = ({
             ) : null}
             {onOpenExecutorRun ? (
               <button
-                aria-label="Run on executor"
+                aria-label="Run on a computer"
                 className={`${toolbarButtonClass} admin-compose-executor`}
                 onClick={onOpenExecutorRun}
-                title="Run on executor"
+                title="Run on a computer"
                 type="button"
               >
                 <svg

@@ -65,7 +65,7 @@ test('a placed agent and its room are markdown links a person can follow', () =>
     formatChannelMarkdownLink({ id: 'chan-1', label: 'sales' }),
     '[#sales](/channels/chan-1)',
   )
-  assert.equal(formatAgentMarkdownLink({ id: 'agent-1', name: 'CTO' }), '[CTO](/agents/agent-1)')
+  assert.equal(formatAgentMarkdownLink({ id: 'agent-1', name: 'CTO' }), '[CTO](/admin/agents/agent-1)')
 })
 
 test('a project and a trigger link to their own admin pages', () => {
@@ -75,13 +75,13 @@ test('a project and a trigger link to their own admin pages', () => {
   )
   assert.equal(
     formatTriggerMarkdownLink({ id: 'trigger-1', name: 'Daily digest [UTC]' }),
-    '[Daily digest \\[UTC\\]](/agents/triggers/trigger-1)',
+    '[Daily digest \\[UTC\\]](/admin/automations/triggers/trigger-1)',
   )
 })
 
 test('a bracket in a name cannot end the link text early', () => {
   assert.equal(
     formatAgentMarkdownLink({ id: 'agent-1', name: 'Ops [beta]' }),
-    '[Ops \\[beta\\]](/agents/agent-1)',
+    '[Ops \\[beta\\]](/admin/agents/agent-1)',
   )
 })

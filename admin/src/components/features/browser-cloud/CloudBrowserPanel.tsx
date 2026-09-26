@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import type { CloudBrowserConnectionRecord, CloudBrowserScope } from '../../../lib/api-client'
+import { useIsOwner } from '../../../facades/auth/hooks'
 import {
   useCloudBrowserConnections,
   useDisconnectCloudBrowser,
@@ -17,7 +18,9 @@ import {
   useScopedSettings,
   useWriteScopedSetting,
 } from '../../../facades/settings/hooks'
-import { ScopedSettingGate, ScopedSettingLock } from '../settings/ScopedSettingGate'
+import { InertGate, ScopedSettingLock, scopedSettingLockReason } from '../settings/ScopedSettingGate'
+
+const OWNER_ONLY = 'Only the organisation owner connects, replaces or disconnects this account.'
 
 type CloudBrowserPanelProps = {
   scope: CloudBrowserScope
@@ -26,14 +29,17 @@ type CloudBrowserPanelProps = {
 }
 
 const HEALTH_COPY: Record<string, string> = {
-  auth_failed: 'Browserbase rejected the stored key. Replace it to start browsing again.',
-  unreachable: 'Browserbase could not be reached the last time an agent tried.',
-  disabled_by_owner: 'Saved sign-ins remain in your Browserbase account. Reconnect to use them again.',
+  auth_failed: 'The saved key was rejected. Replace it to start browsing again.',
+  unreachable: 'The cloud browser could not be reached the last time an agent tried.',
+  disabled_by_owner: 'Saved sign-ins remain in your account. Reconnect to use them again.',
 }
 
 const SCOPE_COPY: Record<CloudBrowserScope, { title: string; blurb: string; empty: string }> = {
   organization: {
     title: 'Company account',
+    // Browserbase is named once, here, where a person actually needs it: the
+    // account they are about to connect. Every other message in this panel
+    // says "cloud browser" or "account" instead.
     blurb:
       'Connect the organisation’s Browserbase account. Every agent granted the browser '
       + 'tools can then open a browser, for anyone who asks them to.',
@@ -42,7 +48,7 @@ const SCOPE_COPY: Record<CloudBrowserScope, { title: string; blurb: string; empt
   team: {
     title: 'Team account',
     blurb:
-      'Connect a Browserbase account for this team. It sits between the company account '
+      'Connect a cloud browser account for this team. It sits between the company account '
       + 'and people’s own, and agents working for this team use it by default.',
     empty:
       'No team account is connected, so this team falls back to the company account or to '
@@ -51,15 +57,16 @@ const SCOPE_COPY: Record<CloudBrowserScope, { title: string; blurb: string; empt
   user: {
     title: 'Your account',
     blurb:
-      'Connect your own Browserbase account. It powers only the runs you start, and the '
+      'Connect your own cloud browser account. It powers only the runs you start, and the '
       + 'free tier is enough to try this out.',
     empty: 'Connect your own account to let your agents browse before the company subscribes.',
   },
 }
 
 /**
- * One panel, three homes: the owner-only company account on organisation
- * settings, a team's on its own, and a person's on their connections page.
+ * One panel, three homes: the company account and a team's on Company
+ * connections at the organisation's and that team's scope, and a person's on
+ * their connected accounts.
  *
  * One component rather than three because everything it carries — the
  * connection, the lock that stops a level below overriding it, the home page —
@@ -69,6 +76,13 @@ const SCOPE_COPY: Record<CloudBrowserScope, { title: string; blurb: string; empt
 export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelProps) => {
   const connections = useCloudBrowserConnections()
   const disconnect = useDisconnectCloudBrowser()
+  // A shared account — the company's or a team's — is the owner's to connect,
+  // replace and disconnect (the connection routes are `requireOwner`), while
+  // the lock and the home page are any owner's or admin's scoped settings. So
+  // an admin keeps those two, and sees the account's controls greyed with who
+  // holds them rather than a key field the server will refuse.
+  const isOwner = useIsOwner()
+  const mayConnect = scope === 'user' || isOwner
   // Both browser keys in one request: they are drawn a few centimetres apart
   // at the same level, and a second query would resolve the same cascade again.
   const settings = useScopedSettings(
@@ -86,7 +100,7 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
   const rows: CloudBrowserConnectionRecord[] = connections.data?.connections ?? []
   const connection = rows.find((row) =>
     scope === 'organization' ? row.scope === 'organization'
-    : scope === 'team' ? row.scope === 'team'
+    : scope === 'team' ? row.scope === 'team' && row.teamId === teamId
     : row.scope === 'user' && row.isMine)
   const connected = connection?.status === 'active'
   const disconnected = connection?.status === 'disabled'
@@ -122,10 +136,14 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
           <h2 className="font-semibold text-[color:var(--tx)]">{copy.title}</h2>
           {connections.isLoading ? (
             <p className="mt-1 text-sm text-[color:var(--tx2)]">Loading…</p>
+          ) : connections.isError ? (
+            <p className="mt-1 text-sm text-[color:var(--danger)]">
+              Could not check saved browser accounts. Try again before reconnecting.
+            </p>
           ) : connection ? (
             <p className="mt-1 text-sm text-[color:var(--tx2)]">
               {disconnected
-                ? 'Saved sign-ins remain in your Browserbase account. Reconnect to use them again.'
+                ? 'Saved sign-ins remain in your account. Reconnect to use them again.'
                 : <>
                     {connection.projectId ? (
                       <>Project <span className="font-mono">{connection.projectId}</span></>
@@ -154,15 +172,19 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
         ) : null}
       </div>
 
-      <ScopedSettingGate setting={setting}>
-        <CloudBrowserConnectionForm
-          blurb={copy.blurb}
-          connected={connected}
-          reconnect={Boolean(connection) && !connected}
-          scope={scope}
-          teamId={teamId}
-        />
-      </ScopedSettingGate>
+      {/* One gate, two reasons: a level above locked the account, or the
+          account is the owner's. Either way the form stays, greyed, saying who. */}
+      {!connections.isLoading && !connections.isError ? (
+        <InertGate reason={scopedSettingLockReason(setting) ?? (mayConnect ? null : OWNER_ONLY)}>
+          <CloudBrowserConnectionForm
+            blurb={copy.blurb}
+            connected={connected}
+            reconnect={Boolean(connection) && !connected}
+            scope={scope}
+            teamId={teamId}
+          />
+        </InertGate>
+      ) : null}
 
       {setting?.canEdit && scope !== 'user' ? (
         <div className="mt-4 border-t border-[color:var(--sep)] pt-3">
@@ -181,15 +203,16 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
         <div className="mt-4 border-t border-[color:var(--sep)] pt-3">
           <button
             className="admin-button admin-button-danger admin-button-compact"
-            disabled={disconnect.isPending}
+            disabled={!mayConnect || disconnect.isPending}
             onClick={() => setConfirming(true)}
+            title={mayConnect ? undefined : OWNER_ONLY}
             type="button"
           >
             Disconnect
           </button>
           <p className="mt-2 text-xs text-[color:var(--tx3)]">
-            Disconnecting deletes the stored key but keeps saved browser sign-ins in Browserbase.
-            Any browsers still open must be closed first, because nothing could tell Browserbase
+            Disconnecting deletes the stored key but keeps saved browser sign-ins there.
+            Any browsers still open must be closed first, because nothing could tell it
             to stop them afterwards.
           </p>
         </div>
@@ -198,14 +221,14 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
       <FormError className="mt-3">{error}</FormError>
 
       <ConfirmDialog
-        body="Agents will not be able to open a browser through this account until it is reconnected. Saved browser sign-ins stay in Browserbase."
+        body="Agents will not be able to open a browser through this account until it is reconnected. Saved browser sign-ins stay there."
         confirmLabel="Disconnect"
         destructive
         onCancel={() => setConfirming(false)}
         onConfirm={remove}
         open={confirming}
         pending={disconnect.isPending}
-        title="Disconnect this Browserbase account?"
+        title="Disconnect this cloud browser account?"
       />
     </section>
   )

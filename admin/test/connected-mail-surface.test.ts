@@ -205,6 +205,7 @@ test('unavailable account rows name their remedy instead of offering a dead-end 
   assert.match(page, /ConnectedMailAccountRow/)
   assert.match(page, /!account\.canRead \? <p/)
   assert.match(page, /Open mailbox settings/)
-  assert.match(page, /connectedMailSettingsPath\(account\)/)
+  // A shared mailbox's settings open at its team's scope, found on the press.
+  assert.match(page, /openMailSettings\(account\)/)
   assert.match(page, /!account\.canCompose/)
 })

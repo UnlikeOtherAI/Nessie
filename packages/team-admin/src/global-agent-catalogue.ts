@@ -328,6 +328,7 @@ const neverSection = (
 const cloudBrowserSetupSection = (
   writeSurface: GlobalAgentCatalogueFacts['writeSurface'],
   access: GlobalAgentProtectedAccessFacts,
+  heldToolIds?: ReadonlySet<string>,
 ): string[] => [
   ...(writeSurface === 'designer_form'
     ? [bullet(
@@ -339,6 +340,9 @@ const cloudBrowserSetupSection = (
   ...buildBrowserbaseSetupPrompt({
     canGrantBrowserTools: access.canSet,
     hasCardTool: writeSurface === 'agent_tools',
+    ownToolsetFixed: writeSurface === 'agent_tools',
+    hasAccountConnectionsTool: heldToolIds?.has('account_connections_list') ?? false,
+    hasBrowserLoginRequestTool: heldToolIds?.has('browser_login_request') ?? false,
   })
     .split('\n')
     .map((line) => line === 'Cloud browser setup:' ? line : bullet(line)),
@@ -449,7 +453,7 @@ export const buildGlobalAgentCatalogueBlock = (
     ...executorSection(facts.executors, facts.writeSurface),
     '',
     ...(facts.writeSurface === 'agent_tools' ? [...proposalCardSection(), ''] : []),
-    ...cloudBrowserSetupSection(facts.writeSurface, access),
+    ...cloudBrowserSetupSection(facts.writeSurface, access, facts.heldToolIds),
     '',
     ...neverSection(access),
     '',

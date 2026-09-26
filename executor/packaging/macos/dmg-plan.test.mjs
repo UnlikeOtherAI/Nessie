@@ -46,6 +46,7 @@ import {
 const packaging = dirname(fileURLToPath(import.meta.url))
 const repository = join(packaging, '..', '..', '..')
 const buildScript = await readFile(join(packaging, 'build-dmg.mjs'), 'utf8')
+const signerScript = await readFile(join(packaging, 'sign-app.mjs'), 'utf8')
 const releaseWorkflow = await readFile(
   join(repository, '.github', 'workflows', 'release.yml'),
   'utf8',
@@ -383,13 +384,13 @@ test('the build signs inside-out, and never with --deep', () => {
   assert.ok(codesignVerifyArguments('/a').includes('--deep'))
   // Nested binaries first, sorted deepest-first, with the main executable left
   // to the bundle signature.
-  assert.ok(buildScript.includes('nestedMachOFiles'))
-  assert.ok(buildScript.includes('right.split(\'/\').length - left.split(\'/\').length'))
+  assert.ok(signerScript.includes('nestedMachOFiles'))
+  assert.ok(signerScript.includes('right.split(\'/\').length - left.split(\'/\').length'))
   // The manifest is rewritten after the Node is signed and before the bundle is
   // sealed: a signature changes the bytes runtime-integrity.ts verifies, and a
   // resource edited after sealing breaks the seal.
-  const manifestRewrite = buildScript.indexOf('runtime.manifestPath')
-  const bundleSeal = buildScript.indexOf('codesignArguments({ entitlements: appEntitlements')
+  const manifestRewrite = signerScript.indexOf('runtime.manifestPath')
+  const bundleSeal = signerScript.indexOf('codesignArguments({ entitlements: appEntitlements')
   assert.ok(manifestRewrite > 0 && bundleSeal > manifestRewrite)
 })
 
@@ -402,8 +403,8 @@ test('both artifacts are notarized, stapled and then actually assessed', () => {
   assert.ok(buildScript.includes("gatekeeperAssessArguments(appPath, 'exec')"))
   assert.ok(buildScript.includes("gatekeeperAssessArguments(packagePath, 'open')"))
   // A submission that is not Accepted is never stapled and never published.
-  assert.ok(buildScript.includes('status:\\s*Accepted'))
-  assert.ok(buildScript.includes("stapler', 'validate'"))
+  assert.ok(signerScript.includes('status:\\s*Accepted'))
+  assert.ok(signerScript.includes("stapler', 'validate'"))
 })
 
 test('the two entitlement files grant JIT to the Node and to nothing else', () => {

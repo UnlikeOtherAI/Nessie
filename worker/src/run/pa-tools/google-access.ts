@@ -94,7 +94,7 @@ export const requestGoogleCapability = async (
   })
   if (!thread) {
     return `I need permission to ${CAPABILITY_ASK[capabilityId]}. `
-      + 'Open /settings/connections to grant it.'
+      + 'Open /settings/accounts to grant it.'
   }
   const content =
     `I need permission to ${CAPABILITY_ASK[capabilityId]} before I can do that.`
@@ -151,19 +151,19 @@ export const explainGoogleFailure = async (
   if (code === 'CAPABILITY_BLOCKED') {
     throw new Error(
       `You have switched off "${CAPABILITY_ASK[capabilityId]}" for this account. `
-        + 'Turn it back on at /settings/connections and ask me again.',
+        + 'Turn it back on at /settings/accounts and ask me again.',
     )
   }
   if (code === 'NEEDS_REAUTHORIZATION') {
     throw new Error(
-      'Your Google connection needs reauthorizing. Open /settings/connections '
+      'Your Google connection needs reauthorizing. Open /settings/accounts '
         + 'and reconnect, then ask me again.',
     )
   }
   if (code === 'AMBIGUOUS_ACCOUNT') {
     throw new Error(
       'You have more than one Google account connected. Tell me which address '
-        + 'to use, or disconnect the one you do not want at /settings/connections.',
+        + 'to use, or disconnect the one you do not want at /settings/accounts.',
     )
   }
   if (code === 'DRAFT_CHANGED') {

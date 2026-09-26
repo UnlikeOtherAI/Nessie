@@ -30,13 +30,13 @@ const shot = (page, name) =>
   page.screenshot({ path: resolve(screenshots, `${name}.png`), fullPage: true })
 
 /**
- * Everything is addressed inside the dialog. The Connections page carries its
+ * Everything is addressed inside the dialog. The Connected accounts page carries its
  * own "Connect Slack" and "Connect Calendar or Meet" buttons, so an unscoped
  * "Connect" is ambiguous — and a test that reached one of those would be
  * asserting about the wrong panel entirely.
  */
 const openConnectDialog = async (page) => {
-  await page.goto(`${adminUrl}/settings/connections`)
+  await page.goto(`${adminUrl}/settings/accounts`)
   await page.getByRole('button', { name: 'Connect email' }).click()
   const dialog = page.getByRole('dialog', { name: 'Connect email' })
   await dialog.waitFor()

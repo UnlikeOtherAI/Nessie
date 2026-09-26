@@ -23,7 +23,7 @@ import {
 } from '../../lib/channel-route';
 import { useIsOwner } from '../../facades/auth/hooks';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
-import { matchesAdminRoute } from '../../navigation/nav-items';
+import { matchesAdminRoute, matchesSettingsRoute } from '../../navigation/nav-items';
 import { useSidebarDms } from './useSidebarDms';
 import { useSidebarTree } from './useSidebarTree';
 import { useStarredItems } from './useStarredItems';
@@ -72,7 +72,7 @@ export const useAdminShell = () => {
   const { data: users = [] } = useUsers();
   const organization = useCurrentOrganization();
   const canManageOrganization = organization.data?.administration.status === 'allowed';
-  const isAgentsRoute = location.pathname.startsWith('/agents');
+  const isSettingsRoute = matchesSettingsRoute(location.pathname);
   const isKnowledgeRoute = location.pathname.startsWith('/knowledge-base');
   const isProjectsRoute = location.pathname.startsWith('/projects');
   const isFeedbackRoute = location.pathname.startsWith('/feedback');
@@ -328,17 +328,13 @@ export const useAdminShell = () => {
   // directly and returns to wherever the person was.
   const navigateToNewAgent = useCallback(() => {
     setSidebarMenu(null);
-    void navigate('/agents/designer', {
+    void navigate('/admin/agents/designer', {
       state: { returnTo: `${location.pathname}${location.search}${location.hash}` },
     });
   }, [location.hash, location.pathname, location.search, navigate]);
 
-  const navigateToSettings = useCallback((subPage?: string) => {
-    void navigate(subPage ? `/settings/${subPage}` : '/settings');
-  }, [navigate]);
-
   const navigateToAgentDesigner = useCallback(() => {
-    void navigate('/agents/designer');
+    void navigate('/admin/agents/designer');
   }, [navigate]);
 
   const logoutAndRedirect = useCallback(() => {
@@ -432,7 +428,7 @@ export const useAdminShell = () => {
     canManageOrganization,
     dmCollapsed,
     isAdminRoute,
-    isAgentsRoute,
+    isSettingsRoute,
     isFeedbackRoute,
     isKnowledgeRoute,
     isProjectsRoute,
@@ -454,7 +450,6 @@ export const useAdminShell = () => {
     navigateToNewAgent,
     navigateToNewConversation,
     navigateToProject,
-    navigateToSettings,
     openCreateChannel,
     openCreateProject,
     openPersonalAssistant,

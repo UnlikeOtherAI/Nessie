@@ -89,7 +89,7 @@ export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTable
             onClick={() => setPendingRevoke(session)}
             type="button"
           >
-            Revoke
+            Sign out
           </button>
         )
       ),
@@ -133,14 +133,14 @@ export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTable
             ? `This signs "${describeSessionDevice(pendingRevoke).name}" out immediately.`
             : undefined
         }
-        confirmLabel="Revoke"
+        confirmLabel="Sign out"
         destructive
         onCancel={() => setPendingRevoke(null)}
         onConfirm={() => {
           if (pendingRevoke) void confirmRevoke(pendingRevoke)
         }}
         open={pendingRevoke !== null}
-        title="Revoke this session?"
+        title="Sign out this device?"
       />
     </div>
   )

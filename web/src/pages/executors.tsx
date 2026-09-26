@@ -348,16 +348,13 @@ export const ExecutorsPage = () => (
 
     <h2>Installing and pairing an executor</h2>
     <p>
-      Choose the installer for the computer and for the way it will stay online. The Mac menu bar
-      app runs under your signed-in account; the Windows standalone service starts at boot under a
-      service account; the Linux headless package runs as a systemd user service. A Windows service
-      cannot run a personal Claude terminal � use Nessie Desktop in that user's session for that.
+      Install the Mac CLI with Homebrew, the Mac apps with Homebrew casks, the Linux CLI through
+      APT or DNF, or the Windows executor through WinGet. Each paired team has separate permissions
+      stored on the computer. Nessie controls access within the team; it cannot change local resources.
     </p>
     <p>
-      The <Link to="/docs/executor-setup">setup and pairing guide</Link> covers available packages,
-      the two-sided eight-digit code, team selection, permissions, sessions, stopping and unpairing.
-      It also marks distribution channels that are still planned, including Homebrew, Microsoft
-      Store and additional Linux package formats.
+      The <Link to="/docs/executor-setup">installation and pairing guide</Link> has exact commands,
+      the two-sided eight-digit code flow, local settings, startup, updates and removal.
     </p>
 
     <h3>How far each platform has actually been proven</h3>
@@ -521,14 +518,14 @@ export const ExecutorsPage = () => (
     </p>
     <p>
       There is no health endpoint on the machine — the daemon listens on no operator-facing port at
-      all, by design. On Linux, ask it directly:
+      all, by design. On macOS and Linux, ask the CLI directly:
     </p>
     <pre><code>{`nessie-executor status                # every paired executor, plus linger state
 nessie-executor status <executorId>
 systemctl --user status nessie-executor@<executorId>`}</code></pre>
     <p>
-      That command is Linux-only and refuses to run elsewhere, because it controls a systemd user
-      service. On Windows the tray icon is the at-a-glance answer, its menu names the reason, and the
+      On macOS, status reports each team’s launchd agent. The systemctl command is Linux-only.
+      On Windows the tray icon is the at-a-glance answer, its menu names the reason, and the
       service log carries the detail. On either platform the executor&rsquo;s{' '}
       <strong>Overview</strong> tab in Nessie shows its approved profiles, its data boundary, when it
       was last seen and any pending local policy proposal awaiting review.
@@ -565,18 +562,17 @@ systemctl --user status nessie-executor@<executorId>`}</code></pre>
       is a pairing challenge, a key, or a child process&rsquo;s output. There is no log-level setting
       to raise, because there is nothing more verbose to turn on.
     </p>
-    <p className="n-placeholder">
-      Where a macOS executor writes its daemon log: not established. The desktop app writes nothing
-      to disk of its own, and no separate macOS log location is documented in the repository.
+    <p>
+      The Mac CLI writes each team’s service log to
+      {' '}<code>~/Library/Logs/NessieExecutor/&lt;executorId&gt;.log</code>.
     </p>
 
     <h3>Upgrading</h3>
     <p>
-      There is no in-app updater, by decision. The Nessie web interface updates itself without any
-      local release, so most changes reach an installed app simply by reloading it; an update to the
-      shell or the executor is a reinstall. On Windows, running the newer installer over the old one
-      keeps the URL-scheme registration and every local pairing. On Linux, install the newer package
-      the ordinary way. Pairings live in machine state rather than in the program, so they survive.
+      Upgrade the CLI through Homebrew, APT or DNF, then restart each team’s service with
+      <code> disable </code> followed by <code> enable</code>. WinGet upgrades the Windows executor.
+      Direct Nessie Desktop installers offer signed in-app updates; MSI and Debian installs use
+      their package manager. Pairings and local permissions survive upgrades.
     </p>
 
     <h3>Stopping and removing</h3>

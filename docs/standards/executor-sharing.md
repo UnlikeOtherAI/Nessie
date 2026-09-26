@@ -1,8 +1,8 @@
 # Executor sharing
 
 The executor detail page owns **Agents**, **Sessions**, **Permissions** and
-**Activity**. Its doorways are Agents → Executors, the account menu and the
-project's Executors tab. Reuse these surfaces; do not add a review queue.
+**Activity**. Its doorways are Admin › Computers, Your settings › Your computers and the
+project's Computers tab. Reuse these surfaces; do not add a review queue.
 
 ## Direct access
 

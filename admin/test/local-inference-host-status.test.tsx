@@ -62,7 +62,7 @@ const render = (executorId?: string): string => {
   return renderToStaticMarkup(
     createElement(
       MemoryRouter,
-      { initialEntries: ['/agents/executors/executor-a'] },
+      { initialEntries: ['/admin/computers/executor-a'] },
       createElement(
         QueryClientProvider,
         { client: queryClient },
@@ -86,21 +86,21 @@ test('an executor detail gets its own host status and real repairs', () => {
   assert.match(html, /Pause/)
   assert.match(html, /Disconnect local models/)
   assert.doesNotMatch(html, /Offline — start Nessie Desktop/)
-  assert.doesNotMatch(html, /Open executor/)
+  assert.doesNotMatch(html, /Open computer/)
 })
 
 test('Connections keeps the doorway into the same scoped executor surface', () => {
   const html = render()
 
-  assert.match(html, /Open executor/)
-  assert.match(html, /href="\/agents\/executors\/executor-a"/)
+  assert.match(html, /Open computer/)
+  assert.match(html, /href="\/admin\/computers\/executor-a"/)
 })
 
 // The status surface has two doorways, but one destructive action. Exercise it
 // through the actual shared dialog rather than merely asserting its JSX shape.
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   pretendToBeVisual: true,
-  url: 'http://localhost/settings/connections',
+  url: 'http://localhost/settings/accounts',
 })
 const ReactClient = await import('react')
 const { act, createElement: h } = ReactClient
@@ -195,7 +195,7 @@ test('revocation remains a shared repair but only reaches the server after expli
     assert.match(view.dialogText(), /Agents will stop using this computer’s local models/)
     assert.match(
       view.dialogText(),
-      /executor pairing and other machine permissions stay connected/,
+      /computer pairing and other computer permissions stay connected/,
     )
     assert.equal(view.calls.length, 0, 'opening the destructive confirmation must not revoke')
 

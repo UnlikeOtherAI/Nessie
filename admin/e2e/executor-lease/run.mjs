@@ -15,21 +15,21 @@ import { assertFreshServersAvailable, startAdmin, stopProcess } from '../navigat
  * The executor conversation lease, as the people it concerns see it
  * (docs/plans/2026-09-22-executor-local-apps/conversation-lease.md §4):
  *
- * 1. The holder sees "Minis · local apps · until HH:MM · End" beside Run on
- *    executor once the composer opens — and the composer at rest is still
+ * 1. The holder sees "Minis · local apps · until HH:MM · End" beside Run on a
+ *    computer once the composer opens — and the composer at rest is still
  *    exactly one line, lease or no lease.
  * 2. Another member of the same room, asking about the same thread, is
  *    answered with nothing and sees nothing.
  * 3. End posts to the lease's own route and the indicator goes.
  * 4. On a phone the toolbar has no room: the chip folds into a dot on Run on
- *    executor, and the launcher dialog carries the lease and its End.
+ *    a computer, and the launcher dialog carries the lease and its End.
  * 5. A chip stands only beside a composer whose messages would carry it. A
  *    launch in a conversation with the agent covers the whole thread, so the
  *    main composer shows it (1–4). A launch in an ordinary room covers only
  *    its own reply thread: the room's composer shows nothing, that reply
  *    thread's composer shows the chip — at a phone's width too, since it has
- *    no Run on executor to fold into — and any other reply thread nothing.
- * 6. The machine's detail page lists its live leases (agent, conversation,
+ *    no Run on a computer to fold into — and any other reply thread nothing.
+ * 6. The computer's detail page lists its live leases (agent, conversation,
  *    person, last used) with End, and says so where it may not name one.
  *
  * Every API answer is the runner's, so this pins what is drawn for each
@@ -158,7 +158,7 @@ try {
   assert.deepEqual([...new Set(member.state.leaseReads)], [threadId], 'the composer asks about its own thread')
   const restHeight = await composerHeight(member.page)
   await expandComposer(member.page)
-  await member.page.getByRole('button', { name: 'Run on executor' }).waitFor()
+  await member.page.getByRole('button', { name: 'Run on a computer' }).waitFor()
   assert.equal(await member.page.getByTestId('executor-lease-indicator').count(), 0, 'another member sees no lease')
   await member.page.screenshot({ animations: 'disabled', path: resolve(output, 'member-no-indicator-1280.png') })
   assert.deepEqual(member.errors, [])
@@ -178,9 +178,9 @@ try {
   await expandComposer(holder.page)
   await indicator.waitFor({ state: 'visible' })
   assert.match(await indicator.innerText(), /^Minis · local apps · until \d{1,2}:\d{2}(\s?[AP]M)?\s*End$/)
-  const run = await holder.page.getByRole('button', { name: 'Run on executor' }).boundingBox()
+  const run = await holder.page.getByRole('button', { name: 'Run on a computer' }).boundingBox()
   const chip = await indicator.boundingBox()
-  assert.ok(run && chip && chip.x >= run.x + run.width && chip.x - (run.x + run.width) < 12, 'the chip sits beside Run on executor')
+  assert.ok(run && chip && chip.x >= run.x + run.width && chip.x - (run.x + run.width) < 12, 'the chip sits beside Run on a computer')
   const send = await holder.page.getByRole('button', { name: 'Send message' }).boundingBox()
   assert.ok(send && chip.x + chip.width <= send.x, 'the chip never runs under Send')
   await holder.page.screenshot({ animations: 'disabled', path: resolve(output, 'holder-indicator-1280.png') })
@@ -201,10 +201,10 @@ try {
   await expandComposer(phone.page)
   assert.equal(await phone.page.getByTestId('executor-lease-indicator').isVisible(), false, 'no chip on a phone toolbar')
   const dot = await phone.page.locator('.admin-compose-executor').evaluate((button) => getComputedStyle(button, '::after').content)
-  assert.notEqual(dot, 'none', 'Run on executor carries the dot instead')
+  assert.notEqual(dot, 'none', 'Run on a computer carries the dot instead')
   await phone.page.screenshot({ animations: 'disabled', path: resolve(output, 'holder-dot-390.png') })
-  await phone.page.getByRole('button', { name: 'Run on executor' }).click()
-  const dialog = phone.page.getByRole('dialog', { name: 'Run on an executor' })
+  await phone.page.getByRole('button', { name: 'Run on a computer' }).click()
+  const dialog = phone.page.getByRole('dialog', { name: 'Run on a computer' })
   const notice = dialog.getByTestId('executor-lease-launcher-notice')
   await notice.waitFor()
   assert.match(await notice.innerText(), /CTO can use local apps on Minis/)
@@ -227,7 +227,7 @@ try {
     await room.page.locator('form.admin-compose').waitFor()
     await settle(room.page)
     await expandComposer(room.page)
-    await room.page.getByRole('button', { name: 'Run on executor' }).waitFor()
+    await room.page.getByRole('button', { name: 'Run on a computer' }).waitFor()
     assert.equal(await room.page.getByTestId('executor-lease-indicator').count(), 0,
       'a top-level post would not carry the lease, so the room composer does not claim it')
     const roomDot = await room.page.locator('.admin-compose-executor').evaluate((button) => getComputedStyle(button, '::after').content)
@@ -247,7 +247,7 @@ try {
     assert.equal(await replyIndicator.isVisible(), false, 'the reply composer at rest shows no chip')
     await expandComposer(room.page)
     await replyIndicator.waitFor({ state: 'visible' })
-    assert.equal(await room.page.getByRole('button', { name: 'Run on executor' }).count(), 0)
+    assert.equal(await room.page.getByRole('button', { name: 'Run on a computer' }).count(), 0)
     const replyChip = await replyIndicator.boundingBox()
     const replySend = await room.page.getByRole('button', { name: 'Send message' }).boundingBox()
     const replyEnd = await room.page.getByRole('button', { name: 'End local apps on Minis' }).boundingBox()

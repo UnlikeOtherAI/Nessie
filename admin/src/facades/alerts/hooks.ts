@@ -152,9 +152,9 @@ export const getAlertLink = (
   if (alert.kind === 'local_inference_health' && alert.localInferenceHostId) {
     // The explicit host fragment is an in-context repair doorway, rather than
     // a generic settings landing page that makes the custodian search their
-    // own device list. The inference tab is also required: Connections opens
-    // on email by default.
-    return { to: `/settings/connections?tab=inference#local-inference-host-${alert.localInferenceHostId}` }
+    // own device list. The AI plans tab is also required: Connected accounts
+    // opens on Mail and calendar by default.
+    return { to: `/settings/accounts?tab=ai#local-inference-host-${alert.localInferenceHostId}` }
   }
   if (alert.kind === 'trigger_machine_access' && alert.triggerId) {
     // The ticket trigger an agent set up for the reader, at its Machine access
@@ -166,11 +166,11 @@ export const getAlertLink = (
     return { to: triggerUrl(alert.triggerId) }
   }
   if (alert.kind === 'automatic_membership_health' && alert.automaticMembershipRuleId) {
-    // Automatic access has one home: Organization -> Members -> Automatic
-    // logins. The rule id is retained as URL state so the shared panel can put
+    // Automatic access has one home: Admin › People › Automatic team access
+    // tab. The rule id is retained as URL state so the shared panel can put
     // the precise reauthorization control in view after a cold bell click.
     return {
-      to: `/settings/members?membersTab=automatic&automaticMembershipRule=${alert.automaticMembershipRuleId}`,
+      to: `/admin/people?scope=organisation&tab=automatic&automaticMembershipRule=${alert.automaticMembershipRuleId}`,
     }
   }
   if (alert.kind === 'board_source_health' && alert.projectId && alert.boardSourceId) {
@@ -181,10 +181,10 @@ export const getAlertLink = (
     }
   }
   if (alert.kind === 'workflow_run_failed' && alert.workflowRunId) {
-    return { to: `/agents/workflows?failedRuns=1&run=${alert.workflowRunId}` }
+    return { to: `/admin/automations?tab=workflows&failedRuns=1&run=${alert.workflowRunId}` }
   }
   if (alert.kind === 'task_set_health' && alert.taskSetId) {
-    return { to: `/agents/task-sets/${encodeURIComponent(alert.taskSetId)}` }
+    return { to: `/admin/automations/batch-jobs/${encodeURIComponent(alert.taskSetId)}` }
   }
   if (alert.kind === 'task_assigned' && alert.projectId) {
     return { to: `/projects/${alert.projectId}/board` }

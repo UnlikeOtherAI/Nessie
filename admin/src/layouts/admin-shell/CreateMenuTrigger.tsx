@@ -30,7 +30,7 @@ const actionRowClassName = [
 ].join(' ')
 
 const panelClassName = [
-  'create-menu-panel w-[272px] overflow-hidden rounded-xl border p-2',
+  'frosted-menu-panel w-[272px] overflow-hidden rounded-xl border p-2',
 ].join(' ')
 
 const CreateMenuPopover = ({

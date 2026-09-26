@@ -9,7 +9,7 @@ import { teamKeys } from '../src/facades/team/keys.js'
 /**
  * Cancelling a pending team invitation (the revoke route; the button says
  * "Cancel invitation", the roster's verb for the same action): it exists where an
- * owner/admin is already standing (Settings → Members → Pending invitations),
+ * owner/admin is already standing (Admin → People → Pending invitations),
  * it calls the revoke route for that invite id, and it re-reads the lists the
  * way the sibling invitation actions do — UOA is the only state there is.
  */

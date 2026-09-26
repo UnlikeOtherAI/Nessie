@@ -391,7 +391,7 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
 
 The admin renders Knowledge in its own section, not inside the channels column.
 On `/knowledge-base` the shell swaps the channels/DMs second column for a
-dedicated `KnowledgeSidebarNav` (mirrors how `/agents` and the admin routes swap
+dedicated `KnowledgeSidebarNav` (mirrors how the `/admin` routes swap
 that column):
 
 - The second column starts with the Spaces list — styled like the channels list
@@ -458,6 +458,8 @@ that column):
     fills the whole main area as a borderless writing canvas: the title and body
     are edited in place with descriptive placeholders, labels and the optional
     change comment sit below the body, and there is no separate Summary field.
+    While editing, its header shows a non-interactive, truncated location trail
+    from the space through ancestor folders to the current draft title.
     Typing a comma or space commits a label into a removable chip beside the
     input, matching its saved appearance. An unfinished label is included when
     the document is saved; previously saved labels containing spaces remain intact.
@@ -465,6 +467,9 @@ that column):
     as the parent. **New document** is available at the space root and inside
     folders, never on an open document. Creation offers **Publish** as its
     primary action and **Save as draft** as the secondary choice. The document
+    owner saving an edit to an already published document publishes that new
+    version in the same transaction; the page stays published. An agent or a
+    recipient with edit access saves a draft for the owner to publish.
     title is visually distinct from body copy through a
     larger serif treatment; formatting controls use the same restrained icon
     language as the channel composer. Page previews show clickable

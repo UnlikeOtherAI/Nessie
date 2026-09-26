@@ -37,7 +37,7 @@ import type { RunInference } from './run-inference.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
 import { recordToolEnd } from './tool-events.js'
 import { createToolEffectLedger, externalDispatchPredicate } from './tool-effect-ledger.js'
-import { claimPreparedCardCall, recordPreparedCardOutcome } from './prepared-card-call.js'
+import { claimPreparedCardCall, preparedLoopInput, recordPreparedCardOutcome } from './prepared-card-call.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 import { persistCurrentRunBasis, runReplyIsRestricted } from './agent-message.js'
 import {
@@ -440,7 +440,7 @@ export const runExecutionAgentLoop = async (
   // A pressed card button's prepared call runs before the model is asked anything.
   const prepared = input.resumeState ? null : await claimPreparedCardCall(deps.prisma, payload, context)
   const loopResult = await runAgenticLoop({
-    ...(prepared ? { preparedToolCalls: [prepared.call] } : {}),
+    ...preparedLoopInput(prepared, input.inference.decide),
     reviewCompletion: (messages, outputText) =>
       reviewFollowUp(input.inference.runUtility, messages, outputText, input.invocationSink, input.inference.decide),
     budget: input.budget,

@@ -6,6 +6,8 @@ import { approveExecutorPairingOrigin } from '@nessie/schemas'
 import { claimExecutor, heartbeatExecutor } from './daemon.js'
 import { serveExecutor } from './daemon-server.js'
 import { describeExecutor } from './describe.js'
+import { runDistributionCli } from './distribution-cli.js'
+import { runMacServiceCli } from './service-macos.js'
 import { runPairingCodeCli } from './pairing-code-cli.js'
 import { runLocalSettingsCli } from './local-settings-cli.js'
 import { terminalProgramConfiguration } from './terminal-program-configuration.js'
@@ -445,6 +447,7 @@ export const parseCommand = (args: string[]): ParsedCommand => {
 }
 
 export const run = async (args: string[]): Promise<void> => {
+  if (runDistributionCli(args) || await runMacServiceCli(args)) return
   if (await runBuiltinMcpCli(args)) return
   if (await runLocalInferenceCli(args)) return
   if (await runPairingCodeCli(args)) return

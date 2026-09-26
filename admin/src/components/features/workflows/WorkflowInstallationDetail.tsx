@@ -38,7 +38,7 @@ import {
 
 /**
  * Installation detail — the operational hub for one installed workflow:
- * start runs, attach triggers in place (same editor as the Triggers page),
+ * start runs, attach triggers in place (same editor as the Schedules and triggers page),
  * and inspect run history. Facts render once in a definition list.
  */
 

@@ -29,10 +29,13 @@ test('the page editor is a borderless writing canvas with descriptive placeholde
   assert.doesNotMatch(richText, /kb-editor[^\n]*rounded[^\n]*border/)
 })
 
-test('document title uses its display serif and the rich-text toolbar uses channel-style icon controls', () => {
+test('document title uses self-hosted Source Serif 4 and the rich-text toolbar uses channel-style icon controls', () => {
   const toolbar = readFileSync(new URL('../src/components/shared/markdown-editor/RichTextToolbar.tsx', import.meta.url), 'utf8')
-  assert.match(styles, /--font-family-document-title: Georgia, 'Times New Roman', serif/)
+  const main = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8')
+  assert.match(main, /import '@fontsource-variable\/source-serif-4\/wght\.css'/)
+  assert.match(styles, /--font-family-document-title: 'Source Serif 4 Variable', Georgia, 'Times New Roman', serif/)
   assert.match(styles, /\.kb-document-title\s*\{[^}]*font-family: var\(--font-family-document-title\)/)
+  assert.match(preview, /<h1 className="kb-document-title mt-3">/)
   assert.match(toolbar, /admin-compose-action flex h-7 w-7/)
   for (const icon of ['faBold', 'faItalic', 'faHeading', 'faListUl', 'faListOl', 'faQuoteLeft', 'faCode', 'faFileCode', 'faLink']) {
     assert.match(toolbar, new RegExp(`\\b${icon}\\b`))

@@ -341,10 +341,9 @@ and the project tab need no separate rules. Order is priority, high first.
 
 | id | kind | label | icon | priority | primary | shown when |
 |---|---|---|---|---|---|---|
-| `new-file` | menu | "New file" | `faPlus` | 100 | **yes** | the active column is writable (`canWrite` of its space) and not virtual |
-| `new-folder` | button | "New folder" | `faFolderPlus` | 90 | | same; at the Knowledge root it is labelled **New space…** and opens the space dialog instead |
-| `sort` | menu | "Sort: {Name}" | `faArrowDownWideShort` | 80 | | always, disabled (`aria-disabled`) in virtual columns with `title="Latest and Shared with me are ordered by time"` |
-| `view` | menu | "View: {Tree}" | `faSitemap` / `faColumns` / `faList` | 70 | | `split` only — on `single` a column *is* a list |
+| `new` | menu | "New" | outlined `Plus` | 100 | **yes** | the active column is writable (`canWrite` of its space), or the Knowledge root is active; Folder/Space is the first menu item |
+| `sort` | menu | "Sort: {Name}" | outlined `ArrowDownWideNarrow` | 80 | | always, disabled (`aria-disabled`) in virtual columns with `title="Latest and Shared with me are ordered by time"` |
+| `view` | menu | "View: {Tree}" | outlined icon for the selected view | 70 | | when the view selector is available |
 | `needs-review` | toggle | "Needs review ({n})" | | 60 | | `agentDraftCount > 0 || needsReviewOnly` for the active space (unchanged behaviour) |
 | `sharing-settings` | button, compact | "Sharing & settings" | `faGear` | 10 | | active space `canManageAccess || canWrite`; at the space root it opens Space settings, while inside a folder it opens Folder settings for that folder |
 
@@ -363,11 +362,14 @@ column would offer to open the agent whose own page you are already on, and
 the column's title shows the agent's name without the ` — Documents`
 suffix (`agentDocumentsSpaceDisplayName`).
 
-One primary: New file. New page used to be primary; "file" is the owner's
-word and the menu holds the three kinds. *Rejected:* keeping New folder
-primary alongside (two filled buttons name no decision).
+One primary: New. Folder/Space, Document, Spreadsheet, Spreadsheet from a
+file, and Upload live in that menu. The New, Sort, and View popups share the
+Channels action menu's compact width and rows, without a repeated heading.
+Their web triggers and rows use 14px outlined icons with a 2px stroke; their
+FontAwesome metadata remains for existing menu consumers elsewhere.
 
-**New file** menu items: Document, Upload… — the contract is
+**New** menu items: Folder/Space, Document, Spreadsheet, Spreadsheet from a
+file, Upload… — the contract is
 [menus-and-dialogs.md](menus-and-dialogs.md) §6.
 
 **Sort** menu (role `menu`, items `menuitemradio`): Name, Date modified,
@@ -394,7 +396,7 @@ name. Ties break on `position`, then `id`. Default `name`. The choice is
 *Rejected:* per-folder sort — Finder keeps it in `.DS_Store`; we would need a
 `(userId, folderId)` store and a write on every menu pick.
 
-**View** menu: Tree (`faSitemap`), Columns (`faColumns`), List (`faList`),
+**View** menu: Tree (`ListTree`), Columns (`Columns3`), List (`List`),
 `menuitemradio`.
 `?view=` is the state. On `single` the action is omitted, not disabled.
 

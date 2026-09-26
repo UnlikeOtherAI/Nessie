@@ -9,7 +9,7 @@ test('pairing on Windows guides an ordinary terminal to the service tray before 
   assert.equal(await runPairingCodeCli([], 'win32'), true)
   assert.equal(await runPairingCodeCli(['pair'], 'win32'), true)
   assert.equal(await runPairingCodeCli(['pairing-start'], 'win32'), true)
-  assert.equal(output, 'Open Nessie Executor in the Windows tray and choose Pair with Nessie.\n'.repeat(3))
+  assert.equal(output, 'Open Nessie Executor in the Windows tray and choose Add team.\n'.repeat(3))
 })
 
 test('pairing keeps explicit operator state and JSON native commands on their configured path', () => {

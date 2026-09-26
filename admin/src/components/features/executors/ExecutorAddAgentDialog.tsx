@@ -52,7 +52,7 @@ export const ExecutorAddAgentDialog = ({ executorId, onClose, token }: ExecutorA
 
   return (
     <Dialog
-      description="Choose an agent to give it access to this executor."
+      description="Choose an agent to give it access to this computer."
       dismissDisabled={prepare.isPending}
       initialFocusRef={searchRef}
       onClose={close}

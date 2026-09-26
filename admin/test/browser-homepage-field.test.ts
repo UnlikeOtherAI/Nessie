@@ -150,7 +150,7 @@ test('a level below a lock cannot edit, still sees what is in force, and is told
   assert.match(html, /placeholder="https:\/\/intranet\.example\.com\/start"/)
   // Nothing below a lock may set the key, so this level is offered no lock of
   // its own to pass further down.
-  assert.doesNotMatch(html, /Use this everywhere/)
+  assert.doesNotMatch(html, /Prevent overrides below/)
 })
 
 test('the level holding the lock still edits its own value', () => {
@@ -265,13 +265,13 @@ test('a level with an override of its own is offered the way back to the level a
   assert.match(html, /value="https:\/\/example\.com\/start"/)
   assert.match(html, />Clear</)
   // A personal setting locks nobody, so the lock never appears at that level.
-  assert.doesNotMatch(html, /Use this everywhere/)
+  assert.doesNotMatch(html, /Prevent overrides below/)
 })
 
 test('an editable level above people can pin the address for everyone below it', () => {
   const html = renderField(resolved({}), 'organization')
 
-  assert.match(html, /Use this everywhere/)
+  assert.match(html, /Prevent overrides below this organisation/)
   assert.match(html, new RegExp(`placeholder="${DEFAULT_BROWSER_HOMEPAGE}"`))
 })
 

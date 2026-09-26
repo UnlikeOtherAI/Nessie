@@ -239,19 +239,19 @@ app.post(
         const recovery = existing?.connection.scope === 'user'
           && existing.connection.userId === actorContext.actor.actorId
           ? {
-              href: "/settings/account?tab=agents",
+              href: "/settings/accounts?tab=browsers",
               label: "Connect Browserbase",
             }
           : existing?.connection.scope === 'organization' && owner
             ? {
-                href: "/settings/organization?tab=agents",
+                href: "/admin/connections",
                 label: "Reconnect Browserbase",
               }
             : !existing && (agent.visibility === 'private'
               || (resumeScope !== null && resumeScope.principalUserId !== null))
-              ? { href: '/settings/account?tab=agents', label: 'Connect Browserbase' }
+              ? { href: '/settings/accounts?tab=browsers', label: 'Connect Browserbase' }
             : !existing && owner
-              ? { href: '/settings/organization?tab=agents', label: 'Connect Browserbase' }
+              ? { href: '/admin/connections', label: 'Connect Browserbase' }
             : null;
         sendApiError(reply, 409, error.code, error.message, undefined, {
           recovery: recovery ?? {

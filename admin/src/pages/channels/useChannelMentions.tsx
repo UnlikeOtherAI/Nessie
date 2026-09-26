@@ -400,7 +400,7 @@ export const useChannelMentions = ({
                   ? `Open chat with ${entity.name}`
                   : `Open ${entity.name} in team users`
               }
-              to={dmChannel ? `/channels/${dmChannel.id}` : '/settings/members'}
+              to={dmChannel ? `/channels/${dmChannel.id}` : '/admin/people'}
             >
               @{entityName}
             </Link>

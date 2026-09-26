@@ -18,7 +18,7 @@ const statusesListStore = createListPageStore()
  * It was a two-column card layout: an add form and a rail of status cards on
  * the left, the selected status's editor on the right, both in one component.
  * It is now the admin's ordinary list shape — one header, one table, one pager
- * — and a status is its own screen at `/settings/statuses/:statusId`, which is
+ * — and a status is its own screen at `/settings/status/:statusId`, which is
  * the route it already had.
  */
 export const StatusesPage = () => {
@@ -78,7 +78,7 @@ export const StatusesPage = () => {
   return (
     <SettingsPanel
       actions={actions}
-      eyebrow="User"
+      eyebrow="Your settings"
       // Always visible: an empty or single-page list keeps its size control,
       // and the table above it does not grow and shrink as pages change.
       footer={
@@ -106,14 +106,14 @@ export const StatusesPage = () => {
           it on by itself, and contact rules that decide who still reaches you.
         </p>
       }
-      title="Statuses"
+      title="Status"
     >
       <FormError className="mb-3">{actionError}</FormError>
 
       <StatusesTable
         emptyMessage="No statuses yet. Add one to say what you are doing."
         isLoading={statuses.isPending}
-        onOpen={(statusId) => void navigate(`/settings/statuses/${statusId}`)}
+        onOpen={(statusId) => void navigate(`/settings/status/${statusId}`)}
         statuses={pageStatuses}
       />
 

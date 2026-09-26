@@ -5,12 +5,13 @@ import { PageBody, Section } from '../components/shared/PageBody'
 import { PaginationFooter } from '../components/shared/PaginationFooter'
 import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
+import type { SettingsTabHostProps } from '../components/shared/SettingsPanel'
 import { OwnerGate } from '../components/shared/OwnerGate'
 import { useIsOwner } from '../facades/auth/hooks'
 import { auditLogKeys } from '../lib/query-keys'
 import { usePagedList } from '../facades/pagination/usePagedList'
 
-export const AuditLogPage = () => {
+export const AuditLogPage = ({ host }: { host?: SettingsTabHostProps }) => {
   const [actionFilter, setActionFilter] = useState('')
   // Still the page's own flag: the query below must stay disabled for a
   // non-owner, exactly as before OwnerGate wrapped the render.
@@ -33,7 +34,11 @@ export const AuditLogPage = () => {
     <section className="flex h-full min-h-0 flex-col">
       {/* The header is always rendered: a refusal is a state of this screen,
           not a screen of its own, so Back never disappears with it. */}
-      <ScreenHeader title="Audit Log" />
+      <ScreenHeader
+        eyebrow={host?.eyebrow ?? 'Organisation'}
+        tabs={host?.tabs}
+        title={host?.title ?? 'Audit log'}
+      />
       <OwnerGate>
         <PageBody>
           <Section title="Events">

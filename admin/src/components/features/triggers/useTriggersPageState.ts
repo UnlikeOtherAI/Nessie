@@ -140,7 +140,7 @@ export const useTriggersPageState = (): TriggersPageState => {
   const directory = useTriggerRegistry()
   const { registry } = directory
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
-  // `/agents/triggers?create=<agentId>` — the "New trigger" button on an
+  // `/admin/automations?create=<agentId>` — the "New trigger" button on an
   // agent's own Triggers panel. The doorway lands in the create form already
   // pointed at that agent rather than on a list the person then has to find it
   // in; the registry declares `create` on this surface (it is the same intent
@@ -149,7 +149,7 @@ export const useTriggersPageState = (): TriggersPageState => {
   const createForAgent = useConsumedIntent('create')
   const [createTargetAgentId, setCreateTargetAgentId] = useState<string | undefined>(undefined)
   // The search phrase and the status/type narrowing are all part of what the
-  // list shows, so they live in the URL: `/agents/triggers?status=error` is
+  // list shows, so they live in the URL: `/admin/automations?status=error` is
   // linkable and survives a refresh, and Back leaves the page rather than
   // undoing the filter (docs/navigation/overview.md §1).
   const [searchParams, setSearchParams] = useSearchParams()

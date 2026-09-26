@@ -1,10 +1,10 @@
 // A durable trigger-health alert has one destination: the broken schedule's
 // own screen, where the classified failure and its Reauthorize control sit.
 //
-// That screen is a route now (`/agents/triggers/:triggerId`) rather than a
-// column browser's selected row behind `?trigger=`, so the trigger is named by
-// the screen's `h1`, reached from a table row, and left through the shared
-// "Back to Triggers" doorway.
+// That screen is a route now (`/admin/automations/triggers/:triggerId`) rather
+// than a column browser's selected row behind `?trigger=`, so the trigger is
+// named by the screen's `h1`, reached from a row of Automations' Schedules &
+// triggers tab, and left through the shared "Back to Automations" doorway.
 import { createChecks } from '../lib/expect.mjs'
 import { gotoPath, pushPath, shot } from '../lib/page.mjs'
 import { seedTriggerHealthAlert } from '../lib/seed.mjs'
@@ -25,31 +25,31 @@ export const desktopTriggerHealthAlert = {
     // list → the trigger it came from → Channels. That is what every other
     // detail route in the section does, and nothing is superseded on the way.
     await gotoPath(page, '/channels')
-    await pushPath(page, '/agents/triggers')
-    await page.waitForURL(/\/agents\/triggers$/u)
+    await pushPath(page, '/admin/automations')
+    await page.waitForURL(/\/admin\/automations$/u)
     const triggerRow = page.getByRole('row').filter({
       has: page.getByText(health.title, { exact: true }),
     })
     await triggerRow.waitFor()
     await triggerRow.click()
-    await page.waitForURL(new RegExp(`/agents/triggers/${health.triggerId}$`, 'u'))
+    await page.waitForURL(new RegExp(`/admin/automations/triggers/${health.triggerId}$`, 'u'))
     await detailHeading.waitFor()
     // The header renders a hidden measuring copy of its lanes, so every control
     // this case presses is taken from the visible one.
     await page
-      .getByRole('button', { name: 'Back to Triggers', exact: true })
+      .getByRole('button', { name: 'Back to Automations', exact: true })
       .filter({ visible: true })
       .first()
       .click()
-    await page.waitForURL(/\/agents\/triggers$/u)
+    await page.waitForURL(/\/admin\/automations$/u)
     await Promise.all([
-      page.waitForURL(new RegExp(`/agents/triggers/${health.triggerId}$`, 'u')),
+      page.waitForURL(new RegExp(`/admin/automations/triggers/${health.triggerId}$`, 'u')),
       page.goBack(),
     ])
     const browserBackReopenedTheTrigger =
-      new RegExp(`/agents/triggers/${health.triggerId}$`, 'u').test(page.url())
+      new RegExp(`/admin/automations/triggers/${health.triggerId}$`, 'u').test(page.url())
     await Promise.all([
-      page.waitForURL(/\/agents\/triggers$/u),
+      page.waitForURL(/\/admin\/automations$/u),
       page.goBack(),
     ])
     await Promise.all([
@@ -61,7 +61,7 @@ export const desktopTriggerHealthAlert = {
     await gotoPath(page, '/channels')
     await page.getByRole('button', { name: 'Alerts', exact: true }).click()
     await page.getByText('A scheduled task stopped running', { exact: true }).first().click()
-    await page.waitForURL(new RegExp(`/agents/triggers/${health.triggerId}$`, 'u'))
+    await page.waitForURL(new RegExp(`/admin/automations/triggers/${health.triggerId}$`, 'u'))
     await detailHeading.waitFor()
     await page.getByText('This schedule has stopped', { exact: true }).waitFor()
     const reauthorize = page

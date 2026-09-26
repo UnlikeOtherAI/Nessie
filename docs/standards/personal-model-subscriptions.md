@@ -1,4 +1,4 @@
-# Personal model subscriptions — the owner's plan, the owner's grant
+# Personal model subscriptions (Your AI plans on Connected accounts) — the owner's plan, the owner's grant
 
 Authoritative standard, moved verbatim out of [`AGENTS.md`](../../AGENTS.md)
 so it is read when the work touches this area rather than loaded into every
@@ -158,9 +158,10 @@ Facts not restated there:
   backend may not serve.
 - Package `@nessie/model-subscriptions` (adapters, vault store, coordinator);
   routes `/api/model-subscriptions*`; surfaces are the "Personal model
-  subscriptions" section on `/settings/connections`, the **Your
-  subscriptions** group in the Agent Designer model picker, which also carries
-  the "Link a personal subscription…" doorway when none is linked, and the
+  subscriptions" section on Connected accounts' AI plans tab
+  (`/settings/accounts?tab=ai`), the **Your subscriptions** group in the
+  Agent Designer model picker, which also carries the "Link a personal
+  subscription…" doorway to that tab when none is linked, and the
   Designer's own conversation: its catalogue's "own linked plans" group, and
   `agent_create` / `agent_update` taking the `subscription/<key>` pair plus
   `modelSubscriptionId` when two accounts at one provider must be told apart
@@ -169,3 +170,10 @@ Facts not restated there:
   `_TOKEN` / `_PROJECT_ID` (+ optional `_ENVIRONMENT`). Unset ⇒ the settings
   section says the feature is unavailable and linking is refused, unless the
   explicit local-only temporary store is enabled.
+
+Both the Personal Assistant and Agent Designer can refresh linked-plan metadata
+through `account_connections_list`, including a plan needing reauthorization.
+They check before asserting that an unlisted plan is unlinked. The read carries
+no credential or account label into the model and does not choose a billing
+lane. The Personal Assistant hands model changes to the Designer; selection
+remains limited to the person's own ordinary agents.

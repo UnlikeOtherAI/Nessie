@@ -74,14 +74,14 @@ export const TriggerDetailPage = () => {
     setSaved(null)
   }, [triggerId])
 
-  const backToList = () => void navigate('/agents/triggers')
+  const backToList = () => void navigate('/admin/automations')
 
   if (!trigger) {
     // The header is rendered here too: loading, failure and not-found are
     // states of this screen, and a phone with no header has no Back at all.
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <ScreenHeader backLabel="Back to Triggers" onBack={backToList} title="Trigger" />
+        <ScreenHeader backLabel="Back to Automations" onBack={backToList} title="Trigger" />
         <QueryState
           className="flex flex-1 items-center justify-center"
           emptyLabel="This trigger could not be found. It may have been deleted."
@@ -215,7 +215,7 @@ export const TriggerDetailPage = () => {
     <div className="flex h-full min-h-0 flex-col">
       <ScreenHeader
         actions={actions}
-        backLabel="Back to Triggers"
+        backLabel="Back to Automations"
         eyebrow="Triggers"
         onBack={backToList}
         subtitle={

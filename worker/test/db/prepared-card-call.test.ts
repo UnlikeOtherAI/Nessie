@@ -217,3 +217,35 @@ runDatabaseTest('a typed answer right under the card claims it as a press would'
     agentId: s.agentId, threadId: s.threadId, trigger: { ...later, userId: s.ownerId },
   }), null)
 })
+
+runDatabaseTest('an approved continuation takes over the suspended run\u2019s claim, through Postgres JSON equality', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  t.after(() => cleanup(prisma, s).then(() => prisma.$disconnect()))
+
+  const posted = await postCard(prisma, s)
+  const press = await personSays(prisma, s, 'Fri 14:00', posted.messageId)
+  await prisma.agentCard.update({
+    data: { resolvedActionKey: 'friday', resolvedAt: new Date(), resolvedByUserId: s.ownerId,
+      responseMessageId: press.id, status: 'resolved' },
+    where: { id: posted.cardId },
+  })
+  const suspended = await prisma.run.create({ data: { agentId: s.agentId, status: 'running', threadId: s.threadId } })
+  const claimFor = (runId: string) =>
+    claimPreparedCardCall(prisma, { messageId: press.id }, { agent: { id: s.agentId }, run: { id: runId } })
+
+  const claimed = await claimFor(suspended.id)
+  assert.ok(claimed)
+  // Suspended on an approval gate: no outcome, so the claim stays open.
+  await recordPreparedCardOutcome(prisma, claimed, { pendingApproval: { approvalId: 'a-1' }, runId: suspended.id })
+
+  const stranger = await prisma.run.create({ data: { agentId: s.agentId, status: 'running', threadId: s.threadId } })
+  assert.equal(await claimFor(stranger.id), null)
+  const continuation = await prisma.run.create({
+    data: { agentId: s.agentId, continuationOfRunId: suspended.id, status: 'running', threadId: s.threadId },
+  })
+  const approved = await claimFor(continuation.id)
+  assert.deepEqual(approved?.call, claimed.call, 'the exact prepared call, so the approval proof matches')
+  const row = await prisma.agentCard.findUniqueOrThrow({ where: { id: posted.cardId } })
+  assert.deepEqual(row.preparedExecution, { runId: continuation.id })
+})

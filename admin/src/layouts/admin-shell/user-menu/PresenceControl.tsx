@@ -34,8 +34,8 @@ export const PresenceControl = () => {
   }
 
   return (
-    <div className="px-2 py-1.5">
-      <div className="mb-1.5 flex items-center gap-2 text-xs text-[color:var(--tx3)]">
+    <div className="px-2.5 py-1">
+      <div className="mb-1.5 flex items-center gap-2 text-[11px] text-[color:var(--tx3)]">
         <PresenceBadge focusModeEnabled={focusModeEnabled} ringColor="var(--panel)" size={9} state={self.state} />
         <span>Availability — {STATE_LABEL[self.state] ?? 'Active'}</span>
       </div>

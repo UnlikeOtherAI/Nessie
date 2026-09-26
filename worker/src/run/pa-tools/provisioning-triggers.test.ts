@@ -127,7 +127,7 @@ test('agent_trigger_create creates every non-workflow trigger type with executab
     assert.equal(result.toolName, 'agent_trigger_create')
     assert.match(
       result.outputPreview,
-      new RegExp(`^Created ${trigger.type} trigger \\[${trigger.name}\\]\\(/agents/triggers/[0-9a-f-]{36}\\) for \\[Release Reporter\\]\\(/agents/${AGENT_ID}\\)$`, 'm'),
+      new RegExp(`^Created ${trigger.type} trigger \\[${trigger.name}\\]\\(/admin/automations/triggers/[0-9a-f-]{36}\\) for \\[Release Reporter\\]\\(/admin/agents/${AGENT_ID}\\)$`, 'm'),
     )
     assert.match(result.outputPreview, new RegExp(`posts into \\[#releases\\]\\(/channels/${CHANNEL_ID}\\)$`, 'm'))
   }

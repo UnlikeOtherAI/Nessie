@@ -78,6 +78,16 @@ test('the pre-paint script is revalidated, never heuristically cached', () => {
   assert.match(location[1], /add_header\s+Cache-Control\s+"no-cache"/)
 })
 
+test('the PDF module worker is served as JavaScript under nosniff', () => {
+  // The ordinary /assets/ location uses nginx's MIME table, which has no .mjs
+  // entry. An octet-stream response passes build checks but Safari refuses to
+  // start the worker, so the whole PDF preview fails after deployment.
+  const location = /location\s+~\s+\^\/assets\/\.\*\\\.mjs\$\s*\{\s*types\s*\{([^}]+)\}/
+    .exec(adminConf)
+  assert.ok(location, 'admin-nginx.conf must handle fingerprinted .mjs assets')
+  assert.match(location[1], /text\/javascript\s+mjs\s*;/)
+})
+
 test('the pre-paint theme list is the full set of concrete themes', () => {
   // The script cannot import THEME_IDS — it runs before the bundle exists — so
   // it restates them. A theme missing from its list paints as `nessie` for one

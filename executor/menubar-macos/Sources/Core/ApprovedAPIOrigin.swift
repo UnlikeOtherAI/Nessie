@@ -115,7 +115,7 @@ public enum ApprovedAPIOrigin {
     public static func consoleURL(forAPIOrigin apiOrigin: String, isDevelopmentBuild: Bool) -> URL {
         if isDevelopmentBuild, apiOrigin == localDevelopment {
             // Force-unwrapped against a literal this file owns.
-            return URL(string: "http://localhost:5455/agents/executors")!
+            return URL(string: "http://localhost:5455/admin/computers")!
         }
         guard var components = URLComponents(string: apiOrigin), let host = components.host else {
             return hostedNessieConsole
@@ -123,14 +123,14 @@ public enum ApprovedAPIOrigin {
         if host.hasPrefix("api.") {
             components.host = "app." + host.dropFirst("api.".count)
         }
-        components.path = "/agents/executors"
+        components.path = "/admin/computers"
         return components.url ?? hostedNessieConsole
     }
 
     /// Only ever reached by an origin this app already refused to pair with, so
     /// it points at the Nessie the first preset names. Force-unwrapped against a
     /// literal this file owns.
-    private static let hostedNessieConsole = URL(string: "https://app.nessie.works/agents/executors")!
+    private static let hostedNessieConsole = URL(string: "https://app.nessie.works/admin/computers")!
 
     private static func origin(scheme: String, host: String, port: Int?) -> String {
         guard let port, !(scheme == "https" && port == 443), !(scheme == "http" && port == 80) else {

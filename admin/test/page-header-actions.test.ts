@@ -69,6 +69,7 @@ test('page-header actions carry their role as a class the stylesheet owns', () =
   // Colour belongs to the stylesheet; the utilities left here own the box.
   assert.doesNotMatch(header, /bg-\[color:var\(--accent\)\]/)
   assert.doesNotMatch(header, /hover:(?:bg-|opacity-|text-)/)
+  assert.match(header, /action\.fixedWidth \? \{ width: action\.fixedWidth, flexShrink: 0 \}/)
 
   assert.match(
     styles,
@@ -92,6 +93,15 @@ test('page-header actions carry their role as a class the stylesheet owns', () =
       assert.match(selector, /:not\(:disabled\)/)
     }
   }
+})
+
+test('stateful page-header actions keep their declared width in the live and measured controls', () => {
+  const header = source('../src/components/shared/ResponsivePageHeader.tsx')
+  const actionTypes = source('../src/components/shared/page-header-action-types.ts')
+
+  assert.match(actionTypes, /fixedWidth\?: string/)
+  assert.match(header, /style=\{actionStyle\(action\)\}/)
+  assert.match(header, /renderAction\(action, true\)/)
 })
 
 test('a header that offers a creation names a primary action', () => {
