@@ -321,8 +321,11 @@ test('the account menu is Availability, Status, Your settings, Send feedback, Si
   assert.ok(feedback < signOut)
   assert.match(
     popover.slice(feedback, signOut),
-    /<div className="my-1 h-px bg-\[color:var\(--sep\)\]" \/>/,
+    /<div className="admin-account-menu-divider" \/>/,
   )
+  assert.match(popover, /<Settings aria-hidden="true" strokeWidth=\{2\} \/>/)
+  assert.match(popover, /<CircleHelp aria-hidden="true" strokeWidth=\{2\} \/>/)
+  assert.match(popover, /<LogOut aria-hidden="true" strokeWidth=\{2\} \/>/)
   // The computers a person paired are Your settings › Your computers, and the
   // session debug is Admin › Advanced; neither is a menu row any more.
   assert.doesNotMatch(popover, /ExecutorSection|DebugTokenButton/)

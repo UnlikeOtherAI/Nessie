@@ -2544,6 +2544,15 @@ html[data-desktop-platform='linux'] #root {
   height: 14px;
 }
 
+.admin-sidebar-menu,
+.admin-account-menu {
+  border: 1px solid var(--sep);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 6px;
+  box-shadow: 0 16px 48px var(--scrim-strong);
+}
+
 .admin-sidebar-menu {
   position: absolute;
   z-index: 20;
@@ -2551,13 +2560,53 @@ html[data-desktop-platform='linux'] #root {
   right: 8px;
   width: 180px;
   overflow: hidden;
-  border: 1px solid var(--sep);
-  border-radius: 12px;
-  background: var(--panel);
-  padding: 6px;
   max-height: calc(100vh - 16px);
   overflow-y: auto;
-  box-shadow: 0 16px 48px var(--scrim-strong);
+}
+
+.admin-account-menu {
+  width: 260px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+}
+
+.admin-account-menu-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--sep);
+}
+
+.admin-account-menu-row {
+  display: flex;
+  width: 100%;
+  min-height: 32px;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  padding: 6px 10px;
+  color: var(--tx);
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-account-menu-row:hover:not(:disabled) {
+  background: var(--overlay-weak);
+}
+
+.admin-account-menu-row:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-account-menu-row svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: var(--tx2);
 }
 
 /* Project menus render through a portal with a full-screen dismiss control at
