@@ -113,6 +113,27 @@ test('a frozen announcement recipient receives one push despite channel mute and
     '/channels/channel-1/threads/thread-1/replies/message-1')
 })
 
+test('a cancelled announcement cannot send its queued push', async () => {
+  const state: FakeState = {
+    channel: { label: 'Announcements' },
+    creds: [apnsCred()],
+    deleted: [],
+    members: [member('u2')],
+    message: { isAnnouncement: true, deletedAt: new Date(), agent: null, agentId: null,
+      basisScopes: [], user: { displayName: 'Admin' } },
+    announcementDeliveries: [{ recipientUserId: 'u2', recipientUoaSub: null }],
+    secrets: [apnsSecret()],
+    tokens: [{ id: 'iphone', userId: 'u2', token: 'tok-u2', platform: 'ios' }],
+  }
+  const { senders, apnsCalls } = recordingSenders()
+  const result = await handlePushDispatch(
+    { prisma: makeFakePrisma(state), encryptionKeyRing: ENCRYPTION_KEY_RING, senders },
+    payload(),
+  )
+  assert.equal(result.sent, 0)
+  assert.deepEqual(apnsCalls, [])
+})
+
 test('delivers when another reply conversation is open in the same thread container', async () => {
   const state: FakeState = {
     channel: { label: 'General' },

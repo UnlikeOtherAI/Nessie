@@ -186,7 +186,7 @@ export const materializeAnnouncementAlerts = async (
   const organizationId = actorContext.tenant.organizationId
   const deliveries = await prisma.announcementDelivery.findMany({
     where: { recipientUoaSub: identity.subject,
-      message: { thread: { channel: { organizationId } } },
+      message: { deletedAt: null, thread: { channel: { organizationId } } },
     },
     include: { message: { select: {
       createdAt: true, userId: true, threadId: true, rootMessageId: true,

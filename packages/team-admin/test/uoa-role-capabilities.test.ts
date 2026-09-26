@@ -70,7 +70,7 @@ test('the live UOA context must name the exact requested organisation', async ()
     }
 
     const context = await readUoaOrganizationRoleContext('org_acme', identity, deps)
-    assert.deepEqual(context, { organizationId: 'org_acme', role: 'administrator' })
+    assert.deepEqual(context, { organizationId: 'org_acme', role: 'administrator', teamRoles: {} })
     assert.equal(calls[0]?.pathname, '/org/me')
   })
 })

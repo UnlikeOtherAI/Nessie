@@ -56,6 +56,7 @@ const encrypt = (plaintext: string): Omit<SecretRow, 'ref'> =>
 
 type FakeMessage = {
   isAnnouncement?: boolean
+  deletedAt?: Date | null
   agent: { name: string } | null
   agentId: string | null
   basisScopes: { scopeId: string; scopeType: string }[]

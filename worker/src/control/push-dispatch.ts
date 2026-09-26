@@ -131,8 +131,11 @@ export const handlePushDispatch = async (
     },
   })
   const announcementMessage = await deps.prisma.message.findUnique({
-    where: { id: payload.messageId }, select: { isAnnouncement: true },
+    where: { id: payload.messageId }, select: { isAnnouncement: true, deletedAt: true },
   })
+  // A cancelled post leaves an accessible tombstone for an already delivered
+  // link, but cannot generate a new lock-screen notification after deletion.
+  if (announcementMessage?.isAnnouncement && announcementMessage.deletedAt) return summary
   const announcementRecipientIds = new Set<string>()
   if (announcementMessage?.isAnnouncement && channel) {
     const deliveries = await deps.prisma.announcementDelivery.findMany({
