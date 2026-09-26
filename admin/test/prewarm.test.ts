@@ -85,11 +85,11 @@ test('the registry maps each destination to its screen\'s own keys and fetchers'
   await runFor('/projects/proj-1/board', queryClient, apiClient)
   await runFor('/projects/proj-1/boards', queryClient, apiClient)
   await runFor('/projects/proj-1/boards/board-1/settings?tab=watchers', queryClient, apiClient)
-  await runFor('/agents/agent-1', queryClient, apiClient)
+  await runFor('/admin/agents/agent-1', queryClient, apiClient)
   await runFor('/knowledge-base/agents/agent-docs-1', queryClient, apiClient)
   await runFor('/projects/proj-1/dashboards/dash-1', queryClient, apiClient)
   await runFor('/knowledge-base/spaces/space-1', queryClient, apiClient)
-  await runFor('/apps/linear', queryClient, apiClient)
+  await runFor('/admin/apps/linear', queryClient, apiClient)
 
   assert.deepEqual(calls, [
     'GET /api/threads/thread-9/messages',
@@ -147,7 +147,11 @@ test('every project route warms the same board, and a screen with no id does not
   // Query and hash are not part of the destination's identity.
   assert.equal(matchPrewarm('/channels/chan-2?tab=files')?.id, 'chan-2')
   // Roots and id-less screens have nothing to warm.
-  for (const path of ['/channels', '/projects', '/apps', '/settings', '/']) {
+  for (const path of [
+    '/channels', '/projects', '/admin', '/admin/apps', '/settings', '/',
+    // A named screen beside the ids is not an id.
+    '/admin/agents/designer', '/admin/computers/sessions',
+  ]) {
     assert.equal(matchPrewarm(path), null, path)
   }
 })
@@ -169,7 +173,7 @@ test("a row's pointerdown prefetches once inside the TTL", async () => {
     matched.entry.run(matched.id, { apiClient, queryClient })
   }
 
-  const handlers = prewarmRowHandlers(prewarm, '/apps/linear')
+  const handlers = prewarmRowHandlers(prewarm, '/admin/apps/linear')
   handlers.onFocus()
   handlers.onPointerDown()
   handlers.onTouchStart()

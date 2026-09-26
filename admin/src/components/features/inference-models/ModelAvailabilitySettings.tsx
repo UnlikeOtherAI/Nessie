@@ -1,27 +1,22 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
-import {
-  DeploymentModelsTable,
-  pairId,
-} from '../../components/features/inference-models/DeploymentModelsTable'
-import { FormError, FormSuccess } from '../../components/shared/FormActions'
-import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
-import { Input } from '../../components/shared/FormControls'
-import { ListToolbar } from '../../components/shared/ListToolbar'
-import { PaginationFooter } from '../../components/shared/PaginationFooter'
-import { SettingsPanel } from '../../components/shared/SettingsPanel'
-import { LocalInferenceEnablement } from '../../components/features/local-inference/LocalInferenceEnablement'
-import { useDebouncedValue } from '../../hooks/useDebouncedValue'
-import { OrganizationAdministrationGate } from './OrganizationAdministrationGate'
-import type { SettingsTabHostProps } from '../../components/shared/SettingsPanel'
+import { DeploymentModelsTable, pairId } from './DeploymentModelsTable'
+import { FormError, FormSuccess } from '../../shared/FormActions'
+import { ConfirmDialog } from '../../shared/ConfirmDialog'
+import { Input } from '../../shared/FormControls'
+import { ListToolbar } from '../../shared/ListToolbar'
+import { PaginationFooter } from '../../shared/PaginationFooter'
+import { SettingsPanel, type SettingsTabHostProps } from '../../shared/SettingsPanel'
+import { LocalInferenceEnablement } from '../local-inference/LocalInferenceEnablement'
+import { useDebouncedValue } from '../../../hooks/useDebouncedValue'
 import {
   useDeploymentModelCatalog,
   useSetDeploymentModelsEnabled,
   useSetDeploymentModelEnabled,
   useTestDeploymentModel,
   type DeploymentModelRecord,
-} from '../../facades/inference-models/hooks'
+} from '../../../facades/inference-models/hooks'
 
 type TestOutcome = { latencyMs: number; message: string; ok: boolean }
 type BulkAction = 'disable' | 'enable'
@@ -47,14 +42,16 @@ type BulkAction = 'disable' | 'enable'
  * owner has no standing to enable, disable or spend a person's own consumer
  * plan (docs/standards/personal-model-subscriptions.md).
  */
-type ModelAvailabilitySettingsProps = SettingsTabHostProps & {
-  scopeControl?: React.ReactNode
+type ModelAvailabilitySettingsProps = {
+  /** The screen hosting this surface as one of its tabs (a team's page). */
+  host?: SettingsTabHostProps
+  scopeControl?: ReactNode
   teamId?: string
 }
 
 export const ModelAvailabilitySettings = ({
+  host,
   scopeControl,
-  tabs,
   teamId,
 }: ModelAvailabilitySettingsProps) => {
   // A toggle or a test that failed silently would leave an owner believing the
@@ -189,7 +186,8 @@ export const ModelAvailabilitySettings = ({
 
   return (
     <SettingsPanel
-      eyebrow={teamId ? 'Team' : 'Organisation'}
+      eyebrow={teamId ? 'Teams' : 'Organisation'}
+      host={host}
       footer={
         <PaginationFooter
           canNext={catalog.canNext}
@@ -202,8 +200,7 @@ export const ModelAvailabilitySettings = ({
           pageSize={catalog.pageSize}
         />
       }
-      tabs={tabs}
-      title="Models"
+      title="AI models"
     >
       <div className="grid gap-3">
         <FormError>{actionError}</FormError>
@@ -254,9 +251,9 @@ export const ModelAvailabilitySettings = ({
             <LocalInferenceEnablement scope="organization" />
             <section className="border-b border-[color:var(--sep)] pb-4 text-sm text-[color:var(--tx2)]">
               Choose a person’s policy from their{' '}
-              <Link className="underline" to="/settings/members">member details</Link>, or set the
+              <Link className="underline" to="/admin/people">member details</Link>, or set the
               inherited policy for a whole{' '}
-              <Link className="underline" to="/settings/team?tab=agents">team</Link>.
+              <Link className="underline" to="/admin/teams">team</Link>.
             </section>
           </>
         ) : null}
@@ -295,9 +292,3 @@ export const ModelAvailabilitySettings = ({
     </SettingsPanel>
   )
 }
-
-export const OrganizationModelsPage = () => (
-  <OrganizationAdministrationGate>
-    <ModelAvailabilitySettings />
-  </OrganizationAdministrationGate>
-)

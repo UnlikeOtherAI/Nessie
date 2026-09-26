@@ -89,7 +89,7 @@ export const AppsPage = () => {
   const debouncedQuery = useDebouncedValue(query, 150)
   // The catalogue view lives in `?filter=` through the one tab-state hook
   // (docs/navigation/overview.md §1, "Tab hosts"), seeded from the last view selected on
-  // this device so the plain `/apps` doorway does not make someone re-select
+  // this device so the plain `/admin/apps` doorway does not make someone re-select
   // Installed every time. A pasted URL still wins.
   const [filter, selectFilter] = useTabParam('filter', APP_FILTER_ORDER, storedFilter)
   // Both narrowings go to the server. The query does because Postgres owns the

@@ -155,7 +155,7 @@ test('the bridge posts nessie:screen with its six fields off the registry, the r
   Object.defineProperty(globalThis, 'document', { configurable: true, value: dom.window.document })
   const posted: string[] = []
   try {
-    applyScreen(describeScreen('/agents/agent_1', 'Ada', true), (payload) => posted.push(payload))
+    applyScreen(describeScreen('/admin/agents/agent_1', 'Ada', true), (payload) => posted.push(payload))
   } finally {
     if (previous) Object.defineProperty(globalThis, 'document', previous)
     else Reflect.deleteProperty(globalThis, 'document')
@@ -165,7 +165,7 @@ test('the bridge posts nessie:screen with its six fields off the registry, the r
   assert.deepEqual(JSON.parse(posted[0] as string), {
     depth: 2,
     hasBack: true,
-    path: '/agents/agent_1',
+    path: '/admin/agents/agent_1',
     screenType: 'detail',
     section: 'admin',
     title: 'Ada',
@@ -176,13 +176,13 @@ test('the bridge posts nessie:screen with its six fields off the registry, the r
 
   // Every field of the message is compared, so a settled change of any one of
   // them posts and a re-render that changes none of them does not.
-  const screen = describeScreen('/agents/agent_1', 'Ada', true)
-  assert.equal(sameScreen(screen, describeScreen('/agents/agent_1', 'Ada', true)), true)
+  const screen = describeScreen('/admin/agents/agent_1', 'Ada', true)
+  assert.equal(sameScreen(screen, describeScreen('/admin/agents/agent_1', 'Ada', true)), true)
   for (const changed of [
-    describeScreen('/agents/agent_2', 'Ada', true),
-    describeScreen('/agents/agent_1', 'Grace', true),
-    describeScreen('/agents/agent_1', 'Ada', false),
-    describeScreen('/agents', 'Agents', true),
+    describeScreen('/admin/agents/agent_2', 'Ada', true),
+    describeScreen('/admin/agents/agent_1', 'Grace', true),
+    describeScreen('/admin/agents/agent_1', 'Ada', false),
+    describeScreen('/admin/agents', 'Agents', true),
   ]) {
     assert.equal(sameScreen(screen, changed), false)
   }
@@ -274,17 +274,16 @@ test('every page header in admin/src is the one ScreenHeader', () => {
 })
 
 test('a column-browser screen column renders exactly one h1, and a section column keeps its h3', () => {
-  // 08-F2/05-F2: the four column-browser routes (Tools, Triggers, Workflows,
-  // Integrations) render their real screen through `ColumnBrowserColumn`'s
-  // `screen` column rather than through a page-level `<ScreenHeader>` call —
-  // this pins the shared primitive's two shapes directly, since none of
-  // those four page files literally write `<ScreenHeader`.
+  // 08-F2/05-F2: a column browser (Knowledge's Finder, the workflow columns
+  // under Automations) paints either a screen column or a deeper section
+  // column through `ColumnBrowserColumn` — this pins the shared primitive's
+  // two shapes directly.
   resetScreenTitles()
   const renderColumn = (props: Parameters<typeof ColumnBrowserColumn>[0]): string =>
     renderToStaticMarkup(
       createElement(
         MemoryRouter,
-        { initialEntries: ['/agents/tools'] },
+        { initialEntries: ['/admin/automations?tab=workflows'] },
         createElement(
           LocalBackProvider,
           null,

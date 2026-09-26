@@ -17,11 +17,15 @@ type SidebarMenuSectionProps = {
 export const useCookieBackedSidebarSections = <SectionId extends string>(
   ids: readonly SectionId[],
   cookieName: (id: SectionId) => string,
+  // Where a section starts before the reader has ever toggled it: open, unless
+  // this says it starts folded. Read once, when the list mounts.
+  startsCollapsed: (id: SectionId) => boolean = () => false,
 ) => {
   const [collapsedSections, setCollapsedSections] = useState<Record<SectionId, boolean>>(
     () =>
       ids.reduce<Record<SectionId, boolean>>((state, id) => {
-        state[id] = getCookie(cookieName(id)) === '1'
+        const stored = getCookie(cookieName(id))
+        state[id] = stored === null ? startsCollapsed(id) : stored === '1'
         return state
       }, {} as Record<SectionId, boolean>),
   )

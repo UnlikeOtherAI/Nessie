@@ -20,8 +20,10 @@
 // `docs/done/2026-09-01-navigation-motion-system.md` (§4.1).
 
 import type { Surface, SurfaceIntent } from './page-types'
+import { createAdminOrganizationSurfaces } from './admin-organization-surfaces'
 import { createAdminSurfaces } from './admin-surfaces'
 import { createConnectedMailSurfaces } from './connected-mail-surfaces'
+import { createSettingsSurfaces } from './settings-surfaces'
 import {
   toChannels,
   toKnowledge,
@@ -39,7 +41,10 @@ export const normalizeNavigationPathname = (pathname: string): string => {
 export const CHANNELS_ROOT = '/channels'
 const PROJECTS_ROOT = '/projects'
 const KNOWLEDGE_ROOT = '/knowledge-base'
-const ADMIN_ROOT = '/settings'
+const ADMIN_ROOT = '/admin'
+// Your settings keeps the Admin section id but has a root of its own
+// (`settings-surfaces.ts` says why).
+const SETTINGS_ROOT = '/settings'
 const SEARCH_ROOT = '/search'
 
 // A route that only forwards to another one. It renders no screen, so it
@@ -88,15 +93,9 @@ const PROJECT_INTENT: SurfaceIntent = {
 
 export const SURFACES: Surface[] = [
   // ── Redirects ────────────────────────────────────────────────────────────
-  // Listed first: several would otherwise be captured by a generic pattern
-  // below (`/settings/tools` and `/settings/agents` by the settings-page row).
+  // The landing route only: it resolves a notification or billing return, or
+  // forwards to Channels. Retired addresses are deleted, never forwarded.
   redirect({ pattern: /^\/$/, root: CHANNELS_ROOT, section: 'channels' }),
-  redirect({ pattern: /^\/chats$/, root: CHANNELS_ROOT, section: 'channels' }),
-  redirect({ pattern: /^\/work$/, root: PROJECTS_ROOT, section: 'projects' }),
-  redirect({ pattern: /^\/workflows$/, root: ADMIN_ROOT, section: 'admin' }),
-  redirect({ pattern: /^\/workflows\/tools$/, root: ADMIN_ROOT, section: 'admin' }),
-  redirect({ pattern: /^\/settings\/tools$/, root: ADMIN_ROOT, section: 'admin' }),
-  redirect({ pattern: /^\/settings\/agents$/, root: ADMIN_ROOT, section: 'admin' }),
 
   // ── Connected mail ───────────────────────────────────────────────────────
   ...createConnectedMailSurfaces(ADMIN_ROOT),
@@ -457,6 +456,10 @@ export const SURFACES: Surface[] = [
 
   // ── Admin ────────────────────────────────────────────────────────────────
   ...createAdminSurfaces(ADMIN_ROOT),
+  ...createAdminOrganizationSurfaces(ADMIN_ROOT),
+
+  // ── Your settings ────────────────────────────────────────────────────────
+  ...createSettingsSurfaces(SETTINGS_ROOT),
 
   // ── Search ───────────────────────────────────────────────────────────────
   {

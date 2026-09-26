@@ -49,7 +49,7 @@ Plan and as-built deltas:
   two of them must never have an ambiguous send path, which is why they are
   three families rather than one with a mode.
 - **One panel, two homes** (`components/features/mailbox-connections/`): personal
-  mailboxes on `/settings/connections`, shared ones on `/settings/organization`,
+  mailboxes on `/settings/accounts`, shared ones on `/admin/connections`,
   scope as a parameter â€” the `CloudBrowserPanel` shape. Both carry per-agent
   access rows: a connection no agent may use does nothing. Connecting resolves
   and proves both legs before it stores, and only a provider rejection

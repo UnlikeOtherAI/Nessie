@@ -1100,6 +1100,9 @@ export type ExecutorAccessChangeConfirmation = z.infer<
 
 export const ExecutorRecordResponseSchema = z.object({
   sharedWithTeam: z.boolean().optional(),
+  // On the person's own list only: whether they paired this machine, which
+  // splits Your computers into Mine and Shared with me.
+  pairedByViewer: z.boolean().optional(),
   id: ExecutorIdSchema,
   scope: ExecutorScopeSchema,
   label: z.string().min(1),

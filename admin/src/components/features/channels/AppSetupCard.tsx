@@ -188,7 +188,7 @@ export const AppSetupCardView = ({
       {card.status === 'awaiting_grant' ? (
         <a
           className="admin-button admin-button-secondary admin-button-compact mt-3"
-          href="/apps"
+          href="/admin/apps"
         >
           Manage app access
         </a>

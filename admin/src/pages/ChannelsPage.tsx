@@ -333,7 +333,7 @@ export const ChannelsPage = () => {
           token={token}
           visibleActiveTab={visibleActiveTab}
           onCallButton={onCallButton}
-          onCreateAgent={() => void navigate('/agents/designer')}
+          onCreateAgent={() => void navigate('/admin/agents/designer')}
           onJoin={() => {
             if (activeChannel) messageSurface.joinChannel.mutate({ channelId: activeChannel.id })
           }}

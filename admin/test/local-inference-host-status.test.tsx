@@ -62,7 +62,7 @@ const render = (executorId?: string): string => {
   return renderToStaticMarkup(
     createElement(
       MemoryRouter,
-      { initialEntries: ['/agents/executors/executor-a'] },
+      { initialEntries: ['/admin/computers/executor-a'] },
       createElement(
         QueryClientProvider,
         { client: queryClient },
@@ -93,14 +93,14 @@ test('Connections keeps the doorway into the same scoped executor surface', () =
   const html = render()
 
   assert.match(html, /Open executor/)
-  assert.match(html, /href="\/agents\/executors\/executor-a"/)
+  assert.match(html, /href="\/admin\/computers\/executor-a"/)
 })
 
 // The status surface has two doorways, but one destructive action. Exercise it
 // through the actual shared dialog rather than merely asserting its JSX shape.
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   pretendToBeVisual: true,
-  url: 'http://localhost/settings/connections',
+  url: 'http://localhost/settings/accounts',
 })
 const ReactClient = await import('react')
 const { act, createElement: h } = ReactClient

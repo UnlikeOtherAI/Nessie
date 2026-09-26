@@ -28,7 +28,7 @@ export const ModelUnavailableNotice = ({ model }: { model: string }) => {
       {canManageOrganization ? (
         <>
           {' '}
-          <Link className="underline" to="/settings/organization/models">
+          <Link className="underline" to="/admin/models">
             Organization models →
           </Link>
         </>

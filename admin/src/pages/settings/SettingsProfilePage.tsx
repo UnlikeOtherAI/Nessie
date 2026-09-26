@@ -10,7 +10,7 @@ import { Notice } from '../../components/primitives/Notice'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { Card } from '../../components/shared/Card'
 import { KeyValueList } from '../../components/shared/KeyValueList'
-import { SettingsPanel, type SettingsTabHostProps } from '../../components/shared/SettingsPanel'
+import { SettingsPanel } from '../../components/shared/SettingsPanel'
 
 // Friendly names for the authenticator a user signed in through. Keyed by the
 // provider *type* so the brand shows even when the configured label is a login
@@ -23,7 +23,9 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   custom: 'Custom provider',
 }
 
-export const SettingsProfilePage = ({ tabs }: SettingsTabHostProps) => {
+// Who you are here. The session this device holds is Security's (This
+// device), beside the other sessions and the programs signed in as you.
+export const SettingsProfilePage = () => {
   const navigate = useNavigate()
   const { me, logout } = useAuthSession()
   const statusesQuery = useStatuses()
@@ -63,7 +65,7 @@ export const SettingsProfilePage = ({ tabs }: SettingsTabHostProps) => {
 
   return (
     <SettingsPanel
-      eyebrow="User"
+      eyebrow="Your settings"
       title="Profile"
       actions={[
         {
@@ -74,7 +76,6 @@ export const SettingsProfilePage = ({ tabs }: SettingsTabHostProps) => {
         } satisfies PageHeaderAction,
       ]}
     >
-      {tabs}
       {hasLoadError && (
         <Notice className="mb-4" role="alert" tone="danger">
           Some account details failed to load.{' '}
@@ -97,7 +98,7 @@ export const SettingsProfilePage = ({ tabs }: SettingsTabHostProps) => {
         <AvatarPanel />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4">
         <Card variant="section">
           <SectionLabel>Profile</SectionLabel>
           <div className="mt-4 text-2xl font-semibold text-[color:var(--tx)]">
@@ -130,18 +131,6 @@ export const SettingsProfilePage = ({ tabs }: SettingsTabHostProps) => {
               },
             ]}
             layout="grid"
-          />
-        </Card>
-
-        <Card variant="section">
-          <SectionLabel>Session</SectionLabel>
-          <KeyValueList
-            className="mt-4"
-            items={[
-              { label: 'Session ID', mono: true, value: me.session.sessionId },
-              { label: 'Issued', value: new Date(me.session.issuedAt).toLocaleString() },
-              { label: 'Auto redirect', value: me.auth.autoRedirectToSso ? 'Enabled' : 'Disabled' },
-            ]}
           />
         </Card>
       </div>

@@ -32,7 +32,7 @@ interface ChannelTabPanelsProps {
 /**
  * Routes the conversation's non-message sections to their panel. Each section
  * is its own file: they answer different questions, and the agent-shaped ones
- * (Agent, To-dos, Triggers) render the very components `/agents/:id` renders
+ * (Agent, To-dos, Triggers) render the very components `/admin/agents/:id` renders
  * rather than a channel-flavoured copy.
  */
 export const ChannelTabPanels = ({

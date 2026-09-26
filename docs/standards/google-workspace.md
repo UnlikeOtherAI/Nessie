@@ -27,7 +27,7 @@ file is the rule**.
   because a callback that trusts whoever finished consent will silently
   re-point a different mailbox. Plan:
   `docs/plans/2026-08-31-google-workspace-email-calendar.md`.
-- **Calendar and Meet have a first-connection doorway.** User → Connected
+- **Calendar and Meet have a first-connection doorway.** Your settings → Connected
   accounts → **Google Calendar and Meet** opens a capability picker that sends
   only selected Calendar and Meet capability ids to the existing Google OAuth
   start route. Email → Google keeps its Gmail-read and Meet default. Once

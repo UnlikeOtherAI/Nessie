@@ -107,5 +107,5 @@ export const resolvePushSurface = (pathname: string): PushSurface | null => {
   if (space && z.string().uuid().safeParse(space[1]).success) {
     return { kind: 'knowledge_space', spaceId: space[1] as string }
   }
-  return pathname === '/ops/usage' ? { kind: 'ops_usage' } : null
+  return pathname === '/admin/usage' ? { kind: 'ops_usage' } : null
 }

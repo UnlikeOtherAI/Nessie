@@ -309,7 +309,7 @@ export const listVisibleExecutors = async (
     include: { teamAccess: { select: { everyone: true } }, _count: { select: { projectAccess: true } } },
     orderBy: [{ createdAt: 'desc' }],
   })
-  return rows.map(recordFromRow)
+  return rows.map((row) => recordFromRow(row, userId))
 }
 
 export const getExecutorForUser = async (

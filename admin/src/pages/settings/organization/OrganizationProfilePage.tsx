@@ -18,7 +18,7 @@ import { toFormErrors } from '../../../facades/forms/form-errors'
  * put a control that rewrites one team's identity on a page about all of
  * them.
  */
-export const OrganizationProfilePage = ({ tabs }: SettingsTabHostProps) => {
+export const OrganizationProfilePage = ({ host }: { host?: SettingsTabHostProps }) => {
   const { data: organization, isLoading } = useCurrentOrganization()
   const updateOrganization = useUpdateOrganization()
 
@@ -55,8 +55,7 @@ export const OrganizationProfilePage = ({ tabs }: SettingsTabHostProps) => {
   const canSave = dirty && name.trim().length > 0 && !updateOrganization.isPending
 
   return (
-    <SettingsPanel eyebrow="Organisation" title="Profile">
-      {tabs}
+    <SettingsPanel eyebrow="Organisation" host={host} title="Profile">
       <div className="grid gap-4">
         <Card as="section">
           <SectionLabel>Name</SectionLabel>

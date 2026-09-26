@@ -12,7 +12,7 @@ test('maps only exact push-targetable destinations to a structured surface', () 
     resolvePushSurface('/channels/00000000-0000-4000-8000-000000000001'),
     null,
   )
-  assert.deepEqual(resolvePushSurface('/ops/usage'), { kind: 'ops_usage' })
+  assert.deepEqual(resolvePushSurface('/admin/usage'), { kind: 'ops_usage' })
   assert.deepEqual(
     resolvePushSurface('/projects/00000000-0000-4000-8000-000000000004/board'),
     { kind: 'project_board', projectId: '00000000-0000-4000-8000-000000000004' },
@@ -111,5 +111,5 @@ test('routes each durable attention kind to its owning surface', () => {
     actorDisplayName: null,
     readAt: null,
     createdAt: '2026-09-12T10:00:00.000Z',
-  }), { to: '/agents/workflows?failedRuns=1&run=00000000-0000-4000-8000-000000000016' })
+  }), { to: '/admin/automations?tab=workflows&failedRuns=1&run=00000000-0000-4000-8000-000000000016' })
 })

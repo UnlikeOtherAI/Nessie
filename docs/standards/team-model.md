@@ -447,7 +447,7 @@ does: see [docs/standards/calls.md](calls.md).
 "UOA is the authority" is a rule about **where the value is stored**, not about
 where a person is allowed to stand when they change it. Refusing the edit was
 never the invariant; writing a second copy was. So a team's name and its
-company picture are both changed from `/settings/team` → Profile, and both
+company picture are both changed from the team's page (`/admin/teams/:teamId`) → General, and both
 writes are relayed to UOA and then mirrored from the record UOA echoes back —
 never written locally and hoped for. Two consequences, both load-bearing:
 

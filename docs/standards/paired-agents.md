@@ -59,8 +59,9 @@ agent (a Claude Code or Codex CLI on somebody's machine) calling *in* on
   against one and minting against the other was a real bypass, caught in review.
 
   **Only the organisation level has a surface**
-  (`/settings/organization/paired-agents`, which writes the key locked whenever
-  the answer is no). The cascade honours a team or personal row if one appears,
+  (Admin › Security › Programs signed in as people,
+  `/admin/security?tab=programs`, which writes the key locked whenever the
+  answer is no). The cascade honours a team or personal row if one appears,
   but nothing writes them today — do not document those levels as something a
   team or a person can use until a surface exists.
 
@@ -89,16 +90,16 @@ which is the one that blocks agents today.
 
 ## The surface
 
-- `/settings/paired-agents` — a person's own. Leads with what a paired agent
-  *is* and names the products (Claude Code, Codex); the code entry is the
-  fallback path, because most arrivals come through
-  `verification_uri_complete` with the code already in the query.
-  `/settings/agent-access` redirects here **preserving the query string** — an
-  agent that printed the old URI before the rename is still holding it, and
-  dropping `?code=` would kill a pairing three seconds from done.
-- `/settings/organization/paired-agents` — owner and organisation admin. Every
-  credential in the organisation, whose account each borrows, and the pairing
-  switch.
+- `/settings/security`, its **Programs signed in as you** section — a
+  person's own. Leads with what a paired agent *is* and names the products
+  (Claude Code, Codex); the code entry is the fallback path, because most
+  arrivals come through `verification_uri_complete` with the code already in
+  the query, which the section reads and strips. Each program opens
+  `/settings/security/programs/:id`.
+- `/admin/security?tab=programs` (**Programs signed in as people**) — owner
+  and organisation admin. Every credential in the organisation, whose account
+  each borrows, and the pairing switch; each opens
+  `/admin/security/programs/:id`.
 
 **Do not call either of these "agent access".** Four other surfaces in the admin
 use "agent access" / "agents with access" to mean *which of Nessie's own agents

@@ -5,6 +5,9 @@ import {
   useCommsConnections,
   useStartCommsConnection,
 } from '../../facades/connections/hooks'
+import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { CloudBrowserPanel } from '../../components/features/browser-cloud/CloudBrowserPanel'
+import { MyBrowserLoginsPanel } from '../../components/features/browser-cloud/MyBrowserLoginsPanel'
 import {
   MailboxConnectionForm,
 } from '../../components/features/mailbox-connections/MailboxConnectionForm'
@@ -44,7 +47,7 @@ const callbackMessage = (connected: string | null, error: string | null): string
 }
 
 /**
- * Connected accounts — one screen, five lanes.
+ * Connected accounts — one screen, six lanes.
  *
  * It was five stacked sections separated by hairlines, so the model provider a
  * person came to change sat four scroll-lengths below a Slack panel they were
@@ -55,11 +58,22 @@ const callbackMessage = (connected: string | null, error: string | null): string
  * Google/Microsoft use native sync while generic IMAP mail stays live and is
  * never imported, so one email doorway must not promise either behaviour for
  * every provider.
+ *
+ * Browsers is the cloud browser your agents borrow for the runs you start, and
+ * the sign-ins you gave them there. Your sign-ins list stands on its own: it is
+ * keyed by what you did, not by whether you still have an account of your own
+ * connected.
  */
-const CONNECTION_TABS = ['email', 'inference', 'slack', 'calendar', 'tools'] as const
+const CONNECTION_TABS = ['email', 'inference', 'slack', 'calendar', 'tools', 'browsers'] as const
 type ConnectionTab = (typeof CONNECTION_TABS)[number]
 
 const TAB_META: Record<ConnectionTab, { description: string; label: string }> = {
+  browsers: {
+    description:
+      'The cloud browser your agents use for the runs you start, and the sites you signed them '
+      + 'into.',
+    label: 'Browsers',
+  },
   calendar: {
     description:
       'Connect Calendar or Meet without granting Gmail access. Choose each permission before '
@@ -90,6 +104,7 @@ const TAB_META: Record<ConnectionTab, { description: string; label: string }> = 
 
 export const ConnectionsPage = () => {
   const navigate = useNavigate()
+  const { me } = useAuthSession()
   const connections = useCommsConnections()
   const start = useStartCommsConnection()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -174,12 +189,12 @@ export const ConnectionsPage = () => {
         : []
 
   const openConnection = (connectionId: string) =>
-    void navigate(`/settings/connections/${connectionId}`)
+    void navigate(`/settings/accounts/${connectionId}`)
 
   return (
     <SettingsPanel
       actions={actions}
-      eyebrow="User"
+      eyebrow="Your settings"
       footer={paged ? (
         <PaginationFooter
           canNext={page < totalPages - 1}
@@ -268,6 +283,15 @@ export const ConnectionsPage = () => {
         ) : null}
 
         {tab === 'tools' ? <ProjectToolConnections /> : null}
+
+        {/* The session's team is passed down so a lock set by the team — not
+            only one set by the organisation — greys the control and says so. */}
+        {tab === 'browsers' ? (
+          <>
+            <CloudBrowserPanel scope="user" teamId={me?.context.teamId ?? null} />
+            <MyBrowserLoginsPanel />
+          </>
+        ) : null}
 
         <GoogleWorkspaceConnectDialog
           onClose={() => setGoogleWorkspaceOpen(false)}

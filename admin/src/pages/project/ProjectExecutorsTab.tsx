@@ -19,13 +19,13 @@ export const ProjectExecutorsTab = ({ projectId }: ProjectExecutorsTabProps) => 
         actions={
           <Link
             className="admin-button admin-button-primary"
-            to="/agents/executors"
+            to="/admin/computers"
           >
             Share an executor
           </Link>
         }
         description="Executors shared with this project or its whole team. Open an executor to manage its agents and sharing."
-        title="Project executors"
+        title="Computers"
       >
         <QueryState
           errorLabel="Couldn't load project executors."
@@ -34,7 +34,7 @@ export const ProjectExecutorsTab = ({ projectId }: ProjectExecutorsTabProps) => 
         >
           {() => <ExecutorsTable executors={executors} isLoading={false}
             emptyMessage="No executor is shared with this project. Open an executor’s Permissions tab to share it."
-            onOpen={(id) => void navigate(`/agents/executors/${id}`)} />}
+            onOpen={(id) => void navigate(`/admin/computers/${id}`)} />}
         </QueryState>
       </Section>
     </PageBody>

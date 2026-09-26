@@ -15,6 +15,7 @@ import { Dialog } from '../components/shared/Dialog'
 import { FormError } from '../components/shared/FormActions'
 import { useExecutorAccess, useExecutors, usePrepareExecutorAccessChange } from '../facades/executors/hooks'
 import { useLocalInferenceHosts } from '../facades/local-inference/hooks'
+import { COMPUTERS_PATH } from '../navigation/computers'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { useShellEnvironment } from '../providers/ShellEnvironmentProvider'
 
@@ -37,7 +38,7 @@ export const ExecutorDetailContent = ({ token, teamId }: { token: string | null;
   const [prepared, setPrepared] = useState<PreparedExecutorAccessChangeResponse | null>(null)
   const [panel, setPanel] = useState<'models' | 'device' | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const backToList = () => void navigate('/agents/executors')
+  const backToList = () => void navigate(COMPUTERS_PATH)
   const lifecycle = async (action: 'pause' | 'resume' | 'revoke' | 'remove') => {
     if (!executorId) return
     setError(null)
@@ -46,7 +47,7 @@ export const ExecutorDetailContent = ({ token, teamId }: { token: string | null;
   }
   if (!executor) return (
     <div className="flex h-full min-h-0 flex-col">
-      <ScreenHeader backLabel="Back to Executors" onBack={backToList} title="Executor" />
+      <ScreenHeader backLabel="Back to Computers" onBack={backToList} title="Computer" />
       <QueryState className="flex flex-1 items-center justify-center" emptyLabel="This executor could not be found, or it is no longer visible to you."
         errorLabel="Executors could not be loaded." isEmpty loadingLabel="Loading executor…" query={executorsQuery}>{() => null}</QueryState>
     </div>
@@ -71,7 +72,7 @@ export const ExecutorDetailContent = ({ token, teamId }: { token: string | null;
   }
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <ScreenHeader backLabel="Back to Executors" eyebrow="Executors" onBack={backToList} title={executor.label}
+      <ScreenHeader backLabel="Back to Computers" eyebrow="Computers" onBack={backToList} title={executor.label}
         actions={menu.length ? [{ id: 'machine', kind: 'menu', label: 'Machine', priority: 20, items: menu }] : []}
         subtitle={<div className="flex flex-wrap items-center gap-2 text-sm text-[color:var(--tx3)]">
           <Pill height="control" tone={executorStatusTone(executor.status)} uppercase={false}>{EXECUTOR_STATUS_LABELS[executor.status]}</Pill>

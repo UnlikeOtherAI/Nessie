@@ -7,8 +7,9 @@ it is read when the work touches calls rather than loaded into every session.
 
 Calls are provider links, never an embedded Jitsi media surface: an owner or
 admin selects each target team's Google Meet, Jitsi, or (when configured)
-Microsoft Teams provider in `/settings/organization`; the caller popup links
-its provider label there for that same audience. A channel call creates that
+Microsoft Teams provider on that team's page (`/admin/teams/:teamId`,
+General); the caller popup links its provider label to Admin › Teams for that
+same audience. A channel call creates that
 link then rings each invitee. Realtime publishes one
 message per audience — one channel update and separate user-scoped incoming
 rings — because combined scopes leak/replay incorrectly. Native push carries

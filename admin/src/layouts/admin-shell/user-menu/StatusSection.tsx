@@ -29,7 +29,7 @@ export const StatusSection = ({ onClose }: { onClose: () => void }) => {
       <div className="px-2 pb-0.5 pt-1 text-xs font-medium text-[color:var(--tx3)]">Status</div>
 
       {statuses.length === 0 ? (
-        <Link className={rowClassName} onClick={onClose} to="/settings/statuses">
+        <Link className={rowClassName} onClick={onClose} to="/settings/status">
           <span className="text-[color:var(--tx2)]">Set up a status</span>
           <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--tx3)]" icon={faPenToSquare} />
         </Link>
@@ -80,7 +80,7 @@ export const StatusSection = ({ onClose }: { onClose: () => void }) => {
       )}
 
       {statuses.length > 0 && (
-        <Link className={rowClassName} onClick={onClose} to="/settings/statuses">
+        <Link className={rowClassName} onClick={onClose} to="/settings/status">
           <span className="text-[color:var(--tx2)]">Edit statuses</span>
           <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--tx3)]" icon={faPenToSquare} />
         </Link>

@@ -86,7 +86,7 @@ export const SidebarStarredSection = ({
               className={`admin-sb-item group ${isActivePersonalAssistant ? 'active' : ''}`}
               onClick={() => onNavigateAgent(agent.id)}
               type="button"
-              {...prewarmRowHandlers(prewarm, `/agents/${agent.id}`)}
+              {...prewarmRowHandlers(prewarm, `/admin/agents/${agent.id}`)}
             >
               <AgentAvatar agent={agent} size={avatarSize} token={token} />
               <span className="min-w-0 flex-1 truncate">{agent.name}</span>

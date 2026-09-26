@@ -8,11 +8,13 @@ import { PageBody } from '../components/shared/PageBody'
 import { PaginationFooter } from '../components/shared/PaginationFooter'
 import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
+import type { SettingsTabHostProps } from '../components/shared/SettingsPanel'
 import {
   TaskSetStatus, taskSetProgress, taskSetTimestamp,
 } from '../components/features/task-sets/presentation'
 
-export const TaskSetsPage = () => {
+/** Batch jobs — the second tab of Automations. */
+export const TaskSetsPage = ({ host }: { host?: SettingsTabHostProps }) => {
   const navigate = useNavigate()
   const rows = usePagedList<TaskSetRecord>({ path: '/api/task-sets', queryKey: taskSetKeys.list })
   return (
@@ -22,8 +24,10 @@ export const TaskSetsPage = () => {
           id: 'create', label: 'New task set', primary: true, priority: 100,
           onSelect: () => navigate(taskSetCreatePath()),
         }]}
+        eyebrow={host?.eyebrow}
         subtitle="Process ordered work one item at a time, and keep every result."
-        title="Task Sets"
+        tabs={host?.tabs}
+        title={host?.title ?? 'Batch jobs'}
       />
       <PageBody>
         <QueryState

@@ -1,8 +1,8 @@
 # Executor management reads and agent access
 
 The executor detail surface owns **Agents**, **Sessions**, **Permissions** and
-**Activity**. Its doorways are the inventory, account menu and project Executors
-tab. [Executor sharing](../standards/executor-sharing.md) is authoritative for
+**Activity**. Its doorways are the computers lists (Admin › Computers and Your
+settings › Your computers) and a project's Computers tab. [Executor sharing](../standards/executor-sharing.md) is authoritative for
 direct agent assignment, people/project/team sharing and immediate signed
 capability reports. There is no permission-review badge or queue.
 
@@ -131,8 +131,8 @@ out-of-order presence frames are harmless: the UI compares `updatedAt`, and
 in-flight older REST reads cannot overwrite newer presence. The browser does
 not poll the inventory to maintain status.
 
-Verification: `admin`'s `test:e2e:executor-menu` exercises the live socket,
-reconnection, both submenu directions, status combinations, navigation and
-empty actions. It is part of the requested Browser Suites workflow alongside
-executor pairing. Database tests cover private-assignment and membership
-boundaries; API fan-out tests cover revocation on both live lanes.
+Verification: the account menu's browser suite (`test:e2e:executor-menu`)
+left with the menu's Executors rows, so no browser suite walks the live
+socket on the computers lists yet. Database tests cover private-assignment
+and membership boundaries; API fan-out tests cover revocation on both live
+lanes.

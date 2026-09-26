@@ -28,7 +28,7 @@ export const ConnectionDetailPage = () => {
     (candidate) => candidate.id === connectionId,
   )
 
-  const backToList = () => void navigate('/settings/connections')
+  const backToList = () => void navigate('/settings/accounts')
 
   if (!connection) {
     // The header is rendered here too: loading, failure and not-found are

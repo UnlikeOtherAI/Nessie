@@ -14,7 +14,7 @@ import { READINESS_UNREAD_COPY, readinessCopy } from './research-presentation'
  * never a feature a person cannot find.
  */
 
-export const DEEP_WATER_APP_PATH = '/apps/deep-water'
+export const DEEP_WATER_APP_PATH = '/admin/apps/deep-water'
 
 export const ResearchReadinessScreen = ({
   onClose,

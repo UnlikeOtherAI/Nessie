@@ -70,7 +70,7 @@ export const LocalOllamaSection = () => {
             {enroll.isPending ? 'Looking for Ollama…' : 'Find Ollama on this computer'}
           </button>
         ) : null}
-        <Link className="text-sm text-[color:var(--lnk)] hover:underline" to="/agents/executors">
+        <Link className="text-sm text-[color:var(--lnk)] hover:underline" to="/admin/computers">
           Open paired executors
         </Link>
       </div>
@@ -79,8 +79,8 @@ export const LocalOllamaSection = () => {
         empty={(
           <p className="text-sm text-[color:var(--tx2)]">
             No local computer is connected yet. On this computer, prepare Nessie Desktop; on another computer,
-            {' '}<Link className="underline" to="/agents/executors">open its paired executor</Link>. Once it reports a
-            local model, select it from an <Link className="underline" to="/agents">agent’s Model section</Link>.
+            {' '}<Link className="underline" to="/admin/computers">open its paired executor</Link>. Once it reports a
+            local model, select it from an <Link className="underline" to="/admin/agents">agent’s Model section</Link>.
           </p>
         )}
       />

@@ -85,7 +85,14 @@ shrinks.
 | a conversation (`useChannelTab`) | `tab` | `messages` · `files` · `agent` · `to-dos` · `triggers` · `automations` · `agents` (as the conversation offers) |
 | an app (`AppDetailPage`) | `tab` | `overview` · `capabilities` · `accounts` · `agents` (as the app offers) |
 | an executor (`ExecutorDetailPanels`) | `tab` | `overview` · `access` · `operations` · `sessions` · `attention` |
-| Appearance (`/settings/appearance`) | `tab` | `colours` · `type` |
+| the computers list (`ExecutorsPage`, Your computers) | `filter` | `mine` · `shared` |
+| Automations (`AutomationsPage`) | `tab` | `triggers` · `batch-jobs` · `workflows`; a change clears the list's own search, filters, selection and page |
+| Admin › Security (`OrganizationSecurityPage`) | `tab` | `audit` · `programs` (default: `audit` for an owner, `programs` otherwise) |
+| Admin › Organisation (`OrganizationPage`) | `tab` | `profile` · `appearance` |
+| a team (`TeamPage`) | `tab` | `general` · `overrides` · `models` · `keys` (`keys` for an owner) |
+| People (`PeoplePage`) | `scope` | `organisation` · `team:<id>` for each team the viewer is in (as the viewer is entitled); a change clears the roster's `tab` and page |
+| Keys and Saved keys (`SecretsPanel`) | `status` | `active` · `revoked` |
+| Connected accounts (`ConnectionsPage`) | `tab` | `email` · `inference` · `slack` · `calendar` · `tools` · `browsers` |
 | an agent (`AgentDetailTabs`) | `agentTab` | `edit` · `to-dos` · `activity` · `sub-agents` · `tools` · `messages` · `documents` · `email` |
 | the apps catalogue (`AppsPage`) | `filter` | `all` · `installed` (default: this device's last view) |
 | the agents list (`AgentsList`) | `scope` | `personal` · `team` · `global` (default: the session ledger) |
@@ -96,15 +103,15 @@ shrinks.
 | an agent's screen (`AgentScreenViewer`) | `browserTab` | one per tab the agent's cloud browser has open |
 | a project board (`ProjectView`) | `board` | one per board of the project (default: the project's default board) |
 | project settings (`ProjectSettingsPage`) | `section` | `boards`; `board` selects which board inside it |
-| the members roster (`MembersRosterPanel`) | `membersTab` | `active` · `pending` · `deactivated` · `automatic` (as the org offers) |
+| the members roster (`MembersRosterPanel`) | `tab` | `active` · `pending` · `deactivated` · `automatic` (as the org offers) |
 | connected mail (`ConnectedMailPage`) | `filter` | `all` · `unread` |
 
 A conversation offers a different half of that list depending on what it is.
 Messaging one agent is a conversation with a subject, so it carries that
 agent's own sections — **Agent** (identity, tools, the way in to edit),
 **To-dos** and **Triggers** — each rendered by the very component
-`/agents/:id` renders. A channel carries the room's sections instead —
-**Automations**, and an **Agents** roster whose rows open `/agents/:id`. The
+`/admin/agents/:id` renders. A channel carries the room's sections instead —
+**Automations**, and an **Agents** roster whose rows open `/admin/agents/:id`. The
 two sets are deliberately exclusive: an agent-shaped section on a channel has
 no single subject, and a roster of one on a DM is the shared-tab mistake that
 put a "create an agent" card in a private conversation. `useChannelTab`
@@ -115,9 +122,13 @@ facts that justify it arrive.
 
 A named param is used wherever `tab` would collide: `agentTab` because the
 agent strip also renders inside the quick-view sheet over a conversation that
-owns `?tab=`. A strip that narrows a list (`role="radiogroup"`) uses
-the same hook — `filter`, `scope`, `source`, `status` are filters, not panel
-switches.
+owns `?tab=`, and `status` on Keys because a team's page hosts that panel as
+its Keys tab and `tab` is the team page's own strip. A strip that narrows a
+list (`role="radiogroup"`) uses the same hook — `filter`, `scope`, `source`,
+`status` are filters, not panel switches. A host whose tabs each carry their
+own list state passes `useTabParam` the params that belong to a tab
+(`{ clears: [...] }`), and a change drops them in the same replace, so one
+tab's `?search=` never narrows the next tab's list.
 
 **Projects keep seven routes.** `/projects/:id` and its `/board`, `/backlog`,
 `/insights`, `/docs`, `/executors`, `/settings` siblings stay real routes so

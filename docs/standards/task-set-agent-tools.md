@@ -1,6 +1,6 @@
 # Native Task Set tools
 
-Task Sets has one human surface at **Agents → Task Sets**. Native Nessie agents
+Task Sets has one human surface at **Admin › Automations › Batch jobs**. Native Nessie agents
 reach the same service through the `task_set_*` builtins; every returned workload
 includes its `/agents/task-sets/:id` address as the conversation doorway. Agents
 return that link when a person needs to inspect progress or change a workload.

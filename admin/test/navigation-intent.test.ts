@@ -38,7 +38,10 @@ for (const surface of SURFACES) {
 test('the registry declares the intents the app links with', () => {
   assert.deepEqual(
     [...consumedNames].sort(),
-    ['acceptCall', 'connect', 'create', 'incomingCall', 'messageId', 'pageId', 'scopeProjectId', 'spaceId', 'uoa_billing'],
+    [
+      'acceptCall', 'code', 'connect', 'create', 'incomingCall', 'messageId', 'pageId', 'scopeProjectId',
+      'spaceId', 'uoa_billing',
+    ],
   )
   assert.deepEqual([...hashNames].sort(), ['confirmationToken'])
   // A name is either consumed or state on a row, never both.
@@ -50,11 +53,20 @@ test('the registry declares the intents the app links with', () => {
   }
 })
 
+// The same spelling, a different parameter: the identity provider's OAuth
+// `code` on the sign-in routes, which sit outside the stack and belong to the
+// OAuth protocol rather than to any screen's intent. Security's `?code=` is
+// the pairing link's, and is read through the hooks like every other intent.
+const PROTOCOL_READERS: ReadonlyArray<readonly [path: string, name: string]> = [
+  ['lib/external-auth-callback.ts', 'code'],
+]
+
 test('a consumed name is read only through the intent hooks', () => {
   const offenders: string[] = []
   for (const { path, text } of sources) {
     if (path === 'navigation/intent.ts') continue
     for (const name of consumedNames) {
+      if (PROTOCOL_READERS.some(([reader, param]) => reader === path && param === name)) continue
       const reader = new RegExp(`\\.(?:get|getAll|has)\\((['"])${name}\\1\\)`)
       if (reader.test(text)) offenders.push(`${path}: reads ?${name} directly`)
     }
@@ -191,12 +203,12 @@ test('a consumed intent is captured once, stripped with replace, and its state f
     }
     const router = createMemoryRouter([
       { path: '/before', element: h('p', null, 'Before') },
-      { path: '/apps/:slug', element: h(Probe, { enabled: true }) },
+      { path: '/admin/apps/:slug', element: h(Probe, { enabled: true }) },
       { path: '/held/:slug', element: h(Probe, { enabled: false }) },
     ], {
       initialEntries: [
         '/before',
-        { pathname: '/apps/x', search: '?connect=true&tab=accounts', hash: '#trigger-t1', state: { origin: '/before' } },
+        { pathname: '/admin/apps/x', search: '?connect=true&tab=accounts', hash: '#trigger-t1', state: { origin: '/before' } },
       ],
       initialIndex: 1,
     })
@@ -220,14 +232,14 @@ test('a consumed intent is captured once, stripped with replace, and its state f
       // The same value arriving again on the mounted screen is a new
       // arrival: the serial moves so an effect keyed on it acts twice for
       // two links.
-      await act(async () => { await router.navigate('/apps/x?connect=true') })
+      await act(async () => { await router.navigate('/admin/apps/x?connect=true') })
       await settle(act)
       assert.deepEqual(seen[seen.length - 1], { serial: 2, value: 'true' })
       assert.equal(router.state.location.search, '')
       // Each strip replaced its own entry: Back walks the two arrivals, then
       // leaves.
       await act(async () => { await router.navigate(-1) })
-      assert.equal(`${router.state.location.pathname}${router.state.location.search}`, '/apps/x?tab=accounts')
+      assert.equal(`${router.state.location.pathname}${router.state.location.search}`, '/admin/apps/x?tab=accounts')
       await act(async () => { await router.navigate(-1) })
       assert.equal(router.state.location.pathname, '/before')
 

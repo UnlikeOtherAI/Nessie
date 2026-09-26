@@ -107,7 +107,7 @@ export const LocalInferenceHostStatus = ({
                     </Select>
                   </FormField> : null}
                   {executorId === undefined && host.transport === 'executor' && host.executorId ? (
-                    <Link className="admin-button admin-button-secondary" to={`/agents/executors/${host.executorId}`}>
+                    <Link className="admin-button admin-button-secondary" to={`/admin/computers/${host.executorId}`}>
                       Open executor
                     </Link>
                   ) : null}

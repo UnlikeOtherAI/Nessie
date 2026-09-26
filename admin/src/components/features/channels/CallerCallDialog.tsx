@@ -104,7 +104,7 @@ export const CallerCallDialog = ({
       description={(
         <>
           in #{channelLabel} via {canManageCallSettings ? (
-            <Link className="text-[color:var(--accent)] underline-offset-2 hover:underline" to="/settings/organization">
+            <Link className="text-[color:var(--accent)] underline-offset-2 hover:underline" to="/admin/teams">
               {providerLabel}
             </Link>
           ) : providerLabel}
@@ -239,7 +239,7 @@ export const StartCallFailureDialog = ({
             Join existing call
           </ExternalMeetingAnchor>
         ) : failure.connection ? (
-          <Link className="admin-button admin-button-primary justify-self-start" to="/settings/connections">
+          <Link className="admin-button admin-button-primary justify-self-start" to="/settings/accounts">
             {connectLabel}
           </Link>
         ) : null}

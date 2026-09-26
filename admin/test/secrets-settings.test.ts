@@ -278,7 +278,7 @@ test('a locked row keeps its Revoke button — an unusable secret is still one t
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   pretendToBeVisual: true,
-  url: 'http://localhost:5455/settings/secrets',
+  url: 'http://localhost:5455/settings/keys',
 })
 
 const React = await import('react')
