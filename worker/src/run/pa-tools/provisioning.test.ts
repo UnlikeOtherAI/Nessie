@@ -102,7 +102,10 @@ test('channel_create makes the acting user the owner of a channel in the run tea
     },
     // Placing a channel in a team requires standing in it; a plain org member
     // gets that standing from their team membership, not their org role.
-    teamMember: { findFirst: async () => ({ role: 'member' }) },
+    teamMember: {
+      findFirst: async () => ({ role: 'member' }),
+      findUnique: async () => ({ role: 'member' }),
+    },
     // Adding a room to an existing project changes that project, so the acting
     // user must be a member of it (`canModifyProject`).
     projectMember: { count: async () => 1, findFirst: async () => null },
