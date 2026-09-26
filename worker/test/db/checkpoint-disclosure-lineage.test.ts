@@ -109,11 +109,20 @@ runDatabaseTest('checkpoints preserve known authors, fail closed for legacy rows
     sourceAuthorUserId: fixture.authorBId,
     sourceChannelId: fixture.channelId,
   }]))
-  const modern = await loadRunCheckpointForRun(prisma, {
+  // Author B keeps going in the room the notes came from, and may read them.
+  const replyOfB = () => ({
+    agentId: fixture.agentId,
+    principalUserId: null,
+    resumer: {
+      kind: 'user' as const,
+      scopes: [{ scopeId: fixture.channelId, scopeType: 'channel' }],
+      userId: fixture.authorBId,
+    },
     rootMessageId: null,
     runId: randomUUID(),
     threadId: fixture.threadId,
   })
+  const modern = await loadRunCheckpointForRun(prisma, replyOfB())
   assert.deepEqual(modern?.disclosureSources, [{
     sourceAuthorUserId: fixture.authorBId,
     sourceChannelId: fixture.channelId,
@@ -150,11 +159,7 @@ runDatabaseTest('checkpoints preserve known authors, fail closed for legacy rows
       scopeType: 'channel',
     },
   })
-  const loadedLegacy = await loadRunCheckpointForRun(prisma, {
-    rootMessageId: null,
-    runId: randomUUID(),
-    threadId: fixture.threadId,
-  })
+  const loadedLegacy = await loadRunCheckpointForRun(prisma, replyOfB())
   assert.equal(loadedLegacy?.id, legacy.id)
   const legacySink = createConsumedSourceSink()
   await admitPrivateConversationLineage(prisma, legacySink, loadedLegacy!)
