@@ -85,5 +85,16 @@
     "save": "Guardar",
     "archiveConfirm": "¿Seguro que quieres archivar #{{channel}}? Se ocultará de la lista de canales. Puedes desarchivarlo más tarde.",
     "archiveTitle": "¿Archivar canal?"
+  },
+  "members": {
+    "inChannel": "En este canal",
+    "remove": "Quitar del canal",
+    "addToChannel": "Añadir al canal",
+    "personalAssistant": "Asistente personal",
+    "addMyAssistant": "Añadir mi asistente",
+    "assistantDescription": "Las personas de este canal pueden asignarle una tarea.",
+    "adding": "Añadiendo…",
+    "add": "Añadir",
+    "noMatches": "Ningún miembro coincide con tu búsqueda."
   }
 }

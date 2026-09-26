@@ -85,5 +85,16 @@
     "save": "Save",
     "archiveConfirm": "Are you sure you want to archive #{{channel}}? It will be hidden from the channel list. You can unarchive it later.",
     "archiveTitle": "Archive channel?"
+  },
+  "members": {
+    "inChannel": "In this channel",
+    "remove": "Remove from channel",
+    "addToChannel": "Add to channel",
+    "personalAssistant": "Personal Assistant",
+    "addMyAssistant": "Add my assistant",
+    "assistantDescription": "Let people in this channel hand it a task.",
+    "adding": "Adding…",
+    "add": "Add",
+    "noMatches": "No members match your search."
   }
 }

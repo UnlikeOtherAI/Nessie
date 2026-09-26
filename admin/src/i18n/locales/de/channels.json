@@ -85,5 +85,16 @@
     "save": "Speichern",
     "archiveConfirm": "Möchtest du #{{channel}} wirklich archivieren? Der Kanal wird aus der Kanalliste ausgeblendet. Du kannst ihn später wiederherstellen.",
     "archiveTitle": "Kanal archivieren?"
+  },
+  "members": {
+    "inChannel": "In diesem Kanal",
+    "remove": "Aus Kanal entfernen",
+    "addToChannel": "Zum Kanal hinzufügen",
+    "personalAssistant": "Persönlicher Assistent",
+    "addMyAssistant": "Meinen Assistenten hinzufügen",
+    "assistantDescription": "Personen in diesem Kanal können ihm Aufgaben geben.",
+    "adding": "Wird hinzugefügt…",
+    "add": "Hinzufügen",
+    "noMatches": "Keine Mitglieder entsprechen deiner Suche."
   }
 }

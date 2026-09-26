@@ -85,5 +85,16 @@
     "save": "Uložit",
     "archiveConfirm": "Opravdu chcete archivovat kanál #{{channel}}? Skryje se ze seznamu kanálů. Později ho můžete obnovit.",
     "archiveTitle": "Archivovat kanál?"
+  },
+  "members": {
+    "inChannel": "V tomto kanálu",
+    "remove": "Odebrat z kanálu",
+    "addToChannel": "Přidat do kanálu",
+    "personalAssistant": "Osobní asistent",
+    "addMyAssistant": "Přidat mého asistenta",
+    "assistantDescription": "Lidé v tomto kanálu mu mohou zadat úkol.",
+    "adding": "Přidávání…",
+    "add": "Přidat",
+    "noMatches": "Hledání neodpovídá žádným členům."
   }
 }
