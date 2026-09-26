@@ -95,7 +95,13 @@
     "assistantDescription": "Personen in diesem Kanal können ihm Aufgaben geben.",
     "adding": "Wird hinzugefügt…",
     "add": "Hinzufügen",
-    "noMatches": "Keine Mitglieder entsprechen deiner Suche."
+    "noMatches": "Keine Mitglieder entsprechen deiner Suche.",
+    "global": "global",
+    "agent": "Agent",
+    "cloneAgent": "Eigene Kopie erstellen",
+    "viewAgent": "Agentendetails anzeigen",
+    "you": "du",
+    "user": "Person"
   },
   "messageActions": {
     "copied": "Nachricht kopiert",

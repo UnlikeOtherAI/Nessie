@@ -95,7 +95,13 @@
     "assistantDescription": "Let people in this channel hand it a task.",
     "adding": "Adding…",
     "add": "Add",
-    "noMatches": "No members match your search."
+    "noMatches": "No members match your search.",
+    "global": "global",
+    "agent": "agent",
+    "cloneAgent": "Create a copy you own",
+    "viewAgent": "View agent details",
+    "you": "you",
+    "user": "user"
   },
   "messageActions": {
     "copied": "Message copied",

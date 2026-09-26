@@ -95,7 +95,13 @@
     "assistantDescription": "Lidé v tomto kanálu mu mohou zadat úkol.",
     "adding": "Přidávání…",
     "add": "Přidat",
-    "noMatches": "Hledání neodpovídá žádným členům."
+    "noMatches": "Hledání neodpovídá žádným členům.",
+    "global": "globální",
+    "agent": "agent",
+    "cloneAgent": "Vytvořit vlastní kopii",
+    "viewAgent": "Zobrazit podrobnosti agenta",
+    "you": "vy",
+    "user": "uživatel"
   },
   "messageActions": {
     "copied": "Zpráva zkopírována",

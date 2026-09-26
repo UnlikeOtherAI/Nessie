@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { UserRecord } from '../../../lib/api-client'
 import { AvatarBadges } from '../AvatarBadges'
 import { Pill } from '../../primitives/Pill'
@@ -29,6 +30,7 @@ export const CurrentUserRow = ({
   removePending,
   onRemove,
 }: CurrentUserRowProps) => {
+  const { t } = useTranslation('channels')
   const { token } = useAuthSession()
   return (
   <div className={rowClass}>
@@ -46,14 +48,14 @@ export const CurrentUserRow = ({
       <div className="truncate text-sm font-medium text-[color:var(--tx)]">
         {user.displayName}
         {user.id === currentUserId && (
-          <span className="ml-1.5 text-xs text-[color:var(--tx3)]">(you)</span>
+          <span className="ml-1.5 text-xs text-[color:var(--tx3)]">({t('members.you')})</span>
         )}
       </div>
       <div className="truncate text-xs text-[color:var(--tx3)]">
         {user.email}
       </div>
     </div>
-    <Pill radius="chip" size="sm">user</Pill>
+    <Pill radius="chip" size="sm">{t('members.user')}</Pill>
     {canRemove && user.id !== currentUserId && (
       <button
         className={`${actionBtnClass} text-[color:var(--tx3)] hover:bg-[color:var(--danger-soft)] hover:text-[color:var(--danger-text)]`}
@@ -81,6 +83,7 @@ export const AvailableUserRow = ({
   addPending,
   onAdd,
 }: AvailableUserRowProps) => {
+  const { t } = useTranslation('channels')
   const { token } = useAuthSession()
   return (
   <div className={rowClass}>
@@ -113,7 +116,7 @@ export const AvailableUserRow = ({
       onClick={() => onAdd(user.id)}
       type="button"
     >
-      Add
+      {t('members.add')}
     </button>
   </div>
   )

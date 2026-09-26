@@ -95,7 +95,13 @@
     "assistantDescription": "Las personas de este canal pueden asignarle una tarea.",
     "adding": "Añadiendo…",
     "add": "Añadir",
-    "noMatches": "Ningún miembro coincide con tu búsqueda."
+    "noMatches": "Ningún miembro coincide con tu búsqueda.",
+    "global": "global",
+    "agent": "agente",
+    "cloneAgent": "Crear una copia propia",
+    "viewAgent": "Ver detalles del agente",
+    "you": "tú",
+    "user": "usuario"
   },
   "messageActions": {
     "copied": "Mensaje copiado",

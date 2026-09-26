@@ -95,7 +95,13 @@
     "assistantDescription": "Le persone in questo canale possono assegnargli un’attività.",
     "adding": "Aggiunta…",
     "add": "Aggiungi",
-    "noMatches": "Nessun membro corrisponde alla ricerca."
+    "noMatches": "Nessun membro corrisponde alla ricerca.",
+    "global": "globale",
+    "agent": "agente",
+    "cloneAgent": "Crea una copia di tua proprietà",
+    "viewAgent": "Visualizza i dettagli dell’agente",
+    "you": "tu",
+    "user": "utente"
   },
   "messageActions": {
     "copied": "Messaggio copiato",
