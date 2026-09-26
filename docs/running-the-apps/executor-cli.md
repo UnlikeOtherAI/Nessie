@@ -135,8 +135,10 @@ sudo dnf upgrade nessie-executor
 
 On Windows, use `winget upgrade --exact --id UnlikeOtherAI.NessieExecutor`.
 Restart each CLI service with `disable` followed by `enable` after upgrading.
-Pairing keys and local permissions live outside the installed package at
-`~/.local/state/nessie-executor/`; upgrades preserve them.
+CLI pairing keys and local permissions live at
+`~/.local/state/nessie-executor/`. Desktop apps keep their state in the account's
+application data directory. Both are outside the installed package, so upgrades
+preserve them.
 
 To remove the software, disable every CLI service or turn off the app's login
 setting and quit it, then uninstall through the same package manager.

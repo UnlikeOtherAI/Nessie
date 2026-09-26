@@ -81,7 +81,12 @@ Actions-based Pages, configure its custom domain, and deploy this archive with
 repository's Pages site and enforce HTTPS. Repository metadata must be deployed
 together as one snapshot; retain the previous signed archive for rollback.
 
-In the `executor-cli-release` GitHub environment, configure:
+Restrict the `executor-cli-release` GitHub environment to the `main` branch
+using a custom deployment branch policy, with no tag policy. This restriction
+also protects secrets if someone changes the workflow on another branch.
+Production Linux signing and the signed Mac CLI job run only from `main`;
+verification builds never select the production Linux environment.
+In that environment, configure:
 
 | Name | Type | Purpose |
 | --- | --- | --- |
@@ -109,6 +114,11 @@ with its own JIT entitlements, refreshes its manifest, then seals the app.
 Notarization submits a ZIP of the app, staples the app, then notarizes and
 staples its DMG. Both app and DMG must pass Gatekeeper. The CLI's tarball cannot
 be stapled; Apple records notarization tickets for its signed executables.
+The CLI embeds the signing team at build time. Before registering a login
+service it verifies its installed runtime hashes, the running bundle and Node
+paths, and both native binaries' Developer ID signatures against that team.
+The launch agent runs Node and the bundle directly through Homebrew's stable
+`opt` paths and clears Node injection variables.
 
 Allow the protected Apple environment to build the selected trusted main
 revision for manually dispatched CLI candidates as well as the existing
@@ -124,9 +134,9 @@ keeps its existing behavior and never submits a stable WinGet package.
 ## Publish an approved production candidate
 
 Package publication is an explicit operator action, separate from merging
-source and deploying website documentation. The current task prepares this
-pipeline and deliberately stops before creating a tap, configuring public
-hosting, publishing CLI packages or submitting WinGet manifests.
+source and deploying website documentation. Build jobs create candidates;
+operators provision hosting, publish verified releases and submit package-manager
+updates as separate actions.
 
 1. Build production-signed Linux and Mac CLI candidates from the same green
    `main` commit. Download both workflow artifacts into one directory,

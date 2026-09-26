@@ -58,6 +58,10 @@ test('build workflow cannot publish a release or silently produce an unsigned Ma
   assert.match(workflow, /contents: read/)
   assert.doesNotMatch(workflow, /contents: write|publish\.mjs|gh release create/)
   assert.match(workflow, /NESSIE_EXECUTOR_SIGNING_IDENTITY/)
+  assert.ok(workflow.includes("if: ${{ !inputs.release_signing || github.ref == 'refs/heads/main' }}"))
+  assert.ok(workflow.includes("environment: ${{ inputs.release_signing && 'executor-cli-release' || '' }}"))
+  assert.ok(workflow.includes("SIGNING_KEY: ${{ inputs.release_signing && secrets.EXECUTOR_REPOSITORY_SIGNING_KEY || '' }}"))
+  assert.ok(workflow.includes("if: ${{ inputs.macos && github.ref == 'refs/heads/main' }}"))
 })
 
 test('app manifests refuse moving URLs and retain the actual installed app versions', () => {

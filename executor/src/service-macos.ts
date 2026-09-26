@@ -1,20 +1,25 @@
 import { lstat, mkdir, unlink, writeFile } from 'node:fs/promises'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 import {
   assertExecutorIdentifier, createExecutorServiceEnvironment, executorServiceStateRoot,
   type ExecutorServiceEnvironment,
 } from './service-environment.js'
+import { macServiceRuntimePaths, verifyMacServiceInstallation } from './service-macos-installation.js'
 
 type MacServiceEnvironment = ExecutorServiceEnvironment & { launcher: string; searchPath: string; uid: number }
 type ServiceOptions = { executorId: string; stateDir?: string }
 
-export const createMacServiceEnvironment = (): MacServiceEnvironment => ({
-  ...createExecutorServiceEnvironment(),
-  launcher: process.env.NESSIE_EXECUTOR_LAUNCHER ?? '',
-  searchPath: process.env.PATH ?? '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
-  uid: process.getuid?.() ?? -1,
-})
+export const createMacServiceEnvironment = (): MacServiceEnvironment => {
+  const environment = createExecutorServiceEnvironment()
+  const launcher = process.env.NESSIE_EXECUTOR_LAUNCHER ?? ''
+  return {
+    ...environment, launcher,
+    searchPath: process.env.PATH ?? '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+    uid: process.getuid?.() ?? -1,
+    verifyPackagedRuntime: () => verifyMacServiceInstallation(launcher, environment.run),
+  }
+}
 
 const xml = (value: string): string => value.replace(/[<>&"']/g, (character) => ({
   '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;',
@@ -23,13 +28,13 @@ const xml = (value: string): string => value.replace(/[<>&"']/g, (character) => 
 export const macServicePlan = (options: ServiceOptions, environment: MacServiceEnvironment) => {
   if (environment.platform !== 'darwin' || environment.uid < 0) throw new Error('launchd services require macOS.')
   const id = assertExecutorIdentifier(options.executorId)
-  if (!isAbsolute(environment.launcher)) throw new Error('Install the signed Homebrew CLI before enabling its service.')
+  const runtime = macServiceRuntimePaths(environment.launcher)
   const stateDir = join(executorServiceStateRoot(environment.home), id)
   if (options.stateDir && resolve(options.stateDir) !== stateDir) throw new Error('The service must use this team’s default state directory.')
   const label = `works.nessie.executor.${id}`
   const path = join(environment.home, 'Library/LaunchAgents', `${label}.plist`)
   const log = join(environment.home, 'Library/Logs/NessieExecutor', `${id}.log`)
-  const strings = [environment.launcher, 'serve', '--state-dir', stateDir]
+  const strings = [runtime.node, runtime.bundle, 'serve', '--state-dir', stateDir]
     .map((argument) => `<string>${xml(argument)}</string>`).join('')
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -40,6 +45,8 @@ export const macServicePlan = (options: ServiceOptions, environment: MacServiceE
 <key>ThrottleInterval</key><integer>5</integer>
 <key>EnvironmentVariables</key><dict>
 <key>NESSIE_EXECUTOR_SUPERVISOR</key><string>service</string>
+<key>NESSIE_EXECUTOR_PACKAGED_CLI</key><string>1</string>
+<key>NODE_OPTIONS</key><string></string><key>NODE_PATH</key><string></string>
 <key>PATH</key><string>${xml(environment.searchPath)}</string></dict>
 <key>StandardOutPath</key><string>${xml(log)}</string>
 <key>StandardErrorPath</key><string>${xml(log)}</string>

@@ -169,8 +169,9 @@ sudo dnf upgrade nessie-executor`}</code></pre>
     <p>
       {"On Windows, use "}<code>{"winget upgrade --exact --id UnlikeOtherAI.NessieExecutor"}</code>{". "}
       {"Restart each CLI service with "}<code>{"disable"}</code>{" followed by "}<code>{"enable"}</code>{" after upgrading. "}
-      {"Pairing keys and local permissions live outside the installed package at "}
-      <code>{"~/.local/state/nessie-executor/"}</code>{"; upgrades preserve them."}
+      {"CLI pairing keys and local permissions live at "}
+      <code>{"~/.local/state/nessie-executor/"}</code>{". Desktop apps keep their state in the account's "}
+      {"application data directory. Both are outside the installed package, so upgrades preserve them."}
     </p>
 
     <p>

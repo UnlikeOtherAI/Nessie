@@ -18,7 +18,7 @@ await mkdir(payload, { recursive: true })
 const runtime = await prepareExecutorRuntime({
   entryPoint: join(REPOSITORY, 'executor/src/index.ts'),
   nativeHelperPath: join(REPOSITORY, 'executor/native/target/release/nessie-executor-native'),
-  outputDirectory: join(payload, 'runtime'), executorVersion: version,
+  outputDirectory: join(payload, 'runtime'), executorVersion: version, executorAppleTeamId: team,
 })
 for (const [file, entitlements] of [
   [runtime.nodePath, 'executor/packaging/macos/packaged-node.entitlements'],

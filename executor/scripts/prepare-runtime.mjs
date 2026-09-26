@@ -94,6 +94,7 @@ export const resolveWindowsPackagedNodeLicense = async (nodeExecutablePath = pro
 export const prepareExecutorRuntime = async ({
   entryPoint,
   executorVersion = 'development',
+  executorAppleTeamId = '',
   nativeHelperPath,
   nodeLicenseContents,
   nodeExecutablePath = process.execPath,
@@ -113,7 +114,10 @@ export const prepareExecutorRuntime = async ({
 
   await build({
     bundle: true,
-    define: { __NESSIE_EXECUTOR_VERSION__: JSON.stringify(executorVersion) },
+    define: {
+      __NESSIE_EXECUTOR_VERSION__: JSON.stringify(executorVersion),
+      __NESSIE_EXECUTOR_APPLE_TEAM_ID__: JSON.stringify(executorAppleTeamId),
+    },
     entryPoints: [resolve(entryPoint)],
     format: 'cjs',
     outfile: executorBundlePath,

@@ -29,10 +29,11 @@ env:
 jobs:
   linux:
     name: Linux DEB and RPM
+    if: ${{ !inputs.release_signing || github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     # Node's official binary uses glibc 2.28; the Rust helper and Go tools are static.
     container: node:22-bookworm
-    environment: executor-cli-release
+    environment: ${{ inputs.release_signing && 'executor-cli-release' || '' }}
     steps:
       - uses: actions/checkout@v4
       - name: Validate version and install build tools
@@ -66,7 +67,7 @@ jobs:
       - name: Prepare repository signing key
         env:
           RELEASE_SIGNING: ${{ inputs.release_signing }}
-          SIGNING_KEY: ${{ secrets.EXECUTOR_REPOSITORY_SIGNING_KEY }}
+          SIGNING_KEY: ${{ inputs.release_signing && secrets.EXECUTOR_REPOSITORY_SIGNING_KEY || '' }}
           SIGNING_FINGERPRINT: ${{ vars.EXECUTOR_REPOSITORY_SIGNING_FINGERPRINT }}
         shell: bash
         run: |
@@ -152,7 +153,7 @@ jobs:
 
   macos:
     name: macOS signed CLI
-    if: inputs.macos
+    if: ${{ inputs.macos && github.ref == 'refs/heads/main' }}
     runs-on: macos-15
     environment: direct-download-release
     steps:
