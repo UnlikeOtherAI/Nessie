@@ -1,0 +1,12 @@
+{
+  "desktopUpdate": {
+    "title": "Aktualizovat Nessie?",
+    "description": "Je k dispozici verze {{version}} (máte {{currentVersion}}).",
+    "installPrompt": "Chcete teď nainstalovat nejnovější podepsanou aktualizaci Nessie?",
+    "installError": "Aktualizaci se nepodařilo nainstalovat. Zkuste to prosím později.",
+    "skip": "Přeskočit tuto verzi",
+    "remindLater": "Připomenout zítra",
+    "updateNow": "Aktualizovat",
+    "installing": "Instaluje se…"
+  }
+}
