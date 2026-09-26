@@ -8,7 +8,7 @@ export type ChannelRoomControls = {
   /** A public room the viewer has not joined offers Join. */
   shouldJoin: boolean
   /**
-   * The message composer. **Membership, and nothing else.**
+   * The message composer requires participation and posting permission.
    *
    * This is the field that carries "management is not participation"
    * (`docs/standards/team-model.md`). An organisation admin reading a room they
@@ -18,7 +18,8 @@ export type ChannelRoomControls = {
    * Join action instead, and somebody looking at a protected room gets neither.
    *
    * Deliberately NOT derived from `viewerCanManage`, which is wider, nor from
-   * `memberRole`, which the single-record reads do not fill.
+   * `memberRole`, which the single-record reads do not fill. The server's
+   * `viewerCanPost` also hides it from ordinary members in read-only rooms.
    */
   canPost: boolean
   /** Why the composer is absent, when it is — so the room can say so. */
