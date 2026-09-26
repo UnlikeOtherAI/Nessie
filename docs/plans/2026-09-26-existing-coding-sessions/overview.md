@@ -143,7 +143,7 @@ The following is the proposed contract, not a list of implemented tools:
 | Agent tool | Bridge operation | External-session semantics |
 | --- | --- | --- |
 | `coding_session_list` | `session_list` | Authorized inventory with explicit provider/root/state/client/capability filters, cursor and freshness. |
-| `coding_session_wait` | `session_status` | Bounded overview and delivery/capability state; retain the existing worker wait model. |
+| `coding_session_wait` | `session_status` | Add `wait: false` for an immediate bounded overview and delivery/capability state; the default retains the existing worker wait model. |
 | `coding_session_queue` | `session_queue` | Default instruction action; next normal input only, never steer or Push fallback. |
 | `coding_session_push` | `session_push` | Explicit provider event with batching and acknowledgement limits. |
 | `coding_session_steer` | `session_steer` | Explicit current-turn input, conditional on its exact turn ID. |
