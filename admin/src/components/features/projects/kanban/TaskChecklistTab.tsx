@@ -114,7 +114,7 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
         <div className="flex items-center justify-between gap-3">
           <Link
             className="text-sm underline"
-            to={selected ? `/agents/${selected.agentId}?agentTab=to-dos` : '/agents'}
+            to={selected ? `/admin/agents/${selected.agentId}?agentTab=to-dos` : '/admin/agents'}
           >
             Manage this agent’s templates
           </Link>

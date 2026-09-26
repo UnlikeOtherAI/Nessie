@@ -68,11 +68,20 @@ test('the routes outside the stack are the unauthenticated ones, not-found, and 
 })
 
 test('a redirect route is listed but never classifies a screen', () => {
-  const redirects = ['/', '/work', '/chats', '/workflows', '/workflows/tools', '/settings/tools', '/settings/agents']
-  for (const pathname of redirects) {
-    assert.equal(matchSurface(pathname)?.surface.type, 'redirect', pathname)
-    assert.equal(surfaceScreen(pathname), null, pathname)
-    assert.equal(surfaceParent(pathname), null, pathname)
+  // The landing route is the only one left: retired addresses are deleted,
+  // never forwarded, so they match nothing at all.
+  assert.equal(matchSurface('/')?.surface.type, 'redirect')
+  assert.equal(surfaceScreen('/'), null)
+  assert.equal(surfaceParent('/'), null)
+  assert.deepEqual(
+    SURFACES.filter((surface) => surface.type === 'redirect').map((surface) => surface.pattern.source),
+    ['^\\/$'],
+  )
+  for (const retired of [
+    '/work', '/chats', '/workflows', '/settings/tools', '/settings/account', '/agents', '/agents/a1',
+    '/apps', '/tokens', '/audit', '/policy', '/ops', '/ops/usage', '/settings/members',
+  ]) {
+    assert.equal(matchSurface(retired), null, retired)
   }
 })
 
@@ -101,14 +110,26 @@ test('a parent is itself a classified screen, so Back can never land nowhere', (
 })
 
 test('one section owns each row, and a root exists for every section in use', () => {
-  const roots = new Map(
-    SURFACES.filter((surface) => surface.type === 'root').map((surface) => [surface.section, surface.root]),
-  )
+  const roots = new Map<string, Set<string>>()
+  for (const surface of SURFACES.filter((row) => row.type === 'root')) {
+    roots.set(surface.section, (roots.get(surface.section) ?? new Set()).add(surface.root))
+  }
   assert.deepEqual(
     [...roots.keys()].sort(),
     ['admin', 'channels', 'knowledge', 'projects', 'search'],
   )
   for (const surface of SURFACES) {
-    assert.equal(roots.get(surface.section), surface.root, String(surface.pattern))
+    assert.ok(roots.get(surface.section)?.has(surface.root), String(surface.pattern))
+  }
+  // Every section has exactly one root but Admin, which carries Your settings
+  // too: the section ids are a wire contract with the native shells, so the
+  // avatar menu's pages keep the Admin id under a root of their own.
+  assert.deepEqual([...roots.get('admin') ?? []].sort(), ['/admin', '/settings'])
+  for (const section of ['channels', 'knowledge', 'projects', 'search']) {
+    assert.equal(roots.get(section)?.size, 1, section)
+  }
+  for (const surface of SURFACES) {
+    const settingsRow = surface.pattern.source.startsWith(String.raw`^\/settings`)
+    assert.equal(surface.root === '/settings', settingsRow, String(surface.pattern))
   }
 })

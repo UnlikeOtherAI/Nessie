@@ -12,14 +12,14 @@ use nessie_windows_common::SERVICE_DIRECTORY_NAME;
 
 /// Where **Open Nessie** goes: the page that mints an executor invitation and
 /// confirms its fingerprint.
-pub const NESSIE_EXECUTORS_URL: &str = "https://app.nessie.works/agents/executors";
+pub const NESSIE_EXECUTORS_URL: &str = "https://app.nessie.works/admin/computers";
 
 /// Where **Open Nessie** goes for a DeepTest executor.
-pub const DEEPTEST_EXECUTORS_URL: &str = "https://app.deeptest.live/agents/executors";
+pub const DEEPTEST_EXECUTORS_URL: &str = "https://app.deeptest.live/admin/computers";
 
 /// The local admin origin that matches the local API origin. A development
 /// build opens the local admin; a release opens one of the hosted origins.
-pub const LOCAL_EXECUTORS_URL: &str = "http://localhost:5455/agents/executors";
+pub const LOCAL_EXECUTORS_URL: &str = "http://localhost:5455/admin/computers";
 
 /// The pairing picker offers this closed set. Mapping API to its matching
 /// admin page here prevents a local invitation flow from sending someone back
@@ -53,7 +53,7 @@ mod tests {
     /// caller supplies.
     #[test]
     fn open_nessie_goes_to_the_executors_page_on_the_admin_origin() {
-        assert_eq!(NESSIE_EXECUTORS_URL, "https://app.nessie.works/agents/executors");
+        assert_eq!(NESSIE_EXECUTORS_URL, "https://app.nessie.works/admin/computers");
         assert_eq!(
             executors_url_for_api("https://api.deeptest.live").unwrap(),
             DEEPTEST_EXECUTORS_URL,

@@ -255,7 +255,7 @@ export const createPushCredentialsService = (deps: {
           {
             title: 'Nessie push is connected',
             body: 'This test was sent directly from your Nessie server.',
-            data: { url: '/settings/push' },
+            data: { url: '/admin/advanced/push' },
             collapseId: 'nessie-apns-test',
           },
         )

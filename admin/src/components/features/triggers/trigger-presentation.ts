@@ -22,7 +22,7 @@ import { getDocumentTriggerSummary } from './document-trigger-presentation'
 
 /**
  * Single source for trigger display logic: labels, tones, icons, schedule
- * summaries and target formatting. Used by the Triggers page, the trigger
+ * summaries and target formatting. Used by the Schedules and triggers page, the trigger
  * editor and the per-agent trigger panel.
  */
 

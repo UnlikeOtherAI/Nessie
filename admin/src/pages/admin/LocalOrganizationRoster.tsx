@@ -1,5 +1,4 @@
 import { useState, type FormEvent } from 'react'
-import { Navigate } from 'react-router-dom'
 import type { UserRecord } from '../../lib/api-client'
 import { UserAvatar } from '../../components/shared/UserAvatar'
 import { useIsOwner } from '../../facades/auth/hooks'
@@ -18,11 +17,9 @@ import {
 import { buildPeopleAgentsTree } from '../../components/features/members/people-agents-tree'
 import { useAgents, usePausedPrivateAgentCount } from '../../facades/agents/queries'
 import type { AgentRecord } from '../../lib/api-client'
-import { SettingsPanel } from '../../components/shared/SettingsPanel'
+import { SettingsPanel, type SettingsTabHostProps } from '../../components/shared/SettingsPanel'
 import { Pill } from '../../components/primitives/Pill'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
-import { MembersRosterPanel } from '../../components/features/settings/MembersRosterPanel'
-import { OrganizationAdministrationGate } from './OrganizationAdministrationGate'
 import { toFormErrors } from '../../facades/forms/form-errors'
 import { Card } from '../../components/shared/Card'
 import { EmptyState } from '../../components/shared/EmptyState'
@@ -135,13 +132,19 @@ const MemberRow = ({
   )
 }
 
-export const SettingsMembersPage = () => {
+/**
+ * People at organisation scope on an install with no sign-in provider: the
+ * install is the authority for its own people, so the roster is its local
+ * `User` rows — each person with their role, their agents beneath them, the
+ * agents nobody owns, and Add member. On an UnlikeOtherAI session the roster
+ * and its invitations are UOA's, and `PeoplePage` renders that one instead.
+ * Managing the local roster is the owner's, so People offers this scope only
+ * to an owner.
+ */
+export const LocalOrganizationRoster = ({ host }: { host?: SettingsTabHostProps }) => {
   const { me, token } = useAuthSession()
   const isOwner = useIsOwner()
-  // On an UnlikeOtherAI session the roster and its invitations are UOA API
-  // features: UOA owns membership, and Nessie holds no list to show.
-  const isUoaSession = me?.auth.providerType === 'uoa'
-  const usersQuery = useUsers(isOwner && !isUoaSession)
+  const usersQuery = useUsers(isOwner)
   const users = usersQuery.data ?? []
   const createUser = useCreateUser()
 
@@ -183,19 +186,6 @@ export const SettingsMembersPage = () => {
     return null
   }
 
-  if (isUoaSession) {
-    return (
-      <OrganizationAdministrationGate>
-        <MembersRosterPanel scope="organization" />
-      </OrganizationAdministrationGate>
-    )
-  }
-
-  // Members management is owner-only; non-owners are routed back to their profile.
-  if (!isOwner) {
-    return <Navigate to="/settings/account" replace />
-  }
-
   const createUserSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setAddFieldErrors({})
@@ -224,12 +214,12 @@ export const SettingsMembersPage = () => {
     !createUser.isPending && userEmail.trim().length > 0 && userPassword.length >= 8
 
   return (
-    <SettingsPanel eyebrow="Organisation" title="Members">
+    <SettingsPanel eyebrow="Organisation" host={host} title="People">
       <div className="grid gap-4 xl:grid-cols-2">
         <Section title="People">
           <QueryState
-            errorLabel="Members could not be loaded."
-            loadingLabel="Loading members…"
+            errorLabel="People could not be loaded."
+            loadingLabel="Loading people…"
             query={usersQuery}
           >
             {() => (
@@ -259,7 +249,7 @@ export const SettingsMembersPage = () => {
                 <UnassignedAgents
                   agents={localTree.tree.teamOwned}
                   emptyLabel="None"
-                  title="Team-owned agents"
+                  title="Agents managed by the team"
                   token={token}
                 />
               ) : null}

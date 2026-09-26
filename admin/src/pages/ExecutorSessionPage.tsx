@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { ExecutorTerminalScreen } from '../components/features/executors/ExecutorTerminalScreen'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { QueryState } from '../components/shared/QueryState'
+import { COMPUTER_SESSIONS_PATH } from '../navigation/computers'
 import { useExecutorSessionView } from '../facades/executors/coding-sessions'
 import { ExecutorSessionSharing } from '../components/features/executors/ExecutorSessionSharing'
 
@@ -15,8 +16,8 @@ export const ExecutorSessionPage = () => {
   const session = view.data?.session
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <ScreenHeader title={session?.title ?? 'Session'} eyebrow="Executor sessions"
-        backLabel="Back to sessions" onBack={() => void navigate('/agents/executor-sessions')}
+      <ScreenHeader title={session?.title ?? 'Session'} eyebrow="Sessions"
+        backLabel="Back to sessions" onBack={() => void navigate(COMPUTER_SESSIONS_PATH)}
         actions={view.data?.canShare ? [{
           id: 'share-session', kind: 'button', label: 'Share session', priority: 80, onSelect: () => setSharing(true),
         }] : []}
@@ -27,7 +28,7 @@ export const ExecutorSessionPage = () => {
           {() => view.data ? (
             <>
               <p className="text-sm text-[color:var(--tx2)]" role="status">
-                {view.data.online ? 'Connected to executor' : 'Executor offline · waiting to reconnect'}
+                {view.data.online ? 'Connected to the computer' : 'Computer offline · waiting to reconnect'}
                 {session ? ` · ${session.status.replaceAll('_', ' ')}` : ''}
               </p>
               {view.data.screen ? <>
@@ -38,7 +39,7 @@ export const ExecutorSessionPage = () => {
                     : 'Agent activity · recent projected messages and tool results. This session uses a structured CLI protocol.'}
                 </p>
               </> : <p className="text-sm text-[color:var(--tx2)]">
-                Waiting for a screen from the executor. If it stays unavailable, update the executor and
+                Waiting for a screen from the computer. If it stays unavailable, update the computer and
                 check that the session still exists.
               </p>}
             </>

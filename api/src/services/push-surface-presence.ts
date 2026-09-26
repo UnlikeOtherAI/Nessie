@@ -43,7 +43,9 @@ const resolveRecordableSurface = async (
     return null
   }
 
-  if (input.surface.kind === 'ops_usage') {
+  // Usage and limits and the Schedules and triggers list both answer owners only
+  // (`requireOwner`), so nobody else is ever looking at what they show.
+  if (input.surface.kind === 'ops_usage' || input.surface.kind === 'triggers') {
     const membership = await prisma.organizationMember.findFirst({
       where: {
         organizationId: input.organizationId,

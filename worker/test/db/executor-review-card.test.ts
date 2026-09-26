@@ -181,7 +181,7 @@ runDatabaseTest('a prepared grant posts a review card that holds only the change
   // What the model reads: that a card was posted, and no secret at all.
   assert.match(result.outputPreview, /Posted an Allow access card in this chat/)
   assert.match(result.outputPreview, /No additional code is required/)
-  assert.doesNotMatch(result.outputPreview, /confirmationToken|#|\/agents\/executors/)
+  assert.doesNotMatch(result.outputPreview, /confirmationToken|#|\/admin\/computers/)
   assert.doesNotMatch(result.outputPreview.replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/, ''), TOKEN_SHAPE)
   assert.equal(result.deliveredToConversation, true)
 
@@ -328,7 +328,7 @@ runDatabaseTest('a prepared workspace promotion posts the same card, and no toke
   )
 
   assert.match(result.outputPreview, /put a confirmation card in this conversation/)
-  assert.doesNotMatch(result.outputPreview, /confirmationToken|#|\/agents\/executors/)
+  assert.doesNotMatch(result.outputPreview, /confirmationToken|#|\/admin\/computers/)
   assert.doesNotMatch(result.outputPreview.replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/, ''), TOKEN_SHAPE)
   assert.equal(result.deliveredToConversation, true)
 

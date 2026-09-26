@@ -22,7 +22,15 @@ import {
 import { useConsumedIntent } from '../navigation/intent'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
-export const TokenUsagePage = () => {
+/**
+ * The billing service's own page for this organisation, at two addresses: Admin ›
+ * Credits and billing for the people who manage billing, and Your settings ›
+ * Usage for everyone else. The service decides the projection each reader gets
+ * — a member sees their own usage and the team totals — so the screen is one
+ * component and only its name changes. Local telemetry is never rendered here
+ * (Admin › Usage and limits is that).
+ */
+const CreditsScreen = ({ eyebrow, title }: { eyebrow: string; title: string }) => {
   const { me } = useAuthSession()
   const billingCapability = useUoaBillingCapability()
   const queryClient = useQueryClient()
@@ -34,7 +42,7 @@ export const TokenUsagePage = () => {
   const [view, setView] = useState<'statement' | 'usage'>('usage')
   // UOA sends the person back here with the outcome; it is a consumed intent
   // (docs/navigation/overview.md §8), so the notice shows for this visit and a
-  // refresh or Back lands on plain /tokens without re-announcing it.
+  // refresh or Back lands on the plain address without re-announcing it.
   const checkoutIntent = useConsumedIntent(UOA_BILLING_CHECKOUT_RETURN_PARAMETER)
   const checkoutReturn = parseUoaBillingCheckoutReturn(checkoutIntent.value)
   const checkoutNotice = checkoutReturn
@@ -77,7 +85,8 @@ export const TokenUsagePage = () => {
       <ScreenHeader
         flowOwnsBack={view === 'statement'}
         onBack={view === 'statement' ? () => setView('usage') : undefined}
-        title={view === 'statement' ? 'Statement' : 'Credits & Billing'}
+        eyebrow={view === 'statement' ? title : eyebrow}
+        title={view === 'statement' ? 'Statement' : title}
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto px-10 py-9">
@@ -113,3 +122,9 @@ export const TokenUsagePage = () => {
     </section>
   )
 }
+
+/** Admin › Credits and billing — where a billing checkout returns. */
+export const BillingPage = () => <CreditsScreen eyebrow="Organisation" title="Credits and billing" />
+
+/** Your settings › Usage — the member's projection of the same page. */
+export const PersonalUsagePage = () => <CreditsScreen eyebrow="Your settings" title="Usage" />

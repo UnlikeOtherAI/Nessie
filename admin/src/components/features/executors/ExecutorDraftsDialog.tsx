@@ -27,7 +27,7 @@ type ExecutorDraftsDialogProps = {
 /**
  * A person's own COW reviews are the doorway to a separately confirmed host
  * write. They are not a property of any one executor — they belong to the runs
- * *you* started — so they are reached from the Executors header rather than
+ * *you* started — so they are reached from the Computers header rather than
  * being filtered onto one executor's detail page, where a draft from a machine
  * you can no longer see would have had nowhere to appear.
  */
@@ -80,7 +80,7 @@ export const ExecutorDraftsDialog = ({
                   key={review.commandId}
                   subtitle={`Reviewed ${review.acknowledgedAt}`}
                   title={
-                    `${executorNames.get(review.executorId) ?? 'Paired executor'} · `
+                    `${executorNames.get(review.executorId) ?? 'Paired computer'} · `
                     + `${review.changes.length} change${review.changes.length === 1 ? '' : 's'}`
                   }
                   trailing={

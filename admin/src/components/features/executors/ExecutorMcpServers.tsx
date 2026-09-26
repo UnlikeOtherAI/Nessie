@@ -45,7 +45,7 @@ export const ExecutorMcpServers = ({
     : (
       <p className="mt-1 text-[color:var(--warning-text)]">
         <span className="font-medium">Local apps: none selected.</span>{' '}
-        Choose an app on the machine before an agent can use its tools.
+        Choose an app on the computer before an agent can use its tools.
       </p>
     )
 }

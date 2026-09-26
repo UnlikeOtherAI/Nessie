@@ -14,7 +14,7 @@ import type { BuiltinToolRuntimeContext, ToolExecutionResult } from './tool-type
 const SetId = z.object({ taskSetId: z.string().uuid() })
 const ItemId = SetId.extend({ itemId: z.string().uuid() })
 const Create = TaskSetCreateSchema.omit({ originThreadId: true, originMessageId: true })
-const href = (id: string) => `/agents/task-sets/${encodeURIComponent(id)}`
+const href = (id: string) => `/admin/automations/batch-jobs/${encodeURIComponent(id)}`
 
 /** The observer runs before a content-bearing return can enter the agent's context. */
 export const taskSetDisclosureObserver = (context: BuiltinToolRuntimeContext) => {

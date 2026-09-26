@@ -122,7 +122,7 @@ const actorContext = {
   tenant: { organizationId },
 } as unknown as AuthorizedActionContext
 
-const listPrisma = (platformFacts: unknown) => ({
+const listPrisma = (platformFacts: unknown, pairingOwnerUserId = userId) => ({
   executor: {
     findMany: async () => [{
       authorizationRevision: 1,
@@ -132,7 +132,7 @@ const listPrisma = (platformFacts: unknown) => ({
       lastSeenAt: null,
       machineKeyFingerprint: null,
       organizationId,
-      pairingOwnerUserId: userId,
+      pairingOwnerUserId,
       platformFacts,
       profiles: ['workspace_sandbox'],
       projectId: null,
@@ -174,4 +174,16 @@ test('an executor that has never submitted a descriptor states no host facts', a
     actorContext,
   )
   assert.equal(legacy.platformFacts, undefined)
+})
+
+test('the reader\'s own list says which machines they paired, and nothing else about the owner', async () => {
+  const [mine] = await listVisibleExecutors(listPrisma({}), actorContext)
+  assert.equal(mine.pairedByViewer, true)
+  const [shared] = await listVisibleExecutors(
+    listPrisma({}, '00000000-0000-4000-8000-0000000000a9'),
+    actorContext,
+  )
+  assert.equal(shared.pairedByViewer, false)
+  // The owner's account is never named on the record; the flag is relative.
+  assert.equal('pairingOwnerUserId' in shared, false)
 })

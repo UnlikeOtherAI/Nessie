@@ -1,12 +1,10 @@
 import { useState } from 'react'
 import type { TeamRecord } from '../../../lib/api-client'
 import { callProviderLabel } from '../../../facades/calls/call-presentation'
-import { useTeams, useUpdateTeamCallProvider } from '../../../facades/projects/hooks'
+import { useUpdateTeamCallProvider } from '../../../facades/projects/hooks'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 import { Card } from '../../../components/shared/Card'
 import { FormError } from '../../../components/shared/FormActions'
-import { QueryState } from '../../../components/shared/QueryState'
-import { RowList, Row } from '../../../components/shared/RowList'
 
 type CallProvider = TeamRecord['callProvider']
 
@@ -67,7 +65,12 @@ export const CallProviderSelect = ({ disabled, onChange, team }: CallProviderSel
   )
 }
 
-const CallProviderRow = ({ team }: { team: TeamRecord }) => {
+/**
+ * The team's call provider, on the team's own page: a call started in this
+ * team creates a link with it. It used to be one row of an organisation-wide
+ * list of every team; the setting is the team's, so its home is too.
+ */
+export const TeamCallProvider = ({ team }: { team: TeamRecord }) => {
   const updateProvider = useUpdateTeamCallProvider()
   const [error, setError] = useState<string | null>(null)
 
@@ -81,11 +84,12 @@ const CallProviderRow = ({ team }: { team: TeamRecord }) => {
   }
 
   return (
-    <Row
-      subtitle={`Calls in this team create a ${callProviderLabel(team.callProvider)} link.`}
-      title={team.name}
-    >
-      <div className="mt-2">
+    <Card as="section">
+      <SectionLabel>Calls</SectionLabel>
+      <p className="mt-2 text-sm text-[color:var(--tx2)]">
+        {`Calls in this team create a ${callProviderLabel(team.callProvider)} link.`}
+      </p>
+      <div className="mt-4">
         <CallProviderSelect
           disabled={updateProvider.isPending}
           onChange={(provider) => void changeProvider(provider)}
@@ -93,36 +97,6 @@ const CallProviderRow = ({ team }: { team: TeamRecord }) => {
         />
       </div>
       <FormError className="mt-2">{error}</FormError>
-    </Row>
-  )
-}
-
-/** The organization-level home for the per-team setting that drives Call. */
-export const CallProviderSettingsPanel = () => {
-  const teams = useTeams()
-
-  return (
-    <Card as="section">
-      <SectionLabel>Calls</SectionLabel>
-      <p className="mt-2 text-sm text-[color:var(--tx2)]">
-        Choose the provider used when someone starts a call in each team.
-      </p>
-
-      <div className="mt-4">
-        <QueryState
-          emptyLabel="No teams are available."
-          errorLabel="Could not load teams."
-          isEmpty={(teams.data?.length ?? 0) === 0}
-          loadingLabel="Loading teams…"
-          query={teams}
-        >
-          {() => (
-            <RowList label="Teams">
-              {(teams.data ?? []).map((team) => <CallProviderRow key={team.id} team={team} />)}
-            </RowList>
-          )}
-        </QueryState>
-      </div>
     </Card>
   )
 }

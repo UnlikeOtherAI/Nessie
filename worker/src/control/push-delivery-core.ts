@@ -415,7 +415,7 @@ export type DeliverToRecipientsInput = {
   /** The pre-filtered recipient user ids (preferences already applied). */
   recipientIds: string[]
   organizationId: string
-  /** Deep link the notification opens (e.g. `/channels/:id`, `/ops/usage`). */
+  /** Deep link the notification opens (e.g. `/channels/:id`, `/admin/usage`). */
   deepLinkUrl: string
   /** Structured equivalent of the deep link for exact page-aware suppression. */
   surface: PushSurfaceTarget

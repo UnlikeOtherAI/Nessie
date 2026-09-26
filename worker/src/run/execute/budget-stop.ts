@@ -69,7 +69,7 @@ export const classifyBudgetStop = (reason: BudgetExhaustionReason): RunStopReaso
   REASON_TO_STOP[reason]
 
 // Member-visible copy carries units of work only — never a currency figure.
-// Local cost telemetry belongs in the TaskEvent payload and /ops/usage, not in
+// Local cost telemetry belongs in the TaskEvent payload and /admin/usage, not in
 // a chat thread where members can read it.
 const stopPhrase = (stop: RunStopReason, stats: BudgetStopStats): string => {
   switch (stop) {

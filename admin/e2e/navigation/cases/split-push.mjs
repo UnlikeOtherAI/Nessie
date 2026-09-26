@@ -14,14 +14,14 @@ const splitPushCase = (viewport) => ({
     const result = await captureTransition({
       caseName,
       page,
-      prepare: (target) => gotoPath(target, '/agents'),
+      prepare: (target) => gotoPath(target, '/admin/agents'),
       travels: [
         { from: 1, label: 'entering designer', to: 0 },
         { from: 0, label: 'parallaxing agents list', to: -0.28 },
       ],
       trigger: async (target) => {
         const before = await target.evaluate(() => document.querySelector('.resizable-sidebar')?.getBoundingClientRect().width ?? null)
-        await pushPath(target, '/agents/designer')
+        await pushPath(target, '/admin/agents/designer')
         return { before }
       },
     })

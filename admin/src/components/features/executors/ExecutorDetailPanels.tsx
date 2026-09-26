@@ -24,8 +24,8 @@ export const EXECUTOR_TABS = [
 export const accessErrorLabel = (error: unknown): string =>
   error instanceof ApiClientError && error.code === 'INVALID_RESPONSE'
     ? 'This Nessie is older than the server it is talking to, so it cannot read this '
-      + 'executor’s access. Update or reinstall Nessie Desktop.'
-    : 'This executor’s access could not be loaded.'
+      + 'computer’s access. Update or reinstall Nessie Desktop.'
+    : 'This computer’s access could not be loaded.'
 
 type ExecutorDetailPanelsProps = {
   accessQuery: UseQueryResult<ExecutorAccessViewWithLocalMcp>
@@ -43,8 +43,8 @@ export const ExecutorDetailPanels = ({
   const access = accessQuery.data?.executorId === executor.id ? accessQuery.data : undefined
   return (
     <div className="grid min-h-0 gap-5">
-      <div className="flex"><TabBar ariaLabel="Executor sections" items={EXECUTOR_TABS} onChange={setTab} size="sm" touchTarget value={tab} /></div>
-      <QueryState className="py-6" errorLabel={accessErrorLabel(accessQuery.error)} loadingLabel="Loading executor…" query={accessQuery}>
+      <div className="flex"><TabBar ariaLabel="Computer sections" items={EXECUTOR_TABS} onChange={setTab} size="sm" touchTarget value={tab} /></div>
+      <QueryState className="py-6" errorLabel={accessErrorLabel(accessQuery.error)} loadingLabel="Loading computer…" query={accessQuery}>
         {() => access ? access.canManage ? (
           <>
             {tab === 'agents' ? <ExecutorAgentsPanel executorId={executor.id} scopeKind={executor.scope.kind} token={token} /> : null}
@@ -64,7 +64,7 @@ export const ExecutorDetailPanels = ({
               </div>
             ) : null}
           </>
-        ) : <p className="text-sm text-[color:var(--tx2)]">Only this machine’s administrators can manage its agents and permissions.</p> : null}
+        ) : <p className="text-sm text-[color:var(--tx2)]">Only this computer’s administrators can manage its agents and permissions.</p> : null}
       </QueryState>
     </div>
   )

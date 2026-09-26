@@ -19,7 +19,7 @@ import {
 import { storeCatalogWhere } from './app-store-visibility.js'
 
 /**
- * One app, addressed by the slug in `/apps/:slug`.
+ * One app, addressed by the slug in `/admin/apps/:slug`.
  *
  * The same visibility gate as the list, so an app a caller cannot see in the
  * store is not reachable by guessing its slug either.
@@ -33,7 +33,7 @@ const UUID_PATTERN =
  * `slug` is nullable by design — a name carrying no `[a-z0-9]` character
  * slugifies to nothing, and the store migration also nulled the few slugs that
  * collided rather than aborting. Those apps are listed with `slug: null`, so
- * their cards link to `/apps/<id>`; matching on the slug column alone would
+ * their cards link to `/admin/apps/<id>`; matching on the slug column alone would
  * 404 the very rows the null was supposed to keep reachable.
  *
  * The id arm is gated on the UUID shape because Postgres rejects a malformed

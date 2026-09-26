@@ -45,7 +45,7 @@ test('buildBudgetStopNotice is always non-empty and names the limit + detail', (
 })
 
 // Local cost telemetry must never reach a member-visible chat message; it
-// stays in the TaskEvent payload and /ops/usage.
+// stays in the TaskEvent payload and /admin/usage.
 test('buildBudgetStopNotice never exposes a currency figure', () => {
   for (const [raw] of CASES) {
     for (const hadPartialText of [true, false]) {

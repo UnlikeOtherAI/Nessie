@@ -137,7 +137,6 @@ export default defineConfig(({ command, mode }) => {
           } : {}),
           ...(includeExecutorPairingFixture ? {
             executorPairing: resolve(__dirname, 'e2e/executor-pairing/index.html'),
-            executorMenu: resolve(__dirname, 'e2e/executor-menu/index.html'),
           } : {}),
           ...(includeExecutorAgentsFixture ? {
             executorAgents: resolve(__dirname, 'e2e/executor-agents/index.html'),

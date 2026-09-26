@@ -59,7 +59,7 @@ try {
   await review.waitFor()
   assert.equal(
     await review.getAttribute('href'),
-    '/agents/tools?status=pending_review&instance=44444444-4444-4444-8444-444444444444',
+    '/admin/advanced/tools?status=pending_review&instance=44444444-4444-4444-8444-444444444444',
   )
   await page.screenshot({ fullPage: true, path: reviewScreenshotPath })
   await page.evaluate(() => { window.__appConnectScopeFixture.policyCalls.length = 0 })

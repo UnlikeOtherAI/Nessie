@@ -13,7 +13,7 @@ export type ExecutorCompanionStatus = {
 
 /**
  * Why this device can or cannot host an executor. The command answers with a
- * state instead of failing, so the Executors page can tell the truth about the
+ * state instead of failing, so the Computers page can tell the truth about the
  * computer a person is standing at rather than rendering nothing — see
  * docs/plans/2026-09-01-linux-desktop-delivery.md → "The Executors page tells
  * the truth about this device".

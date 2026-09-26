@@ -907,7 +907,7 @@ the screen it goes to that conversation, which opens the brief itself.
   the agent and person drawers', whose brief comes back to the conversation that
   drawer posts to. When the viewer cannot
   start research it says why in its label and opens `ResearchReadinessScreen`
-  instead of a brief: a team owner is sent to `/apps/deep-water` to turn
+  instead of a brief: a team owner is sent to `/admin/apps/deep-water` to turn
   DeepWater on or update it, anyone else — admins included — is told to ask a
   team owner, and an unlinked sign-in is asked to sign in again. The verdict is
   the products list's `research` readiness, read through
@@ -921,7 +921,7 @@ the screen it goes to that conversation, which opens the brief itself.
   composer's button (whose label then claims no reason) — never as DeepWater
   being off or unreachable; `readinessCopy` throws on a state it has no words
   for rather than render an undefined title.
-- **The owner's controls live on the `/apps/deep-water` hero**
+- **The owner's controls live on the `/admin/apps/deep-water` hero**
   (`DeepWaterTeamControls`): turn DeepWater on, off (confirmed) or update it to
   the brief tools — a team that needs updating is on, so its owner is offered
   both Update and Turn off (`deepWaterTeamControls`). They, and the readiness

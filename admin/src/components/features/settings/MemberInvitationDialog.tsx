@@ -183,7 +183,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
               onClose()
               setSearchParams((current) => {
                 const updated = new URLSearchParams(current)
-                updated.set('membersTab', 'automatic')
+                updated.set('tab', 'automatic')
                 return updated
               }, { replace: true })
             }}
@@ -221,9 +221,9 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
             {debouncedCandidateQuery.trim() ? <QueryState
               className="py-2"
               emptyLabel="No one to add by that name. Try inviting them by email."
-              errorLabel="Members could not be searched."
+              errorLabel="People could not be searched."
               isEmpty={candidateItems.length === 0}
-              loadingLabel="Searching members…"
+              loadingLabel="Searching people…"
               query={candidates}
             >
             {() => (

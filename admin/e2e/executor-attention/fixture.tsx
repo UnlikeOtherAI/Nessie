@@ -42,7 +42,7 @@ const Fixture = () => {
           emptyMessage="No machines paired."
           executors={executors}
           isLoading={false}
-          onOpen={(id) => navigate(`/agents/executors/${id}`)}
+          onOpen={(id) => navigate(`/admin/computers/${id}`)}
         />
       </main>
     </div>

@@ -61,9 +61,9 @@ isolation. The audit and limits are recorded in
   read out of the already-cached channel list), `/projects/:id` (and its six
   section routes) → the board directory, and on the board route its selected
   board's cards (an explicit `?board=` starts that request in parallel),
-  `/agents/:id` → the agent's status,
+  `/admin/agents/:id` → the agent's status,
   `/dashboards/:id` → the dashboard, `/knowledge-base/spaces/:id` → the space
-  and its pages, `/apps/:slug` → the app. Each entry calls the **exact
+  and its pages, `/admin/apps/:slug` → the app. Each entry calls the **exact
   `fetch*` function the destination's hook calls**, under the exact key from
   the destination facade's `keys.ts` — a URL spelled here would be a second fetcher, and the
   first divergence would fill the cache under the right key with the wrong

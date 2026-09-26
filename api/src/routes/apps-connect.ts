@@ -319,7 +319,7 @@ export const registerAppsConnectRoutes = (
       })
       // Read back through the store presenter rather than shaping a catalogue
       // row by hand: it is the one thing that decides what `/api/apps` may say
-      // about an app, and the client needs the slug to reach `/apps/:slug`.
+      // about an app, and the client needs the slug to reach `/admin/apps/:slug`.
       const record = await getStoreApp(prisma, actorContext, entry.id)
       return reply.code(201).send(createApiResponse({ appId: entry.id, app: record }))
     } catch (error) {

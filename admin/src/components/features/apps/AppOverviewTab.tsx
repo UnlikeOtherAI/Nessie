@@ -59,7 +59,7 @@ export const AppOverviewTab = ({ app }: AppOverviewTabProps) => {
                   'hover:border-[color:var(--border-strong)] hover:text-[color:var(--tx)]',
                 ].join(' ')}
                 key={agent.agentId}
-                to={`/agents/${agent.agentId}`}
+                to={`/admin/agents/${agent.agentId}`}
               >
                 {agent.name}
               </Link>

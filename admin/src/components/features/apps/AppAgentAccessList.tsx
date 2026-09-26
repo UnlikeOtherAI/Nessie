@@ -93,7 +93,7 @@ const ObservedAgentRow = ({ row }: { row: AgentAccessRow }) => (
         'transition-colors duration-[var(--duration-fast)]',
         'hover:border-[color:var(--border-strong)] hover:bg-[color:var(--overlay-weak)]',
       ].join(' ')}
-      to={`/agents/${row.agentId}`}
+      to={`/admin/agents/${row.agentId}`}
     >
       <AgentIdentity caption={row.role} row={row} />
     </Link>
@@ -138,7 +138,7 @@ const ManagedAgentRow = ({ appName, row, toolRegistryEntryIds }: ManagedAgentRow
     <li className={`${rowShell} flex-wrap`}>
       <Link
         className="flex min-w-0 flex-1 items-center gap-3"
-        to={`/agents/${row.agentId}`}
+        to={`/admin/agents/${row.agentId}`}
       >
         <AgentIdentity caption={view.summary} row={view} />
       </Link>

@@ -22,7 +22,7 @@ import type { RouteDeps } from './types.js'
  * validation, the SSRF guard on every advertised endpoint, the http(s)-only
  * check on every URL-shaped field, and the `safeFetch` egress.
  *
- * `/apps` is a member surface; this is not. A sync writes instance-global
+ * `/admin/apps` is a member surface; this is not. A sync writes instance-global
  * catalogue rows that everyone then sees, so both routes are `requireOwner`.
  */
 

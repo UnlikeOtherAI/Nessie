@@ -47,5 +47,5 @@ test('a machine-access item names the trigger it is for', () => {
 })
 
 test('a machine-access item opens the trigger it is for, at its Machine access section', () => {
-  assert.deepEqual(getAlertLink(machineAccess), { to: `/agents/triggers/${machineAccess.triggerId}#machine-access` })
+  assert.deepEqual(getAlertLink(machineAccess), { to: `/admin/automations/triggers/${machineAccess.triggerId}#machine-access` })
 })

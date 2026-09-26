@@ -11,7 +11,7 @@ import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
 import '../../src/styles.css'
 
 /**
- * The composer's "Run on an executor" doorway, driven by the real dialog and
+ * The composer's "Run on a computer" doorway, driven by the real dialog and
  * the real API client. The runner answers `/api/**` itself, so what it asserts
  * about the launch is the request the dialog actually put on the wire — the
  * bundle a person picked is the whole grant, and a dialog that posted one
@@ -44,9 +44,9 @@ const Fixture = () => {
     <main className="min-h-screen bg-[color:var(--bg)] p-8 text-[color:var(--tx)]">
       <h1 className="text-lg font-semibold">Project channel</h1>
       <button className="admin-button admin-button-secondary" onClick={() => setOpen(true)} type="button">
-        Run on an executor
+        Run on a computer
       </button>
-      {launched ? <p>Executor run started</p> : null}
+      {launched ? <p>Computer run started</p> : null}
       <ExecutorRunLauncherDialog
         agents={agents}
         initialContent="Take the tickets one at a time."

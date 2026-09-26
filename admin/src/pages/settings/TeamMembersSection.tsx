@@ -300,11 +300,11 @@ export const TeamMembersSection = ({
             <FeedbackBanner
               feedback={{
                 kind: 'error',
-                message: 'Members couldn’t be loaded right now. Try again in a moment.',
+                message: 'People couldn’t be loaded right now. Try again in a moment.',
               }}
             />
           ) : members.isLoading ? (
-            <p className="text-sm text-[color:var(--tx3)]">Loading members…</p>
+            <p className="text-sm text-[color:var(--tx3)]">Loading people…</p>
           ) : null}
           {needsTeamReconnect && onReconnect ? (
             <button

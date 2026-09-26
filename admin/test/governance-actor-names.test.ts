@@ -5,7 +5,7 @@ import { JSDOM } from 'jsdom'
 import type { ApiClient } from '@nessie/client-core'
 
 /**
- * `/approvals` and `/audit` name their actors.
+ * `/approvals` and the audit log (`/admin/security`) name their actors.
  *
  * Both screens exist to answer "who" — which agent is asking for permission,
  * which agent did this — and both used to answer with eight characters of a
@@ -23,7 +23,7 @@ import type { ApiClient } from '@nessie/client-core'
  */
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
-  url: 'http://localhost:5455/audit',
+  url: 'http://localhost:5455/admin/security',
 })
 
 const React = await import('react')

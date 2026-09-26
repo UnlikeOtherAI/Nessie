@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type {
+  ApiClient,
   MailboxConnectionRecord,
   MailboxConnectionScope,
   MailboxDiscoveryResult,
@@ -9,6 +10,12 @@ import type {
 import { mailboxConnectionKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
+export type MailboxConnectionList = { connections: MailboxConnectionRecord[] }
+
+/** The one read, shared with a doorway that needs the list only once it is pressed. */
+export const fetchMailboxConnections = (apiClient: ApiClient): Promise<MailboxConnectionList> =>
+  apiClient.get('/api/mailbox-connections')
+
 /**
  * Connected SMTP/IMAP mailboxes. One list for both homes — the panel narrows by
  * scope rather than the API returning a different set per surface, so the two
@@ -16,9 +23,9 @@ import { useApiClient } from '../../providers/ApiClientProvider'
  */
 export const useMailboxConnections = () => {
   const apiClient = useApiClient()
-  return useQuery<{ connections: MailboxConnectionRecord[] }>({
+  return useQuery<MailboxConnectionList>({
     placeholderData: keepPreviousData,
-    queryFn: () => apiClient.get('/api/mailbox-connections'),
+    queryFn: () => fetchMailboxConnections(apiClient),
     queryKey: mailboxConnectionKeys.list,
   })
 }

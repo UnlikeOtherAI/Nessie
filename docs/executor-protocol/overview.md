@@ -129,8 +129,8 @@ executor ID. Consuming a handle creates the binding transactionally.
    chosen. The server returns **eight digits**, including any leading zero,
    with a ten-minute lifetime. The code locates this attempt; it cannot
    authenticate a daemon or replace the registered public key.
-3. In **Agents → Executors → Pair executor**, a signed-in person enters the
-   code. The same popup is reached from a project's Executors tab. It shows
+3. In **Admin › Computers › Pair a computer**, a signed-in person enters the
+   code. The same popup is reached from a project's Computers tab. It shows
    the machine and fingerprint, asks for organisation/team and existing access
    scope, and requires fingerprint confirmation before the claim.
 4. Claiming atomically consumes the code and creates an executor in

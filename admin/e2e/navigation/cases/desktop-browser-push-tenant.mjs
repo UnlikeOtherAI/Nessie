@@ -87,7 +87,7 @@ export const desktopBrowserPushTenant = {
       await route.continue()
     })
 
-    await gotoPath(page, '/settings/account?tab=notifications')
+    await gotoPath(page, '/settings/notifications')
     await page.getByText('Enabled for this organization on this browser').waitFor()
     await page.getByRole('switch', { name: 'Toggle browser notifications' }).click()
     await page.getByText('Disabled for this organization', { exact: true }).waitFor()
@@ -103,7 +103,7 @@ export const desktopBrowserPushTenant = {
     // different account is allowed to use the endpoint.
     registrations = [ENDPOINT]
     await page.getByRole('button', { name: 'Account menu' }).click()
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await page.getByRole('button', { name: 'Sign out' }).click()
     await page.waitForURL('**/login')
     checks.equal('logout removes retained browser enrollments for the old person', logoutRemovals, 1)
     checks.equal('logout clears the service worker notification owner', await page.evaluate(() => {

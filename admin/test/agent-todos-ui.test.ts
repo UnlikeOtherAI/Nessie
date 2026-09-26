@@ -200,7 +200,7 @@ const todo: AgentTodoRecord = {
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   pretendToBeVisual: true,
-  url: 'http://localhost:5455/agents',
+  url: 'http://localhost:5455/admin/agents',
 })
 const { createRoot } = await import('react-dom/client')
 

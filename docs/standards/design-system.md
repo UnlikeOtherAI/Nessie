@@ -45,7 +45,7 @@ summary and points here; **this file is the rule**.
   owner — it must not add a second background transition, which doubles and
   lengthens the curve while text, icons and separators finish on time.
 - **One theme is data, not CSS: the organisation's own.** An organisation
-  administrator authors a palette on `/settings/organization?tab=appearance`; it
+  administrator authors a palette on `/admin/organisation?tab=appearance`; it
   appears as one more card on the per-user Colours panel, labelled with the
   organisation's name, and is the default for anyone who has not chosen. It is
   **colours only** — type, radii, spacing and motion are `:root`
@@ -206,7 +206,8 @@ summary and points here; **this file is the rule**.
   Assistant was a portrait in the sidebar and a `⚡` in the thread panel; see
   [identity avatars](../plans/2026-09-02-identity-avatars.md).
 - **One actor name, and it is never an id.** The two governance surfaces —
-  `/approvals` ("which agent is asking") and `/audit` ("which agent did this")
+  `/approvals` ("which agent is asking") and the audit log on
+  `/admin/security` ("which agent did this")
   — name their actor through `components/shared/ActorName.tsx`
   (`useActorNames` + `<ActorName>`), which resolves an agent through
   `providers/AgentIdentityProvider.tsx` for the reason above and a person

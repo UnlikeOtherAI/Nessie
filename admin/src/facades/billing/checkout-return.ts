@@ -44,7 +44,7 @@ export const resolveRootLandingPath = (
 ): string =>
   pendingPushPath
     ?? (readUoaBillingCheckoutReturn(search)
-      ? `/tokens${normaliseSearch(search)}`
+      ? `/admin/billing${normaliseSearch(search)}`
       : '/channels')
 
 export const getUoaBillingCheckoutReturnNotice = (

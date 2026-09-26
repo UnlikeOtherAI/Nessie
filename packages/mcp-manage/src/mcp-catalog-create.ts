@@ -24,7 +24,7 @@ import {
  *
  * Its own module because creation carries the whole admission story — the
  * endpoint lock a member must not route around, and the slug allocation the
- * App Store's `/apps/:slug` depends on — while the rest of `mcp-catalog.ts` is
+ * App Store's `/admin/apps/:slug` depends on — while the rest of `mcp-catalog.ts` is
  * reads and lifecycle transitions.
  */
 
@@ -111,7 +111,7 @@ export const createCatalogEntry = async (
   // arbiter, so a writer that took the candidate in between is a retry, not a
   // failure blamed on the author as a duplicate *name*. The last attempt gives
   // up the slug rather than the row: `slug` is nullable by design (an
-  // unsluggable name resolves to null too) and `/apps/:id` still resolves such
+  // unsluggable name resolves to null too) and `/admin/apps/:id` still resolves such
   // an app, so a pathological race costs the readable URL, never the entry.
   const SLUG_ATTEMPTS = 3
   let slugConflict: unknown

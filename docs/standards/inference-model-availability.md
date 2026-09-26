@@ -1,7 +1,7 @@
 # Model availability — the owner decides, and the decision is real
 
 An organisation owner governs which of the deployment's models may be used, on
-`/settings/organization/models` (**Organization → Models**). This file is the
+`/admin/models` (**Admin › AI models**). This file is the
 rule; `AGENTS.md` → "Architecture" carries the one-line signpost.
 
 ## The list is Ledger's, not Nessie's
@@ -86,7 +86,7 @@ upgrading a deployment that used the control-plane API directly.
    would be bypassed by the personal assistant's `agent_create`/`agent_config`
    tools and by any client posting the pair directly.
 
-**Personal model subscriptions are deliberately unfiltered.** An organisation
+**Personal model subscriptions (Your AI plans on Connected accounts) are deliberately unfiltered.** An organisation
 owner has no standing to enable, disable or spend a person's own consumer plan —
 see [`personal-model-subscriptions.md`](personal-model-subscriptions.md). The
 page copy states the omission so it reads as a decision.
@@ -117,7 +117,7 @@ It is not silent, in three places:
   The two causes are indistinguishable from the client by construction: a
   filtered list cannot say why something is not in it.
 - **On any attempt to move another agent onto it:** the validator's 400, whose
-  message names Organization → Models.
+  message names Admin › AI models.
 
 `assertAgentModelSelection` takes `previousSelection` so an *unchanged* disabled
 pair passes. Without it, disabling a model would block renaming, re-prompting or
@@ -142,7 +142,10 @@ organization; their agent counts are scoped to that exact team.
 `GET /api/teams/:teamId/inference/model-catalog` and its single-pair and bulk
 `PATCH` variants use the same provider/model partial filters, cursor page
 contract, and `{ enabled, updatedCount }` bulk result as the organization
-catalogue. They use the existing Team Settings organization-admin gate. Bulk
+catalogue. They use the existing Team Settings organization-admin gate
+(`requireOrgAdmin`: owner or admin, for any team of the organisation). The
+page reads a team's pages without a pagination scope of its own: its
+`?scope=team:<id>` names the team and a scope change drops the cursor. Bulk
 writes share the organization catalogue’s bounded 60-second interactive
 transaction because a live Ledger catalogue can contain hundreds of pairs.
 
@@ -187,14 +190,37 @@ carrying the provider's own words.
 
 | Screen | Element | Goes to |
 |---|---|---|
-| Sidebar → Organization | "Models", `ownerOnly: true` | `/settings/organization/models` — home |
-| Agent Designer → model picker | `ModelUnavailableNotice`, owner-only link | `/settings/organization/models` |
-| Sidebar → Team | "Models", same icon and catalogue surface as Organization | `/settings/team/models` — product-policy narrowing |
+| Admin sidebar → Organisation | "AI models", shown to owners and admins | `/admin/models` — home |
+| Agent Designer → model picker | `ModelUnavailableNotice`, owner-only link | `/admin/models` |
+| A team's page (Admin → Teams → the team) | Overrides → "Models this team may use" and "AI on people's own computers" | `/admin/models?scope=team:<id>` — product-policy narrowing |
+
+**One page, a scope switch.** `/admin/models` is the organisation's catalogue
+and every team's narrowing of it, chosen by `?scope=organisation|team:<id>`
+(the Organisation pages' switch, [scoped-settings.md](scoped-settings.md)).
+The scopes follow the routes' gates, not the session's team: the organisation
+is offered to its owner (`GET /api/inference/model-catalog` is `requireOwner`)
+and every team of the organisation to any owner or admin (the team routes are
+`requireOrgAdmin`). An admin therefore sees the organisation listed disabled,
+with the reason, and lands on a team — which is written into the address, so a
+toggle never targets a scope the address does not name. Test is the owner's at
+either scope, so a team admin sees it disabled, saying who may send one. Each
+scope carries its own "AI on people's own computers" policy
+(`LocalInferenceEnablement` at `organization` or `team`), shown only to the
+organisation-administration standing its reads require: on an organisation
+bound to the sign-in provider, that provider's live capability, which owner or
+admin alone is not; on an unbound local install, the local owner or admin
+role. The server decides both with `resolveOrganizationAdministrationAccess`
+and `/api/organizations/current` answers with the same resolver, so the admin
+reads that one status (`useOrganizationAdministration`) and never re-derives
+it — a local admin sees and sets the policy exactly as the routes allow. A
+team's Overrides row into the policy follows the same answer: without the
+standing it is greyed, saying who holds it, rather than a doorway into a
+refusal.
 
 Registered in `admin/src/router-lazy-pages.ts`, `admin/src/router.tsx`,
 `admin/src/layouts/admin-shell/admin-nav-items.tsx` and
-`admin/src/navigation/admin-surfaces.ts` — all four, each enforced by its own
-admin test.
+`admin/src/navigation/admin-organization-surfaces.ts` — all four, each
+enforced by its own admin test.
 
 Organization decisions continue to use `inference_providers` and
 `inference_models`. Team decisions are persisted by the immutable

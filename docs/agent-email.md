@@ -157,7 +157,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST \
 
 Then give an agent an address from its **Email** tab, send it a message from a
 real mailbox, and watch the conversation appear at
-`/agents/:agentId/mailbox`. Worker logs `[worker.agent-email] disabled` when the
+`/admin/agents/:agentId/mailbox`. Worker logs `[worker.agent-email] disabled` when the
 configuration is incomplete.
 
 ## Operating notes

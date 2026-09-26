@@ -134,7 +134,7 @@ test('an inline host delegates document placement to the active Finder view', ()
 })
 
 test('the agent detail page owns no Back of its own', () => {
-  // `/agents/:id` is a real depth-2 route (parent Agents), so the shared route
+  // `/admin/agents/:id` is a real depth-2 route (parent Agents), so the shared route
   // Back returns there. Its old registration outranked the knowledge stages
   // inside the Documents tab and left the agent instead of unwinding.
   const page = readSource('../src/pages/AgentDetailPage.tsx')
@@ -147,9 +147,9 @@ test('the agent detail page owns no Back of its own', () => {
   assert.match(page, /onBack=\{backToList\}/)
   assert.match(page, /backLabel="Back to Agents"/)
 
-  assert.equal(matchSurface('/agents/agent_a')?.surface.depth, 2)
-  assert.deepEqual(surfaceParent('/agents/agent_a'), {
+  assert.equal(matchSurface('/admin/agents/agent_a')?.surface.depth, 2)
+  assert.deepEqual(surfaceParent('/admin/agents/agent_a'), {
     label: 'Back to Agents',
-    pathname: '/agents',
+    pathname: '/admin/agents',
   })
 })

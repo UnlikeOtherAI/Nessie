@@ -19,7 +19,7 @@ const TableFrame = ({ children }: { children: React.ReactNode }) => (
   <ExpandableTable
     className="overflow-hidden rounded-xl border border-[color:var(--sep)]"
     expandable={false}
-    label="Statuses table"
+    label="Status table"
   >
     <table className="admin-table w-full border-collapse">{children}</table>
   </ExpandableTable>

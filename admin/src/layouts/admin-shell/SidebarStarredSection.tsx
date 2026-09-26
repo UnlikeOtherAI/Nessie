@@ -96,7 +96,7 @@ export const SidebarStarredSection = ({
               className={`admin-sb-item group ${dmChannelId === currentChannelId ? selectedSessionId ? 'active-parent' : 'active' : ''}`}
               onClick={() => dmChannelId ? onNavigateChannel(dmChannelId) : onNavigateAgent(agent.id)}
               type="button"
-              {...prewarmRowHandlers(prewarm, dmChannelId ? `/channels/${dmChannelId}` : `/agents/${agent.id}`)}
+              {...prewarmRowHandlers(prewarm, dmChannelId ? `/channels/${dmChannelId}` : `/admin/agents/${agent.id}`)}
             >
               <AgentAvatar agent={agent} size={avatarSize} token={token} />
               <span className="min-w-0 flex-1 truncate">{agent.name}</span>

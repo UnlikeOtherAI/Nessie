@@ -1,11 +1,11 @@
-# The App Store (/apps)
+# The App Store (/admin/apps)
 
 Authoritative standard, moved verbatim out of [`AGENTS.md`](../../AGENTS.md)
 so it is read when the work touches this area rather than loaded into every
 session. `AGENTS.md` carries the one-line invariant and points here; **this
 file is the rule**.
 
-- **The App Store (`/apps`) is the product surface on `McpCatalogEntry`, never
+- **The App Store (`/admin/apps`) is the product surface on `McpCatalogEntry`, never
   a second catalogue.** One row is one app; a parallel `mcp_apps` table would
   guarantee drift. Store visibility is
   `moderationState IN ('curated','approved')` + `trustLevel <> 'blocked'`
@@ -42,7 +42,7 @@ file is the rule**.
   navigation is the third-party authorize URL, not ours. **Publishing an app
   shares it with its organisation**: `publishCatalogEntry` writes
   `visibility: 'public'` (custom apps and library imports both publish), so a
-  colleague's app is on everyone's `/apps`. Public tenant names are unique per
+  colleague's app is on everyone's `/admin/apps`. Public tenant names are unique per
   organisation, instance-global names instance-wide. `visibility` stays because
   private apps are planned — do not drop it. **Installing an app is
   not granting it** (except on a person's own connection, which every agent may
@@ -64,11 +64,11 @@ file is the rule**.
 
 ## Detail
 
-Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Apps catalogue — `/apps`".
+Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Apps catalogue".
 
 
 Installing an integration should feel like installing an app in Slack, not like
-configuring a server. `/apps` is that surface, filled from the official MCP
+configuring a server. `/admin/apps` is that surface, filled from the official MCP
 Registry (~5,500 apps). The invariants — second face on `McpCatalogEntry`,
 store reads a decision (never re-derives from `status`), Postgres-owned
 ranking with no client re-sorting, connect orchestrates the existing

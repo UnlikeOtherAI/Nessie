@@ -11,11 +11,11 @@ export const buildNessieResourcePath = (input: Record<string, unknown>): string 
   }
   const id = value('id')
   switch (input.kind) {
-    case 'agent': return `/agents/${id}`
-    case 'executor': return `/agents/executors/${id}`
-    case 'terminal': return `/agents/executors/${value('executorId')}/sessions/${id}`
-    case 'trigger': return `/agents/triggers/${id}`
-    case 'task_set': return `/agents/task-sets/${id}`
+    case 'agent': return `/admin/agents/${id}`
+    case 'executor': return `/admin/computers/${id}`
+    case 'terminal': return `/admin/computers/${value('executorId')}/sessions/${id}`
+    case 'trigger': return `/admin/automations/triggers/${id}`
+    case 'task_set': return `/admin/automations/batch-jobs/${id}`
     case 'channel': return `/channels/${id}`
     case 'conversation': return `/channels/${value('channelId')}/threads/${id}`
     case 'message': return buildChannelMessagePath({
@@ -28,8 +28,8 @@ export const buildNessieResourcePath = (input: Record<string, unknown>): string 
     case 'dashboard': return `/projects/${value('projectId')}/dashboards/${id}`
     case 'space': return `/knowledge-base/spaces/${id}`
     case 'document': return `/knowledge-base/spaces/${value('spaceId')}?pageId=${id}`
-    case 'app': return `/apps/${id}`
-    case 'connection': return `/settings/connections/${id}`
+    case 'app': return `/admin/apps/${id}`
+    case 'connection': return `/settings/accounts/${id}`
     default: throw new Error('Choose a supported Nessie resource kind.')
   }
 }

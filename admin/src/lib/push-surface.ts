@@ -81,7 +81,12 @@ const PROJECT_BOARD_PATH = new RegExp(
 /** Maps only concrete, push-targetable routes to the structured API contract. */
 const KNOWLEDGE_SPACE_PATH = /^\/knowledge-base\/spaces\/([^/]+)\/?$/
 
-export const resolvePushSurface = (pathname: string): PushSurface | null => {
+/**
+ * `tab` is the route's `?tab=` state, the one query value that changes which
+ * surface a path is: Automations' list is Schedules and triggers only on that
+ * tab, which is also where the bare address lands.
+ */
+export const resolvePushSurface = (pathname: string, tab: string | null = null): PushSurface | null => {
   const threadRoute = pathname.match(THREAD_PATH)
   const channelId = ChannelIdSchema.safeParse(threadRoute?.[1])
   const threadId = ThreadIdSchema.safeParse(threadRoute?.[2])
@@ -107,5 +112,8 @@ export const resolvePushSurface = (pathname: string): PushSurface | null => {
   if (space && z.string().uuid().safeParse(space[1]).success) {
     return { kind: 'knowledge_space', spaceId: space[1] as string }
   }
-  return pathname === '/ops/usage' ? { kind: 'ops_usage' } : null
+  if (pathname === '/admin/automations') {
+    return tab === null || tab === 'triggers' ? { kind: 'triggers' } : null
+  }
+  return pathname === '/admin/usage' ? { kind: 'ops_usage' } : null
 }

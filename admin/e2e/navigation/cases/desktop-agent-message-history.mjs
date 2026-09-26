@@ -5,7 +5,7 @@ import { createChecks } from '../lib/expect.mjs'
 import { gotoPath, pushPath, shot } from '../lib/page.mjs'
 import { seedAgentMessageHistory } from '../lib/seed.mjs'
 
-const listPath = (agentId) => `/agents/${agentId}?agentTab=messages`
+const listPath = (agentId) => `/admin/agents/${agentId}?agentTab=messages`
 
 export const desktopAgentMessageHistory = {
   name: 'desktop-agent-message-history',
@@ -36,7 +36,7 @@ export const desktopAgentMessageHistory = {
       const url = new URL(candidate.url())
       return url.pathname === `/api/agents/${agents.second.id}/messages` && candidate.ok()
     })
-    await pushPath(page, `/agents/${agents.second.id}${firstSearch}`)
+    await pushPath(page, `/admin/agents/${agents.second.id}${firstSearch}`)
     const response = await secondResponse
     await page.getByText('Agent pagination proof 30').waitFor({ state: 'hidden' })
     const secondSearch = new URL(response.url()).searchParams

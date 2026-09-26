@@ -169,7 +169,7 @@ export const EMAIL_ACCOUNT_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
         },
         agentId: {
           description:
-            'The agent\'s id: the last path segment of its /agents/<agentId> link from agent_list.',
+            'The agent\'s id: the last path segment of its /admin/agents/<agentId> link from agent_list.',
           type: 'string',
         },
         allowed: {

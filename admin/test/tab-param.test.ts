@@ -307,7 +307,7 @@ const COMPONENT_STATE_ALLOWLIST = [
   'admin/src/layouts/admin-shell/CreateTeamDialog.tsx',
   'admin/src/components/features/settings/MemberInvitationDialog.tsx',
   // Light/Dark on the organisation theme form: one field of an unsaved draft,
-  // on a page that IS `/settings/organization?tab=appearance`. A `tab` param
+  // on a page that IS `/admin/organisation?tab=appearance`. A `tab` param
   // here would collide with the one the organisation screen already owns.
   'admin/src/pages/settings/organization/OrganizationAppearancePage.tsx',
 ]
@@ -363,9 +363,15 @@ test('every tab host resolves its tab through the one hook', () => {
     ['../src/pages/AppsPage.tsx', 'filter'],
     ['../src/pages/SearchPage.tsx', 'mode'],
     ['../src/pages/ToolsPage.tsx', 'source'],
-    ['../src/pages/settings/UserSettingsPage.tsx', 'tab'],
-    ['../src/pages/settings/TeamSettingsPage.tsx', 'tab'],
-    ['../src/pages/settings/OrganizationSettingsPage.tsx', 'tab'],
+    ['../src/pages/admin/AutomationsPage.tsx', 'tab'],
+    ['../src/pages/admin/OrganizationPage.tsx', 'tab'],
+    ['../src/pages/admin/OrganizationSecurityPage.tsx', 'tab'],
+    // People, AI models, Company connections and Keys share the one switch.
+    ['../src/components/features/settings/useAdminScope.tsx', 'scope'],
+    ['../src/pages/admin/TeamPage.tsx', 'tab'],
+    ['../src/pages/ExecutorsPage.tsx', 'filter'],
+    ['../src/pages/settings/ConnectionsPage.tsx', 'tab'],
+    ['../src/pages/settings/SecretsPanel.tsx', 'status'],
     ['../src/pages/AgentDesignerPage.tsx', 'designerMode'],
     ['../src/pages/AgentDesignerPage.tsx', 'designerSection'],
     ['../src/components/features/projects/kanban/TaskDialog.tsx', 'taskTab'],
@@ -379,7 +385,7 @@ test('every tab host resolves its tab through the one hook', () => {
     ['../src/pages/project/ProjectView.tsx', 'board'],
     ['../src/pages/project/ProjectSettingsPage.tsx', 'section'],
     ['../src/components/features/triggers/useTriggersPageState.ts', 'type'],
-    ['../src/components/features/settings/MembersRosterPanel.tsx', 'membersTab'],
+    ['../src/components/features/settings/MembersRosterPanel.tsx', 'tab'],
     ['../src/pages/ConnectedMailPage.tsx', 'filter'],
   ]
 

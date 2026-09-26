@@ -33,7 +33,7 @@ export const PersonAgents = ({
         <li key={agent.id}>
           <Link
             className="flex min-w-0 items-center gap-2 rounded px-1 py-1 hover:bg-[color:var(--main-hover)]"
-            to={`/agents/${agent.id}`}
+            to={`/admin/agents/${agent.id}`}
           >
             <AgentAvatar agent={agent} size="xs" token={token} />
             <span className="min-w-0 truncate text-xs text-[color:var(--tx2)]">
@@ -83,7 +83,7 @@ export const UnassignedAgents = ({
           <li key={agent.id}>
             <Link
               className="flex min-w-0 items-center gap-2 rounded px-1 py-1 hover:bg-[color:var(--main-hover)]"
-              to={`/agents/${agent.id}`}
+              to={`/admin/agents/${agent.id}`}
             >
               <AgentAvatar agent={agent} size="xs" token={token} />
               <span className="min-w-0 truncate text-xs text-[color:var(--tx2)]">

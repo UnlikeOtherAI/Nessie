@@ -103,12 +103,12 @@ const REFUSAL = /Executor management is available only/
 
 test('the Personal Assistant keeps its own arm, in its own DM', async () => {
   const result = await runExecutorPairTool(makeContext())
-  assert.match(result.outputPreview, /\/agents\/executors/)
+  assert.match(result.outputPreview, /\/admin\/computers/)
 })
 
 test('the Agent Designer reaches executor tools in its own home DM', async () => {
   const result = await runExecutorPairTool(makeContext({}, designerHomeFacts))
-  assert.match(result.outputPreview, /\/agents\/executors/)
+  assert.match(result.outputPreview, /\/admin\/computers/)
 })
 
 test('executor management refuses a shared agent that delegates to nobody', async () => {
