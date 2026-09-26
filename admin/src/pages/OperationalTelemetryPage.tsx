@@ -196,7 +196,7 @@ export const OperationalTelemetryPage = () => {
               These token, connector, file, budget, and model-pricing signals help
               owners operate Nessie. They are not customer credits, a tariff, or an
               invoice. Customer balances, statements, subscriptions, and charges
-              are supplied by UOA on Credits &amp; billing.
+              are supplied by your sign-in provider on Credits and billing.
             </p>
           </div>
 
