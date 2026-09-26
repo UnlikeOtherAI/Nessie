@@ -225,7 +225,9 @@ summary and points here; **this file is the rule**.
   `components/features/channels/ChannelComposer.tsx` (six call sites, the New
   message page's first message among them — so it pastes, attaches and
   dictates like any conversation, and its questions that need a conversation
-  to exist are passed closed, `NO_MENTION_INVITE` among them): at rest a
+  to exist are passed closed, `NO_MENTION_INVITE` among them, while a typed
+  credential, which needs none, stops for the vault through the same
+  `useSecretCapture` as everywhere else): at rest a
   single line — placeholder centred beside Send, no toolbar glyphs — opening
   while focus is inside it or anything is staged. Send is pinned to the bottom
   line and the toolbar unfolds *below* the editor, so that line never moves and
