@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Animated, Pressable, StyleSheet } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
+import { useNativeCopy } from '../i18n/native'
 
 type NativeFocusModeButtonProps = {
   activeBackgroundColor: string
@@ -20,6 +21,7 @@ export const NativeFocusModeButton = ({
   inactiveTintColor,
   onPress,
 }: NativeFocusModeButtonProps): React.JSX.Element => {
+  const copy = useNativeCopy()
   const progress = useRef(new Animated.Value(enabled ? 1 : 0)).current
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export const NativeFocusModeButton = ({
 
   return (
     <Pressable
-      accessibilityLabel={enabled ? 'Turn off focus mode' : 'Turn on focus mode'}
+      accessibilityLabel={enabled ? copy.focus.turnOff : copy.focus.turnOn}
       accessibilityRole="button"
       accessibilityState={{ selected: enabled }}
       hitSlop={6}

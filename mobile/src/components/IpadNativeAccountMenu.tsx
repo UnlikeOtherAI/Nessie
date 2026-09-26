@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { type IpadNativeChromeTheme } from '../lib/ipad-native-chrome'
 import { NativeIdentityAvatar } from './NativeTeamAvatar'
+import { useNativeCopy } from '../i18n/native'
 
 export type IpadNativeAccount = {
   avatarUrl: string | null
@@ -53,7 +54,7 @@ export const IpadNativeAccountButton = ({
   theme,
 }: IpadNativeAccountButtonProps): React.JSX.Element => (
   <Pressable
-    accessibilityLabel="Account menu"
+    accessibilityLabel={useNativeCopy().account.menu}
     accessibilityRole="button"
     hitSlop={4}
     onPress={onPress}

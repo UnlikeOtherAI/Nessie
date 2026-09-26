@@ -1,6 +1,7 @@
 use tauri::utils::config::{WebviewUrl, WindowConfig};
 use tauri::{AppHandle, Manager, Url, WebviewWindowBuilder};
 
+use crate::native_i18n;
 use crate::shell::{desktop_init_script, desktop_platform};
 
 /// A Knowledge document in a window of its own — what a double-tap in the
@@ -86,14 +87,23 @@ pub fn document_window_url(caller: &Url, space_id: &str, page_id: &str) -> Resul
 /// The page renames it as soon as it has loaded; this is what the window is
 /// called in the moment before that, so an untitled document still gets a
 /// window with a name on it.
-pub fn window_title(title: &str) -> String {
+pub fn window_title(title: &str, language: &str) -> String {
     let cleaned = title
         .chars()
-        .map(|character| if character.is_control() { ' ' } else { character })
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
         .collect::<String>();
     let trimmed = cleaned.trim();
     if trimmed.is_empty() {
-        return "Document — Nessie".to_owned();
+        return format!(
+            "{} — Nessie",
+            native_i18n::text(language, "documentUntitled")
+        );
     }
     let clamped = trimmed.chars().take(MAX_TITLE_CHARS).collect::<String>();
     format!("{clamped} — Nessie")
@@ -108,6 +118,7 @@ pub fn document_window_config(
     label: String,
     url: Url,
     title: &str,
+    language: &str,
 ) -> WindowConfig {
     WindowConfig {
         create: true,
@@ -115,7 +126,7 @@ pub fn document_window_config(
         label,
         min_height: Some(MIN_HEIGHT),
         min_width: Some(MIN_WIDTH),
-        title: window_title(title),
+        title: window_title(title, language),
         url: WebviewUrl::External(url),
         width: WIDTH,
         ..main.clone()
@@ -145,6 +156,7 @@ pub async fn desktop_open_document_window(
     page_id: String,
     space_id: String,
     title: String,
+    language: String,
 ) -> Result<(), String> {
     let label = document_window_label(&page_id).ok_or_else(|| REFUSED.to_owned())?;
     let caller = webview
@@ -169,7 +181,7 @@ pub async fn desktop_open_document_window(
         .find(|window| window.label == "main")
         .cloned()
         .ok_or_else(|| "Nessie Desktop has no main window to take its frame from.".to_owned())?;
-    let config = document_window_config(&main, label, url, &title);
+    let config = document_window_config(&main, label, url, &title, &language);
 
     WebviewWindowBuilder::from_config(&app, &config)
         .and_then(|builder| {
@@ -263,7 +275,10 @@ mod tests {
             "page1",
         )
         .expect("a well-formed request must resolve");
-        assert_eq!(url.as_str(), "https://app.nessie.works/documents/space1/page1");
+        assert_eq!(
+            url.as_str(),
+            "https://app.nessie.works/documents/space1/page1"
+        );
     }
 
     #[test]
@@ -287,10 +302,14 @@ mod tests {
 
     #[test]
     fn names_the_window_even_when_the_document_has_no_title() {
-        assert_eq!(window_title("Quarterly plan"), "Quarterly plan — Nessie");
-        assert_eq!(window_title("   "), "Document — Nessie");
-        assert_eq!(window_title("two\nlines"), "two lines — Nessie");
-        let long = window_title(&"x".repeat(200));
+        assert_eq!(
+            window_title("Quarterly plan", "en-GB"),
+            "Quarterly plan — Nessie"
+        );
+        assert_eq!(window_title("   ", "en-GB"), "Document — Nessie");
+        assert_eq!(window_title("   ", "cs"), "Dokument — Nessie");
+        assert_eq!(window_title("two\nlines", "en-GB"), "two lines — Nessie");
+        let long = window_title(&"x".repeat(200), "en-GB");
         assert_eq!(long.chars().count(), 80 + " — Nessie".chars().count());
     }
 
@@ -313,6 +332,7 @@ mod tests {
                 "document-page1".to_owned(),
                 Url::parse("https://app.nessie.works/documents/s1/page1").unwrap(),
                 "Quarterly plan",
+                "en-GB",
             );
             assert_eq!(document.decorations, main.decorations);
             assert_eq!(document.transparent, main.transparent);
@@ -332,6 +352,7 @@ mod tests {
             "document-page1".to_owned(),
             Url::parse("https://app.nessie.works/documents/s1/page1").unwrap(),
             "Quarterly plan",
+            "en-GB",
         );
         assert_eq!(document.label, "document-page1");
         assert_eq!(document.title, "Quarterly plan — Nessie");

@@ -64,6 +64,9 @@ export const TABS: TabDef[] = [
   },
 ]
 
+export const nativeTabTitles = (labels: Record<TabKey, string>): TabDef[] =>
+  TABS.map((tab) => ({ ...tab, title: labels[tab.key] }))
+
 // The tab selected before the first `nessie:screen` message of a cold start
 // has arrived, and whenever a reported section is unrecognized.
 export const DEFAULT_TAB_KEY: TabKey = 'channels'

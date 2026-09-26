@@ -263,13 +263,14 @@ export const getNativeWebviewFrameInsets = (input: {
 export const createNativeTabNavigationState = (
   index: number,
   badges: NativeAttentionBadges,
+  titles?: Record<TabKey, string>,
 ): NativeTabNavigationState => ({
   index,
   routes: TABS.map((tab) => {
     const value = badges[tab.key] ?? 0
     return {
       key: tab.key,
-      title: tab.title,
+      title: titles?.[tab.key] ?? tab.title,
       role: tab.role,
       badge: value > 0 ? String(value) : undefined,
     }

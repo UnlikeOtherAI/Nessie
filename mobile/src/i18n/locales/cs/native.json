@@ -1,0 +1,49 @@
+{
+  "tabs": {
+    "channels": "Kanály",
+    "projects": "Projekty",
+    "knowledge": "Znalosti",
+    "admin": "Správa",
+    "search": "Hledat"
+  },
+  "toolbar": {
+    "back": "Zpět",
+    "forward": "Vpřed",
+    "recentChannels": "Nedávné kanály",
+    "helpAndFeedback": "Nápověda a zpětná vazba",
+    "moreActions": "Další akce",
+    "moreNavigationControls": "Další navigační ovládání",
+    "cancel": "Zrušit"
+  },
+  "account": {
+    "menu": "Nabídka účtu",
+    "switchTeam": "Přepnout tým",
+    "team": "Tým"
+  },
+  "focus": {
+    "turnOn": "Zapnout režim soustředění",
+    "turnOff": "Vypnout režim soustředění"
+  },
+  "creation": {
+    "openMenu": "Otevřít nabídku vytvoření",
+    "closeMenu": "Zavřít nabídku vytvoření",
+    "startDirectMessage": "Začít přímou zprávu",
+    "message": "Zpráva",
+    "project": "Projekt",
+    "projectDescription": "Organizujte práci ve sdílené složce",
+    "createProject": "Vytvořit projekt",
+    "channel": "Kanál",
+    "channelDescription": "Zahájit týmovou konverzaci",
+    "createChannel": "Vytvořit kanál",
+    "agent": "Agent",
+    "agentDescription": "Navrhnout nového agenta",
+    "createAgent": "Vytvořit agenta"
+  },
+  "updates": {
+    "title": "Aktualizovat Nessie?",
+    "ready": "Verze {version} je připravena ke stažení. Android vás požádá o potvrzení instalace.",
+    "skip": "Přeskočit tuto verzi",
+    "remindTomorrow": "Připomenout zítra",
+    "update": "Aktualizovat"
+  }
+}

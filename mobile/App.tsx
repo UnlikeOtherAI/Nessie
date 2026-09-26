@@ -128,6 +128,15 @@ import {
 } from './src/lib/native-shell-layout'
 import { tabIndexForSection } from './src/lib/tabs'
 import {
+  isNativeLocale,
+  nativeCopyFor,
+  NATIVE_LOCALE_STORAGE_KEY,
+  readNativeLocale,
+  type NativeCopy,
+  type NativeLocale,
+  NativeCopyProvider,
+} from './src/i18n/native'
+import {
   currentNativeScreenBar,
   DEFAULT_NATIVE_SCREEN_BAR_STATE,
   reduceNativeScreenBar,
@@ -139,7 +148,7 @@ const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
 // edges exactly as the phone's is from the screen's.
 const IPAD_NATIVE_CREATION_LANE_INSET = 16
 
-const checkForDirectAndroidUpdate = async (): Promise<void> => {
+const checkForDirectAndroidUpdate = async (copy: NativeCopy): Promise<void> => {
   if (!IS_ANDROID || RELEASE_CHANNEL !== 'direct') return
   const currentVersionCode = Number(Application.nativeBuildVersion)
   const storedPreference = await AsyncStorage
@@ -156,11 +165,11 @@ const checkForDirectAndroidUpdate = async (): Promise<void> => {
   if (!update) return
 
   Alert.alert(
-    'Update Nessie?',
-    `Version ${update.version} is ready to download. Android will ask you to confirm the install.`,
+    copy.updates.title,
+    copy.updates.ready.replace('{version}', update.version),
     [
       {
-        text: 'Skip this version',
+        text: copy.updates.skip,
         onPress: () => {
           void AsyncStorage.setItem(
             DIRECT_ANDROID_UPDATE_PREFERENCE_KEY,
@@ -169,7 +178,7 @@ const checkForDirectAndroidUpdate = async (): Promise<void> => {
         },
       },
       {
-        text: 'Remind me tomorrow',
+        text: copy.updates.remindTomorrow,
         onPress: () => {
           void AsyncStorage.setItem(
             DIRECT_ANDROID_UPDATE_PREFERENCE_KEY,
@@ -178,7 +187,7 @@ const checkForDirectAndroidUpdate = async (): Promise<void> => {
         },
       },
       {
-        text: 'Update',
+        text: copy.updates.update,
         onPress: () => {
           // Android owns the package-installer confirmation. Opening the
           // signed APK URL is the furthest an ordinary app can safely go.
@@ -190,6 +199,9 @@ const checkForDirectAndroidUpdate = async (): Promise<void> => {
 }
 
 const Shell = (): React.JSX.Element => {
+  const [nativeLocale, setNativeLocale] = useState<NativeLocale>('en-GB')
+  const hasReceivedNativeLocale = useRef(false)
+  const nativeCopy = nativeCopyFor(nativeLocale)
   const webRef = useRef<WebView>(null)
   const blurTargetRef = useRef<View>(null)
   const insets = useSafeAreaInsets()
@@ -276,6 +288,12 @@ const Shell = (): React.JSX.Element => {
   const nativePushRegistration = useRef<NativePushRegistration | null>(null)
   const nativePushRegistrationPromise = useRef<Promise<NativePushRegistration | null> | null>(null)
   const externalAuthDeliveries = useRef(createNativeExternalAuthDeliveryQueue())
+
+  useEffect(() => {
+    void readNativeLocale().then((locale) => {
+      if (!hasReceivedNativeLocale.current) setNativeLocale(locale)
+    })
+  }, [])
 
   const runScript = useCallback((script: string): void => {
     webRef.current?.injectJavaScript(wrapNativeWebViewScript(script))
@@ -432,8 +450,8 @@ const Shell = (): React.JSX.Element => {
   // A direct APK can ask Android's package installer to replace it; store
   // builds are intentionally excluded by the build-time release channel.
   useEffect(() => {
-    void checkForDirectAndroidUpdate()
-  }, [])
+    void checkForDirectAndroidUpdate(nativeCopy)
+  }, [nativeCopy])
 
   useEffect(
     () => subscribeToPushTokenChanges(publishNativePushRegistration),
@@ -483,6 +501,14 @@ const Shell = (): React.JSX.Element => {
       msg = JSON.parse(event.nativeEvent.data)
     } catch {
       return
+    }
+    if (msg.type === 'nessie:account') {
+      const language = (msg as { language?: unknown }).language
+      if (isNativeLocale(language)) {
+        hasReceivedNativeLocale.current = true
+        setNativeLocale(language)
+        void AsyncStorage.setItem(NATIVE_LOCALE_STORAGE_KEY, language).catch(() => undefined)
+      }
     }
     if (msg.type === 'nessie:full-refresh') {
       bootRecovery.fullRefreshWebView()
@@ -645,13 +671,14 @@ const Shell = (): React.JSX.Element => {
     inactiveTintColor: inactive,
     surfaceColor: ipadChromeSurface,
   })
-  const navigationState = createNativeTabNavigationState(index, attentionBadges)
+  const navigationState = createNativeTabNavigationState(index, attentionBadges, nativeCopy.tabs)
   const hasNativeStatusBackdrop = showNativePhoneNavBar || (IS_IPAD && showBar)
   const nativeStatusBackdropIsDark = showNativePhoneNavBar
     ? isDark(phoneHeaderSurface)
     : isDark(bg)
 
   return (
+    <NativeCopyProvider value={nativeCopy}>
     <View style={[styles.fill, { backgroundColor: bg }]}>
       <StatusBar style={statusBarStyleForNativeBackdrop(
         hasNativeStatusBackdrop,
@@ -801,6 +828,7 @@ const Shell = (): React.JSX.Element => {
         />
       ) : null}
     </View>
+    </NativeCopyProvider>
   )
 }
 
