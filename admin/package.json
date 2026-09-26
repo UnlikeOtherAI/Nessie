@@ -42,6 +42,7 @@
     "test:e2e:model-subscription-device-link": "node e2e/model-subscription-device-link/run.mjs",
     "test:e2e:model-subscription-deepseek": "node e2e/model-subscription-deepseek/run.mjs",
     "test:e2e:navigation": "node e2e/navigation/run.mjs",
+    "test:e2e:read-cache": "node e2e/read-cache/run.mjs",
     "test:e2e:organization-theme": "node e2e/organization-theme/run.mjs",
     "test:e2e:overlay-layer": "node e2e/overlay-layer/run.mjs",
     "test:e2e:page-header": "node e2e/page-header/run.mjs",

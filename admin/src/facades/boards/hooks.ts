@@ -1,9 +1,10 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   BoardColumnRecord,
   BoardFilter,
   BoardRecord,
   BoardStyle,
+  BoardTasksResponse,
   ColumnCategory,
 } from '@nessie/schemas'
 import type { ApiClient } from '../../lib/api-client'
@@ -11,7 +12,6 @@ import { projectKeys } from '../projects/keys'
 import { refreshProjectAdministrationAfterForbidden } from '../projects/administration'
 import { taskKeys } from '../tasks/keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
-import type { TaskRecord } from '../tasks/hooks'
 
 /**
  * A project's boards. One read (`GET /api/projects/:id/boards`) serves the
@@ -21,18 +21,7 @@ import type { TaskRecord } from '../tasks/hooks'
  */
 
 export type { BoardColumnRecord, BoardFilter, BoardRecord, BoardStyle, ColumnCategory }
-
-/** A task as one board renders it — the server has already placed it. */
-export type BoardTaskRecord = TaskRecord & {
-  columnId: string | null
-  position: number | null
-}
-
-export type BoardTasksResponse = {
-  tasks: BoardTaskRecord[]
-  /** True when the board is showing only the most recently updated cards. */
-  truncated: boolean
-}
+export type { BoardTaskRecord, BoardTasksResponse } from '@nessie/schemas'
 
 /** Shared with `navigation/prewarm.ts`; see `fetchThreadMessages` for why. */
 export const fetchProjectBoards = (
@@ -43,20 +32,27 @@ export const fetchProjectBoards = (
 export const useProjectBoards = (projectId?: string) => {
   const apiClient = useApiClient()
   return useQuery<BoardRecord[]>({
-    placeholderData: keepPreviousData,
+    // Only this project's own cached boards may render under its route.
+    placeholderData: undefined,
     queryKey: projectKeys.boards(projectId ?? ''),
     queryFn: () => fetchProjectBoards(apiClient, projectId ?? ''),
     enabled: Boolean(projectId),
   })
 }
 
+export const fetchBoardTasks = (
+  apiClient: ApiClient,
+  projectId: string,
+  boardId: string,
+): Promise<BoardTasksResponse> => apiClient.get(`/api/projects/${projectId}/boards/${boardId}/tasks`)
+
 export const useBoardTasks = (projectId?: string, boardId?: string) => {
   const apiClient = useApiClient()
   return useQuery<BoardTasksResponse>({
-    placeholderData: keepPreviousData,
+    // A sibling board's cards are not placeholders for this board's work.
+    placeholderData: undefined,
     queryKey: taskKeys.forBoard(projectId, boardId),
-    queryFn: () =>
-      apiClient.get(`/api/projects/${projectId}/boards/${boardId}/tasks`),
+    queryFn: () => fetchBoardTasks(apiClient, projectId ?? '', boardId ?? ''),
     enabled: Boolean(projectId && boardId),
   })
 }
