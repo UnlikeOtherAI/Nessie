@@ -8,6 +8,7 @@ import {
 import type { AgentMention } from '../../shared/MentionInput'
 import type { SecretRecord } from '../../../facades/secrets/hooks'
 import type { ChannelRecord } from '../../../lib/api-client'
+import { secretScopeWritable } from '../../../lib/secret-scopes'
 
 /**
  * A credential a composer stopped before sending
@@ -28,18 +29,18 @@ export type SecretCapture = {
 /**
  * The project a capture in `room` may offer beside Personal, or null.
  *
- * Only an ordinary room of a project offers one, and only to an organisation
- * owner: `POST /api/secrets` lets no other role write a project
- * (`canManageSecretScope`). A DM, a group DM or a system conversation is
- * stored in its team's own project whoever it addresses, and a standalone
- * room in a hidden container, so neither project is the room's audience.
+ * Only an ordinary room of a project offers one, and only to a viewer who may
+ * write a project secret at all (`secretScopeWritable`: an organisation owner).
+ * A DM, a group DM or a system conversation is stored in its team's own project
+ * whoever it addresses, and a standalone room in a hidden container, so neither
+ * project is the room's audience.
  */
 export const secretCaptureProjectId = (
   room: ChannelRecord | null,
-  { viewerIsOwner }: { viewerIsOwner: boolean },
+  viewer: { viewerIsOwner: boolean },
 ): string | null =>
   room
-  && viewerIsOwner
+  && secretScopeWritable('project', viewer)
   && room.type === 'standard'
   && room.scope === 'project'
   && !room.isGroupDm
