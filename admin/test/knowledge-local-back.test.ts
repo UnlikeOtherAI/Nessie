@@ -43,8 +43,12 @@ test('the knowledge document and editor keep their nested stage ids and prioriti
 test('knowledge stages and the history dialog own Back through navigation primitives', () => {
   assert.doesNotMatch(team, /useLocalBack/)
   assert.match(team, /<Dialog[\s\S]*title="Version history"/)
-  assert.match(team, /\{historyDialog && documentOpen \? historyDialog : null\}/)
-  assert.match(team, /\{!documentOpen \? historyDialog : null\}/)
+  // The document stage is inactive on split/desktop layouts. Mounting the
+  // dialog there hid it despite the History action updating navigation state.
+  assert.match(team, /const historyInDocumentStage = stacked && documentOpen/)
+  assert.match(team, /active=\{historyInDocumentStage\}/)
+  assert.match(team, /\{historyInDocumentStage \? historyDialog : null\}/)
+  assert.match(team, /\{!historyInDocumentStage \? historyDialog : null\}/)
   assert.match(team, /import \{ NestedStage, useNestedStageHosted \}/)
 
   // NestedStage is what registers, and only where a stack hosts the stage.
