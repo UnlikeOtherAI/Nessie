@@ -1,5 +1,6 @@
 import type { GlobalSearchMode } from '../../../facades/search/hooks'
 import { TabBar, type TabBarItem } from '../../primitives/TabBar'
+import { useTranslation } from 'react-i18next'
 
 type SearchModeToggleProps = {
   mode: GlobalSearchMode
@@ -7,31 +8,24 @@ type SearchModeToggleProps = {
   compact?: boolean
 }
 
-const options: ReadonlyArray<TabBarItem<GlobalSearchMode>> = [
-  {
-    label: 'Full text',
-    title: 'Full text finds the words you entered across every searchable section.',
-    value: 'fulltext',
-  },
-  {
-    label: 'Semantic',
-    title:
-      'Semantic keeps exact matches and adds meaning-based message, ticket, document, and memory matches.',
-    value: 'semantic',
-  },
-]
-
 export const SearchModeToggle = ({
   compact = false,
   mode,
   onChange,
-}: SearchModeToggleProps) => (
-  <TabBar
-    ariaLabel="Search mode"
-    items={options}
-    onChange={onChange}
-    role="radiogroup"
-    size={compact ? 'sm' : 'md'}
-    value={mode}
-  />
-)
+}: SearchModeToggleProps) => {
+  const { t } = useTranslation('search')
+  const options: ReadonlyArray<TabBarItem<GlobalSearchMode>> = [
+    { label: t('fulltext'), title: t('fulltextTitle'), value: 'fulltext' },
+    { label: t('semantic'), title: t('semanticTitle'), value: 'semantic' },
+  ]
+  return (
+    <TabBar
+      ariaLabel={t('modeLabel')}
+      items={options}
+      onChange={onChange}
+      role="radiogroup"
+      size={compact ? 'sm' : 'md'}
+      value={mode}
+    />
+  )
+}

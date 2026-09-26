@@ -1,0 +1,28 @@
+{
+  "title": "Recherche",
+  "placeholder": "Rechercher dans les canaux, projets, tickets, messages, documents, personnes, agents, applications et la mémoire…",
+  "modeLabel": "Mode de recherche",
+  "fulltext": "Texte intégral",
+  "fulltextTitle": "La recherche en texte intégral trouve les mots saisis dans toutes les sections consultables.",
+  "semantic": "Sémantique",
+  "semanticTitle": "La recherche sémantique conserve les correspondances exactes et ajoute celles fondées sur le sens dans les messages, tickets, documents et la mémoire.",
+  "semanticHelp": "La recherche hybride conserve les correspondances textuelles et ajoute des résultats fondés sur le sens lorsque le contenu possède des vecteurs.",
+  "fulltextHelp": "Le texte intégral trouve les mots saisis sans extension fondée sur le sens.",
+  "enterQuery": "Saisissez au moins deux caractères pour rechercher dans toutes les sections.",
+  "searching": "Recherche…",
+  "noResults": "Aucun résultat",
+  "expired": "Cette page de résultats de recherche de tickets a expiré.",
+  "restartTicketSearch": "Relancer la recherche de tickets",
+  "ticketNoResults": "Aucun résultat de ticket sur cette page.",
+  "sections": {
+    "channels": "Canaux", "projects": "Projets", "tickets": "Tickets", "messages": "Messages",
+    "knowledge": "Connaissances", "people": "Personnes", "agents": "Agents", "apps": "Applications", "memory": "Mémoire"
+  },
+  "alias": "Alias : {{value}}",
+  "tag": "Étiquette : {{value}}",
+  "protected": "Protégé",
+  "protectedAskMember": "Protégé · Demandez à un membre de vous ajouter",
+  "untitledTicket": "Ticket sans titre",
+  "memoryHybridMatch": "Mémoire · Correspondance hybride",
+  "memoryFullTextMatch": "Mémoire · Correspondance en texte intégral"
+}

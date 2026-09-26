@@ -1,0 +1,28 @@
+{
+  "title": "Hledat",
+  "placeholder": "Hledat v kanálech, projektech, úkolech, zprávách, dokumentech, lidech, agentech, aplikacích a paměti…",
+  "modeLabel": "Režim hledání",
+  "fulltext": "Celý text",
+  "fulltextTitle": "Hledání v celém textu najde zadaná slova ve všech prohledávatelných částech.",
+  "semantic": "Sémantické",
+  "semanticTitle": "Sémantické hledání zachová přesné shody a přidá výsledky podle významu ve zprávách, úkolech, dokumentech a paměti.",
+  "semanticHelp": "Kombinované hledání zachová shody v celém textu a přidá výsledky podle významu tam, kde má obsah vektory.",
+  "fulltextHelp": "Celý text hledá zadaná slova bez rozšiřování podle významu.",
+  "enterQuery": "Zadejte alespoň dva znaky a prohledejte všechny části.",
+  "searching": "Hledání…",
+  "noResults": "Žádné výsledky",
+  "expired": "Platnost této stránky s výsledky hledání úkolů vypršela.",
+  "restartTicketSearch": "Spustit hledání úkolů znovu",
+  "ticketNoResults": "Na této stránce nejsou žádné výsledky úkolů.",
+  "sections": {
+    "channels": "Kanály", "projects": "Projekty", "tickets": "Úkoly", "messages": "Zprávy",
+    "knowledge": "Znalosti", "people": "Lidé", "agents": "Agenti", "apps": "Aplikace", "memory": "Paměť"
+  },
+  "alias": "Alias: {{value}}",
+  "tag": "Štítek: {{value}}",
+  "protected": "Chráněné",
+  "protectedAskMember": "Chráněné · Požádejte člena o přidání",
+  "untitledTicket": "Úkol bez názvu",
+  "memoryHybridMatch": "Paměť · Kombinovaná shoda",
+  "memoryFullTextMatch": "Paměť · Shoda v celém textu"
+}

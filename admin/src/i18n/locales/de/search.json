@@ -1,0 +1,28 @@
+{
+  "title": "Suche",
+  "placeholder": "Kanäle, Projekte, Tickets, Nachrichten, Dokumente, Personen, Agents, Apps und Erinnerungen durchsuchen…",
+  "modeLabel": "Suchmodus",
+  "fulltext": "Volltext",
+  "fulltextTitle": "Die Volltextsuche findet deine Wörter in allen durchsuchbaren Bereichen.",
+  "semantic": "Semantisch",
+  "semanticTitle": "Die semantische Suche behält exakte Treffer bei und ergänzt bedeutungsbasierte Treffer aus Nachrichten, Tickets, Dokumenten und Erinnerungen.",
+  "semanticHelp": "Die hybride Suche behält Volltexttreffer bei und ergänzt bedeutungsbasierte Ergebnisse, wenn Inhalte Vektoren haben.",
+  "fulltextHelp": "Die Volltextsuche findet deine Wörter ohne bedeutungsbasierte Erweiterung.",
+  "enterQuery": "Gib mindestens zwei Zeichen ein, um alle Bereiche zu durchsuchen.",
+  "searching": "Suche läuft…",
+  "noResults": "Keine Ergebnisse",
+  "expired": "Diese Seite mit Ticket-Suchergebnissen ist abgelaufen.",
+  "restartTicketSearch": "Ticketsuche neu starten",
+  "ticketNoResults": "Auf dieser Seite gibt es keine Ticket-Ergebnisse.",
+  "sections": {
+    "channels": "Kanäle", "projects": "Projekte", "tickets": "Tickets", "messages": "Nachrichten",
+    "knowledge": "Wissen", "people": "Personen", "agents": "Agents", "apps": "Apps", "memory": "Erinnerungen"
+  },
+  "alias": "Alias: {{value}}",
+  "tag": "Tag: {{value}}",
+  "protected": "Geschützt",
+  "protectedAskMember": "Geschützt · Bitte ein Mitglied, dich hinzuzufügen",
+  "untitledTicket": "Unbenanntes Ticket",
+  "memoryHybridMatch": "Erinnerung · Hybrider Treffer",
+  "memoryFullTextMatch": "Erinnerung · Volltexttreffer"
+}

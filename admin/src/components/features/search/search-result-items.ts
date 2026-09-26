@@ -7,6 +7,7 @@ import type { GlobalSearchMode, GlobalSearchResults } from '../../../facades/sea
 import type { SearchMarkerSubject } from './SearchResultMarker'
 import { appDetailHref } from '../apps/app-card-presentation'
 import { selectBestPassage } from '../../../lib/highlight-passage'
+import i18n from '../../../i18n/i18n'
 
 export const SEARCH_SECTION_ORDER = [
   'Channels',
@@ -72,9 +73,9 @@ const matchedAppContext = (
 ): string => {
   const needle = query.trim().toLowerCase()
   const alias = app.aliases.find((value) => value.toLowerCase().includes(needle))
-  if (alias) return `Alias: ${alias}`
+  if (alias) return i18n.t('alias', { ns: 'search', value: alias })
   const tag = app.tags.find((value) => value.toLowerCase().includes(needle))
-  if (tag) return `Tag: ${tag}`
+  if (tag) return i18n.t('tag', { ns: 'search', value: tag })
   return app.shortDescription
 }
 
@@ -111,7 +112,9 @@ export const buildSearchResultItems = (
       id: `channel:${channel.id}`,
       primary: channel.label,
       secondary: excerpt(channel.description, query)
-        ?? `${channel.projectName}${entry.access === 'limited' ? ' · Protected' : ''}`,
+        ?? (entry.access === 'limited'
+          ? `${channel.projectName} · ${i18n.t('protected', { ns: 'search' })}`
+          : channel.projectName),
       section: 'Channels',
       subject: { kind: 'channel', visibility: channel.visibility },
     })
@@ -130,7 +133,7 @@ export const buildSearchResultItems = (
       primary: project.name,
       secondary: excerpt(project.description, query)
         ?? (entry.access === 'limited' && project.visibility === 'protected'
-          ? 'Protected · Ask a member to add you'
+          ? i18n.t('protectedAskMember', { ns: 'search' })
           : undefined),
       section: 'Projects',
       subject: {
@@ -152,7 +155,7 @@ export const buildSearchResultItems = (
         ? { href: `/projects/${task.projectId}/board?task=${encodeURIComponent(task.id)}` }
         : {}),
       id: `task:${task.id}`,
-      primary: task.title ?? 'Untitled ticket',
+      primary: task.title ?? i18n.t('untitledTicket', { ns: 'search' }),
       secondary: context,
       section: 'Tickets',
       subject: { kind: 'task' },
@@ -221,7 +224,7 @@ export const buildSearchResultItems = (
     items.push({
       id: `thought:${thought.id}`,
       primary: thought.content,
-      secondary: mode === 'semantic' ? 'Memory · Hybrid match' : 'Memory · Full text match',
+      secondary: i18n.t(mode === 'semantic' ? 'memoryHybridMatch' : 'memoryFullTextMatch', { ns: 'search' }),
       section: 'Memory',
       subject: { kind: 'thought' },
     })
