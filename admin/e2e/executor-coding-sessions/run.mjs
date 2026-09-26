@@ -125,7 +125,8 @@ const output = resolve(REPO_ROOT, 'e2e/screenshots/executor-coding-sessions')
  * machine's next report arriving without it.
  */
 const openContext = async (browser, {
-  accessView = access, canClose, names, refuse = [], sessions = reported, ticketWork: ticketOf = {}, width, viewSession = pricing,
+  accessView = access, canClose, names, refuse = [], sessions = reported, ticketWork: ticketOf = {},
+  width, viewSession = pricing,
 }) => {
   const state = {
     closing: new Set(), dropped: new Set(), posted: [], reads: 0, viewers: [],
@@ -146,7 +147,7 @@ const openContext = async (browser, {
       return respond({
         canShare: canClose && viewSession.origin !== 'external', online: true, session,
         screen: { ansi: '\u001b[32m' + state.screen + '\u001b[0m\r\n> ', cols: 120, rows: 36,
-          capturedAt: iso(0), kind: 'terminal' },
+          capturedAt: iso(0), kind: viewSession.origin === 'external' ? 'activity' : 'terminal' },
       })
     }
     if (path === sessionBase + '/shares') {
@@ -396,6 +397,9 @@ try {
       status: 'unknown', title: 'Existing Codex conversation' }
     const native = await openContext(browser, { canClose: true, names: {}, width,
       sessions: [existing], viewSession: existing })
+    native.state.screen = 'Existing Codex conversation\r\nProvider: Codex\r\nState: Live state unknown\r\n'
+      + 'Available input: Queue native input\r\nThe original client decides when to consume input.\r\n'
+      + 'Last input: queued natively\r\nAsk your Nessie agent to send input or inspect recent messages.'
     const nativeList = await open(native.page)
     assert.match(await nativeList.innerText(), /existing native session/u)
     assert.equal(await nativeList.getByRole('button', { name: /^Close /u }).count(), 0)
@@ -406,9 +410,12 @@ try {
     await native.page.getByRole('heading', { name: existing.title }).waitFor()
     assert.equal(await noOverflow(native.page), true)
     await native.page.screenshot({ fullPage: true, path: resolve(output, `existing-session-${width}.png`) })
-    await native.page.getByRole('button', { name: width < 768 ? 'Sessions' : 'Back to sessions', exact: true }).click()
     await native.page.goBack()
+    await native.page.getByRole('heading', { name: 'Workstation' }).waitFor()
+    await native.page.goForward()
     await native.page.getByRole('heading', { name: existing.title }).waitFor()
+    await native.page.getByRole('button', { name: width < 768 ? 'Sessions' : 'Back to sessions', exact: true }).click()
+    await native.page.getByRole('heading', { name: 'Sessions', exact: true }).waitFor()
     assert.deepEqual(native.errors, [])
     assert.deepEqual(native.unexpected, [])
     await native.context.close()

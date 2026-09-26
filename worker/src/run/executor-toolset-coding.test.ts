@@ -28,12 +28,14 @@ const toolset = (input: {
   scopeKind?: 'private' | 'project'
   ticketWork?: TicketWorkCodingScope
   withFacts?: boolean
+  existingSessions?: boolean
   agents?: ExecutorCodingSessionsFacts['agents']
 } = {}) => {
   const descriptor = {
     mcpServers: input.mcpServers ?? ['coding-sessions', 'kelpie'],
     ...(input.withFacts === false ? {} : { codingSessions: {
-      ...facts, agents: input.agents ?? facts.agents,
+      ...facts, existingSessions: input.existingSessions === false ? undefined : true,
+      agents: input.agents ?? facts.agents,
       permissionMode: { ...facts.permissionMode, ...(input.agents?.includes('terminal') ? { terminal: 'hostUser' } : {}) },
     } }),
   }
@@ -74,11 +76,11 @@ const serverEnum = (descriptors: Awaited<ReturnType<typeof buildExecutorToolset>
     properties: { server: { enum: string[] } }
   } | undefined)?.properties.server.enum
 
-test('the owner’s run gets the seven coding tools, and the generic pair stops naming the bridge', async () => {
+test('the owner’s run gets managed and existing coding tools, and the generic pair stops naming the bridge', async () => {
   const { built, transactions } = toolset()
   const offered = await built
   const names = offered.descriptors.map((descriptor) => descriptor.toolName)
-  // The machine lists no interactive terminal, so the seven and none of the terminal's three.
+  // The machine lists no interactive terminal, so its tools are absent.
   for (const name of STRUCTURED_CODING_SESSION_TOOL_NAMES) assert.ok(names.includes(name), name)
   assert.ok(!names.some((name) => name.startsWith('terminal_')))
   assert.ok(offered.codingSessions)
@@ -173,4 +175,23 @@ test('a ticket’s work under standing machine access gets the coding tools and 
   const viaCatalog = await offered.mcpCatalog('kelpie', 'p2')
   assert.ok('failure' in viaCatalog && viaCatalog.failure.success === false)
   assert.equal(transactions.length, 0)
+})
+
+
+test('older executor facts cannot advertise experimental native input', async () => {
+  const offered = await toolset({ existingSessions: false }).built
+  const names = offered.descriptors.map((descriptor) => descriptor.toolName)
+  for (const action of ['queue', 'push', 'steer']) assert.ok(!names.includes(`coding_session_${action}`))
+  assert.ok(names.includes('coding_session_start'))
+  assert.ok(names.includes('coding_session_wait'))
+})
+
+test('an existing-only pairing exposes input and inspection without a managed start', async () => {
+  const offered = await toolset({ agents: [] }).built
+  const names = offered.descriptors.map((descriptor) => descriptor.toolName)
+  for (const action of ['queue', 'push', 'wait', 'list']) assert.ok(names.includes(`coding_session_${action}`))
+  assert.ok(!names.includes('coding_session_start'))
+  assert.ok(!names.includes('coding_session_send'))
+  const wait = offered.descriptors.find((descriptor) => descriptor.toolName === 'coding_session_wait')!
+  assert.ok((wait.inputSchema as { properties: Record<string, unknown> }).properties.wait)
 })

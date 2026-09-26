@@ -6,7 +6,7 @@ import type { ToolSchemaDescriptor } from '@nessie/runtime'
  * (docs/plans/2026-09-22-executor-local-apps/coding-sessions.md §8).
  *
  * A run bound to a revision whose descriptor offers the `coding-sessions`
- * bridge, on a private executor its pairing owner launched, gets these seven
+ * bridge, on a private executor its pairing owner launched, gets these tools
  * instead of reaching the bridge through `executor_mcp_call`. Their
  * descriptions are system text, not a program's catalog the untrusted banner
  * disowns, and their schemas are real, so scalar coercion works. Each one is
@@ -43,7 +43,7 @@ export const TERMINAL_SESSION_TOOL_NAMES: ReadonlySet<string> = new Set([
   CODING_SESSION_TOOL_NAMES.terminalWrite,
 ])
 
-/** The structured coding-session seven: what holding "the coding tools" means, terminal or not. */
+/** The structured coding-session family: what holding "the coding tools" means, terminal or not. */
 export const STRUCTURED_CODING_SESSION_TOOL_NAMES: ReadonlySet<string> = new Set(
   [...CODING_SESSION_TOOL_NAME_SET].filter((name) => !TERMINAL_SESSION_TOOL_NAMES.has(name)),
 )
