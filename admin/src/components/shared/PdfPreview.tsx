@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
-import pdfApiUrl from 'pdfjs-dist/build/pdf.min.mjs?url'
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 type PdfState = { document: PDFDocumentProxy | null; error: boolean; loading: boolean }
 
@@ -28,6 +26,10 @@ export const PdfPreview = ({ title, url }: { title: string; url: string }) => {
         // scripts or follows links embedded in an uploaded document.
         const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer())
         if (cancelled) return
+        const [{ default: pdfApiUrl }, { default: pdfWorkerUrl }] = await Promise.all([
+          import('pdfjs-dist/build/pdf.min.mjs?url'),
+          import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+        ])
         // A failed module import stays failed in Safari for the life of this
         // page. Request a fresh URL after a retry so a brief network failure
         // cannot leave the preview stuck until the whole app is reloaded.
