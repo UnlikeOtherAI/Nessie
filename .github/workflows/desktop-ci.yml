@@ -112,8 +112,12 @@ jobs:
         id: scope
         run: node scripts/ci-scope.mjs
 
+      # Also the release components' inputs and build numbers, which decide
+      # what the Windows edge channel rebuilds after a merge.
       - name: Test Windows-native scope
-        run: node --test scripts/ci-scope.test.mjs scripts/windows-native-ci.test.mjs
+        run: >-
+          node --test scripts/ci-scope.test.mjs scripts/windows-native-ci.test.mjs
+          scripts/release-components.test.mjs
 
       # Keep source verification separate from release signing. Pull requests
       # receive no signing secrets. The installers below are temporary unsigned

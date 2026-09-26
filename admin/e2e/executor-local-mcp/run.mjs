@@ -21,13 +21,37 @@ import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
 
 const screenshots = resolve(REPO_ROOT, 'e2e/screenshots/executor-local-mcp')
 
+// The tab that hosts the section under test. The detail panel reads it from
+// the URL, so a fixture naming a stale tab renders a whole other panel with
+// no error anywhere — the page simply never shows the heading.
+const LOCAL_APPS_TAB = 'Sessions'
+
+// Wait for the section under test, or fail saying what rendered instead. A
+// bare locator timeout hides the page, and the sharing panel's "Select a
+// team to manage sharing." is the line that names the cause at once.
+const waitForHeading = async (page, heading, scenario) => {
+  try {
+    await page.getByText(heading, { exact: true }).waitFor()
+  } catch (error) {
+    const path = resolve(screenshots, `${scenario}-failed.png`)
+    await page.screenshot({ fullPage: true, path })
+    const text = (await page.locator('body').innerText()).trim()
+    throw new Error(
+      `${scenario}: "${heading}" never rendered. The page shows instead:\n${text}\n(screenshot: ${path})`,
+      { cause: error },
+    )
+  }
+}
+
 // Each case: the scenario, the texts that must render, and texts that must
-// NOT render — the dangerous reading each state has to rule out.
+// NOT render — the dangerous reading each state has to rule out. The "Local
+// apps" heading itself is the readiness gate below, matched on the DOM text
+// of every panel scenario; it does not belong in `must`, because the label
+// renders uppercased and `innerText` reads it as "LOCAL APPS".
 const cases = [
   {
     scenario: 'available',
     must: [
-      'Local apps',
       'available',
       'Ondrej’s MacBook Pro',
       'MacBookPro18,2',
@@ -175,12 +199,18 @@ try {
     // executor's label: the label renders for every scenario whether or not
     // this panel mounted, so it would go green on a page that failed to
     // render the thing being asserted.
-    await page.getByText(
-      testCase.scenario.startsWith('policy-') || testCase.scenario === 'whole-suite-grant'
-        ? 'Review prepared executor change'
-        : 'Local apps',
-      { exact: true },
-    ).waitFor()
+    const reviewing = testCase.scenario.startsWith('policy-') || testCase.scenario === 'whole-suite-grant'
+    await waitForHeading(page, reviewing ? 'Review prepared executor change' : 'Local apps', testCase.scenario)
+    if (!reviewing) {
+      // The section is reached through the machine's Sessions tab, which is
+      // where the docs send a person; a move to another tab changes this
+      // suite and those docs together.
+      assert.equal(
+        await page.locator('[role="tab"][aria-selected="true"]').innerText(),
+        LOCAL_APPS_TAB,
+        `${testCase.scenario}: Local apps must be under the ${LOCAL_APPS_TAB} tab`,
+      )
+    }
     const text = await page.locator('body').innerText()
     for (const expected of testCase.must) {
       assert.ok(text.includes(expected), `${testCase.scenario}: missing "${expected}"`)

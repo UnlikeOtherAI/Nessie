@@ -1,0 +1,167 @@
+name: Windows Edge
+
+# Every merge to main that changes what a Windows download is built from
+# rebuilds it, signs it as UnlikeOtherAI s.r.o. through Azure Artifact Signing,
+# and replaces that component's rolling pre-release: `desktop-edge` for Nessie
+# Desktop, `executor-edge` for the standalone Nessie Executor. A component whose
+# inputs did not change keeps its current build and gains no new version; which
+# inputs belong to which component is scripts/release-components.mjs, and the
+# release model is docs/plans/2026-09-26-component-releases.md.
+on:
+  push:
+    branches: [main]
+    # A superset of every component's inputs, so no input change can go
+    # unbuilt; the scope job below decides per component.
+    paths:
+      - ".github/workflows/windows-edge.yml"
+      - ".github/workflows/desktop-windows.yml"
+      - "scripts/release-components.mjs"
+      - "desktop/**"
+      - "executor/**"
+      - "assets/**"
+      - "packages/db/**"
+      - "packages/local-inference-host/**"
+      - "packages/runtime/**"
+      - "packages/schemas/**"
+      - "pnpm-lock.yaml"
+  workflow_dispatch:
+
+# One edge build at a time and never cancelled: under merge traffic a
+# cancelling group restarts a forty-minute build on every merge and publishes
+# nothing. A newer push waits instead, and GitHub keeps only the newest waiter.
+concurrency:
+  group: windows-edge
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  scope:
+    name: What changed
+    runs-on: ubuntu-latest
+    outputs:
+      desktop: ${{ steps.changes.outputs.desktop }}
+      executor: ${{ steps.changes.outputs.executor }}
+    steps:
+      # Full history with tags: each component is compared with the commit its
+      # edge tag points at, which is the build currently published.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Compare each component with its edge build
+        id: changes
+        run: node scripts/release-components.mjs edge-changes
+
+  build:
+    name: Windows
+    needs: scope
+    if: needs.scope.outputs.desktop == '1' || needs.scope.outputs.executor == '1'
+    uses: ./.github/workflows/desktop-windows.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      require_signed_release: true
+    secrets: inherit
+
+  publish:
+    name: Publish edge releases
+    needs: [scope, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Download the Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-windows-${{ github.sha }}
+          path: windows
+
+      # Stable asset names, so a download link names the channel rather than a
+      # build: releases/download/desktop-edge/Nessie-Windows-Setup.exe is always
+      # the newest edge desktop installer. The edge tag moves last, so a publish
+      # that fails part-way leaves the tag behind and the next run rebuilds.
+      - name: Publish the components that changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DESKTOP_CHANGED: ${{ needs.scope.outputs.desktop }}
+          EXECUTOR_CHANGED: ${{ needs.scope.outputs.executor }}
+        run: |
+          set -euo pipefail
+          info=windows/build-info.json
+          test "$(jq -r .commit "$info")" = "$GITHUB_SHA"
+          test "$(jq -r .signed "$info")" = true
+          run_url="$(jq -r .run "$info")"
+          built_at="$(jq -r .builtAt "$info")"
+          commit_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA"
+          mkdir release
+
+          stage() {
+            local source
+            source="$(find windows -maxdepth 1 -type f -name "$1" -print -quit)"
+            test -n "$source" || { echo "The Windows build produced no $1." >&2; exit 1; }
+            cp "$source" "release/$2"
+            (cd release && sha256sum "$2" > "$2.sha256")
+          }
+
+          publish() {
+            local tag="$1" product="$2" version="$3" summary="$4"
+            shift 4
+            local published
+            published="$(git ls-remote origin "refs/tags/$tag" | cut -f1)"
+            # Never move a channel backwards: a re-run of an older workflow run
+            # finds a newer build already published and leaves it.
+            if [ -n "$published" ] && ! { git cat-file -e "$published^{commit}" 2>/dev/null \
+              && git merge-base --is-ancestor "$published" "$GITHUB_SHA"; }; then
+              echo "::notice::$tag already carries a newer build ($published); left in place."
+              return
+            fi
+            local files=()
+            for asset in "$@"; do files+=("release/$asset" "release/$asset.sha256"); done
+            {
+              echo "**Edge build, not a stable release.** Built and signed automatically from \`main\` whenever a change reaches what $product is built from; the next such build replaces it."
+              echo
+              echo "| Platform | Version | Commit | Built |"
+              echo "| --- | --- | --- | --- |"
+              echo "| Windows x64 | $version | [\`${GITHUB_SHA:0:9}\`]($commit_url) | $built_at ([run]($run_url)) |"
+              echo
+              echo "$summary"
+              echo
+              echo "Signed by **UnlikeOtherAI s.r.o.** through Azure Artifact Signing. Check a download with \`Get-AuthenticodeSignature\` and the \`.sha256\` beside it. Edge builds do not update themselves: install the next one over this one."
+            } > notes.md
+            if gh release view "$tag" >/dev/null 2>&1; then
+              gh release upload "$tag" "${files[@]}" --clobber
+              gh release edit "$tag" --title "$product (edge)" --notes-file notes.md --prerelease
+              gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" \
+                -f sha="$GITHUB_SHA" -F force=true > /dev/null
+            else
+              gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" \
+                --title "$product (edge)" --notes-file notes.md --prerelease
+            fi
+            echo "- **$product** $version → [$tag]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$tag)" \
+              >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          if [ "$DESKTOP_CHANGED" = 1 ]; then
+            stage '*-setup.exe' Nessie-Windows-Setup.exe
+            stage 'Nessie_*.msi' Nessie-Windows.msi
+            publish desktop-edge 'Nessie Desktop' "$(jq -r .desktopVersion "$info")" \
+              '`Nessie-Windows-Setup.exe` installs Nessie for the signed-in person; `Nessie-Windows.msi` is the same app for deployment tooling.' \
+              Nessie-Windows-Setup.exe Nessie-Windows.msi
+          fi
+          if [ "$EXECUTOR_CHANGED" = 1 ]; then
+            stage 'NessieExecutor_*_x64.msi' Nessie-Executor-Windows.msi
+            publish executor-edge 'Nessie Executor' "$(jq -r .executorVersion "$info")" \
+              '`Nessie-Executor-Windows.msi` turns a computer without the desktop app into an executor: a service that keeps it online and a tray icon that controls it. A newer build upgrades it in place.' \
+              Nessie-Executor-Windows.msi
+          fi

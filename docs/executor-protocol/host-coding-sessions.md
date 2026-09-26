@@ -556,7 +556,7 @@ and how close requests work is in
 ## The executor page
 
 A person sees what is running on their machine, and ends it, under the coding
-bridge's status in the executor page's **Local apps** section (Permissions tab;
+bridge's status in the executor page's **Local apps** section (Sessions tab;
 `ExecutorLocalMcpPanel` → `ExecutorCodingSessions`). It reads
 `GET /api/executors/:executorId/coding-sessions`, answered only to the people
 who may manage the machine (404 for everyone else), as `{canClose, sessions}`:

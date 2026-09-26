@@ -87,7 +87,6 @@ export const useLocalBack = (options: UseLocalBackOptions): void => {
 export const LOCAL_BACK_PRIORITY = {
   knowledgeFolder: 11,
   knowledgeDocument: 12,
-  knowledgeHistory: 13,
   knowledgeEditor: 14,
   columnBase: 20,
   columnStep: 2,

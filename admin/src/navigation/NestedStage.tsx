@@ -16,8 +16,8 @@ import { ScreenBarLayerProvider } from './ScreenBarLayer'
 import { setLayerFallback } from './screen-bar'
 
 // A nested stage is how a state-driven screen joins the navigation stack: a
-// column browser's next column, a Knowledge folder → document → history →
-// editor, a dashboard's add-widget panel. On a single-column layout the
+// column browser's next column, a Knowledge document or editor, a dashboard's
+// add-widget panel. On a single-column layout the
 // stack hosts it as a real layer — it slides in and out like a route, Back
 // unwinds it, the edge swipe can drive it — and the page keeps rendering it
 // through a portal, so context and state never leave the page. Where no

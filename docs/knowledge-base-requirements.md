@@ -444,19 +444,23 @@ that column):
     detail in the other browsing views; **Back** returns to its containing
     folder or the browser root outside Tree, while Tree uses the adjacent
     hierarchy without a duplicate Back. A document is a leaf: it never offers creation
-    or renders children. Its attachments are visible on the document itself,
-    with an Add attachment action and list/grid presentation rather than being
-    discoverable only through a detached drawer.
+    or renders children. Existing attachments are visible on the document itself
+    with list/grid presentation; the section is absent when there are none.
+    Add attachment stays available in the floating detail action bar.
     Document and uploaded-file detail keep attachments and comments inline below
     the content or file preview, so reading and discussion form one scrollable
     page. The top header carries only navigation and title. Per-item actions
-    (editing, history, publishing, uploading a new version, downloading, and
-    More) live in a floating, frosted bottom bar inside the detail pane, with
+    (labelled primary Edit where available, Add attachment, history, publishing,
+    uploading a new version, downloading, and More) live in a floating, frosted
+    bottom bar inside the detail pane, with
     enough scroll clearance that the final comment is never covered.
   - **Editor** (`PageEditor`) and **version History** are full-width. The editor
     fills the whole main area as a borderless writing canvas: the title and body
     are edited in place with descriptive placeholders, labels and the optional
     change comment sit below the body, and there is no separate Summary field.
+    Typing a comma or space commits a label into a removable chip beside the
+    input, matching its saved appearance. An unfinished label is included when
+    the document is saved; previously saved labels containing spaces remain intact.
     On creation its Location picker chooses the space root or an existing folder
     as the parent. **New document** is available at the space root and inside
     folders, never on an open document. Creation offers **Publish** as its
@@ -598,9 +602,12 @@ Two file concepts live in the knowledge base alongside rich-text pages:
   (`KnowledgePageVersion.attachmentId`); the admin shows a per-MIME FontAwesome
   icon, an inline viewer (image/PDF/text/CSV) or a typed download card, and an
   **Upload new version** action (a drag-drop / tap popup).
+  Version history opens in the same centred dialog shell and lets the reader
+  download an older file version or restore it as a new version when permitted.
 - **Attachments** — any node (document or file node) can carry extra files,
   linked via `Attachment.knowledgePageId` and surfaced below the detail content,
-  with list/grid display and an Add attachment control.
+  with list/grid display when files exist. Add attachment remains available in
+  the detail action bar when the list is empty.
   Drag-and-drop onto the attachment panel adds an attachment; drag-and-drop
   onto the filesystem creates a file node; both show a dashed-square overlay with
   live upload progress.

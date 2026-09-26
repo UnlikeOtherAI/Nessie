@@ -42,7 +42,7 @@ export type ColumnResizeConfig = {
 // edge, centred on its `border-r`. Dragging (pointer) or arrow keys adjust the
 // width; touch-none keeps the drag from being stolen by the browser's scroll
 // gesture on touch devices.
-const ColumnResizeHandle = ({ max, min, onResize, width }: ColumnResizeConfig) => {
+export const BrowserColumnResizeHandle = ({ max, min, onResize, width }: ColumnResizeConfig) => {
   // Tears down an in-progress drag's window listeners + body styles if the
   // column unmounts mid-drag (e.g. the browser opens/closes a deeper column).
   const cleanup = useRef<(() => void) | null>(null)
@@ -298,7 +298,7 @@ export const ColumnBrowserColumn = ({
       >
         {children}
       </div>
-      {resize ? <ColumnResizeHandle {...resize} /> : null}
+      {resize ? <BrowserColumnResizeHandle {...resize} /> : null}
     </div>
   )
 }

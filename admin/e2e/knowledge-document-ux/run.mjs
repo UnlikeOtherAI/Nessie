@@ -118,7 +118,9 @@ try {
   assert.equal(await page.locator('header [data-page-header-action="history"]:visible').count(), 0,
     'file actions are not duplicated in the top navigation')
   assert.equal(await page.getByRole('tablist', { name: 'File sections' }).count(), 0)
-  await page.locator('#knowledge-page-attachments:visible').last().getByRole('button', { name: 'Add attachment' }).waitFor()
+  await fileActions.getByRole('button', { name: 'Add attachment' }).waitFor()
+  assert.equal(await page.locator('#knowledge-page-attachments:visible').count(), 0,
+    'a file with no attachments has no attachment section')
   await page.locator('#knowledge-comments-title:visible').last().waitFor()
   assert.equal(new URL(page.url()).searchParams.has('detail'), false)
   const fileBar = await fileActions.evaluate((element) => ({
@@ -131,6 +133,14 @@ try {
   assert.notEqual(fileBar.blur, 'none', 'file actions use a frosted backdrop')
   await page.waitForTimeout(250)
   await page.screenshot({ path: '/private/tmp/nessie-knowledge-image-tree.png', fullPage: true })
+  await fileActions.getByRole('button', { name: 'History' }).click()
+  const fileHistory = page.getByRole('dialog', { name: 'Version history' })
+  await fileHistory.waitFor()
+  await fileHistory.getByText(imageTitle, { exact: true }).waitFor()
+  await fileHistory.getByRole('button', { name: 'Download this version' }).waitFor()
+  await page.screenshot({ path: '/private/tmp/nessie-knowledge-file-history-dialog.png' })
+  await page.keyboard.press('Escape')
+  await fileHistory.waitFor({ state: 'hidden' })
   await page.getByRole('button', { name: 'View: Tree' }).click()
   await page.getByRole('menuitemradio', { name: 'Columns' }).click()
   await page.getByRole('button', { name: `Back from ${imageTitle}` }).click()
@@ -146,6 +156,13 @@ try {
   await settings.getByRole('button', { name: 'Close' }).click()
 
   await page.locator('[data-page-header-action="new"]:visible').last().click()
+  const newMenu = page.getByRole('menu', { name: 'New' })
+  await newMenu.waitFor()
+  await page.waitForTimeout(250)
+  await page.screenshot({ path: '/private/tmp/nessie-knowledge-new-menu.png', fullPage: true })
+  assert.ok((await newMenu.boundingBox())?.width <= 260, 'New uses the compact sidebar menu width')
+  assert.equal(await newMenu.getByText('New', { exact: true }).count(), 0,
+    'New does not repeat its trigger label inside the menu')
   await page.getByRole('menuitem', { name: 'Document' }).click()
   await page.getByRole('textbox', { name: 'Document title' }).fill(publishedTitle)
   await page.getByRole('button', { name: 'Publish', exact: true }).click()
@@ -165,19 +182,28 @@ try {
   await page.getByRole('menuitem', { name: 'Archive document' }).waitFor()
   await page.keyboard.press('Escape')
   assert.equal(await page.getByRole('tablist', { name: 'Document sections' }).count(), 0)
-  await page.locator('#knowledge-page-attachments:visible').last().waitFor()
+  const editAction = documentActions.getByRole('button', { name: 'Edit' })
+  await editAction.waitFor()
+  assert.equal(await editAction.textContent(), 'Edit', 'Edit keeps its visible label')
+  assert.equal(await editAction.evaluate((element) => element.classList.contains('admin-page-action-primary')), true,
+    'Edit uses the primary blue action style')
+  assert.equal(await page.locator('#knowledge-page-attachments:visible').count(), 0,
+    'a document with no attachments has no attachment section')
   await page.locator('#knowledge-comments-title:visible').last().waitFor()
   await page.screenshot({ path: '/private/tmp/nessie-knowledge-document-tree.png', fullPage: true })
-  const attachmentPanel = page.locator('#knowledge-page-attachments:visible').last()
-  await attachmentPanel.getByRole('button', { name: 'Add attachment' }).waitFor()
-  assert.equal(await attachmentPanel.evaluate((element) => Boolean(element.closest('.kb-reader'))), true,
-    'attachments stay inside the document sheet below its content')
-  await attachmentPanel.locator('input[type="file"]').setInputFiles({
+  const [fileChooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    documentActions.getByRole('button', { name: 'Add attachment' }).click(),
+  ])
+  await fileChooser.setFiles({
     buffer: Buffer.from('synthetic browser fixture'),
     mimeType: 'text/plain',
     name: 'detail-inline-fixture.txt',
   })
+  const attachmentPanel = page.locator('#knowledge-page-attachments:visible').last()
   await attachmentPanel.getByText('detail-inline-fixture.txt').waitFor()
+  assert.equal(await attachmentPanel.evaluate((element) => Boolean(element.closest('.kb-reader'))), true,
+    'attachments stay inside the document sheet below its content')
   await page.screenshot({ path: '/private/tmp/nessie-knowledge-attachments.png', fullPage: true })
   await page.locator('#knowledge-comments-title:visible').last().scrollIntoViewIfNeeded()
   await page.getByPlaceholder('Add a comment…').waitFor()
@@ -218,6 +244,25 @@ try {
   })
   assert.equal(publishedDraft.find(({ id }) => id === draft.id)?.status, 'published',
     'Publish in the bottom action bar changes the selected document')
+
+  await go(projectPath)
+  await page.locator('[data-page-header-action="new"]:visible').last().click()
+  await page.getByRole('menuitem', { name: 'Document' }).click()
+  const labelTitle = `Labels as chips ${suffix}`
+  await page.getByRole('textbox', { name: 'Document title' }).fill(labelTitle)
+  const labelField = page.getByRole('textbox', { name: 'Labels' })
+  await labelField.fill('discard, keep ')
+  await page.getByRole('button', { name: 'Remove discard' }).click()
+  assert.equal(await page.getByRole('button', { name: 'Remove keep' }).count(), 1)
+  await labelField.fill('last')
+  await page.screenshot({ path: '/private/tmp/nessie-knowledge-label-editor.png', fullPage: true })
+  await page.getByRole('button', { name: 'Publish', exact: true }).click()
+  await page.getByRole('heading', { name: labelTitle, exact: true }).last().waitFor()
+  const labelPages = await call(`/api/knowledge-base/spaces/${projectRoot.space.spaceId}/pages`, {
+    token: seed.token,
+  })
+  assert.deepEqual(labelPages.find(({ title }) => title === labelTitle)?.labels?.toSorted(), ['keep', 'last'],
+    'chips and unfinished text save as labels')
   console.log(`Knowledge document UX passed at ${API_URL} and ${ADMIN_URL}`)
 } finally {
   await browser?.close()

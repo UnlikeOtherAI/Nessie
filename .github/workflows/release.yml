@@ -556,17 +556,24 @@ jobs:
           setup="$(find windows-candidates -type f -name '*-setup.exe' -print -quit)"
           msi="$(find windows-candidates -type f -name 'Nessie_*.msi' ! -name 'NessieExecutor_*' -print -quit)"
           setup_signature="$(find windows-candidates -type f -name '*-setup.exe.sig' -print -quit)"
+          executor_msi="$(find windows-candidates -maxdepth 1 -type f -name 'NessieExecutor_*_x64.msi' -print -quit)"
           test -n "$setup"
           test -n "$msi"
           test -n "$setup_signature"
+          test -n "$executor_msi"
+          # The Windows job signs every one of these or fails; only a signed
+          # build of this tag reaches here.
+          test "$(jq -r .signed windows-candidates/build-info.json)" = true
           cp "$setup" release-assets/Nessie-Windows-Setup.exe
           cp "$msi" release-assets/Nessie-Windows.msi
           cp "$setup_signature" release-assets/Nessie-Windows-Setup.exe.sig
+          cp "$executor_msi" release-assets/Nessie-Executor-Windows.msi
           # Last gate before anything is uploaded: the executor installers are
           # present, and no asset carries the unsigned-development marker its own
           # builder would have put in the file name.
           test -f release-assets/Nessie-Executor-macOS-Apple-Silicon.dmg
           test -f release-assets/Nessie-Executor-macOS-Intel.dmg
+          test -f release-assets/Nessie-Executor-Windows.msi
           if ls release-assets | grep -E 'UNSIGNED|DO-NOT-INSTALL'; then
             echo 'A development artifact reached the publish job.' >&2
             exit 1
@@ -646,7 +653,8 @@ jobs:
 
           - **macOS:** Apple Silicon and Intel DMGs are ad-hoc signed, not notarized, and require a Gatekeeper bypass to open.
           - **Nessie Executor for macOS:** \`Nessie-Executor-macOS-*.dmg\` is the menu bar app. It is Developer ID signed, notarized and stapled: open it, drag it to Applications, and it runs with no bypass of any kind.
-          - **Windows:** NSIS and MSI installers are unsigned direct-download builds and may show a SmartScreen warning.
+          - **Windows:** the NSIS and MSI installers are Authenticode-signed by UnlikeOtherAI s.r.o. through Azure Artifact Signing.
+          - **Nessie Executor for Windows:** \`Nessie-Executor-Windows.msi\` installs the executor service and tray for a computer without the desktop app. It is signed by the same publisher.
           - **Linux:** AppImage and Debian packages are included with SHA-256 checksums.
           - **Android:** a signed, installable APK is included. Direct APK installs can open a newer signed APK in Android's package installer; Play Store builds leave updates to Google Play.
           - **iOS:** coming soon through the App Store.
