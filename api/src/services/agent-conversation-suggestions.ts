@@ -5,7 +5,7 @@ import { detectSecrets, type AgentConversationSuggestions } from '@nessie/schema
 import { buildAgentConversationWhere } from '@nessie/team-admin'
 import { z } from 'zod'
 
-export const SUGGESTION_COOLDOWN_MS = 6 * 60 * 60 * 1000
+export const SUGGESTION_COOLDOWN_MS = 60 * 60 * 1000
 const SourceSchema = z.object({ id: z.string().uuid(), hash: z.string() })
 const QuestionsSchema = z.object({
   questions: z.array(z.string().trim().min(1).max(180)).length(3)
@@ -68,7 +68,7 @@ const sourcesStillReadable = async (
   return sources.every((source) => hashes.get(source.id) === source.hash)
 }
 
-/** Reads are cheap unless history changed AND the durable six-hour budget is free. */
+/** Reads are cheap unless history changed AND the durable one-hour budget is free. */
 export const loadAgentConversationSuggestions = async (
   deps: Deps,
   input: Input,
