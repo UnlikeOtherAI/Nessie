@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { getBaseUrl } from '../../lib/api-client'
-import { parseSessionDebugImport } from '../../lib/session-debug-import'
+import { parseSessionDebugImport, SessionDebugImportError } from '../../lib/session-debug-import'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { SessionDebugDialog, SessionDebugIcon } from './SessionDebugDialog'
 
@@ -12,10 +13,11 @@ type LoginSessionImportButtonProps = {
 }
 
 export const LoginSessionImportButton = ({
-  label = 'Use session from another device',
+  label,
   onOpenChange,
   variant = 'floating',
 }: LoginSessionImportButtonProps) => {
+  const { t } = useTranslation('common')
   const navigate = useNavigate()
   const { importAccessToken } = useAuthSession()
   const [open, setOpen] = useState(false)
@@ -57,11 +59,20 @@ export const LoginSessionImportButton = ({
         onOpenChange?.(false)
         void navigate('/channels', { replace: true })
       } catch (submitError) {
-        setError(
-          submitError instanceof Error
-            ? submitError.message
-            : 'This session could not be imported.',
-        )
+        if (submitError instanceof SessionDebugImportError) {
+          const errorCopy = {
+            missingDump: t('sessionDebug.errors.missingDump'),
+            oversizedDump: t('sessionDebug.errors.oversizedDump'),
+            invalidJson: t('sessionDebug.errors.invalidJson'),
+            missingToken: t('sessionDebug.errors.missingToken'),
+            wrongServer: t('sessionDebug.errors.wrongServer'),
+            unusableToken: t('sessionDebug.errors.unusableToken'),
+            conflictingTokens: t('sessionDebug.errors.conflictingTokens'),
+          }
+          setError(errorCopy[submitError.code])
+        } else {
+          setError(t('sessionDebug.importFailed'))
+        }
       } finally {
         submittingRef.current = false
         setPending(false)
@@ -74,7 +85,7 @@ export const LoginSessionImportButton = ({
       <button
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-label={variant === 'floating' ? 'Import session JSON' : undefined}
+        aria-label={variant === 'floating' ? t('sessionDebug.importJson') : undefined}
         className={variant === 'floating'
           ? [
               'fixed z-40 flex h-11 w-11 items-center justify-center rounded-xl',
@@ -95,17 +106,17 @@ export const LoginSessionImportButton = ({
           bottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)',
           right: 'calc(env(safe-area-inset-right, 0px) + 1rem)',
         } : undefined}
-        title={variant === 'floating' ? 'Import session JSON' : undefined}
+        title={variant === 'floating' ? t('sessionDebug.importJson') : undefined}
         type="button"
       >
         <SessionDebugIcon />
-        {variant === 'inline' ? <span>{label}</span> : null}
+        {variant === 'inline' ? <span>{label ?? t('sessionDebug.useOtherDevice')}</span> : null}
       </button>
 
       <SessionDebugDialog
         actionDisabled={!rawDump.trim()}
-        actionLabel="Sign in with session"
-        description="Paste JSON copied from Session debug on another signed-in device. This is a bearer credential; only its access token is used, and it stops when that token expires."
+        actionLabel={t('sessionDebug.signInWithSession')}
+        description={t('sessionDebug.importDescription')}
         error={error}
         onAction={handleImport}
         onChange={(value) => {
@@ -115,9 +126,9 @@ export const LoginSessionImportButton = ({
         onClose={handleClose}
         open={open}
         pending={pending}
-        pendingLabel="Checking session..."
-        textareaLabel="Session debug JSON to import"
-        title="Import session"
+        pendingLabel={t('sessionDebug.checking')}
+        textareaLabel={t('sessionDebug.importJsonLabel')}
+        title={t('sessionDebug.importTitle')}
         value={rawDump}
       />
     </>

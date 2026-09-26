@@ -94,5 +94,31 @@
     "violet": "Violet",
     "pink": "Rose",
     "brown": "Marron"
+  },
+  "sessionDebug": {
+    "open": "Ouvrir le diagnostic de session",
+    "title": "Diagnostic de session",
+    "shortTitle": "Diagnostic",
+    "copied": "Copié",
+    "copy": "Copier dans le presse-papiers",
+    "description": "Jeton, données décodées, stockage local et cookies. Données sensibles — ne les partagez qu’avec des personnes de confiance.",
+    "jsonLabel": "JSON du diagnostic de session",
+    "importFailed": "Impossible d’importer cette session.",
+    "importJson": "Importer le JSON de session",
+    "useOtherDevice": "Utiliser une session d’un autre appareil",
+    "signInWithSession": "Se connecter avec une session",
+    "importDescription": "Collez le JSON copié depuis le diagnostic de session d’un autre appareil connecté. Il contient un identifiant d’accès ; seul son jeton d’accès est utilisé, jusqu’à son expiration.",
+    "checking": "Vérification de la session…",
+    "importJsonLabel": "JSON du diagnostic de session à importer",
+    "importTitle": "Importer une session",
+    "errors": {
+      "missingDump": "Collez un extrait JSON du diagnostic de session.",
+      "oversizedDump": "Ce JSON de diagnostic de session est trop volumineux.",
+      "invalidJson": "Collez un JSON de diagnostic de session valide.",
+      "missingToken": "Cet extrait de session ne contient aucun jeton d’accès.",
+      "wrongServer": "Cet extrait de session appartient à un autre serveur Nessie.",
+      "unusableToken": "Cet extrait de session ne contient aucun jeton d’accès utilisable.",
+      "conflictingTokens": "Cet extrait de session contient des jetons d’accès contradictoires."
+    }
   }
 }

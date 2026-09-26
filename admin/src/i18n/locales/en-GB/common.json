@@ -94,5 +94,31 @@
     "violet": "Violet",
     "pink": "Pink",
     "brown": "Brown"
+  },
+  "sessionDebug": {
+    "open": "Open session debug",
+    "title": "Session debug",
+    "shortTitle": "Debug",
+    "copied": "Copied",
+    "copy": "Copy to clipboard",
+    "description": "Token, decoded claims, localStorage and cookies. Sensitive — only share with people you trust.",
+    "jsonLabel": "Session debug JSON",
+    "importFailed": "This session could not be imported.",
+    "importJson": "Import session JSON",
+    "useOtherDevice": "Use session from another device",
+    "signInWithSession": "Sign in with session",
+    "importDescription": "Paste JSON copied from Session debug on another signed-in device. This is a bearer credential; only its access token is used, and it stops when that token expires.",
+    "checking": "Checking session…",
+    "importJsonLabel": "Session debug JSON to import",
+    "importTitle": "Import session",
+    "errors": {
+      "missingDump": "Paste a session debug JSON dump.",
+      "oversizedDump": "This session debug JSON is too large.",
+      "invalidJson": "Paste valid session debug JSON.",
+      "missingToken": "This session dump does not contain an access token.",
+      "wrongServer": "This session dump belongs to a different Nessie server.",
+      "unusableToken": "This session dump does not contain a usable access token.",
+      "conflictingTokens": "This session dump contains conflicting access tokens."
+    }
   }
 }

@@ -94,5 +94,31 @@
     "violet": "Violeta",
     "pink": "Rosa",
     "brown": "Marrón"
+  },
+  "sessionDebug": {
+    "open": "Abrir diagnóstico de sesión",
+    "title": "Diagnóstico de sesión",
+    "shortTitle": "Diagnóstico",
+    "copied": "Copiado",
+    "copy": "Copiar al portapapeles",
+    "description": "Token, datos decodificados, almacenamiento local y cookies. Datos sensibles: compártelos solo con personas de confianza.",
+    "jsonLabel": "JSON del diagnóstico de sesión",
+    "importFailed": "No se pudo importar esta sesión.",
+    "importJson": "Importar JSON de sesión",
+    "useOtherDevice": "Usar una sesión de otro dispositivo",
+    "signInWithSession": "Iniciar sesión con una sesión",
+    "importDescription": "Pega el JSON copiado del diagnóstico de sesión en otro dispositivo con la sesión iniciada. Contiene una credencial de acceso; solo se usa su token de acceso, y el acceso termina cuando caduca.",
+    "checking": "Comprobando la sesión…",
+    "importJsonLabel": "JSON del diagnóstico de sesión para importar",
+    "importTitle": "Importar sesión",
+    "errors": {
+      "missingDump": "Pega un volcado JSON del diagnóstico de sesión.",
+      "oversizedDump": "Este JSON del diagnóstico de sesión es demasiado grande.",
+      "invalidJson": "Pega un JSON válido del diagnóstico de sesión.",
+      "missingToken": "Este volcado de sesión no contiene un token de acceso.",
+      "wrongServer": "Este volcado de sesión pertenece a otro servidor de Nessie.",
+      "unusableToken": "Este volcado de sesión no contiene un token de acceso utilizable.",
+      "conflictingTokens": "Este volcado de sesión contiene tokens de acceso contradictorios."
+    }
   }
 }

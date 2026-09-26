@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getBaseUrl } from '../../lib/api-client'
 import { loadStoredToken } from '../../lib/storage'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
@@ -54,6 +55,7 @@ type DebugTokenButtonProps = {
 }
 
 export const DebugTokenButton = ({ variant = 'rail' }: DebugTokenButtonProps) => {
+  const { t } = useTranslation('common')
   const { me } = useAuthSession()
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -96,7 +98,7 @@ export const DebugTokenButton = ({ variant = 'rail' }: DebugTokenButtonProps) =>
   return (
     <>
       <button
-        aria-label="Open session debug"
+        aria-label={t('sessionDebug.open')}
         className={[
           variant === 'menu'
             ? [
@@ -107,12 +109,12 @@ export const DebugTokenButton = ({ variant = 'rail' }: DebugTokenButtonProps) =>
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]',
         ].join(' ')}
         onClick={handleOpen}
-        title="Session debug"
+        title={t('sessionDebug.title')}
         type="button"
       >
         {variant === 'menu' ? (
           <>
-            <span>Debug</span>
+            <span>{t('sessionDebug.shortTitle')}</span>
             <span className="flex h-3.5 w-3.5 items-center justify-center text-[color:var(--tx3)]">
               <SessionDebugIcon />
             </span>
@@ -122,22 +124,22 @@ export const DebugTokenButton = ({ variant = 'rail' }: DebugTokenButtonProps) =>
             <span className="admin-rail-btn-icon">
               <SessionDebugIcon />
             </span>
-            <span className="admin-rail-btn-label">Debug</span>
+            <span className="admin-rail-btn-label">{t('sessionDebug.shortTitle')}</span>
           </>
         )}
       </button>
 
       <SessionDebugDialog
-        actionLabel={copied ? 'Copied' : 'Copy to clipboard'}
+        actionLabel={copied ? t('sessionDebug.copied') : t('sessionDebug.copy')}
         actionMinWidth="8.5rem"
-        description="Token, decoded claims, localStorage and cookies. Sensitive — only share with people you trust."
+        description={t('sessionDebug.description')}
         onAction={handleCopy}
         onClose={handleClose}
         open={open}
         readOnly
         selectOnFocus
-        textareaLabel="Session debug JSON"
-        title="Session debug"
+        textareaLabel={t('sessionDebug.jsonLabel')}
+        title={t('sessionDebug.title')}
         value={dump}
       />
     </>

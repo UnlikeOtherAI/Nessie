@@ -94,5 +94,31 @@
     "violet": "Violett",
     "pink": "Rosa",
     "brown": "Braun"
+  },
+  "sessionDebug": {
+    "open": "Sitzungsdiagnose öffnen",
+    "title": "Sitzungsdiagnose",
+    "shortTitle": "Diagnose",
+    "copied": "Kopiert",
+    "copy": "In die Zwischenablage kopieren",
+    "description": "Token, dekodierte Ansprüche, localStorage und Cookies. Sensible Daten — nur mit vertrauenswürdigen Personen teilen.",
+    "jsonLabel": "JSON der Sitzungsdiagnose",
+    "importFailed": "Diese Sitzung konnte nicht importiert werden.",
+    "importJson": "Sitzungs-JSON importieren",
+    "useOtherDevice": "Sitzung von einem anderen Gerät verwenden",
+    "signInWithSession": "Mit Sitzung anmelden",
+    "importDescription": "Füge das JSON aus der Sitzungsdiagnose eines anderen angemeldeten Geräts ein. Es enthält Zugangsdaten; verwendet wird nur das Zugriffstoken, und der Zugriff endet, wenn dieses abläuft.",
+    "checking": "Sitzung wird geprüft…",
+    "importJsonLabel": "Sitzungsdiagnose-JSON zum Importieren",
+    "importTitle": "Sitzung importieren",
+    "errors": {
+      "missingDump": "Füge einen JSON-Auszug der Sitzungsdiagnose ein.",
+      "oversizedDump": "Dieses Sitzungsdiagnose-JSON ist zu groß.",
+      "invalidJson": "Füge gültiges Sitzungsdiagnose-JSON ein.",
+      "missingToken": "Dieser Sitzungsauszug enthält kein Zugriffstoken.",
+      "wrongServer": "Dieser Sitzungsauszug gehört zu einem anderen Nessie-Server.",
+      "unusableToken": "Dieser Sitzungsauszug enthält kein verwendbares Zugriffstoken.",
+      "conflictingTokens": "Dieser Sitzungsauszug enthält widersprüchliche Zugriffstoken."
+    }
   }
 }

@@ -43,6 +43,7 @@ export type SignInSurfaceProps = {
   badge?: ReactNode | null
   title?: ReactNode
   lede?: ReactNode
+  signInLabel?: string
   /** The sign-in controls: buttons, errors, the local-development form. */
   children: ReactNode
   /** Everything after the controls — typically {@link AppDownloads}. */
@@ -78,6 +79,7 @@ export const SignInSurface = ({
   logo,
   productName,
   showcase,
+  signInLabel = 'Sign in',
   title = SIGN_IN_COPY.title,
 }: SignInSurfaceProps) => (
   <main
@@ -93,7 +95,7 @@ export const SignInSurface = ({
       <BrandWave />
     </div>
     <div className={showcase ? 'signin-hero signin-hero-with-showcase' : 'signin-hero'}>
-      <section aria-label="Sign in" className="signin-auth">
+      <section aria-label={signInLabel} className="signin-auth">
         <div className="signin-auth-scroll">
           <div className="signin-column" style={columnStyle}>
             {badge ? (

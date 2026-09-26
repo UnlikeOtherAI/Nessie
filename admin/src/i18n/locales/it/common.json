@@ -94,5 +94,31 @@
     "violet": "Viola",
     "pink": "Rosa",
     "brown": "Marrone"
+  },
+  "sessionDebug": {
+    "open": "Apri diagnostica della sessione",
+    "title": "Diagnostica della sessione",
+    "shortTitle": "Diagnostica",
+    "copied": "Copiato",
+    "copy": "Copia negli appunti",
+    "description": "Token, dati decodificati, localStorage e cookie. Dati sensibili — condividili solo con persone fidate.",
+    "jsonLabel": "JSON della diagnostica della sessione",
+    "importFailed": "Impossibile importare questa sessione.",
+    "importJson": "Importa JSON della sessione",
+    "useOtherDevice": "Usa una sessione da un altro dispositivo",
+    "signInWithSession": "Accedi con una sessione",
+    "importDescription": "Incolla il JSON copiato dalla diagnostica della sessione su un altro dispositivo connesso. Contiene credenziali di accesso; viene usato solo il token di accesso e l’accesso termina alla sua scadenza.",
+    "checking": "Verifica della sessione…",
+    "importJsonLabel": "JSON della diagnostica della sessione da importare",
+    "importTitle": "Importa sessione",
+    "errors": {
+      "missingDump": "Incolla un file JSON della diagnostica della sessione.",
+      "oversizedDump": "Questo JSON della diagnostica della sessione è troppo grande.",
+      "invalidJson": "Incolla un JSON valido della diagnostica della sessione.",
+      "missingToken": "Questi dati della sessione non contengono un token di accesso.",
+      "wrongServer": "Questi dati della sessione appartengono a un altro server Nessie.",
+      "unusableToken": "Questi dati della sessione non contengono un token di accesso utilizzabile.",
+      "conflictingTokens": "Questi dati della sessione contengono token di accesso in conflitto."
+    }
   }
 }

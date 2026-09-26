@@ -30,6 +30,17 @@ export type SessionDebugImport = {
   accessToken: string
 }
 
+export type SessionDebugImportErrorCode =
+  | 'missingDump' | 'oversizedDump' | 'invalidJson' | 'missingToken'
+  | 'wrongServer' | 'unusableToken' | 'conflictingTokens'
+
+export class SessionDebugImportError extends Error {
+  constructor(readonly code: SessionDebugImportErrorCode, message: string) {
+    super(message)
+    this.name = 'SessionDebugImportError'
+  }
+}
+
 /**
  * Whether the login screen should start SSO without a press: a provider
  * configured to auto-redirect, or the landing's `?launch=sso` hand-off. An
@@ -54,20 +65,20 @@ export const parseSessionDebugImport = (
   expectedApiBaseUrl: string,
 ): SessionDebugImport => {
   if (!raw.trim()) {
-    throw new Error('Paste a session debug JSON dump.')
+    throw new SessionDebugImportError('missingDump', 'Paste a session debug JSON dump.')
   }
   if (raw.length > MAX_DEBUG_JSON_LENGTH) {
-    throw new Error('This session debug JSON is too large.')
+    throw new SessionDebugImportError('oversizedDump', 'This session debug JSON is too large.')
   }
 
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
   } catch {
-    throw new Error('Paste valid session debug JSON.')
+    throw new SessionDebugImportError('invalidJson', 'Paste valid session debug JSON.')
   }
   if (!isRecord(parsed) || !isRecord(parsed.tokens)) {
-    throw new Error('This session dump does not contain an access token.')
+    throw new SessionDebugImportError('missingToken', 'This session dump does not contain an access token.')
   }
 
   const expectedBaseUrl = normaliseApiBaseUrl(expectedApiBaseUrl)
@@ -75,20 +86,20 @@ export const parseSessionDebugImport = (
     ? normaliseApiBaseUrl(parsed.apiBaseUrl)
     : null
   if (!expectedBaseUrl || !pastedBaseUrl || expectedBaseUrl !== pastedBaseUrl) {
-    throw new Error('This session dump belongs to a different Nessie server.')
+    throw new SessionDebugImportError('wrongServer', 'This session dump belongs to a different Nessie server.')
   }
 
   const accessToken = typeof parsed.tokens.accessToken === 'string'
     ? parsed.tokens.accessToken.trim()
     : ''
   if (!accessToken || accessToken.length > MAX_ACCESS_TOKEN_LENGTH) {
-    throw new Error('This session dump does not contain a usable access token.')
+    throw new SessionDebugImportError('unusableToken', 'This session dump does not contain a usable access token.')
   }
 
   if (isRecord(parsed.localStorage)) {
     const duplicatedToken = parsed.localStorage[STORED_TOKEN_KEY]
     if (typeof duplicatedToken === 'string' && duplicatedToken !== accessToken) {
-      throw new Error('This session dump contains conflicting access tokens.')
+      throw new SessionDebugImportError('conflictingTokens', 'This session dump contains conflicting access tokens.')
     }
   }
 

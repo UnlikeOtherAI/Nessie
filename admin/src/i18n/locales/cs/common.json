@@ -94,5 +94,31 @@
     "violet": "Fialová",
     "pink": "Růžová",
     "brown": "Hnědá"
+  },
+  "sessionDebug": {
+    "open": "Otevřít ladění relace",
+    "title": "Ladění relace",
+    "shortTitle": "Ladění",
+    "copied": "Zkopírováno",
+    "copy": "Zkopírovat do schránky",
+    "description": "Token, dekódované údaje, localStorage a soubory cookie. Citlivé údaje — sdílejte je jen s lidmi, kterým důvěřujete.",
+    "jsonLabel": "JSON ladění relace",
+    "importFailed": "Tuto relaci se nepodařilo importovat.",
+    "importJson": "Importovat JSON relace",
+    "useOtherDevice": "Použít relaci z jiného zařízení",
+    "signInWithSession": "Přihlásit se pomocí relace",
+    "importDescription": "Vložte JSON zkopírovaný z ladění relace na jiném přihlášeném zařízení. Obsahuje přístupový token; použije se pouze tento token a přístup skončí po jeho vypršení.",
+    "checking": "Ověřování relace…",
+    "importJsonLabel": "JSON ladění relace k importu",
+    "importTitle": "Importovat relaci",
+    "errors": {
+      "missingDump": "Vložte výpis JSON ladění relace.",
+      "oversizedDump": "JSON ladění relace je příliš velký.",
+      "invalidJson": "Vložte platný JSON ladění relace.",
+      "missingToken": "Výpis relace neobsahuje přístupový token.",
+      "wrongServer": "Výpis relace patří jinému serveru Nessie.",
+      "unusableToken": "Výpis relace neobsahuje použitelný přístupový token.",
+      "conflictingTokens": "Výpis relace obsahuje navzájem odlišné přístupové tokeny."
+    }
   }
 }

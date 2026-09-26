@@ -1,4 +1,5 @@
 import { useId, useRef, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { OverlayPortal } from '../overlays/OverlayPortal'
 import { useOverlay } from '../overlays/useOverlay'
 import { Notice } from '../primitives/Notice'
@@ -76,6 +77,7 @@ export const SessionDebugDialog = ({
   title,
   value,
 }: SessionDebugDialogProps) => {
+  const { t } = useTranslation('common')
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const titleId = useId()
   const descriptionId = useId()
@@ -84,7 +86,7 @@ export const SessionDebugDialog = ({
     id: titleId,
     initialFocusRef: textareaRef,
     kind: 'modal',
-    label: `Close ${title}`,
+    label: t('closeNamed', { name: title }),
     onClose,
     open,
   })
@@ -144,7 +146,7 @@ export const SessionDebugDialog = ({
               </div>
             </div>
             <button
-              aria-label={`Close ${title.toLowerCase()}`}
+              aria-label={t('closeNamed', { name: title })}
               className={[
                 'flex h-11 w-11 flex-shrink-0 items-center justify-center',
                 'rounded text-[color:var(--tx3)]',
@@ -207,7 +209,7 @@ export const SessionDebugDialog = ({
                 onClick={onClose}
                 type="button"
               >
-                Cancel
+                {t('cancel')}
               </button>
               <button
                 className="admin-button admin-button-primary disabled:cursor-not-allowed disabled:opacity-50"

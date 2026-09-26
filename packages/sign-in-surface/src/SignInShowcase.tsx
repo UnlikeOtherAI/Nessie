@@ -117,6 +117,8 @@ const reducedMotion = (): boolean =>
 
 type SignInShowcaseProps = {
   slides?: ShowcaseSlide[]
+  agentLabel?: string
+  slidesLabel?: string
   /** Seconds between slides; 0 disables the auto-advance. */
   intervalSeconds?: number
 }
@@ -127,8 +129,10 @@ type SignInShowcaseProps = {
  * picks a slide. Reduced motion turns the timer off; the dots stay.
  */
 export const SignInShowcase = ({
+  agentLabel = 'Agent',
   intervalSeconds = 5,
   slides = SIGN_IN_SHOWCASE_SLIDES,
+  slidesLabel = 'Showcase slides',
 }: SignInShowcaseProps) => {
   const [index, setIndex] = useState(0)
   const [paused, setPaused] = useState(false)
@@ -174,7 +178,7 @@ export const SignInShowcase = ({
                     <div className="signin-msg-main">
                       <div className="signin-msg-meta">
                         <span className="signin-msg-name">{message.name}</span>
-                        {message.agent ? <span className="signin-msg-agent">Agent</span> : null}
+                        {message.agent ? <span className="signin-msg-agent">{agentLabel}</span> : null}
                         <span className="signin-msg-time">{message.time}</span>
                       </div>
                       <div className="signin-msg-text">{message.text}</div>
@@ -205,7 +209,7 @@ export const SignInShowcase = ({
         )
       })}
       <div className="signin-showcase-foot">
-        <div aria-label="Showcase slides" className="signin-dots" role="tablist">
+        <div aria-label={slidesLabel} className="signin-dots" role="tablist">
           {slides.map((slide, slideIndex) => (
             <button
               aria-label={slide.title}

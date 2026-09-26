@@ -16,6 +16,36 @@ const Description = ({ detail, label }: { detail: string; label: string }) => (
   </span>
 )
 
+export type AppDownloadsCopy = {
+  heading: string
+  androidDetail: string
+  comingSoon: string
+  iphoneAndIpad: string
+  appleSilicon: string
+  intel: string
+  windowsDetail: string
+  macM1AndLater: string
+  intelProcessors: string
+  executorLabel: string
+  executorNote: string
+  releases: string
+}
+
+const DEFAULT_COPY: AppDownloadsCopy = {
+  heading: 'Get the apps',
+  androidDetail: APP_DOWNLOADS.android.detail,
+  comingSoon: 'Coming soon',
+  iphoneAndIpad: 'iPhone & iPad',
+  appleSilicon: APP_DOWNLOADS.macAppleSilicon.detail,
+  intel: APP_DOWNLOADS.macIntel.detail,
+  windowsDetail: APP_DOWNLOADS.windows.detail,
+  macM1AndLater: 'M1 and later',
+  intelProcessors: 'Intel processors',
+  executorLabel: EXECUTOR_DOWNLOADS.macAppleSilicon.label,
+  executorNote: 'A Mac that only runs an executor — the machine an agent does local work on — needs this instead of the app above. Nessie Desktop already carries it.',
+  releases: 'Checksums and earlier releases on GitHub',
+}
+
 /**
  * The "Get the apps" block: the mobile builds on one row, the desktop builds
  * on the next. The Mac tile discloses its two architectures inline rather
@@ -28,21 +58,21 @@ const Description = ({ detail, label }: { detail: string; label: string }) => (
  * release page: people download from here, and GitHub is where the files live,
  * not where we send them.
  */
-export const AppDownloads = () => {
+export const AppDownloads = ({ copy = DEFAULT_COPY }: { copy?: AppDownloadsCopy }) => {
   const [macOpen, setMacOpen] = useState(false)
   const macChoicesId = useId()
 
   return (
     <div className="signin-downloads">
-      <div className="signin-divider">Get the apps</div>
+      <div className="signin-divider">{copy.heading}</div>
       <div className="signin-apps signin-apps-mobile">
         <a className="signin-app" href={downloadUrl(APP_DOWNLOADS.android)}>
           <FontAwesomeIcon aria-hidden="true" className="signin-app-icon" icon={faAndroid} />
-          <Description detail={APP_DOWNLOADS.android.detail} label={APP_DOWNLOADS.android.label} />
+          <Description detail={copy.androidDetail} label={APP_DOWNLOADS.android.label} />
         </a>
         <div aria-disabled="true" className="signin-app signin-app-muted">
           <FontAwesomeIcon aria-hidden="true" className="signin-app-icon" icon={faApple} />
-          <Description detail="Coming soon" label="iPhone & iPad" />
+          <Description detail={copy.comingSoon} label={copy.iphoneAndIpad} />
         </div>
       </div>
       <div className="signin-apps signin-apps-desktop">
@@ -54,12 +84,12 @@ export const AppDownloads = () => {
           type="button"
         >
           <FontAwesomeIcon aria-hidden="true" className="signin-app-icon" icon={faApple} />
-          <Description detail={APP_DOWNLOADS.macAppleSilicon.detail} label="Mac" />
+          <Description detail={copy.appleSilicon} label="Mac" />
           <FontAwesomeIcon aria-hidden="true" className="signin-app-chevron" icon={faChevronDown} />
         </button>
         <a className="signin-app signin-app-dark" href={downloadUrl(APP_DOWNLOADS.windows)}>
           <FontAwesomeIcon aria-hidden="true" className="signin-app-icon" icon={faWindows} />
-          <Description detail={APP_DOWNLOADS.windows.detail} label={APP_DOWNLOADS.windows.label} />
+          <Description detail={copy.windowsDetail} label={APP_DOWNLOADS.windows.label} />
         </a>
         <a className="signin-app signin-app-dark" href={downloadUrl(APP_DOWNLOADS.linux)}>
           <FontAwesomeIcon aria-hidden="true" className="signin-app-icon" icon={faLinux} />
@@ -73,35 +103,34 @@ export const AppDownloads = () => {
       >
         <a className="signin-app" href={downloadUrl(APP_DOWNLOADS.macAppleSilicon)}>
           <FontAwesomeIcon aria-hidden="true" className="signin-app-icon" icon={faApple} />
-          <Description detail="M1 and later" label={APP_DOWNLOADS.macAppleSilicon.detail} />
+          <Description detail={copy.macM1AndLater} label={copy.appleSilicon} />
         </a>
         <a className="signin-app" href={downloadUrl(APP_DOWNLOADS.macIntel)}>
           <FontAwesomeIcon aria-hidden="true" className="signin-app-icon" icon={faApple} />
-          <Description detail="Intel processors" label={APP_DOWNLOADS.macIntel.detail} />
+          <Description detail={copy.intelProcessors} label={copy.intel} />
         </a>
       </div>
       <p className="signin-app-note">
-        A Mac that only runs an executor — the machine an agent does local work on
-        — needs this instead of the app above. Nessie Desktop already carries it.
+        {copy.executorNote}
       </p>
       <div className="signin-apps signin-apps-mobile">
         <a className="signin-app" href={downloadUrl(EXECUTOR_DOWNLOADS.macAppleSilicon)}>
           <FontAwesomeIcon aria-hidden="true" className="signin-app-icon" icon={faApple} />
           <Description
-            detail={EXECUTOR_DOWNLOADS.macAppleSilicon.detail}
-            label={EXECUTOR_DOWNLOADS.macAppleSilicon.label}
+            detail={copy.appleSilicon}
+            label={copy.executorLabel}
           />
         </a>
         <a className="signin-app" href={downloadUrl(EXECUTOR_DOWNLOADS.macIntel)}>
           <FontAwesomeIcon aria-hidden="true" className="signin-app-icon" icon={faApple} />
           <Description
-            detail={EXECUTOR_DOWNLOADS.macIntel.detail}
-            label={EXECUTOR_DOWNLOADS.macIntel.label}
+            detail={copy.intel}
+            label={copy.executorLabel}
           />
         </a>
       </div>
       <a className="signin-app-releases" href={RELEASES_PAGE} rel="noreferrer" target="_blank">
-        Checksums and earlier releases on GitHub
+        {copy.releases}
       </a>
     </div>
   )
