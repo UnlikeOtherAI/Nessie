@@ -12,7 +12,7 @@ import { Row, RowList } from '../../../components/shared/RowList'
 import { SettingsPanel, type SettingsTabHostProps } from '../../../components/shared/SettingsPanel'
 import { useIsOrganizationAdmin, useIsOwner } from '../../../facades/auth/hooks'
 import { useMailboxConnections } from '../../../facades/mailbox-connections/hooks'
-import { useCurrentOrganization } from '../../../facades/organization/hooks'
+import { useOrganizationAdministration } from '../../../facades/organization/hooks'
 import { useSecrets } from '../../../facades/secrets/hooks'
 import {
   SETTING_KEYS,
@@ -20,26 +20,19 @@ import {
   useScopedSettings,
   type SettingScope,
 } from '../../../facades/settings/hooks'
-import { teamScopedPath, type AdminScopeOption } from '../../../lib/admin-scope'
 import type { TeamRecord } from '../../../lib/api-client'
 import {
   connectionScopeOptions,
   keyScopeOptions,
   modelScopeOptions,
-  teamScopeOption,
+  ownComputersDoorway,
+  teamDoorway,
+  type ScopeDoorway,
   type ScopeViewer,
 } from '../../admin/scope-entitlements'
 
 const BROWSER_KEYS = [SETTING_KEYS.browserConnection, SETTING_KEYS.browserHomepage]
 const POLICY_KEYS = [SETTING_KEYS.localInferenceEnabled]
-
-type Doorway = { href: string } | { reason: string }
-
-/** Where a doorway goes for this viewer, or who holds the page it would open. */
-const doorway = (options: readonly AdminScopeOption[], path: string, team: TeamRecord): Doorway => {
-  const reason = teamScopeOption(options, team.id)?.unavailableReason
-  return reason ? { reason } : { href: teamScopedPath(path, team.id) }
-}
 
 /**
  * One setting as it stands for this team. The value and the chips sit under
@@ -49,7 +42,7 @@ const doorway = (options: readonly AdminScopeOption[], path: string, team: TeamR
  */
 const Setting = ({ chips = [], target, title, value }: {
   chips?: readonly InheritanceChip[]
-  target: Doorway
+  target: ScopeDoorway
   title: string
   value: string
 }) => (
@@ -99,18 +92,17 @@ const browserAccountSentence = (lockedAt: SettingScope | null): string =>
  */
 export const TeamOverridesPage = ({ host, team }: { host?: SettingsTabHostProps; team: TeamRecord }) => {
   const viewer: ScopeViewer = { isOrganizationAdmin: useIsOrganizationAdmin(), isOwner: useIsOwner() }
-  const organization = useCurrentOrganization()
-  // The own-computers policy is an administrator-authored key, read only with
-  // the sign-in provider's organisation-administration standing.
-  const policyReadable = organization.data?.administration.status === 'allowed'
+  const models = teamDoorway(modelScopeOptions(viewer, [team]), '/admin/models', team.id)
+  const connections = teamDoorway(connectionScopeOptions(viewer, [team]), '/admin/connections', team.id)
+  const keys = teamDoorway(keyScopeOptions(viewer, [team]), '/admin/keys', team.id)
+  // The own-computers policy is an administrator-authored key: its row is read,
+  // and opens AI models, only with the organisation-administration standing.
+  const ownComputers = ownComputersDoorway(models, useOrganizationAdministration())
+  const policyReadable = 'href' in ownComputers
   const browser = useScopedSettings('team', BROWSER_KEYS, team.id)
   const policy = useScopedSettings('team', policyReadable ? POLICY_KEYS : [], team.id)
   const mailboxes = useMailboxConnections()
   const secrets = useSecrets(viewer.isOwner)
-
-  const models = doorway(modelScopeOptions(viewer, [team]), '/admin/models', team)
-  const connections = doorway(connectionScopeOptions(viewer, [team]), '/admin/connections', team)
-  const keys = doorway(keyScopeOptions(viewer, [team]), '/admin/keys', team)
 
   const policySetting = settingFor(policy.data, SETTING_KEYS.localInferenceEnabled)
   const connectionSetting = settingFor(browser.data, SETTING_KEYS.browserConnection)
@@ -138,13 +130,13 @@ export const TeamOverridesPage = ({ host, team }: { host?: SettingsTabHostProps;
           />
           <Setting
             chips={policyReadable ? teamInheritanceChips(policySetting) : []}
-            target={models}
+            target={ownComputers}
             title="AI on people’s own computers"
-            value={policyReadable
-              ? once(policy, () => localInferenceEnablementState(policySetting).enabled
+            value={'reason' in ownComputers
+              ? ownComputers.reason
+              : once(policy, () => localInferenceEnablementState(policySetting).enabled
                 ? 'Its people may use AI models on their own computers.'
-                : 'Its people may not use AI models on their own computers.')
-              : 'Only an organisation administrator sees this policy.'}
+                : 'Its people may not use AI models on their own computers.')}
           />
         </Group>
 

@@ -8,6 +8,7 @@ const read = (...path: string[]) => readFileSync(join(process.cwd(), 'src', ...p
 const navSource = read('layouts', 'admin-shell', 'admin-nav-items.tsx')
 const teamPageSource = read('pages', 'admin', 'TeamPage.tsx')
 const overridesSource = read('pages', 'settings', 'team', 'TeamOverridesPage.tsx')
+const entitlementsSource = read('pages', 'admin', 'scope-entitlements.ts')
 const modelsPageSource = read('pages', 'admin', 'ModelsPage.tsx')
 const hooksSource = read('facades', 'inference-models', 'hooks.ts')
 const agentQueriesSource = read('facades', 'agents', 'queries.ts')
@@ -22,8 +23,8 @@ test('AI models is one Admin page, and a team narrows it at its own scope there'
   // The team's page hosts no copy of it: its Overrides rows open this page
   // with the team chosen, the way they open Company connections and Keys.
   assert.doesNotMatch(teamPageSource, /ModelAvailabilitySettings|SecretsPanel/)
-  assert.match(overridesSource, /'\/admin\/models'/)
-  assert.match(overridesSource, /teamScopedPath\(path, team\.id\)/)
+  assert.match(overridesSource, /teamDoorway\(modelScopeOptions\(viewer, \[team\]\), '\/admin\/models', team\.id\)/)
+  assert.match(entitlementsSource, /teamScopedPath\(path, teamId\)/)
 })
 
 test('team availability calls team-scoped catalogue endpoints', () => {

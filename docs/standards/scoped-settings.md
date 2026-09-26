@@ -87,6 +87,18 @@ uses for the rest: `AGENTS.md` carries the one-line invariant and points here;
   organisation-administration authority required by its write is present. The
   route rejects a target on every other key, mixed-key request, and scope, so
   a policy control cannot turn into an arbitrary member-settings browser.
+- **The administration standing is decided once, on the server.** An
+  administrator-authored key (today the AI-on-own-computers policy) is read
+  and written only with organisation-administration standing:
+  `resolveOrganizationAdministrationAccess` answers from the sign-in
+  provider's live capability on a bound organisation, and from the local
+  owner or admin role on an unbound local install. `/api/organizations/current`
+  answers with that same resolver, so the admin reads the one status through
+  `useOrganizationAdministration` (`admin/src/facades/organization/hooks.ts`)
+  and never re-derives it from roles — a second derivation is how a local
+  admin would be refused a setting the route lets them change. A doorway into
+  such a setting follows the same answer: without the standing it is greyed
+  and says who holds it.
 
 - **A write is audited, never the value.** `PUT /api/settings/scoped/:key`
   (`api/src/routes/scoped-settings.ts`) emits `setting.scoped.written` with
