@@ -28,10 +28,12 @@ import '../../src/styles.css'
 
 const RUN_CHANNEL = '00000000-0000-4000-8000-0000000000a1'
 const RUN_THREAD = '00000000-0000-4000-8000-0000000000a2'
+const RUN_REPLY = '00000000-0000-4000-8000-0000000000a7'
 const AGENT_PAGE_ID = '00000000-0000-4000-8000-0000000000b3'
 
 const cto: AgentIdentity = { id: '00000000-0000-4000-8000-0000000000b1', name: 'CTO', role: 'Chief technology officer' }
 const researcher: AgentIdentity = { id: '00000000-0000-4000-8000-0000000000b2', name: 'Researcher', role: 'Web researcher' }
+const designer: AgentIdentity = { id: '00000000-0000-4000-8000-0000000000b4', name: 'Agent Designer', role: 'Agent designer' }
 
 const initialEntries: PendingStreamMessage[] = [
   {
@@ -50,6 +52,13 @@ const initialEntries: PendingStreamMessage[] = [
     rootMessageId: '00000000-0000-4000-8000-0000000000c1',
     runId: RUN_THREAD,
     thinking: [{ content: 'Searching for the release notes.', id: '3', kind: 'reasoning' }],
+  },
+  {
+    agentId: designer.id,
+    content: '',
+    rootMessageId: '00000000-0000-4000-8000-0000000000c2',
+    runId: RUN_REPLY,
+    thinking: [],
   },
 ]
 
@@ -118,6 +127,25 @@ const Fixture = () => {
           renderContent={(text) => text}
           resolveAgentIdentity={() => ({ agent: cto, name: cto.name })}
           thinkingSurface="channel"
+          token={null}
+        />
+      </section>
+
+      <section aria-label="Reply thread" className="grid gap-1">
+        <h2 className="px-5 text-lg font-semibold">Reply thread</h2>
+        <article className="admin-msg-row relative py-1">
+          <div className="min-w-0 flex-1 text-sm">
+            <span className="font-bold">Ondrej</span>
+            <p>Can you see the model now?</p>
+          </div>
+        </article>
+        <ChannelLiveStreamTail
+          isDedicatedAgentConversation={false}
+          onOpenThoughtProcess={open}
+          pendingMessages={entries.filter((entry) => entry.runId === RUN_REPLY)}
+          renderContent={(text) => text}
+          resolveAgentIdentity={() => ({ agent: designer, name: designer.name })}
+          thinkingSurface="thread"
           token={null}
         />
       </section>
