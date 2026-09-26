@@ -107,6 +107,10 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   the gesture already ran — so the gesture announces its own settle, with the
   duration of the travel that remains.
 
+  A cancelled swipe posts no transition: the native header remained on the
+  current screen during the drag, so announcing a parent-to-detail transition
+  would flash a header for a screen the person never returned to.
+
 - **The web draws no header there.** `ScreenHeader` renders no visible bar on
   the iOS phone shell, keeps its `h1` as `sr-only` (the settle focuses it and
   the live region reads it by `querySelector('h1')`, so removing the element
