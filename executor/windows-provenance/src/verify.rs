@@ -128,3 +128,70 @@ pub fn collect_signature_facts(path: &std::path::Path) -> Option<WindowsSignatur
     };
     Some(facts)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::collect_signature_facts;
+    use crate::{decide_release_signature, WRONG_PUBLISHER_REASON};
+
+    const NESSIE_PROFILE: &str = "1.3.6.1.4.1.311.97.178939473.798312218.613811551.894157712";
+    const PUBLIC_TRUST_MARKER: &str = "1.3.6.1.4.1.311.97.1.0";
+    const CODE_SIGNING: &str = "1.3.6.1.5.5.7.3.3";
+
+    fn node_on_path() -> Option<std::path::PathBuf> {
+        std::env::split_paths(&std::env::var_os("PATH")?)
+            .map(|directory| directory.join("node.exe"))
+            .find(|candidate| candidate.is_file())
+    }
+
+    /// A real signature, not a fixture. Node's Windows executable is signed by
+    /// the OpenJS Foundation through Azure Artifact Signing: trusted, Public
+    /// Trust, and from another certificate profile — the exact release the pin
+    /// exists to refuse. Pinning its own profile instead proves the EKU walk
+    /// read that profile out of the certificate rather than passing by default.
+    #[test]
+    fn a_real_signature_from_another_subscriber_is_refused() {
+        let Some(node) = node_on_path() else {
+            eprintln!("skipping: no node.exe on PATH, so no real signature to read");
+            return;
+        };
+        let facts = collect_signature_facts(&node).expect("verification must run");
+        assert!(facts.trusted, "{} must carry a trusted signature", node.display());
+        let usages = facts
+            .signer_enhanced_key_usages
+            .clone()
+            .expect("a trusted signer has readable usages");
+        assert!(usages.iter().any(|usage| usage == CODE_SIGNING), "{usages:?}");
+        assert_eq!(
+            decide_release_signature(Some(NESSIE_PROFILE), Some(facts)),
+            Err(WRONG_PUBLISHER_REASON.to_owned()),
+        );
+
+        if usages.iter().any(|usage| usage == PUBLIC_TRUST_MARKER) {
+            let profile = usages
+                .iter()
+                .find(|usage| {
+                    usage.starts_with("1.3.6.1.4.1.311.97.")
+                        && !usage.starts_with("1.3.6.1.4.1.311.97.1.")
+                })
+                .expect("an Artifact Signing certificate carries its profile EKU");
+            let facts = collect_signature_facts(&node).expect("verification must run");
+            assert!(decide_release_signature(Some(profile), Some(facts)).is_ok());
+        } else {
+            eprintln!(
+                "{} is not signed through Artifact Signing, so only the refusal was proved",
+                node.display()
+            );
+        }
+    }
+
+    /// The test binary itself carries no signature: untrusted, and no signer is
+    /// ever read from it.
+    #[test]
+    fn an_unsigned_executable_is_untrusted_and_names_no_signer() {
+        let this = std::env::current_exe().expect("the test binary has a path");
+        let facts = collect_signature_facts(&this).expect("verification must run");
+        assert!(!facts.trusted);
+        assert!(facts.signer_enhanced_key_usages.is_none());
+    }
+}

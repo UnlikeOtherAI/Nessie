@@ -5,12 +5,53 @@ the **Publish Direct Downloads** workflow. It verifies the source, builds all
 downloadable clients from that exact tag, then creates the GitHub Release only
 after every platform has passed its release gate.
 
+## Edge builds from main
+
+Between releases, the **Windows Edge** workflow (`.github/workflows/windows-edge.yml`)
+keeps the newest signed Windows build of each component on GitHub. A merge to
+`main` that changes what a component is built from rebuilds it, signs it and
+replaces that component's rolling pre-release; a component whose inputs did not
+change keeps its current build and gains no new version.
+
+| Component | Rolling pre-release | Assets |
+| --- | --- | --- |
+| Nessie Desktop | [`desktop-edge`](https://github.com/UnlikeOtherAI/Nessie/releases/tag/desktop-edge) | `Nessie-Windows-Setup.exe`, `Nessie-Windows.msi` |
+| Nessie Executor | [`executor-edge`](https://github.com/UnlikeOtherAI/Nessie/releases/tag/executor-edge) | `Nessie-Executor-Windows.msi` |
+
+Asset names are stable, so
+`https://github.com/UnlikeOtherAI/Nessie/releases/download/desktop-edge/Nessie-Windows-Setup.exe`
+is always the newest edge desktop installer; each asset has a `.sha256` beside
+it, and the release notes name the version, commit and workflow run.
+
+- **What counts as a change** is `scripts/release-components.mjs`: the desktop
+  is rebuilt for `desktop/`, `assets/` and everything the executor is built
+  from, because it carries the executor runtime; the executor for `executor/`,
+  the workspace packages its runtime bundles, the lockfile and the Windows
+  build workflow. Each component is compared with the commit its edge tag
+  points at — the build currently published — so a failed run is retried by
+  the next one, and a re-run of an older run never replaces a newer build.
+- **Versions** are `MAJOR.MINOR` from the component's manifest
+  (`desktop/src-tauri/tauri.conf.json`, `executor/package.json`) with `main`'s
+  first-parent commit count as the build number, so every build installs over
+  the previous one. Change `MAJOR.MINOR` in the manifest; never the build.
+- **Signing** happens in the `windows-signing` environment, which deploys only
+  from `main` and needs no approval, so no merge waits on a person.
+- **Edge builds do not self-update** (they carry no direct updater): install the
+  next one over the last. Runs never overlap and are never cancelled; a newer
+  push waits for the running build, and only the newest waiting run is kept.
+
+How edge and stable releases fit together per component — and why this is the
+monorepo convention rather than one release of everything — is
+[the component release model](plans/2026-09-26-component-releases.md).
+
 ## Published assets
 
 - `Nessie-macOS-Apple-Silicon.dmg` and `Nessie-macOS-Intel.dmg` — ad-hoc,
   non-notarized macOS installers.
-- `Nessie-Windows-Setup.exe` and `Nessie-Windows.msi` — unsigned Windows
-  desktop installers.
+- `Nessie-Windows-Setup.exe` and `Nessie-Windows.msi` — Windows desktop
+  installers, Authenticode-signed by UnlikeOtherAI s.r.o.
+- `Nessie-Executor-Windows.msi` — the standalone Windows executor (service and
+  tray), signed by the same publisher.
 - `Nessie-Linux.AppImage` and `Nessie-Linux.deb` — Linux desktop packages.
 - `Nessie-Android.apk` — signed Android internal-distribution build.
 - `SHA256SUMS` — SHA-256 digests for every downloadable asset.
@@ -65,12 +106,14 @@ needs:
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | repository secret | Password protecting the Tauri updater private key |
 
 Windows releases fail closed unless Azure Artifact Signing succeeds. The
-`nessie-github-signing` managed identity trusts only the immutable OIDC subject
-for this repository's `direct-download-release` environment, has only the
-Artifact Signing signer role, and uses no client secret. The repository
-variables named in [Windows Desktop](running-the-apps/windows-desktop.md) select
-the Azure account/profile and pin its durable profile EKU and subject; the
-release workflow requires signed output.
+`nessie-github-signing` managed identity has only the Artifact Signing signer
+role, uses no client secret, and trusts exactly two immutable OIDC subjects of
+this repository: the `direct-download-release` environment, where a release tag
+signs behind a release owner's approval, and the `windows-signing` environment,
+which deploys only from `main` and signs the edge builds below without one. The
+repository variables named in [Windows Desktop](running-the-apps/windows-desktop.md)
+select the Azure account/profile and pin its durable profile EKU and subject;
+the release workflow requires signed output.
 
 The Tauri updater key is independent of both Developer ID and Authenticode
 credentials. Its public key is checked into
