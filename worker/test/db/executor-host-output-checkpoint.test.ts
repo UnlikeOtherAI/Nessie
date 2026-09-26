@@ -127,11 +127,18 @@ runDatabaseTest('a checkpoint continuation of a local-apps run keeps the launch 
         taskId: run.taskId, threadId: thread.id,
       })
     }
+    // The owner's "Keep going" in the conversation the notes came from.
+    const ownersReply = (runId: string, threadId: string) => ({
+      agentId,
+      principalUserId: null,
+      resumer: { kind: 'user' as const, scopes: [], userId: ownerId },
+      rootMessageId: null,
+      runId,
+      threadId,
+    })
     const resume = async () => {
       const run = await newRun()
-      const loaded = await loadRunCheckpointForRun(prisma, {
-        rootMessageId: null, runId: run.runId, threadId: thread.id,
-      })
+      const loaded = await loadRunCheckpointForRun(prisma, ownersReply(run.runId, thread.id))
       assert.ok(loaded, 'the continuation claims the checkpoint')
       const sink = createConsumedSourceSink()
       await admitRunCheckpoint(prisma, sink, loaded)
@@ -223,9 +230,7 @@ runDatabaseTest('a checkpoint continuation of a local-apps run keeps the launch 
     })
     const quietNext = await prisma.run.create({ data: { agentId, status: 'running', threadId: quietThread.id } })
     runIds.push(quietNext.id)
-    const quietLoaded = await loadRunCheckpointForRun(prisma, {
-      rootMessageId: null, runId: quietNext.id, threadId: quietThread.id,
-    })
+    const quietLoaded = await loadRunCheckpointForRun(prisma, ownersReply(quietNext.id, quietThread.id))
     assert.deepEqual(quietLoaded?.hostOutputScopes, [])
     await daemon.stop()
   } finally {

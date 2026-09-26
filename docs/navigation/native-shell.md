@@ -57,10 +57,11 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   resized at the *start* of its transition instead: same defect, two moments.)
   `shouldShowNativePhoneNavBar` is that constant;
   `shouldShowNativePhoneRootLanes` decides only what the band *carries*.
-  **Android, iPad and mobile Safari are untouched** — every rule in this bullet
-  and the three below is gated on the iOS phone shell
-  (`useNativeIOSPhoneApp`), and Android still shows its band only where it
-  shows the team and account controls. Full design and history:
+  **Screen-header replacement remains iOS-phone-only** — every rule in this
+  bullet and the three below is gated on the iOS phone shell
+  (`useNativeIOSPhoneApp`). Android keeps its team/account band on every screen
+  with a tab dock, including details and tablet conversations beside a pinned
+  list. Its screen title, Back and actions remain in the WebView. Full design and history:
   [`docs/plans/2026-09-05-ios-native-navigation-bar.md`](../plans/2026-09-05-ios-native-navigation-bar.md).
 
 - **`nessie:screen-bar` — what the bar shows, per stack layer.**
@@ -106,6 +107,10 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   never fires for a swipe-committed pop — the viewport suppresses the animation
   the gesture already ran — so the gesture announces its own settle, with the
   duration of the travel that remains.
+
+  A cancelled swipe posts no transition: the native header remained on the
+  current screen during the drag, so announcing a parent-to-detail transition
+  would flash a header for a screen the person never returned to.
 
 - **The web draws no header there.** `ScreenHeader` renders no visible bar on
   the iOS phone shell, keeps its `h1` as `sr-only` (the settle focuses it and
@@ -244,6 +249,14 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   `admin/src/styles.css` spends whatever `--nessie-native-bottom-overlay`
   carries, so the web and the iPhone are untouched and the rules above hold
   unchanged in both orientations.
+
+  **The dock is glass over the live page.** The WebView sits in one
+  `expo-blur` `BlurTargetView`, sampled by the dock's `BlurView` on Android 12
+  and newer. A translucent theme-surface wash, fine highlighted rim and soft
+  shadow keep labels readable over moving content. Older Android versions use
+  a stronger surface tint instead of the costly legacy blur. The clipped glass
+  sits inside the shadow host; neither changes the dock's geometry, interaction
+  clearance, tab actions or badge counts. iOS keeps its system tab controller.
 
   **The soft keyboard takes the dock away, so the page stops reserving it.**
   `androidDockShowing` is false while the keyboard is up, which publishes a

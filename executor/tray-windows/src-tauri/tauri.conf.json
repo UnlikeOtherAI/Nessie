@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "identifier": "com.unlikeotherai.nessie.executor.tray",
   "build": {
-    "frontendDist": "../ui"
+    "frontendDist": "../../../packages/executor-console"
   },
   "app": {
     "withGlobalTauri": true,
@@ -13,16 +13,16 @@
       {
         "label": "status",
         "title": "Nessie Executor",
-        "width": 520,
-        "height": 480,
-        "resizable": false,
-        "decorations": false,
+        "width": 640,
+        "height": 680,
+        "resizable": true,
+        "decorations": true,
         "shadow": true,
         "visible": false,
         "skipTaskbar": true,
-        "alwaysOnTop": true,
+        "alwaysOnTop": false,
         "center": true,
-        "backgroundColor": "#141221"
+        "backgroundColor": "#ffffff"
       }
     ],
     "security": {
@@ -38,8 +38,8 @@
     "publisher": "UnlikeOtherAI",
     "copyright": "Copyright (c) 2026 UnlikeOtherAI",
     "category": "Productivity",
-    "shortDescription": "Control surface for the Nessie Executor service.",
-    "longDescription": "Shows the state of every executor paired on this computer and starts, stops, and pairs them through the Nessie Executor service.",
+    "shortDescription": "Pair teams and manage this computer's executor permissions.",
+    "longDescription": "Runs paired team connections under your account and manages their local folders, commands and interactive programs.",
     "icon": [
       "icons/32x32.png",
       "icons/icon.ico"

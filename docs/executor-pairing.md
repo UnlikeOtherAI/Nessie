@@ -35,7 +35,7 @@ Online describes the machine connection, not permission for an agent to act.
 
 ## Complete both halves
 
-Open **Nessie Executor** on the machine and choose **Pair with Nessie**.
+Open **Nessie Executor** on the machine and choose **Add team**.
 Choose the folder it may work with. The app displays eight digits, a
 fingerprint and the time remaining.
 
@@ -72,10 +72,10 @@ Each connection has its own machine key, server, workspace policy and agent
 permissions. Adding another account preserves existing connections. Approving
 one account never grants another account access.
 
-- macOS: choose **Add account** in the menu bar or account selector. Settings,
+- macOS: choose **Add team** in the menu bar or Paired teams tab. Settings,
   folders and tools apply to the selected connection. Quitting stops the app's
   managed daemons.
-- Windows tray: choose **Add account**, select the server and workspace, and
+- Windows tray: choose **Add team**, select the server and workspace, and
   claim the code from the intended account. Start and Stop act on one row.
 - Windows and Linux Desktop: **Computers → Pair a computer → Connect this
   computer** opens the native folder picker, reuses the normal account/team
@@ -91,10 +91,15 @@ replacement requires `--replace --executor <id>` (or `--state-dir`), so it
 cannot silently select another account. Independent pairings do not copy keys
 between OS accounts or between the Windows user and service supervisors.
 
+Folder and command rules are changed only on the computer. Both standalone
+apps share one console, and `nessie-executor login` / `teams` provide the CLI
+flow. See [local executor controls](executor-local-controls.md) for per-team
+rules, interactive programs and launch-at-login.
+
 ## Replacing a connection
 
-The Mac app identifies the selected connection by organisation and team and
-offers to replace it or cancel. Replacement revokes the old executor using
+The CLI can replace an explicitly selected connection with
+`pair --replace --executor <id>`. Replacement revokes the old executor using
 the machine's existing key, so it does not leave another active executor
 behind. Existing access and audit history stay with that old record.
 

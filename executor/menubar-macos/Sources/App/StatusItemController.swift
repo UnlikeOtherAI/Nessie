@@ -61,7 +61,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             item.state = connection === controller ? .on : .off
             menu.addItem(item)
         }
-        let add = NSMenuItem(title: "Add account…", action: #selector(addConnection), keyEquivalent: "")
+        let add = NSMenuItem(title: "Add team…", action: #selector(addConnection), keyEquivalent: "")
         add.target = self
         menu.addItem(add)
         menu.addItem(.separator())
@@ -112,12 +112,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func selectConnection(_ sender: NSMenuItem) {
         guard let directory = sender.representedObject as? String else { return }
         connections.selectedDirectory = directory
-        console.show(.settings)
+        console.showTeams()
     }
 
     @objc private func addConnection() {
         connections.add()
-        console.show(.settings)
+        console.showTeams(pair: true)
     }
 
     @objc private func stopDaemon() { controller.stopDaemon() }

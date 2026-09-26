@@ -43,6 +43,8 @@ export const openViewportContext = async (browser, { name, route, token }) => {
     newPage: async () => {
       const page = await context.newPage()
       page.setDefaultTimeout(30_000)
+      // The source server compiles a cold route before DOMContentLoaded.
+      page.setDefaultNavigationTimeout(120_000)
       const errors = []
       page.on('pageerror', (error) => errors.push(String(error)))
       return { close: () => page.close(), errors, page }

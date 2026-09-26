@@ -1005,6 +1005,14 @@ body.overlays-focus-mode .project-nav-tile {
    Animations API from exactly their current transform, so a route push, a
    Back and a released edge swipe are one implementation reading one set of
    numbers (the --nav-* tokens mirror them). */
+/* The single stack owns horizontal Back. A browser overscroll history pop
+   would otherwise race its release animation and run a second transition.
+   Keep vertical scrolling and wide-layout browser history gestures native. */
+html:has([data-phone-navigation-layout="single"]),
+html:has([data-phone-navigation-layout="single"]) body {
+  overscroll-behavior-x: none;
+}
+
 .phone-navigation-viewport {
   position: relative;
   isolation: isolate;
@@ -1131,6 +1139,10 @@ body.overlays-focus-mode .project-nav-tile {
    top; the transition between two poses is scripted (see above). */
 .phone-navigation-screen--current {
   z-index: 1;
+  /* Keep fixed descendants (reply panels, editors) in this screen's coordinate
+     space at rest too. Dropping the transform at settle reparents them to the
+     WebView for one frame and makes the thread jump underneath the chrome. */
+  transform: translate3d(0, 0, 0);
   will-change: auto;
 }
 

@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
 import {
-  changeExecutorWorkspaceWithCompanion,
-  configureExecutorWorkspaceWithCompanion,
   executorCompanionStatus,
   forgetExecutorWithCompanion,
   NO_MENU_BAR_COMPANION,
@@ -15,13 +13,6 @@ import {
 } from '../../../lib/executor-companion'
 import { useShellEnvironment } from '../../../providers/ShellEnvironmentProvider'
 
-const workspaceOperations = [
-  { key: 'file.list', label: 'List files' },
-  { key: 'file.read', label: 'Read files' },
-  { key: 'file.write', label: 'Edit draft copies' },
-  { key: 'workspace.review', label: 'Review draft changes' },
-  { key: 'sandbox.stop', label: 'Stop work sessions' },
-] as const
 
 type ExecutorDesktopCompanionPanelProps = {
   executorId?: string
@@ -35,7 +26,7 @@ const failureMessage = (cause: unknown): string => {
   return 'Nessie Desktop could not complete that executor action.'
 }
 
-type CompanionAction = 'forget' | 'menuBar' | 'policy' | 'start' | 'stop' | 'workspace'
+type CompanionAction = 'forget' | 'menuBar' | 'start' | 'stop'
 
 /**
  * Nessie Desktop ships the Nessie Executor menu bar app inside its own bundle,
@@ -111,7 +102,6 @@ export const ExecutorDesktopCompanionPanel = ({
   const { desktopPlatform } = useShellEnvironment()
   const [companion, setCompanion] = useState<ExecutorCompanionStatusResponse | null>(null)
   const [status, setStatus] = useState<ExecutorCompanionStatus | null>(null)
-  const [operationKeys, setOperationKeys] = useState<string[]>([])
   const [busy, setBusy] = useState<CompanionAction | null>(null)
   const [error, setError] = useState<string | null>(null)
   const activeExecutorId = executorId
@@ -120,7 +110,7 @@ export const ExecutorDesktopCompanionPanel = ({
     if (desktopPlatform === null) return
     let current = true
     setStatus(null)
-    setOperationKeys([])
+
     setError(null)
     void executorCompanionStatus()
       .then((response) => {
@@ -130,7 +120,7 @@ export const ExecutorDesktopCompanionPanel = ({
           ? response.executors.find((entry) => entry.executorId === activeExecutorId) ?? null
           : null
         setStatus(nextStatus)
-        setOperationKeys(nextStatus?.operationKeys ?? [])
+
       })
       .catch((cause: unknown) => {
         if (current) {
@@ -198,7 +188,7 @@ export const ExecutorDesktopCompanionPanel = ({
     try {
       const nextStatus = await action()
       setStatus(nextStatus)
-      setOperationKeys(nextStatus.operationKeys)
+
     } catch (cause) {
       setError(failureMessage(cause))
     } finally {
@@ -212,7 +202,7 @@ export const ExecutorDesktopCompanionPanel = ({
     try {
       await forgetExecutorWithCompanion(activeExecutorId)
       setStatus(null)
-      setOperationKeys([])
+
       setCompanion((current) => current ? {
         ...current,
         executors: current.executors.filter((entry) => entry.executorId !== activeExecutorId),
@@ -224,11 +214,6 @@ export const ExecutorDesktopCompanionPanel = ({
     }
   }
 
-  const toggleOperation = (operationKey: string) => {
-    setOperationKeys((current) => current.includes(operationKey)
-      ? current.filter((key) => key !== operationKey)
-      : [...current, operationKey])
-  }
 
   return (
     <>
@@ -265,35 +250,11 @@ export const ExecutorDesktopCompanionPanel = ({
               ) : (
                 <button className="admin-button admin-button-secondary" disabled={busy !== null} onClick={() => void run('start', () => startExecutorWithCompanion(activeExecutorId))} type="button">{busy === 'start' ? 'Starting…' : 'Start executor'}</button>
               )}
-              <button
-                className="admin-button admin-button-secondary"
-                disabled={busy !== null || operationKeys.length === 0}
-                onClick={() => void run('workspace', () => changeExecutorWorkspaceWithCompanion(activeExecutorId, operationKeys))}
-                type="button"
-              >
-                {busy === 'workspace' ? 'Changing folder…' : 'Change folder'}
-              </button>
             </div>
-            <fieldset className="grid gap-2">
-              <legend className="text-xs font-semibold text-[color:var(--tx2)]">Folder permissions</legend>
-              {workspaceOperations.map(({ key, label }) => (
-                <label className="flex items-center gap-2 text-xs text-[color:var(--tx2)]" key={key}>
-                  <input checked={operationKeys.includes(key)} disabled={busy !== null} onChange={() => toggleOperation(key)} type="checkbox" />
-                  {label}
-                </label>
-              ))}
-              <button
-                className="admin-button admin-button-secondary w-fit"
-                disabled={busy !== null || operationKeys.length === 0}
-                onClick={() => void run('policy', () => configureExecutorWorkspaceWithCompanion(activeExecutorId, operationKeys))}
-                type="button"
-              >
-                {busy === 'policy' ? 'Saving…' : 'Save permissions'}
-              </button>
-              <p className="text-xs text-[color:var(--tx3)]">
-                Permission changes need approval in Nessie after the executor connects.
-              </p>
-            </fieldset>
+            <p className="text-xs text-[color:var(--tx3)]">
+              Folder and command permissions are controlled only in the local Nessie Executor app or CLI.
+              Nessie manages who may use this executor.
+            </p>
             <div className="grid gap-1 border-t border-[color:var(--sep)] pt-3">
               <button
                 className="admin-button admin-button-secondary w-fit"

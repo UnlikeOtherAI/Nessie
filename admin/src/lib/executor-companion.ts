@@ -79,18 +79,6 @@ export const stopExecutorWithCompanion = (
 ): Promise<ExecutorCompanionStatus> =>
   invokeCompanion('executor_companion_stop', { executorId })
 
-export const configureExecutorWorkspaceWithCompanion = (
-  executorId: string,
-  operationKeys: string[],
-): Promise<ExecutorCompanionStatus> =>
-  invokeCompanion('executor_companion_configure_workspace', { executorId, operationKeys })
-
-export const changeExecutorWorkspaceWithCompanion = (
-  executorId: string,
-  operationKeys: string[],
-): Promise<ExecutorCompanionStatus> =>
-  invokeCompanion('executor_companion_change_workspace', { executorId, operationKeys })
-
 export const forgetExecutorWithCompanion = (
   executorId: string,
 ): Promise<void> => invokeCompanion('executor_companion_forget', { executorId })

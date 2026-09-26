@@ -44,7 +44,7 @@ final class ExecutorConnections: ObservableObject {
         let pairing = controller.pairing.state
         let name = [pairing?.machineName, pairing?.connectionName].compactMap { $0 }.joined(separator: " · ")
         let server = pairing?.apiBaseUrl ?? controller.model.description?.apiBaseUrl
-        return server.map { "\(name) · \($0)" } ?? "New account"
+        return server.map { "\(name) · \($0)" } ?? "New team"
     }
 
     func add() {
@@ -66,26 +66,4 @@ final class ExecutorConnections: ObservableObject {
 
     func start() { controllers.forEach { $0.start() } }
     func shutdown() { controllers.forEach { $0.shutdown() } }
-}
-
-struct ConnectionConsoleView: View {
-    @ObservedObject var connections: ExecutorConnections
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Picker("Account", selection: $connections.selectedDirectory) {
-                    ForEach(connections.controllers, id: \.stateDirectory) { controller in
-                        Text(connections.label(controller)).tag(controller.stateDirectory)
-                    }
-                }
-                Button("Add account") { connections.add() }
-            }.padding(20)
-            Divider()
-            ConsoleView()
-                .id(connections.selectedDirectory)
-                .environmentObject(connections.selected)
-                .environmentObject(connections.selected.pairing)
-        }.frame(width: 560)
-    }
 }

@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
 } from 'react-native'
 import * as Application from 'expo-application'
+import { BlurTargetView } from 'expo-blur'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { StatusBar } from 'expo-status-bar'
 import * as ScreenOrientation from 'expo-screen-orientation'
@@ -190,6 +191,7 @@ const checkForDirectAndroidUpdate = async (): Promise<void> => {
 
 const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
+  const blurTargetRef = useRef<View>(null)
   const insets = useSafeAreaInsets()
   const { height: windowHeight, width: windowWidth } = useWindowDimensions()
   const screenDimensions = Dimensions.get('screen')
@@ -657,7 +659,7 @@ const Shell = (): React.JSX.Element => {
         statusBarStyle,
       )} />
 
-      <View style={webviewLayerStyle}>
+      <BlurTargetView ref={blurTargetRef} style={webviewLayerStyle}>
         <MobileAdminWebView
           appIcon={appIcon}
           backgroundColor={bg}
@@ -680,7 +682,7 @@ const Shell = (): React.JSX.Element => {
           webRef={webRef}
           webviewKey={bootRecovery.webviewKey}
         />
-      </View>
+      </BlurTargetView>
 
       {/* After the WebView layer, not before it: the dock floats over a frame
           that now reaches the bottom of the window, and a later sibling is
@@ -689,14 +691,17 @@ const Shell = (): React.JSX.Element => {
         <AndroidTabletTabBar
           activeIndex={index}
           badgeCounts={attentionBadges}
+          blurTarget={blurTargetRef}
           activeIndicatorColor={withOpacity(accent, 0.14)}
           activeTintColor={accent}
           bottom={insets.bottom + androidDockGeometry(androidLandscape).bottomGap}
-          dark={isDark(bg)}
+          dark={isDark(ipadChromeSurface)}
           inactiveTintColor={inactive}
           landscape={androidLandscape}
+          onAccentColor={phoneOnAccent}
           onIndexChange={onIndexChange}
           rippleColor={withOpacity(accent, 0.18)}
+          surfaceColor={ipadChromeSurface}
         />
       ) : null}
 

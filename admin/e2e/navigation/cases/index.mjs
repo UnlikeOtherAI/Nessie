@@ -1,5 +1,6 @@
 import { phoneBack } from './phone-back.mjs'
 import { phoneEdgeSwipe } from './phone-edge-swipe.mjs'
+import { phoneGestureLifecycleCases } from './phone-gesture-lifecycle.mjs'
 import { phonePush } from './phone-push.mjs'
 import { phoneTabSwitch } from './phone-tab-switch.mjs'
 import { phoneBoardSwitch } from './phone-board-switch.mjs'
@@ -23,6 +24,7 @@ export const CASES = [
   phonePush,
   phoneBack,
   phoneEdgeSwipe,
+  ...phoneGestureLifecycleCases,
   phoneTabSwitch,
   phoneBoardSwitch,
   tabletSelect,

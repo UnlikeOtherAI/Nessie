@@ -4,7 +4,6 @@ use tauri::AppHandle;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
 use crate::{
-    grant::request_workspace_grant,
     pairing_origin,
     pipe_client::{call, ServiceResponse},
 };
@@ -45,9 +44,6 @@ pub async fn executor_pairing_start(
             return Err("Pairing was cancelled.".to_owned());
         }
     }
-    tauri::async_runtime::spawn_blocking(move || request_workspace_grant(&workspace))
-        .await
-        .map_err(|_| "Workspace access could not be granted.".to_owned())??;
     tauri::async_runtime::spawn_blocking(move || request(serde_json::json!({
         "command": "pairingStart", "apiBaseUrl": origin, "workspaceRoot": workspace_root, "replace": replace,
     }))).await.map_err(|_| "Pairing could not be started.".to_owned())?

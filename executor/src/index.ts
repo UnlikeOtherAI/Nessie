@@ -7,6 +7,8 @@ import { claimExecutor, heartbeatExecutor } from './daemon.js'
 import { serveExecutor } from './daemon-server.js'
 import { describeExecutor } from './describe.js'
 import { runPairingCodeCli } from './pairing-code-cli.js'
+import { runLocalSettingsCli } from './local-settings-cli.js'
+import { terminalProgramConfiguration } from './terminal-program-configuration.js'
 import { serveDeepTestSourceAdapter } from './deeptest-source-adapter.js'
 import { serveDeepTestExecutionAdapter } from './deeptest-execution-adapter.js'
 import { serveBrowserCookieImportNativeHost } from './browser-cookie-import-native-host.js'
@@ -130,7 +132,12 @@ export const UNMARKED_BUNDLE_MESSAGE =
 
 const usage = (): never => {
   throw new Error(
-    'Usage: nessie-executor pairing-start --api <nessie|deeptest|https://your-nessie.example> '
+    'Usage: nessie-executor login --api <nessie|deeptest|https://your-nessie.example> --workspace <folder>\n'
+    + '       nessie-executor teams [--json] [--state-root <path>]\n'
+    + '       nessie-executor daemon --executor <uuid>\n'
+    + '       nessie-executor permissions --executor <uuid> [--allow-all|--allow "git *,pnpm *"] '
+    + '[--deny "git push *"|--clear-deny]\n'
+    + '       nessie-executor pairing-start --api <nessie|deeptest|https://your-nessie.example> '
     + '[--cli] [--state-dir <owner-only-path>] [--replace --executor <uuid>]\n'
     + '       nessie-executor pair --api <nessie|deeptest|https://your-nessie.example> --enrollment <uuid> '
     + '(--challenge <token>|--challenge-stdin) --state-dir <owner-only-path> '
@@ -441,6 +448,7 @@ export const run = async (args: string[]): Promise<void> => {
   if (await runBuiltinMcpCli(args)) return
   if (await runLocalInferenceCli(args)) return
   if (await runPairingCodeCli(args)) return
+  if (await runLocalSettingsCli(args)) return
   const command = parseCommand(args)
   if (command.kind === 'pair') {
     const input = command.pairingInputFromStandardInput
@@ -540,17 +548,21 @@ export const run = async (args: string[]): Promise<void> => {
     const updated = await configureExecutorLocalPolicy(
       command.stateDir,
       state,
-      input.operationKeys!,
+      input.terminalProgram ? [...new Set([...input.operationKeys!, 'mcp.tools', 'mcp.call'])] : input.operationKeys!,
       command.nativeHelperPath,
       undefined,
       input.workspaceFolders,
       input.commandAllowlist,
       input.mcpServers,
-      'codingSessions' in input ? { requested: input.codingSessions } : {},
+      input.terminalProgram ? {
+        requested: await terminalProgramConfiguration(command.stateDir, state, input.terminalProgram),
+      }
+        : 'codingSessions' in input ? { requested: input.codingSessions } : {},
+      input.commandPolicy,
     )
     process.stdout.write(
       `Local policy proposal saved as revision ${updated.descriptor.revision}. `
-      + 'Run connect (or restart serve), then have a person review it in Nessie.\n',
+      + 'Restart the local daemon to apply these machine-owned permissions.\n',
     )
     return
   }

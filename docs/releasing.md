@@ -64,14 +64,13 @@ needs:
 | `TAURI_SIGNING_PRIVATE_KEY` | repository secret | Persistent key for signing direct desktop update artifacts |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | repository secret | Password protecting the Tauri updater private key |
 
-Windows Authenticode signing is intentionally optional. Until a Windows
-publisher is configured, the release publishes an unsigned NSIS installer and
-MSI; Windows may show a SmartScreen warning before installation. The NSIS
-installer still has the separate Tauri updater signature, so direct in-app
-updates remain verified. When a publisher is available, configure the
-repository-level `WINDOWS_SIGN_COMMAND`, `WINDOWS_SIGNER_THUMBPRINT`, and
-`WINDOWS_SIGNER_SUBJECT` (plus `WINDOWS_SIGN_TOOL_INSTALL` and Azure
-credentials when applicable), then make `require_signed_release` true again.
+Windows releases fail closed unless Azure Artifact Signing succeeds. The
+`nessie-github-signing` managed identity trusts only the immutable OIDC subject
+for this repository's `direct-download-release` environment, has only the
+Artifact Signing signer role, and uses no client secret. The repository
+variables named in [Windows Desktop](running-the-apps/windows-desktop.md) select
+the Azure account/profile and pin its durable profile EKU and subject; the
+release workflow requires signed output.
 
 The Tauri updater key is independent of both Developer ID and Authenticode
 credentials. Its public key is checked into

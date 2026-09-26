@@ -24,9 +24,9 @@
 mod control;
 mod helper;
 mod hyperv;
-mod lease;
+use nessie_windows_common::lease;
 mod log;
-mod manifest;
+use nessie_windows_common::runtime as manifest;
 mod paths;
 #[cfg(windows)]
 mod pipe;

@@ -125,6 +125,19 @@ const main = async () => {
     const android = await measure(app.page)
     await app.page.screenshot({ path: `${SHOTS}android-channel.png` })
 
+    // The native avatar stays above a loaded conversation. Its press must
+    // still reach the shared menu and its real account-settings doorway.
+    await app.page.waitForFunction(() => typeof window.__nessieToggleAccountMenu === 'function')
+    await app.page.evaluate(() => window.__nessieToggleAccountMenu())
+    const accountMenu = app.page.getByRole('menu', { name: 'Account menu', exact: true })
+    await accountMenu.waitFor({ state: 'visible' })
+    await app.page.screenshot({ path: `${SHOTS}android-channel-account-menu.png` })
+    await accountMenu.getByRole('link', { name: 'Account settings', exact: true }).click()
+    await app.page.waitForURL('**/settings/account')
+    check('the native account control opens settings from a loaded chat', true)
+    await gotoPath(app.page, channelPath)
+    await app.page.waitForSelector('form')
+
     check('the page knows it is in the Android shell', android.androidShell, JSON.stringify(android))
     check(
       'the content region keeps its full height, reserving nothing for the dock',
