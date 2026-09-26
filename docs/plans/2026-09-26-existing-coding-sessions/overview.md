@@ -25,6 +25,11 @@ There is no new Nessie login, pairing, session grant or action permission.
 local connection has one switch, shared by its GUI and CLI. The original
 executor authorization and disclosure checks still apply.
 
+Both providers identify a conversation by its native session ID, scoped to its
+provider profile. Titles are display and search labels only. Renaming a session
+keeps its executor handle, delivery history and input target; another session
+with its former title cannot take over that identity.
+
 The user explicitly chose experimental provider interfaces. Provider startup
 requirements remain visible; they are not another Nessie authorization step.
 

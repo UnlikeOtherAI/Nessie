@@ -47,6 +47,34 @@ test('same title and repository cannot alias native sessions or provider profile
   assert.equal(existingSessionId('codex', '/a', NATIVE), existingSessionId('codex', '/a', NATIVE))
 })
 
+test('renaming a discovered native session preserves its ID and sends to that exact conversation', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-session-rename-'))
+  const otherId = randomUUID()
+  let title = 'Original title'
+  const queued: unknown[] = []
+  const codex = new ExistingCodex({ path: '/fake/codex', version: 'test' }, { CODEX_HOME: '/profile-a' }, {
+    close: () => undefined,
+    call: async (method, params) => {
+      if (method === 'thread/list') return { data: [
+        { ...nativeRow, id: otherId, name: 'Original title' }, { ...nativeRow, name: title },
+      ] }
+      if (method === 'thread/read') return { thread: { ...nativeRow, name: title, turns: [] } }
+      if (method === 'thread/queue/add') queued.push(params.threadId)
+      return { data: [] }
+    },
+  })
+  const manager = new ExistingSessions(directory, async () => ({ codex }))
+  try {
+    const original = (await manager.list()).find((row) => row.nativeId === NATIVE)!
+    title = 'Přejmenovaná konverzace'
+    const refreshed = (await manager.list(true)).find((row) => row.nativeId === NATIVE)!
+    assert.equal(refreshed.title, title)
+    assert.equal(refreshed.sessionId, original.sessionId)
+    await manager.send('queue', original.sessionId, 'continue here', 'owner-a-123456789', randomUUID())
+    assert.deepEqual(queued, [NATIVE], 'the other conversation kept the old title but never receives the input')
+  } finally { await manager.close(); await rm(directory, { recursive: true, force: true }) }
+})
+
 test('a provider without native queue support remains inspectable and cannot advertise queue', async () => {
   const codex = new ExistingCodex({ path: '/fake/codex', version: 'older' }, {}, {
     close: () => undefined, call: async (method) => {
