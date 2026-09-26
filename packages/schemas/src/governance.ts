@@ -165,6 +165,10 @@ export const AuditActionSchema = z.enum([
   // worker has Ledger's answer. The run is named by id; never its topic.
   'integration.research.cancel_requested',
   'integration.research.cancelled',
+  // An owner took a copy of the trail (Admin › Security › Export). The export
+  // is a read, but a read of everything, so the trail says who took it and
+  // with which filters.
+  'audit.exported',
   'auth.bootstrap',
   'auth.login',
   'auth.logout',

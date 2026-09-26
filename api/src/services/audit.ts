@@ -116,11 +116,15 @@ export type AuditLogQuery = {
   to?: Date
 }
 
-export const listAuditLogs = async (
-  prisma: PrismaClient,
-  query: AuditLogQuery,
-) => {
-  const limit = resolvePageLimit(query.limit)
+/** The filters alone — what the list and the export both narrow by. */
+export type AuditLogFilters = Omit<AuditLogQuery, 'cursor' | 'direction' | 'limit'>
+
+/**
+ * One `where` for a filtered trail. The list and the export both build theirs
+ * here, so an export can never hold a row the list with the same filters would
+ * not show, nor miss one it would.
+ */
+export const buildAuditLogWhere = (query: AuditLogFilters): Record<string, unknown> => {
   const where: Record<string, unknown> = {
     organizationId: query.organizationId,
   }
@@ -140,6 +144,15 @@ export const listAuditLogs = async (
   if (query.from) dateFilter['gte'] = query.from
   if (query.to) dateFilter['lte'] = query.to
   if (Object.keys(dateFilter).length > 0) where['createdAt'] = dateFilter
+  return where
+}
+
+export const listAuditLogs = async (
+  prisma: PrismaClient,
+  query: AuditLogQuery,
+) => {
+  const limit = resolvePageLimit(query.limit)
+  const where = buildAuditLogWhere(query)
 
   // The total is counted against the same filters but before the cursor is
   // applied: "26–50 of 134" has to mean 134 matching records, not 134 records
@@ -178,28 +191,39 @@ export const listAuditLogs = async (
   })
 
   return {
-    data: page.data.map((entry) => ({
-      id: entry.id,
-      organizationId: entry.organizationId,
-      projectId: entry.projectId,
-      teamId: entry.teamId,
-      channelId: entry.channelId,
-      actorType: entry.actorType,
-      actorId: entry.actorId,
-      action: entry.action,
-      resourceType: entry.resourceType,
-      resourceId: entry.resourceId,
-      outcome: entry.outcome,
-      reason: entry.reason,
-      metadata: entry.metadata as Record<string, unknown> | null,
-      requestId: entry.requestId,
-      ipAddress: entry.ipAddress,
-      userAgent: entry.userAgent,
-      createdAt: entry.createdAt.toISOString(),
-    })),
+    data: page.data.map(toAuditLogRecord),
     meta: page.meta,
   }
 }
+
+type AuditLogRow = Awaited<ReturnType<PrismaClient['auditLog']['findFirstOrThrow']>>
+
+/**
+ * One entry as every reader serves it — the list, the entry, the export. The
+ * chain columns stay out: they are the verifier's, and `GET /verify` answers
+ * whether they hold.
+ */
+export const toAuditLogRecord = (entry: AuditLogRow) => ({
+  id: entry.id,
+  organizationId: entry.organizationId,
+  projectId: entry.projectId,
+  teamId: entry.teamId,
+  channelId: entry.channelId,
+  actorType: entry.actorType,
+  actorId: entry.actorId,
+  action: entry.action,
+  resourceType: entry.resourceType,
+  resourceId: entry.resourceId,
+  outcome: entry.outcome,
+  reason: entry.reason,
+  metadata: entry.metadata as Record<string, unknown> | null,
+  requestId: entry.requestId,
+  ipAddress: entry.ipAddress,
+  userAgent: entry.userAgent,
+  createdAt: entry.createdAt.toISOString(),
+})
+
+export type AuditLogRecord = ReturnType<typeof toAuditLogRecord>
 
 export const getAuditLogEntry = async (
   prisma: PrismaClient,
@@ -209,27 +233,7 @@ export const getAuditLogEntry = async (
   const entry = await prisma.auditLog.findFirst({
     where: { id: entryId, organizationId },
   })
-  if (!entry) return null
-
-  return {
-    id: entry.id,
-    organizationId: entry.organizationId,
-    projectId: entry.projectId,
-    teamId: entry.teamId,
-    channelId: entry.channelId,
-    actorType: entry.actorType,
-    actorId: entry.actorId,
-    action: entry.action,
-    resourceType: entry.resourceType,
-    resourceId: entry.resourceId,
-    outcome: entry.outcome,
-    reason: entry.reason,
-    metadata: entry.metadata as Record<string, unknown> | null,
-    requestId: entry.requestId,
-    ipAddress: entry.ipAddress,
-    userAgent: entry.userAgent,
-    createdAt: entry.createdAt.toISOString(),
-  }
+  return entry ? toAuditLogRecord(entry) : null
 }
 
 export const getAuditLogSummary = async (

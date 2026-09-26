@@ -37,6 +37,18 @@ export const AuditLogQuerySchema = z.object({
 })
 export type AuditLogQueryParams = z.infer<typeof AuditLogQuerySchema>
 
+/**
+ * The export takes the list's filters and nothing that pages: it is every
+ * matching entry, streamed, so a cursor, a direction or a page size would be
+ * a second way to ask for part of it.
+ */
+export const AuditLogExportQuerySchema = AuditLogQuerySchema.omit({
+  cursor: true,
+  direction: true,
+  limit: true,
+})
+export type AuditLogExportQueryParams = z.infer<typeof AuditLogExportQuerySchema>
+
 export const AUDIT_LOG_SUMMARY_GROUPINGS = ['action', 'actorId', 'resourceType', 'outcome'] as const
 
 export const AuditLogSummaryQuerySchema = z.object({
