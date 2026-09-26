@@ -1,4 +1,5 @@
 import { faArrowRotateRight, faXmark } from '@fortawesome/free-solid-svg-icons'
+import { useTranslation } from 'react-i18next'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { transferProgressSentence, type TransferProgress } from './transfer-copy'
 
@@ -41,6 +42,7 @@ export const TransferProgressRow = ({
   onRetry,
   progress,
 }: TransferProgressRowProps) => {
+  const { t } = useTranslation('knowledgeFinder')
   const running = progress.status === 'queued' || progress.status === 'running'
   const pct = progress.total > 0
     ? Math.min(100, Math.round((progress.done / progress.total) * 100))
@@ -78,12 +80,12 @@ export const TransferProgressRow = ({
       {!running && onRetry ? (
         <button className={CONTROL_CLASS} onClick={onRetry} type="button">
           <FontAwesomeIcon className="h-3 w-3" icon={faArrowRotateRight} />
-          <span className="text-xs">Retry</span>
+          <span className="text-xs">{t('retry')}</span>
         </button>
       ) : null}
       {running ? null : (
         <button
-          aria-label="Dismiss"
+          aria-label={t('dismiss')}
           className={CONTROL_CLASS}
           onClick={onDismiss}
           type="button"

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgeIndexingState, KnowledgeItemInfo } from '@nessie/schemas'
 import { ActorName, useActorNames } from '../../../shared/ActorName'
@@ -168,6 +169,7 @@ const InfoBody = ({
   onOpenTicket?: GetInfoDialogProps['onOpenTicket']
   onRetryIndexing?: () => void
 }) => {
+  const { t } = useTranslation('knowledgeFinder')
   const family = familyOf(info)
   const containsLine = contains(info)
   const search = searchLine(info)
@@ -245,7 +247,7 @@ const InfoBody = ({
                   onClick={onRetryIndexing}
                   type="button"
                 >
-                  <span className="text-xs">Retry</span>
+                  <span className="text-xs">{t('retry')}</span>
                 </button>
               ) : null}
             </span>

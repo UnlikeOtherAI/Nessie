@@ -5,6 +5,7 @@ import {
   faTable,
   type IconDefinition,
 } from '@fortawesome/free-solid-svg-icons'
+import { finderText } from './finder-text'
 
 /**
  * "What are you making?" — the one question the Finder's New control asks, and
@@ -132,6 +133,24 @@ export const newFileTypeItems = (
   NEW_FILE_TYPES.filter((type) => type.available?.(context) ?? true).map((type) => ({
     icon: type.icon,
     id: `new-${type.id}`,
-    label: where === 'in-folder' ? type.inFolderLabel : type.label,
+    label: newFileTypeLabel(type.id, where),
     onSelect: () => type.invoke(context),
   }))
+
+const newFileTypeLabel = (
+  id: string,
+  where: 'under-new' | 'in-folder',
+): string => {
+  switch (id) {
+    case 'document':
+      return finderText(where === 'in-folder' ? 'newDocument' : 'document', where === 'in-folder' ? 'New document' : 'Document')
+    case 'spreadsheet':
+      return finderText(where === 'in-folder' ? 'newSpreadsheet' : 'spreadsheet', where === 'in-folder' ? 'New spreadsheet' : 'Spreadsheet')
+    case 'spreadsheet-import':
+      return finderText(where === 'in-folder' ? 'importSpreadsheet' : 'spreadsheetFromFile', where === 'in-folder' ? 'Import spreadsheet…' : 'Spreadsheet from a file…')
+    case 'upload':
+      return finderText(where === 'in-folder' ? 'uploadFiles' : 'uploadLabel', where === 'in-folder' ? 'Upload files…' : 'Upload…')
+    default:
+      return id
+  }
+}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { faChevronDown, faChevronRight, faFolder } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgeRoot } from '@nessie/schemas'
@@ -104,6 +105,7 @@ export const MoveToDialog = ({
   root,
   sourceSpaceId,
 }: MoveToDialogProps) => {
+  const { t } = useTranslation('knowledgeFinder')
   const destinations = useMemo(
     () => destinationsFromRoot(root).filter((space) => space.canWrite),
     [root],
@@ -217,7 +219,7 @@ export const MoveToDialog = ({
               {space.name}
             </span>
             {current ? (
-              <span className="shrink-0 text-xs text-[color:var(--tx3)]">(current)</span>
+              <span className="shrink-0 text-xs text-[color:var(--tx3)]">{t('current')}</span>
             ) : null}
           </button>
         </div>
@@ -259,7 +261,7 @@ export const MoveToDialog = ({
                       {row.title}
                     </span>
                     {rowCurrent ? (
-                      <span className="shrink-0 text-xs text-[color:var(--tx3)]">(current)</span>
+                      <span className="shrink-0 text-xs text-[color:var(--tx3)]">{t('current')}</span>
                     ) : null}
                   </button>
                 </li>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { faFolder } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Input } from '../../../shared/FormControls'
@@ -21,6 +22,7 @@ export const NewFolderRow = ({
   onSubmit: (name: string) => void
   pending: boolean
 }) => {
+  const { t } = useTranslation('knowledgeFinder')
   const [name, setName] = useState('')
   const doneRef = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -49,7 +51,7 @@ export const NewFolderRow = ({
         icon={faFolder}
       />
       <Input
-        aria-label="Folder name"
+        aria-label={t('folderName')}
         className="min-w-0 flex-1"
         disabled={pending}
         onBlur={submit}
@@ -63,7 +65,7 @@ export const NewFolderRow = ({
             finish(onCancel)
           }
         }}
-        placeholder="Folder name"
+        placeholder={t('folderName')}
         ref={inputRef}
         size="compact"
         value={name}

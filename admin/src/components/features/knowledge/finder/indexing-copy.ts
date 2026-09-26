@@ -9,6 +9,7 @@ import {
   type KnowledgeIndexingState,
 } from '@nessie/schemas'
 import { formatBytes } from '../../../../lib/upload-xhr'
+import { finderText } from './finder-text'
 
 /**
  * One vocabulary for "is this searchable yet?" (uploads-and-indexing.md §4).
@@ -94,24 +95,28 @@ const failed = (): IndexingCopy => ({
   icon: faTriangleExclamation,
   pending: false,
   retry: true,
-  sentence: 'Indexing failed',
+  sentence: finderText('indexingFailed', 'Indexing failed'),
   spin: false,
   tone: '--warning',
 })
 
-const PENDING: Record<PendingStage, IndexingCopy> = {
-  // Text is still being pulled out of the file.
-  extract: working('Indexing…'),
-  // The chunks exist; their embeddings are still being written.
-  embed: working('Preparing search…'),
-}
+const pendingCopy = (stage: PendingStage): IndexingCopy =>
+  working(finderText(stage === 'extract' ? 'indexing' : 'preparingSearch',
+    stage === 'extract' ? 'Indexing…' : 'Preparing search…'))
 
 // Both stages read the same to a person: the pipeline gave up and the row
 // offers to start it again. Which job it was belongs in `queue_jobs`, not on
 // a row in a folder.
-const FAILED: Record<FailedStage, IndexingCopy> = {
-  extract: failed(),
-  embed: failed(),
+const failedCopy = (stage: FailedStage): IndexingCopy => {
+  switch (stage) {
+    case 'extract':
+    case 'embed':
+      return failed()
+    default: {
+      const exhaustive: never = stage
+      return exhaustive
+    }
+  }
 }
 
 /**
@@ -121,22 +126,22 @@ const FAILED: Record<FailedStage, IndexingCopy> = {
  */
 const unsupportedSentence = (familyLabel?: string): string =>
   familyLabel
-    ? `Not indexed — ${familyLabel}s aren't searchable`
-    : "Not indexed — this kind of file isn't searchable"
+    ? finderText('notIndexedUnsupportedFamily', 'Not indexed — {{family}}s aren’t searchable', { family: familyLabel })
+    : finderText('notIndexedUnsupported', 'Not indexed — this kind of file isn’t searchable')
 
 const REASONS: Record<NotIndexedReason, (familyLabel?: string) => IndexingCopy> = {
   // A draft is honestly unsearchable and its status pill already says "draft",
   // so the row stays quiet; only the sentence explains, and it names the one
   // thing that would change it. Never a spinner: nothing is running, and
   // nothing will until somebody publishes.
-  draft: () => quiet('Not indexed — draft documents are indexed when published'),
+  draft: () => quiet(finderText('notIndexedDraft', 'Not indexed — draft documents are indexed when published')),
   unsupported: (familyLabel) => notIndexed(unsupportedSentence(familyLabel)),
   // A spreadsheet nobody has saved a version of. Quiet, like a draft, for the
   // same reason: nothing is running and nothing will until somebody saves.
   // Never "no text found" — the grid may be full of it.
-  unsaved: () => quiet('Not indexed — nothing saved to search yet'),
-  too_large: () => notIndexed(`Not indexed — larger than ${MAX_INDEXABLE_LABEL}`),
-  empty: () => notIndexed('Not indexed — no text found'),
+  unsaved: () => quiet(finderText('notIndexedUnsaved', 'Not indexed — nothing saved to search yet')),
+  too_large: () => notIndexed(finderText('notIndexedTooLarge', 'Not indexed — larger than {{size}}', { size: MAX_INDEXABLE_LABEL })),
+  empty: () => notIndexed(finderText('notIndexedEmpty', 'Not indexed — no text found')),
 }
 
 /**
@@ -157,13 +162,13 @@ export const indexingCopy = (
     // purpose: a tick on every row of a folder says only that the folder
     // exists.
     case 'indexed':
-      return quiet('Searchable')
+      return quiet(finderText('searchable', 'Searchable'))
     case 'pending':
-      return PENDING[indexing.stage]
+      return pendingCopy(indexing.stage)
     case 'not_indexed':
       return REASONS[indexing.reason](familyLabel)
     case 'failed':
-      return FAILED[indexing.stage]
+      return failedCopy(indexing.stage)
     default: {
       const exhaustive: never = indexing
       return exhaustive

@@ -1,4 +1,6 @@
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
+import i18n from '../../../../i18n/i18n'
+import { finderText } from './finder-text'
 import {
   familyForFilename,
   familyLabel,
@@ -42,12 +44,17 @@ export const composeFinderSort = (
   direction: FinderSortDirection,
 ): FinderSort => (direction === 'desc' ? (`${key}-desc` as FinderSort) : (key as FinderSort))
 
-export const FINDER_SORT_LABELS: Record<FinderSortKey, string> = {
-  name: 'Name',
-  modified: 'Date modified',
-  created: 'Date created',
-  size: 'Size',
-  kind: 'Kind',
+const SORT_LABELS: Record<FinderSortKey, [string, string]> = {
+  name: ['sortName', 'Name'],
+  modified: ['sortModified', 'Date modified'],
+  created: ['sortCreated', 'Date created'],
+  size: ['sortSize', 'Size'],
+  kind: ['sortKind', 'Kind'],
+}
+
+export const finderSortLabel = (key: FinderSortKey): string => {
+  const [translationKey, fallback] = SORT_LABELS[key]
+  return finderText(translationKey, fallback)
 }
 
 /**
@@ -168,7 +175,7 @@ export const sortFinderRows = <T extends SortableRow>(rows: T[], sort: FinderSor
 export const formatFinderDate = (value: string): string => {
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return '—'
-  return parsed.toLocaleString(undefined, {
+  return parsed.toLocaleString(i18n.language, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',

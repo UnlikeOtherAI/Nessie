@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import { before, test } from 'node:test'
 
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { FinderRow } from '../src/components/features/knowledge/finder/FinderRow'
+import { initializeLocalization } from '../src/i18n/i18n'
+
+before(async () => {
+  await initializeLocalization()
+})
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 

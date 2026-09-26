@@ -26,7 +26,7 @@ import { useFinderKeyboard } from './useFinderKeyboard'
 import {
   composeFinderSort,
   familyForRow,
-  FINDER_SORT_LABELS,
+  finderSortLabel,
   finderSortDirection,
   finderSortKey,
   formatFinderDate,
@@ -188,7 +188,7 @@ export const FinderListView = ({
       }
       type="button"
     >
-      <span className="truncate">{FINDER_SORT_LABELS[key]}</span>
+      <span className="truncate">{finderSortLabel(key)}</span>
       {activeKey === key ? (
         <span aria-hidden="true" className="text-[10px]">{direction === 'asc' ? '▲' : '▼'}</span>
       ) : null}

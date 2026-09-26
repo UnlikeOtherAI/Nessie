@@ -29,6 +29,7 @@ import type {
 import { LEGACY_XLS_REASON, spreadsheetSourceFor } from '../../../shared/file-icons'
 import type { ContextMenuItem } from '../../../overlays/ContextMenu'
 import { newFileTypeItems, type NewFileTypeContext } from './new-file-types'
+import { finderText } from './finder-text'
 
 /**
  * What a right-click offers, as data (menus-and-dialogs.md §2).
@@ -205,13 +206,13 @@ const RETRYABLE = (indexing: KnowledgeIndexingState | undefined): boolean =>
 export const finderMenuLabel = (target: FinderMenuTarget): string => {
   switch (target.kind) {
     case 'page':
-      return `Actions for ${target.page.title}`
+      return finderText('actionsForItem', 'Actions for {{title}}', { title: target.page.title })
     case 'selection':
-      return `Actions for ${target.pages.length} items`
+      return finderText('actionsForItems', 'Actions for {{count}} items', { count: target.pages.length })
     case 'root-row':
-      return 'Actions for this folder'
+      return finderText('actionsForFolder', 'Actions for this folder')
     case 'background':
-      return target.column === 'root' ? 'Actions for Documents' : 'Actions for this folder'
+      return target.column === 'root' ? finderText('actionsForDocuments', 'Actions for Documents') : finderText('actionsForFolder', 'Actions for this folder')
   }
 }
 
@@ -237,10 +238,10 @@ const pageItems = (
   const source = file ? spreadsheetSourceFor(page.title) : 'no'
 
   return tidy([
-    item('open', 'Open', on.open, {
+    item('open', finderText('open', 'Open'), on.open, {
       icon: folder ? faFolderOpen : sheet ? faTable : faFileLines,
     }),
-    ...(file ? [item('download', 'Download', on.download, {
+    ...(file ? [item('download', finderText('download', 'Download'), on.download, {
       icon: faDownload,
       shortcut: 'Mod+Shift+S',
     })] : []),
@@ -249,7 +250,7 @@ const pageItems = (
     // uploaded — which is why it sits beside Download rather than replacing
     // it.
     ...(source !== 'no' && mayEdit && on.openAsSpreadsheet
-      ? [item('open-as-spreadsheet', 'Open as spreadsheet', on.openAsSpreadsheet, {
+      ? [item('open-as-spreadsheet', finderText('openAsSpreadsheet', 'Open as spreadsheet'), on.openAsSpreadsheet, {
         disabled: source === 'legacy-xls',
         // `disabledReason` is what the panel puts on `title`, so a keyboard
         // user hears why the row is grey instead of finding it merely dead.
@@ -260,55 +261,55 @@ const pageItems = (
     // On a virtual row the second item is the way back to where the row
     // actually lives; in a folder column it is the way into the editor.
     ...(virtual
-      ? [item('show-in-folder', 'Show in folder', on.showInFolder, {
+      ? [item('show-in-folder', finderText('showInFolder', 'Show in folder'), on.showInFolder, {
         icon: faLocationCrosshairs,
       })]
       : page.kind === 'document' && mayEdit
-        ? [item('edit', 'Edit', on.openEditor, { icon: faPenToSquare })]
+        ? [item('edit', finderText('edit', 'Edit'), on.openEditor, { icon: faPenToSquare })]
         // A spreadsheet has no second "Edit": opening it *is* opening the
         // editor, and a row offering both would promise two different screens.
         : []),
     SEPARATOR,
-    item('get-info', 'Get Info', on.getInfo, { icon: faCircleInfo, shortcut: 'Mod+I' }),
+    item('get-info', finderText('getInfo', 'Get Info'), on.getInfo, { icon: faCircleInfo, shortcut: 'Mod+I' }),
     ...(folder && page.taskId
-      ? [item('open-ticket', 'Open ticket', on.openTicket, { icon: faUpRightFromSquare })]
+      ? [item('open-ticket', finderText('openTicket', 'Open ticket'), on.openTicket, { icon: faUpRightFromSquare })]
       : []),
-    item('sharing', 'Sharing…', on.sharing, { icon: faUserGroup }),
-    ...(folder ? [] : [item('history', 'Version history', on.versionHistory, {
+    item('sharing', finderText('sharingMenu', 'Sharing…'), on.sharing, { icon: faUserGroup }),
+    ...(folder ? [] : [item('history', finderText('versionHistory', 'Version history'), on.versionHistory, {
       icon: faClockRotateLeft,
     })]),
     ...(file && mayEdit
-      ? [item('upload-version', 'Upload new version…', on.uploadVersion, {
+      ? [item('upload-version', finderText('uploadNewVersion', 'Upload new version…'), on.uploadVersion, {
         icon: faFileArrowUp,
       })]
       : []),
     ...(RETRYABLE(page.indexing) && mayEdit
-      ? [item('retry-indexing', 'Retry indexing', on.retryIndexing, { icon: faRotate })]
+      ? [item('retry-indexing', finderText('retryIndexing', 'Retry indexing'), on.retryIndexing, { icon: faRotate })]
       : []),
     SEPARATOR,
     // A document trigger watches a folder or a document or file where it
     // lives — never a spreadsheet, whose saves are live cell edits, and never
     // from a virtual row standing somewhere else.
     ...(!sheet && !virtual && on.openReviewThread
-      ? [item('open-review-thread', 'Open review thread', on.openReviewThread, { icon: faComments })]
+      ? [item('open-review-thread', finderText('openReviewThread', 'Open review thread'), on.openReviewThread, { icon: faComments })]
       : []),
     ...(!sheet && !virtual && caps.canCreateDocumentTriggers && on.tellAgent
-      ? [item('tell-agent', 'Tell an agent when this changes…', on.tellAgent, { icon: faRobot })]
+      ? [item('tell-agent', finderText('tellAgent', 'Tell an agent when this changes…'), on.tellAgent, { icon: faRobot })]
       : []),
     SEPARATOR,
     // Publishing is the owner's act. An agent actor never sees it: its draft
     // goes to the approval queue, which is a different mechanism entirely.
     ...(page.kind === 'document' && mayOwn && page.status === 'draft' && caps.actorIsPerson
-      ? [item('publish', 'Publish', on.publish, { icon: faUpRightFromSquare })]
+      ? [item('publish', finderText('publish', 'Publish'), on.publish, { icon: faUpRightFromSquare })]
       : []),
     // New folder inside needs a position in a folder, which a virtual row
     // (standing somewhere else) does not have.
     ...(folder && !virtual && mayEdit
-      ? [item('new-folder-inside', 'New folder inside', on.newFolderInside, {
+      ? [item('new-folder-inside', finderText('newFolderInside', 'New folder inside'), on.newFolderInside, {
         icon: faFolderPlus,
       })]
       : []),
-    ...(mayEdit ? [item('rename', 'Rename', on.rename, {
+    ...(mayEdit ? [item('rename', finderText('rename', 'Rename'), on.rename, {
       icon: faPenToSquare,
       shortcut: 'F2',
     })] : []),
@@ -317,18 +318,18 @@ const pageItems = (
     // absent rather than inert. A menu row that does nothing is worse than one
     // that is not there.
     ...(mayOwn && on.moveTo
-      ? [item('move-to', 'Move to…', on.moveTo, { icon: faArrowRightArrowLeft })]
+      ? [item('move-to', finderText('moveTo', 'Move to…'), on.moveTo, { icon: faArrowRightArrowLeft })]
       : []),
     SEPARATOR,
-    item('copy-link', 'Copy link', on.copyLink, { icon: faLink }),
+    item('copy-link', finderText('copyLink', 'Copy link'), on.copyLink, { icon: faLink }),
     SEPARATOR,
     ...(grantee
-      ? [item('remove-share', 'Remove from Shared with me', on.removeShare, {
+      ? [item('remove-share', finderText('removeFromShared', 'Remove from Shared with me'), on.removeShare, {
         destructive: true,
         icon: faUserMinus,
       })]
       : mayOwn
-        ? [item('delete', 'Delete…', on.remove, { destructive: true, icon: faTrash })]
+        ? [item('delete', finderText('delete', 'Delete…'), on.remove, { destructive: true, icon: faTrash })]
         : []),
   ])
 }
@@ -343,18 +344,18 @@ const selectionItems = (
   const files = pages.filter((page) => page.kind === 'file')
   const owned = pages.every((page) => page.access === undefined)
   return tidy([
-    item('get-info', 'Get Info', on.getInfo, { icon: faCircleInfo, shortcut: 'Mod+I' }),
+    item('get-info', finderText('getInfo', 'Get Info'), on.getInfo, { icon: faCircleInfo, shortcut: 'Mod+I' }),
     // The design's words, not a count: the confirm and the toast carry the
     // number, and a menu item that changes width with the selection is noise.
     ...(files.length > 0
-      ? [item('download', 'Download', on.download, { icon: faDownload })]
+      ? [item('download', finderText('download', 'Download'), on.download, { icon: faDownload })]
       : []),
     ...(caps.canWrite && on.moveTo && owned
-      ? [item('move-to', 'Move to…', on.moveTo, { icon: faArrowRightArrowLeft })]
+      ? [item('move-to', finderText('moveTo', 'Move to…'), on.moveTo, { icon: faArrowRightArrowLeft })]
       : []),
     SEPARATOR,
     ...(caps.canWrite && owned
-      ? [item('delete', 'Delete…', on.remove, { destructive: true, icon: faTrash })]
+      ? [item('delete', finderText('delete', 'Delete…'), on.remove, { destructive: true, icon: faTrash })]
       : []),
   ])
 }
@@ -365,45 +366,45 @@ const rootRowItems = (
   row: FinderMenuRootRow,
   on: FinderMenuHandlers,
 ): ContextMenuItem[] => {
-  if (row.role === 'link') return [item('open', 'Open', on.open, { icon: faFolderOpen })]
-  const info = item('get-info', 'Get Info', on.getInfo, {
+  if (row.role === 'link') return [item('open', finderText('open', 'Open'), on.open, { icon: faFolderOpen })]
+  const info = item('get-info', finderText('getInfo', 'Get Info'), on.getInfo, {
     icon: faCircleInfo,
     shortcut: 'Mod+I',
   })
   if (row.role === 'personal' || row.role === 'project') {
     return tidy([
-      item('open', 'Open', on.open, { icon: faFolderOpen }),
+      item('open', finderText('open', 'Open'), on.open, { icon: faFolderOpen }),
       ...(row.role === 'project'
-        ? [item('open-project', 'Open project', on.openProject, { icon: faUpRightFromSquare })]
+        ? [item('open-project', finderText('openProject', 'Open project'), on.openProject, { icon: faUpRightFromSquare })]
         : []),
       SEPARATOR,
       info,
-      item('sharing', 'Sharing…', on.sharing, { icon: faUserGroup }),
+      item('sharing', finderText('sharingMenu', 'Sharing…'), on.sharing, { icon: faUserGroup }),
     ])
   }
   if (row.role === 'agent') {
     return tidy([
-      item('open', 'Open', on.open, { icon: faFolderOpen }),
-      item('open-agent', 'Open agent', on.openAgent, { icon: faUpRightFromSquare }),
+      item('open', finderText('open', 'Open'), on.open, { icon: faFolderOpen }),
+      item('open-agent', finderText('openAgent', 'Open agent'), on.openAgent, { icon: faUpRightFromSquare }),
       SEPARATOR,
       info,
-      item('sharing', 'Sharing…', on.sharing, { icon: faUserGroup }),
+      item('sharing', finderText('sharingMenu', 'Sharing…'), on.sharing, { icon: faUserGroup }),
     ])
   }
   return tidy([
-    item('open', 'Open', on.open, { icon: faFolderOpen }),
+    item('open', finderText('open', 'Open'), on.open, { icon: faFolderOpen }),
     SEPARATOR,
     info,
     ...(row.canManageAccess || row.canWrite
-      ? [item('space-settings', 'Sharing & settings…', on.spaceSettings, { icon: faUserGroup })]
-      : [item('sharing', 'Sharing…', on.sharing, { icon: faUserGroup })]),
-    ...(row.canWrite ? [item('rename', 'Rename', on.rename, {
+      ? [item('space-settings', finderText('sharingSettings', 'Sharing & settings…'), on.spaceSettings, { icon: faUserGroup })]
+      : [item('sharing', finderText('sharingMenu', 'Sharing…'), on.sharing, { icon: faUserGroup })]),
+    ...(row.canWrite ? [item('rename', finderText('rename', 'Rename'), on.rename, {
       icon: faPenToSquare,
       shortcut: 'F2',
     })] : []),
     SEPARATOR,
     ...(row.canWrite
-      ? [item('delete', 'Delete…', on.remove, { destructive: true, icon: faTrash })]
+      ? [item('delete', finderText('delete', 'Delete…'), on.remove, { destructive: true, icon: faTrash })]
       : []),
   ])
 }
@@ -418,18 +419,18 @@ const backgroundItems = (
   if (column === 'root') {
     return tidy([
       ...(on.newSharedFolder
-        ? [item('new-shared-folder', 'New space…', on.newSharedFolder, {
+        ? [item('new-shared-folder', finderText('newSpace', 'New space…'), on.newSharedFolder, {
           icon: faFolderPlus,
         })]
         : []),
       SEPARATOR,
-      item('refresh', 'Refresh', on.refresh, { icon: faArrowsRotate }),
+      item('refresh', finderText('refresh', 'Refresh'), on.refresh, { icon: faArrowsRotate }),
     ])
   }
   // A virtual folder has no other way to ask again: its rows are a listing the
   // server computed, not a folder anybody writes into.
   if (column === 'virtual') {
-    return [item('refresh', 'Refresh', on.refresh, { icon: faArrowsRotate })]
+    return [item('refresh', finderText('refresh', 'Refresh'), on.refresh, { icon: faArrowsRotate })]
   }
   // "New document", "Upload files…" and every kind a later integrator adds
   // come from `new-file-types.ts` — the same array the toolbar's New menu
@@ -439,16 +440,16 @@ const backgroundItems = (
     ? newFileTypeItems(on.newFileTypeContext, 'in-folder').map((row) =>
       item(row.id, row.label, row.onSelect, { icon: row.icon }))
     : [
-      item('new-document', 'New document', on.newDocument, { icon: faFileLines }),
+      item('new-document', finderText('newDocument', 'New document'), on.newDocument, { icon: faFileLines }),
       ...(on.uploadFiles
-        ? [item('upload-files', 'Upload files…', on.uploadFiles, { icon: faCloudArrowUp })]
+        ? [item('upload-files', finderText('uploadFiles', 'Upload files…'), on.uploadFiles, { icon: faCloudArrowUp })]
         : []),
     ]
   return tidy([
     ...(caps.canWrite
       ? [
         ...(on.newFolder
-          ? [item('new-folder', 'New folder', on.newFolder, {
+          ? [item('new-folder', finderText('newFolder', 'New folder'), on.newFolder, {
             icon: faFolderPlus,
             shortcut: 'Mod+Shift+N',
           })]
@@ -457,8 +458,8 @@ const backgroundItems = (
         SEPARATOR,
       ]
       : []),
-    item('get-info', 'Get Info', on.getInfo, { icon: faCircleInfo, shortcut: 'Mod+I' }),
-    item('sharing', 'Sharing…', on.sharing, { icon: faUserGroup }),
+    item('get-info', finderText('getInfo', 'Get Info'), on.getInfo, { icon: faCircleInfo, shortcut: 'Mod+I' }),
+    item('sharing', finderText('sharingMenu', 'Sharing…'), on.sharing, { icon: faUserGroup }),
   ])
 }
 

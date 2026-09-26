@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgePageShareAccess, KnowledgePageShareRecord } from '@nessie/schemas'
@@ -68,6 +69,7 @@ const ShareRow = ({
   share: KnowledgePageShareRecord
   token: string | null
 }) => {
+  const { t } = useTranslation('knowledgeFinder')
   const [open, setOpen] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
 
@@ -122,7 +124,7 @@ const ShareRow = ({
           role="menuitem"
           type="button"
         >
-          <span className="text-sm">Remove</span>
+          <span className="text-sm">{t('sharingRemove')}</span>
         </button>
       </Popover>
     </li>
@@ -138,6 +140,7 @@ export const ShareDialog = ({
   subjectKind,
   title,
 }: ShareDialogProps) => {
+  const { t } = useTranslation('knowledgeFinder')
   // Optional on purpose: this dialog is rendered in isolation by its own
   // suite, and a hook that throws outside the provider would make the copy
   // untestable without a whole signed-in shell around it.
@@ -179,7 +182,7 @@ export const ShareDialog = ({
   }
 
   return (
-    <Dialog onClose={onClose} open={open} title={`Share “${title}”`}>
+    <Dialog onClose={onClose} open={open} title={t('shareTitle', { title })}>
       <div className="grid gap-4">
         <p className="text-sm text-[color:var(--tx2)]" data-testid="share-intro">
           {shareIntroSentence(subjectKind)}
@@ -187,14 +190,14 @@ export const ShareDialog = ({
 
         <div className="grid gap-2">
           <PersonPicker
-            label="People to share with"
+            label={t('peopleToShareWith')}
             layer="modal"
             onSelect={add}
             options={options}
-            placeholder="Add a person…"
+            placeholder={t('addPerson')}
           />
           <ChoiceGroup
-            label="Access"
+            label={t('shareAccess')}
             onChange={setLevel}
             options={LEVEL_OPTIONS}
             value={level}
@@ -203,7 +206,7 @@ export const ShareDialog = ({
         </div>
 
         <div className="grid gap-1.5">
-          <SectionLabel size="sm">Has access</SectionLabel>
+          <SectionLabel size="sm">{t('hasAccess')}</SectionLabel>
           <ul>
             <li className="flex items-center gap-2 py-1">
               <UserAvatar
@@ -213,7 +216,7 @@ export const ShareDialog = ({
                 userId={me?.user.id}
               />
               <span className="min-w-0 flex-1 truncate text-sm text-[color:var(--tx)]">
-                {`${me?.user.displayName ?? 'You'} — Owner`}
+                {`${me?.user.displayName ?? 'You'} — ${t('owner')}`}
               </span>
             </li>
             {shares.map((share) => (
@@ -237,7 +240,7 @@ export const ShareDialog = ({
             ))}
           </ul>
           {shares.length === 0 ? (
-            <p className="text-sm text-[color:var(--tx3)]">Only you, so far.</p>
+            <p className="text-sm text-[color:var(--tx3)]">{t('onlyYouSoFar')}</p>
           ) : null}
         </div>
 

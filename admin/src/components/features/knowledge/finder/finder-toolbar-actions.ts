@@ -11,7 +11,7 @@ import type {
 } from '../../../shared/ResponsivePageHeader'
 import {
   composeFinderSort,
-  FINDER_SORT_LABELS,
+  finderSortLabel,
   finderSortDirection,
   finderSortKey,
   type FinderSort,
@@ -19,6 +19,7 @@ import {
 } from './finder-sort'
 import { finderViewOptions, type FinderView } from './finder-view'
 import { newFileTypeItems } from './new-file-types'
+import { finderText } from './finder-text'
 
 /**
  * Every header action the Finder's toolbar has (browser-ui.md §6), in one
@@ -106,7 +107,7 @@ const sortMenuItems = (
     ...SORT_KEYS.map((candidate): PageHeaderMenuItem => ({
       checked: candidate === key,
       id: `sort-${candidate}`,
-      label: FINDER_SORT_LABELS[candidate],
+      label: finderSortLabel(candidate),
       // Re-picking the key you are on flips the direction, which is what a
       // column header does and what a person expects from a sort menu.
       onSelect: () =>
@@ -119,13 +120,13 @@ const sortMenuItems = (
     {
       checked: direction === 'asc',
       id: 'sort-ascending',
-      label: 'Ascending',
+      label: finderText('ascending', 'Ascending'),
       onSelect: () => onSelectSort(composeFinderSort(key, 'asc')),
     },
     {
       checked: direction === 'desc',
       id: 'sort-descending',
-      label: 'Descending',
+      label: finderText('descending', 'Descending'),
       onSelect: () => onSelectSort(composeFinderSort(key, 'desc')),
     },
   ]
@@ -133,7 +134,8 @@ const sortMenuItems = (
 
 export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeaderAction[] => {
   const writable = input.canWrite && !input.isVirtualColumn
-  const selectedView = finderViewOptions.find((option) => option.value === input.view)
+  const views = finderViewOptions()
+  const selectedView = views.find((option) => option.value === input.view)
 
   return [
     // One New. Folder, document and upload are four words apart, not two
@@ -151,7 +153,7 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
                   // At the Knowledge root there is no space to create a folder
                   // in. The row being added is a space, which needs a visibility
                   // choice, so its label and dialog say exactly that.
-                  label: input.isRootColumn ? 'Space…' : 'Folder',
+                  label: input.isRootColumn ? finderText('space', 'Space…') : finderText('folder', 'Folder'),
                   onSelect: input.onCreateFolder,
                 }]
               : []),
@@ -178,7 +180,7 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
               : []),
           ],
           kind: 'menu',
-          label: 'New',
+          label: finderText('new', 'New'),
           menuStyle: 'sidebar',
           primary: true,
           priority: 100,
@@ -190,17 +192,17 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
       id: 'sort',
       items: sortMenuItems(input.sort, input.onSelectSort),
       kind: 'menu',
-      label: `Sort: ${FINDER_SORT_LABELS[finderSortKey(input.sort)]}`,
+      label: finderText('sortLabel', 'Sort: {{sort}}', { sort: finderSortLabel(finderSortKey(input.sort)) }),
       priority: 80,
       title: input.isVirtualColumn
-        ? 'Latest and Shared with me are ordered by time'
-        : 'Choose how this folder is ordered',
+        ? finderText('virtualSortTitle', 'Latest and Shared with me are ordered by time')
+        : finderText('folderSortTitle', 'Choose how this folder is ordered'),
     },
     ...(input.showViewAction
       ? [{
           icon: selectedView?.icon,
           id: 'view',
-          items: finderViewOptions.map((option) => ({
+          items: views.map((option) => ({
             checked: option.value === input.view,
             icon: option.icon,
             id: option.value,
@@ -209,7 +211,7 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
             title: option.title,
           })),
           kind: 'menu',
-          label: `View: ${selectedView?.label ?? 'Columns'}`,
+          label: finderText('viewLabel', 'View: {{view}}', { view: selectedView?.label ?? finderText('viewColumns', 'Columns') }),
           priority: 70,
         } satisfies PageHeaderAction]
       : []),
@@ -218,7 +220,7 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
           checked: input.needsReviewOnly,
           id: 'needs-review',
           kind: 'toggle',
-          label: `Needs review (${input.agentDraftCount})`,
+          label: finderText('needsReview', 'Needs review ({{count}})', { count: input.agentDraftCount }),
           onChange: input.onToggleNeedsReview,
           priority: 60,
         } satisfies PageHeaderAction]
@@ -228,7 +230,7 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
           compact: true,
           icon: faGear,
           id: 'sharing-settings',
-          label: 'Sharing & settings',
+          label: finderText('sharingAndSettings', 'Sharing & settings'),
           onSelect: input.onOpenSettings,
           priority: 10,
         } satisfies PageHeaderAction]

@@ -1,4 +1,5 @@
 import type { KeyboardEvent, MouseEvent, ReactNode, Ref } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   faChevronRight,
   faLock,
@@ -267,13 +268,14 @@ export const FinderRow = ({
   upload,
   variant,
 }: FinderRowProps) => {
+  const { t } = useTranslation('knowledgeFinder')
   const transferring = Boolean(transfer)
   const opensOn = openGesture ?? finderRowOpenGesture(kind, isDesktopApp())
   // `KnowledgePageRecord.status` also defaults to draft for uploaded files.
   // Only pages with a publish workflow can truthfully say “Draft”.
   const draftBadge = status === 'draft' && (kind === 'document' || kind === 'spreadsheet') ? (
-    <Pill radius="chip" size="sm" title="Draft — not published" tone="warning" uppercase={false}>
-      Draft
+    <Pill radius="chip" size="sm" title={t('draftNotPublished')} tone="warning" uppercase={false}>
+      {t('draft')}
     </Pill>
   ) : null
 
@@ -300,7 +302,7 @@ export const FinderRow = ({
           <FontAwesomeIcon
             className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 text-[color:var(--tx3)]"
             icon={faLock}
-            title="You can read this folder but not change it"
+            title={t('folderReadOnly')}
           />
         ) : null}
       </span>

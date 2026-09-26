@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { faChevronDown, faChevronUp } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useBlocker } from 'react-router-dom'
@@ -47,6 +48,7 @@ const EntryRow = ({
   onCancel: (id: string) => void
   onRetry: (id: string) => void
 }) => {
+  const { t } = useTranslation('knowledgeFinder')
   const family = familyForFilename(entry.title)
   const error = failureLine(entry.state)
   const pct = entry.state.kind === 'uploading' ? entry.state.pct : undefined
@@ -68,7 +70,7 @@ const EntryRow = ({
       {error ? (
         <span className="shrink-0 text-xs text-[color:var(--danger-text)]">{error}</span>
       ) : entry.state.kind === 'queued' ? (
-        <span className="shrink-0 text-xs text-[color:var(--tx3)]">Waiting</span>
+        <span className="shrink-0 text-xs text-[color:var(--tx3)]">{t('waiting')}</span>
       ) : (
         <span className="flex shrink-0 items-center gap-2">
           <span className="block h-1 w-16 overflow-hidden rounded-full bg-[color:var(--overlay)]">
@@ -88,7 +90,7 @@ const EntryRow = ({
           onClick={() => (settled ? onRetry(entry.id) : onCancel(entry.id))}
           type="button"
         >
-          <span className="text-xs">{settled ? 'Retry' : 'Cancel'}</span>
+          <span className="text-xs">{settled ? t('retry') : t('cancel')}</span>
         </button>
       )}
     </li>
@@ -172,6 +174,7 @@ export const UploadQueueTray = ({
   onToggle: () => void
   queue: UploadQueueApi
 }) => {
+  const { t } = useTranslation('knowledgeFinder')
   const empty = queue.entries.length === 0
   if (empty) return null
 
@@ -201,7 +204,7 @@ export const UploadQueueTray = ({
             <StorageWarning queued={queued} />
             <button
               aria-expanded={expanded}
-              aria-label={expanded ? 'Hide upload details' : 'Show upload details'}
+              aria-label={expanded ? t('hideUploadDetails') : t('showUploadDetails')}
               className="shrink-0 rounded px-1 text-[color:var(--tx3)]"
               data-upload-toggle
               onClick={onToggle}
@@ -215,7 +218,7 @@ export const UploadQueueTray = ({
               onClick={queue.summary.settled ? queue.dismiss : queue.cancelAll}
               type="button"
             >
-              <span className="text-xs">{queue.summary.settled ? 'Dismiss' : 'Cancel all'}</span>
+              <span className="text-xs">{queue.summary.settled ? t('dismiss') : t('cancelAll')}</span>
             </button>
         </>
       </span>
@@ -229,6 +232,7 @@ export const UploadQueueTray = ({
  * the browser's own unload, where there is no dialog to ask it with.
  */
 export const UploadLeaveGuard = ({ queue }: { queue: UploadQueueApi }) => {
+  const { t } = useTranslation('knowledgeFinder')
   const blocker = useBlocker(queue.busy)
 
   useEffect(() => {
@@ -240,8 +244,8 @@ export const UploadLeaveGuard = ({ queue }: { queue: UploadQueueApi }) => {
 
   return (
     <ConfirmDialog
-      cancelLabel="Stay"
-      confirmLabel="Leave"
+      cancelLabel={t('stay')}
+      confirmLabel={t('leave')}
       destructive
       onCancel={() => blocker.reset?.()}
       onConfirm={() => {
@@ -249,7 +253,7 @@ export const UploadLeaveGuard = ({ queue }: { queue: UploadQueueApi }) => {
         blocker.proceed?.()
       }}
       open={blocker.state === 'blocked'}
-      title="Uploads are still running. Leave and cancel them?"
+      title={t('uploadsLeaveWarning')}
     />
   )
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { KnowledgeAccessSummary } from '@nessie/schemas'
 import { useProjectMembers, useProjects } from '../../../../facades/projects/hooks'
 import { useUsers } from '../../../../facades/users/hooks'
@@ -66,6 +67,7 @@ const PersonRow = ({
 )
 
 const ProjectMembers = ({ projectId }: { projectId: string }) => {
+  const { t } = useTranslation('knowledgeFinder')
   const session = useOptionalAuthSession()
   const me = session?.me ?? null
   const token = session?.token ?? null
@@ -73,7 +75,7 @@ const ProjectMembers = ({ projectId }: { projectId: string }) => {
   const members = query.data ?? []
 
   if (query.isLoading) {
-    return <p className="text-sm text-[color:var(--tx3)]">Reading members…</p>
+    return <p className="text-sm text-[color:var(--tx3)]">{t('readingMembers')}</p>
   }
   return (
     <>
@@ -135,6 +137,7 @@ export const AccessReadoutDialog = ({
   open,
   projectName,
 }: AccessReadoutDialogProps) => {
+  const { t } = useTranslation('knowledgeFinder')
   // The project's own name, not its documents folder's. A space named after
   // what it holds ("Project Documents") is the wrong noun in a sentence about
   // who can see something, and the menu builds its summary from the space
@@ -157,7 +160,7 @@ export const AccessReadoutDialog = ({
   )
 
   return (
-    <Dialog onClose={onClose} open={open} title="Who can see this">
+    <Dialog onClose={onClose} open={open} title={t('whoCanSee')}>
       <div className="grid gap-4">
         <div className="grid gap-1.5">
           <p
@@ -173,14 +176,14 @@ export const AccessReadoutDialog = ({
 
         {access.mode === 'project' ? (
           <div className="grid gap-1.5">
-            <SectionLabel size="sm">In the project</SectionLabel>
+            <SectionLabel size="sm">{t('inProject')}</SectionLabel>
             <ProjectMembers projectId={access.projectId} />
           </div>
         ) : null}
 
         {access.mode === 'space' ? (
           <div className="grid gap-1.5">
-            <SectionLabel size="sm">Added to this folder</SectionLabel>
+            <SectionLabel size="sm">{t('addedToFolder')}</SectionLabel>
             <p className="text-sm text-[color:var(--tx3)]">
               {access.memberUserCount === 0 && access.memberAgentCount === 0
                 ? 'Nobody has been added directly.'

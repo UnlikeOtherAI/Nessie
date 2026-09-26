@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import { before, test } from 'node:test'
 
 import { ApiClientProvider, type ApiClient } from '@nessie/client-core'
 import { KnowledgeSpaceResponseSchema } from '@nessie/schemas'
@@ -9,6 +9,11 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { AccessReadoutDialog } from '../src/components/features/knowledge/finder/AccessReadoutDialog.js'
+import { initializeLocalization } from '../src/i18n/i18n.js'
+
+before(async () => {
+  await initializeLocalization()
+})
 import {
   deleteConfirmCopy,
   pageLink,

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 import { Input } from '../../../shared/FormControls'
@@ -43,6 +44,7 @@ export const RenameRow = ({
   pending = false,
   title,
 }: FinderRowRename & { icon?: IconDefinition; iconTone?: string; title: string }) => {
+  const { t } = useTranslation('knowledgeFinder')
   const [name, setName] = useState(title)
   const doneRef = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -80,7 +82,7 @@ export const RenameRow = ({
           </span>
         ) : null}
         <Input
-          aria-label="Name"
+          aria-label={t('name')}
           className="min-w-0 flex-1"
           disabled={pending}
           onBlur={submit}

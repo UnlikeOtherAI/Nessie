@@ -4,6 +4,7 @@ import { faColumns, faList, faSitemap, type IconDefinition } from '@fortawesome/
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import { getCookie, getStoredJson, setStoredJson } from '../../../../lib/storage'
 import type { ColumnResizeConfig } from '../../../shared/column-browser/ColumnBrowserColumn'
+import { finderText } from './finder-text'
 
 /**
  * What the URL says the browser is showing: which view, and which folder.
@@ -42,28 +43,28 @@ export const migrateStoredFinderView = (stored: string | null | undefined): Find
   }
 }
 
-export const finderViewOptions: Array<{
+export const finderViewOptions = (): Array<{
   icon: IconDefinition
   label: string
   title: string
   value: FinderView
-}> = [
+}> => [
   {
     icon: faSitemap,
-    label: 'Tree',
-    title: 'Browse all folders in one guided tree',
+    label: finderText('viewTree', 'Tree'),
+    title: finderText('viewTreeTitle', 'Browse all folders in one guided tree'),
     value: 'tree',
   },
   {
     icon: faColumns,
-    label: 'Columns',
-    title: 'Browse folders in sliding columns',
+    label: finderText('viewColumns', 'Columns'),
+    title: finderText('viewColumnsTitle', 'Browse folders in sliding columns'),
     value: 'columns',
   },
   {
     icon: faList,
-    label: 'List',
-    title: 'One folder at a time, with size, date and kind',
+    label: finderText('viewList', 'List'),
+    title: finderText('viewListTitle', 'One folder at a time, with size, date and kind'),
     value: 'list',
   },
 ]
