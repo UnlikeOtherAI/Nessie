@@ -117,7 +117,7 @@ It is not silent, in three places:
   The two causes are indistinguishable from the client by construction: a
   filtered list cannot say why something is not in it.
 - **On any attempt to move another agent onto it:** the validator's 400, whose
-  message names Organization → Models.
+  message names Admin › AI models.
 
 `assertAgentModelSelection` takes `previousSelection` so an *unchanged* disabled
 pair passes. Without it, disabling a model would block renaming, re-prompting or

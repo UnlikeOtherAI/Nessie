@@ -125,7 +125,7 @@ broader set they may see: membership makes a shared mailbox visible, and only
 an owner or admin may change one, so listing by visibility handed the model
 ids whose every mutation would be refused.
 `email_account_connect` posts a doorway into the
-  same address-first form used by Settings; it accepts no password, server, or
+  same address-first form used by Connected accounts; it accepts no password, server, or
   OAuth-code argument. Connection status carries only fixed structural remedies: a provider's own
 error text is neither persisted nor presented, and never reaches a run's
 transcript, because a mail server chooses it. `presentMailboxConnection`

@@ -18,8 +18,8 @@ Two independent vault projects gate two surfaces. Configure the one you need:
 
 | Surface | Requires | Without it |
 | --- | --- | --- |
-| **Save a secret** (`/settings/secrets`, `POST /api/secrets`) | `INFISICAL_API_URL`, `INFISICAL_PROJECT_ID`, `INFISICAL_SERVICE_TOKEN[_FILE]` | `503 SECRETS_NOT_CONFIGURED` on save, rotate and revoke |
-| **Personal model subscriptions** (`/settings/connections`) | `NESSIE_SUBSCRIPTION_VAULT_API_URL`, `_PROJECT_ID`, `_TOKEN` | Card reads "Not available on this deployment"; linking refused |
+| **Save a secret** (`/settings/keys`, `POST /api/secrets`) | `INFISICAL_API_URL`, `INFISICAL_PROJECT_ID`, `INFISICAL_SERVICE_TOKEN[_FILE]` | `503 SECRETS_NOT_CONFIGURED` on save, rotate and revoke |
+| **Personal model subscriptions** (`/settings/accounts`) | `NESSIE_SUBSCRIPTION_VAULT_API_URL`, `_PROJECT_ID`, `_TOKEN` | Card reads "Not available on this deployment"; linking refused |
 
 These are **two separate Infisical projects on purpose**, never one shared
 identity: the Secrets project's personal partition holds a person's ordinary
@@ -206,9 +206,9 @@ One page per level, all three the same component
 
 | Page | Route | Shows | "New secret" writes |
 | --- | --- | --- | --- |
-| User → Secrets | `/settings/secrets` | organisation + team + project + own | personal, or a project |
-| Team → Secrets | `/settings/team/secrets` | organisation + this team | this team |
-| Organization → Secrets | `/settings/organization/secrets` | organisation | the organisation |
+| Your settings › Saved keys | `/settings/keys` | organisation + team + project + own | personal, or a project |
+| Admin › Teams › a team › Keys | `/admin/teams/:teamId?tab=keys` | organisation + this team | this team |
+| Admin › Keys | `/admin/keys` | organisation | the organisation |
 
 Each page splits Active from Revoked with a `TabBar` in a `?tab=` param, and
 the organisation page drops the Scope column — every row there is the

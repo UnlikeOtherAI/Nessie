@@ -94,7 +94,7 @@ Nessie Desktop's Developer ID build carries a copy of this app inside its own
 bundle, at `Contents/Library/LoginItems/Nessie Executor.app` — the location
 macOS intends for a menu bar helper, and the only one `SMAppService` can
 register for launch at login. A Mac with that Desktop installed needs no second
-download: **Agents → Executors** has an **Open Nessie Executor** button, and
+download: **Admin › Computers** has an **Open Nessie Executor** button, and
 clicking it puts the icon in the status bar.
 
 The DMG above is still the right download for two Macs: one that runs only the
@@ -122,8 +122,8 @@ for the lease. A daemon Desktop started itself stays Desktop's to stop.
 In the menu bar app, open **Settings**, choose the folder this Mac may read,
 and click **Get pairing code**. The app displays eight decimal digits in
 separate boxes with a countdown, followed by this Mac's name and fingerprint.
-In Nessie, open **Agents → Executors → Pair
-executor** and enter those digits. Choose the organisation, team, and access
+In Nessie, open **Admin › Computers › Pair a
+computer** and enter those digits. Choose the organisation, team, and access
 offered there, and review the machine fingerprint.
 
 The Mac then names that organisation and team beside its machine fingerprint.
@@ -212,7 +212,7 @@ part of it is a copy of anything Nessie owns.
 1. Quit the app from the status bar menu. The Quit item says what it does to the
    running daemon; a stop is the daemon's own graceful teardown, with the same
    ten-second budget as every other host, and is never a `SIGKILL`.
-2. Remove the executor in Nessie (**Agents → Executors**), so the control plane
+2. Remove the executor in Nessie (**Admin › Computers**), so the control plane
    stops offering it work.
 3. Drag `/Applications/Nessie Executor.app` to the Trash.
 4. The pairing state survives on purpose, so a reinstall does not re-pair. To

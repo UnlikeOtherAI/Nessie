@@ -64,7 +64,7 @@ file is the rule**.
 
 ## Detail
 
-Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Apps catalogue — `/apps`".
+Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Apps catalogue".
 
 
 Installing an integration should feel like installing an app in Slack, not like

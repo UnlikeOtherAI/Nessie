@@ -213,8 +213,9 @@ file is the rule**.
   `agent_create`, `agent_bind_channel`, `agent_list`, `channel_create`,
   `project_create`, `project_list`, `team_create`, `agent_trigger_create`,
   `agent_trigger_list` and `agent_trigger_update` answer with markdown links —
-  `[CTO](/agents/<id>)`, `[#sales](/channels/<id>)`,
-  `[Marketing](/projects/<id>)`, `[Daily digest](/agents/triggers/<id>)`,
+  `[CTO](/admin/agents/<id>)`, `[#sales](/channels/<id>)`,
+  `[Marketing](/projects/<id>)`,
+  `[Daily digest](/admin/automations/triggers/<id>)`,
   built by the `format…MarkdownLink` helpers in
   `worker/src/run/pa-tools/tool-output.ts` — and `portrait: none (reason:
   "…")`, never `agentId=`/`channelId=`/`projectId=`/`triggerId=` pairs or an
@@ -223,10 +224,11 @@ file is the rule**.
   id from the link's last segment, and the model is told so — in the
   Designer's prompt and in each of those tools' own descriptions — rather than
   left to guess; every tool that takes one of those ids takes it exactly as
-  before. A trigger's `/agents/triggers/<id>` also reads as "an `/agents/…`
-  link", and `agent_trigger_create` prints it before the agent's, so the
-  prompt and the descriptions name the agent's as `/agents/<id>` and say a
-  trigger link is never an agent's. A team has no page to link, so
+  before. Trigger and agent links once shared one prefix, and
+  `agent_trigger_create` prints the trigger's before the agent's, so the
+  prompt and the descriptions name the agent's as `/admin/agents/<id>` and the
+  trigger's as `/admin/automations/triggers/<id>`, and say a trigger link is
+  never an agent's. A team has no page to link, so
   `project_create`, `project_list` and `team_create` name it as
   `"Core" (teamId=<id>)` — the one raw id they still print, because
   `channel_create` takes it — and `project_create` keeps it in its result so

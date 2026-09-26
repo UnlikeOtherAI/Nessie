@@ -40,7 +40,7 @@ Two scopes, and the difference matters:
 
 | | **Your mailbox** | **A team's shared mailbox** |
 |---|---|---|
-| Where | `/settings/connections` → *Email* | `/settings/organization` → *Shared mailboxes* |
+| Where | `/settings/accounts` → *Email* | `/admin/connections` → *Shared mailboxes* |
 | Who can connect it | Anybody | An owner or an admin |
 | Which runs reach it | Only ones acting **as you** — you asking directly, or a schedule you set up under your own account | Any run by an agent you gave access to |
 | Who can manage it | You. Not your org owner, not an admin | An owner or an admin |
@@ -117,7 +117,7 @@ Common settings:
 | Most others | `:993` TLS | `:587` STARTTLS |
 
 > Gmail over an app password is a supported alternative to the Google
-> connection at `/settings/connections`, not a replacement for it. The Google
+> connection at `/settings/accounts`, not a replacement for it. The Google
 > lane uses Gmail's own API with per-capability consent; this one is a password
 > that reaches the whole mailbox. Connect whichever suits the account, and the
 > two never share a send path — they are different tools with different names.
@@ -138,7 +138,7 @@ mailbox.”*
 
 Connection never turns the conversation into a password box. The assistant's
 connect tool accepts no secret arguments and posts only a button into chat; the
-button opens the address-first form also used under Settings. OAuth happens on
+button opens the address-first form also used on Connected accounts. OAuth happens on
 Google's or Microsoft's own page, and a conventional mailbox password stays in
 the protected connection form.
 

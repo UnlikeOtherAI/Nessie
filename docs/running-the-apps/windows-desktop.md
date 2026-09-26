@@ -12,7 +12,7 @@ executor**, running as the Windows account where Claude is authenticated.
 Do not pair both supervisors as if they were one connection.
 
 Both can hold multiple independent account connections. Choose **Add account**
-in the tray, or **Executors → Pair executor → Connect this computer** in Desktop.
+in the tray, or **Admin › Computers › Pair a computer › Connect this computer** in Desktop.
 The latter runs under your Windows account and is appropriate for personal
 terminal programs. Adding an account never replaces or stops an existing one.
 The headless equivalent is `nessie-executor pair --cli`; use `status` to list
@@ -359,7 +359,7 @@ finds its pairings where it left them; delete the folder by hand to forget them.
 **Pair from the tray.** Open **Nessie Executor → Pair with Nessie**, choose the
 workspace folder, and approve Windows granting the service read access. The
 tray shows eight digit boxes and the remaining ten-minute lifetime. In Nessie,
-open **Agents → Executors → Pair executor** and enter that code. Choose
+open **Admin › Computers › Pair a computer** and enter that code. Choose
 the organisation, team and sharing scope there. Back on the computer, review
 the organisation and team by name and choose **Connect this computer**. Only
 this local confirmation activates the pairing and starts its daemon.

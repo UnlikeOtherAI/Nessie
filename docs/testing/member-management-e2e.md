@@ -1,7 +1,7 @@
 # Member management browser evaluation
 
 `pnpm --filter @nessie/admin test:e2e:member-management` renders the real
-Members roster and its facades against a stateful, in-browser UOA boundary. It
+People roster and its facades against a stateful, in-browser UOA boundary. It
 never contacts UOA or sends email. The fixture proves desktop and phone flows
 for role changes, organisation activation, team removal, adding an existing
 organisation member, invitations (including an organisation invitation to
