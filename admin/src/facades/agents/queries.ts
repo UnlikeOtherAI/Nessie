@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { AgentAvailabilityProjectionSchema, AgentRecordSchema } from '@nessie/schemas'
+import { AgentAvailabilityProjectionSchema, AgentRecordSchema, AgentConversationSuggestionsSchema } from '@nessie/schemas'
 import {
   infiniteQueryOptions,
   keepPreviousData,
@@ -300,5 +300,24 @@ export const useRunToolCalls = (agentId?: string, runId?: string) => {
     queryKey: agentKeys.runTools(agentId, runId),
     queryFn: () => apiClient.get(`/api/agents/${agentId}/runs/${runId}/tools`),
     enabled: Boolean(agentId && runId),
+  })
+}
+
+/** Opening the home rechecks source access; inference cadence belongs to the server. */
+export const useAgentConversationSuggestions = (agentId: string, channelId: string) => {
+  const apiClient = useApiClient()
+  return useQuery({
+    queryKey: agentKeys.suggestions(agentId, channelId),
+    // Private questions from the previous DM must never paint under another agent.
+    placeholderData: undefined,
+    queryFn: () => apiClient.get(
+      `/api/agents/${encodeURIComponent(agentId)}/conversation-suggestions?channelId=${encodeURIComponent(channelId)}`,
+      AgentConversationSuggestionsSchema,
+    ),
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+    refetchOnMount: 'always',
+    refetchInterval: 60_000,
   })
 }

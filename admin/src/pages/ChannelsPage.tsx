@@ -172,6 +172,7 @@ export const ChannelsPage = () => {
   const sessionHome = !threadId && activeChannel?.type === 'dm' && conversationAgent
     ? {
         agent: conversationAgent,
+        channelId: activeChannel.id,
         busy: startAgentConversation.isPending,
         error: sessionStartError,
         onStart: (message?: string) => {

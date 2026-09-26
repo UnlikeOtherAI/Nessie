@@ -1103,6 +1103,7 @@ enum ProductIntegrationRunStatus {
 }
 
 model User {
+  conversationSuggestions AgentConversationSuggestions[]
   executorSessionShares ExecutorHostSessionShare[]
   id                                    String                                 @id @default(uuid()) @db.Uuid
   email                                 String                                 @unique
@@ -1346,6 +1347,7 @@ model UoaTeamSwitchIntent {
 }
 
 model Organization {
+  conversationSuggestions AgentConversationSuggestions[]
   id                                    String                                 @id @default(uuid()) @db.Uuid
   // For a UOA-provisioned organization, `name` is a NON-authoritative mirror of
   // UOA's `orgName` (same doctrine as the user profile mirror): synced wherever
@@ -3359,6 +3361,7 @@ model Favorite {
 }
 
 model Agent {
+  conversationSuggestions AgentConversationSuggestions[]
   id                             String                          @id @default(uuid()) @db.Uuid
   name                           String
   role                           String                          @default("assistant")
@@ -10415,4 +10418,22 @@ model TaskSetStep {
 
   @@unique([attemptId, sequence])
   @@map("task_set_steps")
+}
+
+/// Private, derived homepage prompts; never an identity or transcript store.
+model AgentConversationSuggestions {
+  organizationId String @map("organization_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  agentId String @map("agent_id") @db.Uuid
+  attemptedAt DateTime? @map("attempted_at") @db.Timestamp(3)
+  generatedAt DateTime? @map("generated_at") @db.Timestamp(3)
+  activityHash String? @map("activity_hash")
+  questions String[] @default([])
+  sources Json @default("[]")
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([organizationId, userId, agentId])
+  @@map("agent_conversation_suggestions")
 }
