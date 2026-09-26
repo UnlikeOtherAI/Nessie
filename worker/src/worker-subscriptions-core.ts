@@ -32,7 +32,9 @@ import {
   TaskEmbedJobPayloadSchema,
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
+  RUN_AUTO_CONTINUATION_TOPIC,
   RUN_COMPLETION_FOLLOWUP_TOPIC,
+  RunAutoContinuationJobPayloadSchema,
   RunCompletionFollowupJobPayloadSchema,
   RunExecuteJobPayloadSchema,
   TriggerEventDispatchJobPayloadSchema,
@@ -68,6 +70,7 @@ import { dispatchEventTriggers, dispatchWebhookTrigger } from './control/trigger
 import { executeWorkflowRun } from './control/workflows.js'
 import { executeRunJob } from './run/execute.js'
 import { executeRunCompletionFollowup } from './run/execute/completion-followup.js'
+import { startAutoContinuation } from './run/execute/continuation.js'
 import { executeRunMemoryConsolidationJob } from './run/memory-consolidation.js'
 import { executeOrchestrateDecideJob } from './run/orchestrate.js'
 import { executeExecutorCommandJob, subscribeExecutorCommandLanes } from './control/executor-commands.js'
@@ -201,6 +204,14 @@ subscribe(
       },
       payload,
     )
+  },
+  { signal: abortSignal },
+)
+// A stopped run's auto-continuation that found its thread busy, trying again.
+subscribe(
+  RUN_AUTO_CONTINUATION_TOPIC,
+  async (job) => {
+    await startAutoContinuation(prisma, RunAutoContinuationJobPayloadSchema.parse(job.payload))
   },
   { signal: abortSignal },
 )
