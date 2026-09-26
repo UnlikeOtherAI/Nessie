@@ -8,6 +8,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react'
+import { useTranslation } from 'react-i18next'
 import { faLayerGroup } from '@fortawesome/free-solid-svg-icons'
 import type {
   KnowledgePageRecord,
@@ -141,6 +142,7 @@ export const FinderFolderColumn = ({
   selectedIds,
   uploadEntries,
 }: FinderFolderColumnProps) => {
+  const { t } = useTranslation('knowledgeFinder')
   const empty = rows.length === 0 && !creatingFolder && (uploadEntries?.length ?? 0) === 0
   const firstId = rows[0]?.id
   const tabbableId = focusedRowId
@@ -172,8 +174,8 @@ export const FinderFolderColumn = ({
       {query.isError || query.isLoading ? (
         <QueryState
           className="py-6"
-          errorLabel="Couldn’t load these documents."
-          loadingLabel="Loading documents…"
+          errorLabel={t('loadError')}
+          loadingLabel={t('loading')}
           query={query}
         >
           {() => null}
@@ -181,7 +183,7 @@ export const FinderFolderColumn = ({
       ) : empty ? (
         <EmptyState className="mt-2">{emptyLabel}</EmptyState>
       ) : (
-        <RowList label="Items" role="listbox" variant="finder">
+        <RowList label={t('items')} role="listbox" variant="finder">
           {rows.map((page) => {
             const family = familyForRow(page)
             const folder = page.kind === 'folder'
@@ -316,6 +318,7 @@ export const FinderFolderHost = ({
   siblingSpaces,
   spaceId,
 }: FinderFolderHostProps) => {
+  const { t } = useTranslation('knowledgeFinder')
   const order = rows.map((page) => page.id)
   // One read for the folder on screen, never one per row.
   const reviews = useFolderDocumentReviews(rows)
@@ -363,13 +366,11 @@ export const FinderFolderHost = ({
         spaceId,
       })}
       dropTargetId={drag.dropTargetKey}
-      emptyLabel={canWrite
-        ? 'Nothing here yet — use New file, or drop a file to upload.'
-        : 'Nothing here yet.'}
+      emptyLabel={canWrite ? t('emptyWritable') : t('empty')}
       query={query}
       leadingRows={siblingSpaces.length > 0
         ? (
-          <RowList label="Other folders in this project" role="listbox" variant="finder">
+          <RowList label={t('otherProjectFolders')} role="listbox" variant="finder">
             {/* A sibling root folder is one of the only two places a *different*
                 root can be dropped on, so it is a cross-root transfer target
                 (transfer.md §1); the other is the root column. */}

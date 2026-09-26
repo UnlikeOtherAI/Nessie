@@ -5,11 +5,21 @@
   "sharedWithMe": "Sdílené se mnou",
   "myDocuments": "Moje dokumenty",
   "loading": "Načítání dokumentů…",
-  "loadError": "Dokumenty se nepodařilo načíst.",
+  "loadError": "Tyto dokumenty se nepodařilo načíst.",
   "browse": "Procházet",
   "agentsLoadError": "Dokumenty agentů se nepodařilo načíst.",
   "agentsLoading": "Načítání agentů…",
   "noAgentHomes": "Nejsou k dispozici žádné domovské složky dokumentů agentů.",
   "agentsLimit": "Zobrazuje se prvních 200 dostupných agentů.",
-  "currentFolder": "Aktuální složka"
+  "currentFolder": "Aktuální složka",
+  "items": "Položky",
+  "empty": "Zatím tu nic není.",
+  "emptyWritable": "Zatím tu nic není — použijte Nový soubor nebo sem přetáhněte soubor.",
+  "otherProjectFolders": "Ostatní složky v tomto projektu",
+  "canEdit": "Může upravovat",
+  "canView": "Může zobrazit",
+  "loadingMore": "Načítání…",
+  "loadMore": "Načíst další",
+  "emptyLatest": "Zatím tu nic není — zde se zobrazí dokumenty, které upravujete vy a váš tým.",
+  "emptyShared": "Nikdo s vámi zatím nesdílel žádný dokument."
 }

@@ -1,4 +1,5 @@
 import type { KeyboardEvent, MouseEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type {
@@ -82,6 +83,7 @@ export const FinderVirtualColumn = ({
   rowProps,
   selectedIds,
 }: FinderVirtualColumnProps) => {
+  const { t } = useTranslation('knowledgeFinder')
   const tabbableId = focusedRowId ?? selectedIds[0] ?? rows[0]?.id
   const resolveActor = useActorNames()
 
@@ -89,15 +91,15 @@ export const FinderVirtualColumn = ({
     <div className="h-full" {...backgroundProps}>
       <QueryState
         className="py-6"
-        errorLabel="Couldn’t load these documents."
-        loadingLabel="Loading documents…"
+        errorLabel={t('loadError')}
+        loadingLabel={t('loading')}
         query={query}
       >
       {() =>
         rows.length === 0 ? (
           <EmptyState className="mt-2">{emptyLabel}</EmptyState>
         ) : (
-          <RowList label="Items" role="listbox" variant="finder">
+          <RowList label={t('items')} role="listbox" variant="finder">
             {rows.map((row) => {
               const family = familyForRow(row)
               return (
@@ -126,7 +128,7 @@ export const FinderVirtualColumn = ({
                       // back to the thing it names.
                       <span className="flex min-w-0 gap-1 truncate">
                         <ActorName actor={resolveActor('user', row.sharedByUserId)} />
-                        {` · ${row.access === 'edit' ? 'Can edit' : 'Can view'} · ${homeLine(row.home)}`}
+                        {` · ${row.access === 'edit' ? t('canEdit') : t('canView')} · ${homeLine(row.home)}`}
                       </span>
                     )
                     : homeLine(row.home)}
@@ -148,7 +150,7 @@ export const FinderVirtualColumn = ({
                   type="button"
                 >
                   <FontAwesomeIcon className="h-3 w-3" icon={faChevronDown} />
-                  {loadingMore ? 'Loading…' : 'Load more'}
+                  {loadingMore ? t('loadingMore') : t('loadMore')}
                 </button>
               </li>
             ) : null}
@@ -181,11 +183,6 @@ type FinderVirtualHostProps = {
   selection: FinderSelection
 }
 
-const EMPTY_LABEL: Record<FinderVirtualHostProps['kind'], string> = {
-  latest: 'Nothing here yet — documents you and your team edit show up here.',
-  'shared-with-me': 'Nobody has shared a document with you yet.',
-}
-
 /** The virtual column's wiring: the paging, the selection and the empty line. */
 export const FinderVirtualHost = ({
   backgroundProps,
@@ -197,11 +194,13 @@ export const FinderVirtualHost = ({
   rows,
   rowProps,
   selection,
-}: FinderVirtualHostProps) => (
+}: FinderVirtualHostProps) => {
+  const { t } = useTranslation('knowledgeFinder')
+  return (
   <FinderVirtualColumn
     backgroundProps={backgroundProps}
     columnActive={selection.columnKey === columnKey}
-    emptyLabel={EMPTY_LABEL[kind]}
+    emptyLabel={kind === 'latest' ? t('emptyLatest') : t('emptyShared')}
     hasMore={Boolean(query.hasNextPage)}
     loadingMore={query.isFetchingNextPage}
     onLoadMore={() => void query.fetchNextPage()}
@@ -218,4 +217,5 @@ export const FinderVirtualHost = ({
     rows={rows}
     selectedIds={selection.columnKey === columnKey ? selection.ids : []}
   />
-)
+  )
+}

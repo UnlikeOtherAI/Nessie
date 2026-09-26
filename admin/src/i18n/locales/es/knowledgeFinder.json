@@ -5,11 +5,21 @@
   "sharedWithMe": "Compartido conmigo",
   "myDocuments": "Mis documentos",
   "loading": "Cargando documentos…",
-  "loadError": "No se pudieron cargar tus documentos.",
+  "loadError": "No se pudieron cargar estos documentos.",
   "browse": "Explorar",
   "agentsLoadError": "No se pudieron cargar los documentos de los agentes.",
   "agentsLoading": "Cargando agentes…",
   "noAgentHomes": "No hay espacios de documentos de agentes disponibles.",
   "agentsLimit": "Se muestran los primeros 200 agentes accesibles.",
-  "currentFolder": "Carpeta actual"
+  "currentFolder": "Carpeta actual",
+  "items": "Elementos",
+  "empty": "Aquí todavía no hay nada.",
+  "emptyWritable": "Aquí todavía no hay nada: crea un archivo o arrastra uno aquí.",
+  "otherProjectFolders": "Otras carpetas de este proyecto",
+  "canEdit": "Puede editar",
+  "canView": "Puede ver",
+  "loadingMore": "Cargando…",
+  "loadMore": "Cargar más",
+  "emptyLatest": "Aquí todavía no hay nada: aquí aparecerán los documentos que edites tú y tu equipo.",
+  "emptyShared": "Nadie ha compartido un documento contigo todavía."
 }
