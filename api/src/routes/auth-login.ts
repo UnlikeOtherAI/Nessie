@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { MeResponseSchema, type UoaSessionIdentity } from '@nessie/schemas'
+import { MeResponseSchema, UserPreferencesSchema, type UoaSessionIdentity, type UserPreferences } from '@nessie/schemas'
 import type { Prisma } from '@prisma/client'
 
 import type { SessionTokenClaims } from '../auth/session.js'
@@ -18,6 +18,7 @@ import { syncUoaProductAccountLinks } from '../services/integrations.js'
 import { attemptPersonalAssistantAvatar } from '../services/personal-assistant-avatar.js'
 import { ensureSystemAgentsForMember } from '../services/system-agents-bootstrap.js'
 import { confirmUoaDirectServiceAccess } from '../services/uoa-billing-client.js'
+import { readUoaLocale } from '../services/uoa-session.js'
 import { loadSessionUserById } from '../services/users.js'
 import { guardAuthRequest, rateLimitFor } from './auth-rate-limit.js'
 import {
@@ -155,6 +156,17 @@ export const registerAuthLoginRoute = (
         })
         const { identity } = exchange
         const uoaSession = provider.type === 'uoa' ? exchange.uoaSession : undefined
+        let uoaLocale: UserPreferences['language']
+        if (uoaSession) {
+          try {
+            const savedLocale = await readUoaLocale(uoaSession.accessToken)
+            const parsedLocale = UserPreferencesSchema.shape.language.safeParse(savedLocale)
+            if (parsedLocale.success) uoaLocale = parsedLocale.data
+          } catch {
+            // UOA settings are optional; login remains available if the
+            // settings store is temporarily unreachable.
+          }
+        }
         if (provider.type === 'uoa' && !uoaSession) {
           throw new Error('UnlikeOtherAI did not return a renewable session proof.')
         }
@@ -406,11 +418,15 @@ export const registerAuthLoginRoute = (
               }
             : {}),
         })
+        const me = MeResponseSchema.parse(
+          await buildMeResponse(prisma, sessionUser, session.claims, config),
+        )
+        if (uoaLocale) {
+          me.user.preferences = { ...(me.user.preferences ?? {}), language: uoaLocale }
+        }
         return createApiResponse({
           token: session.token,
-          me: MeResponseSchema.parse(
-            await buildMeResponse(prisma, sessionUser, session.claims, config),
-          ),
+          me,
         })
       } catch (error) {
         if (error instanceof UoaSubjectConflictError) {

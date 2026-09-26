@@ -12,5 +12,7 @@ export type ConsumeRefreshTokenResult =
       providerId: string
       providerType: string
       uoaIdentity?: UoaSessionIdentity
+      locale?: string
+      localeWriteFailed?: boolean
     }
   | { ok: false; reason: 'expired' | 'invalid' | 'reuse' }

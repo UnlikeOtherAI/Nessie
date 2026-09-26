@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { z } from 'zod'
 import { sendApiError } from '../lib/api.js'
 import { clearRefreshCookie, readRefreshCookie } from '../lib/refresh-cookie.js'
 import { isOriginAllowed } from '../lib/server-origin-policy.js'
@@ -25,6 +26,10 @@ import { guardAuthRequest, rateLimitFor } from './auth-rate-limit.js'
 import { completeConsumedAuthSession } from './auth-session-completion.js'
 import type { RouteDeps } from './types.js'
 
+const RefreshLocaleSchema = z.object({
+  locale: z.enum(['en-GB', 'en-US', 'cs', 'de', 'fr', 'it', 'es']).optional(),
+}).strict()
+
 export const registerAuthRefreshRoute = (
   app: FastifyInstance,
   deps: RouteDeps,
@@ -38,6 +43,11 @@ export const registerAuthRefreshRoute = (
   } = deps
 
   app.post('/api/auth/refresh', { config: { public: true } }, async (request, reply) => {
+    const localeInput = RefreshLocaleSchema.safeParse(request.body ?? {})
+    if (!localeInput.success) {
+      sendApiError(reply, 400, 'INVALID_LOCALE', 'Choose a supported language.')
+      return reply
+    }
     // CSRF posture for this cookie-bearing route: the refresh cookie is
     // SameSite=None in production (admin and API are sibling subdomains —
     // deliberate), so a cross-site browser request DOES present it. A present
@@ -102,6 +112,7 @@ export const registerAuthRefreshRoute = (
         encryption: encryptionKeyRing,
         rawToken,
         ttlSeconds: config.auth.refreshTokenTtlSeconds,
+        localeToWrite: localeInput.data.locale,
         userAgent: request.headers['user-agent'] ?? null,
         clientType: parseSessionClientType(request.headers[SESSION_CLIENT_HEADER]),
         ...createUoaRefreshCallbacks(prisma, {

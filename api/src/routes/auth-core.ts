@@ -180,8 +180,10 @@ export const registerAuthCoreRoutes = (
     if (!body) return reply
     const existing = (authenticatedState.me.user.preferences ?? {}) as Record<string, unknown>
     const nextPreferences: Record<string, unknown> = { ...existing }
+    if (authenticatedState.claims.providerType === 'uoa') delete nextPreferences.language
     for (const [key, value] of Object.entries(body)) {
       if (value === undefined) continue
+      if (authenticatedState.claims.providerType === 'uoa' && key === 'language') continue
       if (value === null) delete nextPreferences[key]
       else nextPreferences[key] = value
     }

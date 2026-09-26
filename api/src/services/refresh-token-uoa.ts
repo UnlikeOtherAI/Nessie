@@ -35,6 +35,8 @@ export type UoaCredentialRecord = {
 }
 
 export type RotatedUoaCredential = {
+  /** Ephemeral only: consumed by UOA settings relay and never persisted. */
+  accessToken: string
   credential: UoaCredentialRecord
   encrypted: EncryptedParts
   identity: UoaSessionIdentity
@@ -165,6 +167,7 @@ export const prepareUoaRefresh = async (
 
 export const validateUoaRefresh = (input: {
   encryption: EncryptionKeyRingInput
+  accessToken: string
   credential: UoaCredentialRecord
   expectedIdentity: UoaSessionIdentity
   identity: UoaSessionIdentity
@@ -209,6 +212,7 @@ export const validateUoaRefresh = (input: {
   }
   return {
     credential: input.credential,
+    accessToken: input.accessToken,
     encrypted: encryptWithKeyRing(
       toEncryptionKeyRing(input.encryption),
       'uoa.refresh',
