@@ -391,6 +391,33 @@
       "emptyTitle": "Keine Automatisierungen in diesem Kanal",
       "emptyDescription": "Hier erscheinen die mit diesem Kanal verknüpften Workflow-Installationen, ihr letzter Lauf und eine Schaltfläche zum sofortigen Start für Kanalmitglieder.",
       "workflow": "Workflow"
+    },
+    "info": {
+      "groupConversation": "Gruppenunterhaltung",
+      "directMessage": "Direktnachricht",
+      "memberCount": "Mitglieder ({{count}})",
+      "members": "Mitglieder",
+      "messages": "Nachrichten",
+      "filesAndLinks": "Dateien und Links",
+      "addPeople": "Personen hinzufügen",
+      "notifications": "Benachrichtigungen",
+      "muted": "Stummgeschaltet",
+      "allNewMessages": "Alle neuen Nachrichten",
+      "turnOn": "Aktivieren",
+      "mute": "Stummschalten",
+      "searchMembers": "Mitglieder suchen",
+      "noMembers": "Keine Mitglieder entsprechen der Suche.",
+      "findPeople": "Personen zum Hinzufügen finden",
+      "findPeoplePlaceholder": "Name oder E-Mail-Adresse eingeben",
+      "peopleAlreadyAdded": "Personen, die bereits an dieser Unterhaltung teilnehmen, werden nicht angezeigt.",
+      "noPeopleAvailable": "Keine Personen zum Hinzufügen verfügbar.",
+      "title": "Unterhaltungsinfo",
+      "memberTitle": "Mitglieder ({{count}})",
+      "dmCannotAdd": "Direktnachrichten sind für zwei Teilnehmende. Erstelle einen Kanal, um weitere Personen hinzuzufügen.",
+      "askOwnerToAdd": "Bitte eine Teaminhaberin oder einen Teaminhaber, Personen zu dieser Unterhaltung hinzuzufügen.",
+      "browsingDetail": "Durchsucht gerade — sieh dir an, was der Agent sieht",
+      "browserDetail": "Der eigene Browser — beobachte die Arbeit oder mach dort weiter, wo sie aufgehört hat.",
+      "conversationsDetail": "Alle Unterhaltungen mit diesem Agenten, die du sehen kannst — wechsle zwischen ihnen oder starte eine neue."
     }
   }
 }

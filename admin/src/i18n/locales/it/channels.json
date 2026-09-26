@@ -391,6 +391,33 @@
       "emptyTitle": "Nessuna automazione in questo canale",
       "emptyDescription": "Qui vengono mostrate le installazioni workflow associate al canale, l’ultima esecuzione e un pulsante per avviarle per i membri del canale.",
       "workflow": "Workflow"
+    },
+    "info": {
+      "groupConversation": "Conversazione di gruppo",
+      "directMessage": "Messaggio diretto",
+      "memberCount": "Membri ({{count}})",
+      "members": "Membri",
+      "messages": "Messaggi",
+      "filesAndLinks": "File e link",
+      "addPeople": "Aggiungi persone",
+      "notifications": "Notifiche",
+      "muted": "Disattivate",
+      "allNewMessages": "Tutti i nuovi messaggi",
+      "turnOn": "Attiva",
+      "mute": "Disattiva audio",
+      "searchMembers": "Cerca membri",
+      "noMembers": "Nessun membro corrisponde alla ricerca.",
+      "findPeople": "Trova persone da aggiungere",
+      "findPeoplePlaceholder": "Inserisci un nome o un indirizzo email",
+      "peopleAlreadyAdded": "Le persone già presenti in questa conversazione non vengono mostrate.",
+      "noPeopleAvailable": "Non ci sono persone disponibili da aggiungere.",
+      "title": "Info conversazione",
+      "memberTitle": "Membri ({{count}})",
+      "dmCannotAdd": "I messaggi diretti sono tra due partecipanti. Crea un canale per includere altre persone.",
+      "askOwnerToAdd": "Chiedi a un proprietario del team di aggiungere persone a questa conversazione.",
+      "browsingDetail": "Sta navigando — guarda cosa vede",
+      "browserDetail": "Il suo browser — osserva il lavoro o riprendi da dove si era fermato.",
+      "conversationsDetail": "Tutte le conversazioni con questo agente che puoi vedere — passa da una all’altra o iniziane una nuova."
     }
   }
 }

@@ -391,6 +391,33 @@
       "emptyTitle": "No hay automatizaciones en este canal",
       "emptyDescription": "Aquí aparecen las instalaciones de flujos de trabajo vinculadas al canal, su última ejecución y un botón para iniciarlas disponible para los miembros del canal.",
       "workflow": "Flujo de trabajo"
+    },
+    "info": {
+      "groupConversation": "Conversación de grupo",
+      "directMessage": "Mensaje directo",
+      "memberCount": "Miembros ({{count}})",
+      "members": "Miembros",
+      "messages": "Mensajes",
+      "filesAndLinks": "Archivos y enlaces",
+      "addPeople": "Añadir personas",
+      "notifications": "Notificaciones",
+      "muted": "Silenciadas",
+      "allNewMessages": "Todos los mensajes nuevos",
+      "turnOn": "Activar",
+      "mute": "Silenciar",
+      "searchMembers": "Buscar miembros",
+      "noMembers": "Ningún miembro coincide con la búsqueda.",
+      "findPeople": "Buscar personas para añadir",
+      "findPeoplePlaceholder": "Escribe un nombre o una dirección de correo electrónico",
+      "peopleAlreadyAdded": "Las personas que ya participan en esta conversación no se muestran.",
+      "noPeopleAvailable": "No hay personas disponibles para añadir.",
+      "title": "Información de la conversación",
+      "memberTitle": "Miembros ({{count}})",
+      "dmCannotAdd": "Los mensajes directos son entre dos participantes. Crea un canal para incluir a más personas.",
+      "askOwnerToAdd": "Pide a un propietario del equipo que añada personas a esta conversación.",
+      "browsingDetail": "Navegando ahora — mira lo que ve",
+      "browserDetail": "Su propio navegador: observa su actividad o retómala donde se quedó.",
+      "conversationsDetail": "Todas las conversaciones con este agente que puedes ver: cambia entre ellas o inicia otra."
     }
   }
 }

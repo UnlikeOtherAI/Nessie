@@ -391,6 +391,33 @@
       "emptyTitle": "V tomto kanálu nejsou žádné automatizace",
       "emptyDescription": "Zde se zobrazují instalace workflow přiřazené k tomuto kanálu, jejich poslední běh a tlačítko pro okamžité spuštění pro členy kanálu.",
       "workflow": "Workflow"
+    },
+    "info": {
+      "groupConversation": "Skupinová konverzace",
+      "directMessage": "Přímá zpráva",
+      "memberCount": "Členové ({{count}})",
+      "members": "Členové",
+      "messages": "Zprávy",
+      "filesAndLinks": "Soubory a odkazy",
+      "addPeople": "Přidat lidi",
+      "notifications": "Oznámení",
+      "muted": "Ztlumeno",
+      "allNewMessages": "Všechny nové zprávy",
+      "turnOn": "Zapnout",
+      "mute": "Ztlumit",
+      "searchMembers": "Hledat členy",
+      "noMembers": "Tomuto hledání neodpovídají žádní členové.",
+      "findPeople": "Najít lidi k přidání",
+      "findPeoplePlaceholder": "Zadejte jméno nebo e-mailovou adresu",
+      "peopleAlreadyAdded": "Lidé, kteří už v této konverzaci jsou, se nezobrazují.",
+      "noPeopleAvailable": "Nejsou k dispozici žádní lidé k přidání.",
+      "title": "Informace o konverzaci",
+      "memberTitle": "Členové ({{count}})",
+      "dmCannotAdd": "Přímé zprávy jsou mezi dvěma účastníky. Pro přidání dalších lidí založte kanál.",
+      "askOwnerToAdd": "Požádejte vlastníka týmu, aby do této konverzace přidal další lidi.",
+      "browsingDetail": "Právě prohlíží — sledujte, co vidí",
+      "browserDetail": "Vlastní prohlížeč — sledujte jeho práci nebo pokračujte tam, kde skončil.",
+      "conversationsDetail": "Všechny konverzace s tímto agentem, které můžete zobrazit — přepínejte mezi nimi nebo založte další."
     }
   }
 }

@@ -391,6 +391,33 @@
       "emptyTitle": "No automations on this channel",
       "emptyDescription": "Workflow installations bound to this channel show up here, with their last run and a run-now button for channel members.",
       "workflow": "Workflow"
+    },
+    "info": {
+      "groupConversation": "Group conversation",
+      "directMessage": "Direct message",
+      "memberCount": "Members ({{count}})",
+      "members": "Members",
+      "messages": "Messages",
+      "filesAndLinks": "Files and links",
+      "addPeople": "Add people",
+      "notifications": "Notifications",
+      "muted": "Muted",
+      "allNewMessages": "All new messages",
+      "turnOn": "Turn on",
+      "mute": "Mute",
+      "searchMembers": "Search members",
+      "noMembers": "No members match that search.",
+      "findPeople": "Find people to add",
+      "findPeoplePlaceholder": "Type a name or email address",
+      "peopleAlreadyAdded": "People already in this conversation are not shown.",
+      "noPeopleAvailable": "No people are available to add.",
+      "title": "Conversation info",
+      "memberTitle": "Members ({{count}})",
+      "dmCannotAdd": "Direct messages are between two participants. Start a channel to include more people.",
+      "askOwnerToAdd": "Ask a team owner to add people to this conversation.",
+      "browsingDetail": "Browsing now — watch what it sees",
+      "browserDetail": "Its own browser — watch it work, or pick up where it left off.",
+      "conversationsDetail": "Every conversation with this agent you can see — switch between them or start another."
     }
   }
 }

@@ -391,6 +391,33 @@
       "emptyTitle": "Aucune automatisation dans ce canal",
       "emptyDescription": "Les workflows liés à ce canal apparaissent ici, avec leur dernière exécution et un bouton de lancement pour les membres du canal.",
       "workflow": "Workflow"
+    },
+    "info": {
+      "groupConversation": "Conversation de groupe",
+      "directMessage": "Message direct",
+      "memberCount": "Membres ({{count}})",
+      "members": "Membres",
+      "messages": "Messages",
+      "filesAndLinks": "Fichiers et liens",
+      "addPeople": "Ajouter des personnes",
+      "notifications": "Notifications",
+      "muted": "En sourdine",
+      "allNewMessages": "Tous les nouveaux messages",
+      "turnOn": "Activer",
+      "mute": "Mettre en sourdine",
+      "searchMembers": "Rechercher des membres",
+      "noMembers": "Aucun membre ne correspond à cette recherche.",
+      "findPeople": "Trouver des personnes à ajouter",
+      "findPeoplePlaceholder": "Saisissez un nom ou une adresse e-mail",
+      "peopleAlreadyAdded": "Les personnes déjà présentes dans cette conversation ne sont pas affichées.",
+      "noPeopleAvailable": "Aucune personne disponible à ajouter.",
+      "title": "Infos sur la conversation",
+      "memberTitle": "Membres ({{count}})",
+      "dmCannotAdd": "Les messages directs sont limités à deux participants. Créez un canal pour ajouter d’autres personnes.",
+      "askOwnerToAdd": "Demandez à un propriétaire d’équipe d’ajouter des personnes à cette conversation.",
+      "browsingDetail": "Navigation en cours — observez ce qu’il voit",
+      "browserDetail": "Son propre navigateur — observez son activité ou reprenez là où il en était.",
+      "conversationsDetail": "Toutes les conversations avec cet agent que vous pouvez voir — passez de l’une à l’autre ou démarrez-en une nouvelle."
     }
   }
 }

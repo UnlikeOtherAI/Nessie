@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { ChannelRecord, MeResponse, UserRecord } from '../../../lib/api-client'
 import { getConversationRoute } from '../../../lib/conversation-navigation'
@@ -80,6 +81,7 @@ const ChatToolDisclosures = ({
   threadId: string | null
   tools: readonly ChatTool[]
 }) => {
+  const { t } = useTranslation('channels')
   const sessions = useThreadBrowserSessions(threadId, { refetchInterval: RAIL_POLL_MS })
   const browsing = (sessions.data?.sessions.length ?? 0) > 0
   return (
@@ -88,11 +90,11 @@ const ChatToolDisclosures = ({
         <Disclosure
           detail={
             tool.id === 'browser' && browsing
-              ? 'Browsing now — watch what it sees'
-              : tool.description
+              ? t('child.info.browsingDetail')
+              : t(tool.id === 'browser' ? 'child.info.browserDetail' : 'child.info.conversationsDetail')
           }
           key={tool.id}
-          label={tool.label}
+          label={t(tool.id === 'browser' ? 'child.toolRail.browser' : 'child.toolRail.conversations')}
           onClick={() => onOpenTool(tool.id)}
         />
       ))}
@@ -125,9 +127,10 @@ const ConversationOverview = ({
   onOpenTool: (tool: ChatToolId) => void
   threadId: string | null
 }) => {
+  const { t } = useTranslation('channels')
   const setMute = useSetChannelMute()
   const isGroup = Boolean(activeChannel.isGroupDm || memberCount > 2)
-  const heading = isGroup ? 'Group conversation' : 'Direct message'
+  const heading = t(isGroup ? 'child.info.groupConversation' : 'child.info.directMessage')
   const participantPreview = channelUsers
     .filter((person) => person.id !== activeChannel.dmUserId)
     .slice(0, 3)
@@ -145,7 +148,7 @@ const ConversationOverview = ({
           size={64}
         />
         <p className="mt-3 text-sm font-semibold text-[color:var(--tx)]">{activeChannel.label}</p>
-        <p className="mt-1 text-xs text-[color:var(--tx3)]">{heading} · {memberCount} member{memberCount === 1 ? '' : 's'}</p>
+        <p className="mt-1 text-xs text-[color:var(--tx3)]">{heading} · {t('child.info.memberCount', { count: memberCount })}</p>
         {participantPreview.length > 0 ? (
           <div className="mt-3 flex justify-center -space-x-2">
             {participantPreview.map((person) => (
@@ -172,17 +175,17 @@ const ConversationOverview = ({
             tools={agentTools}
           />
         ) : null}
-        <Disclosure label="Messages" onClick={onOpenMessages} />
-        <Disclosure label="Files and links" onClick={onOpenFiles} />
+        <Disclosure label={t('child.info.messages')} onClick={onOpenMessages} />
+        <Disclosure label={t('child.info.filesAndLinks')} onClick={onOpenFiles} />
       </div>
 
       <div className="mt-3 border-y border-[color:var(--sep)]">
         <Disclosure
-          detail={`${memberCount} member${memberCount === 1 ? '' : 's'}`}
-          label="Members"
+          detail={t('child.info.memberCount', { count: memberCount })}
+          label={t('child.info.members')}
           onClick={onOpenMembers}
         />
-        {canAddPeople ? <Disclosure label="Add people" onClick={onOpenAddPeople} /> : null}
+        {canAddPeople ? <Disclosure label={t('child.info.addPeople')} onClick={onOpenAddPeople} /> : null}
         <button
           className="flex w-full items-center justify-between px-5 py-4 text-left transition-colors hover:bg-[color:var(--overlay-weak)]"
           disabled={setMute.isPending}
@@ -190,13 +193,13 @@ const ConversationOverview = ({
           type="button"
         >
           <span>
-            <span className="block text-sm font-semibold text-[color:var(--tx)]">Notifications</span>
+            <span className="block text-sm font-semibold text-[color:var(--tx)]">{t('child.info.notifications')}</span>
             <span className="mt-0.5 block text-xs text-[color:var(--tx3)]">
-              {activeChannel.muted ? 'Muted' : 'All new messages'}
+              {activeChannel.muted ? t('child.info.muted') : t('child.info.allNewMessages')}
             </span>
           </span>
           <span className="text-xs font-semibold text-[color:var(--accent)]">
-            {activeChannel.muted ? 'Turn on' : 'Mute'}
+            {activeChannel.muted ? t('child.info.turnOn') : t('child.info.mute')}
           </span>
         </button>
       </div>
@@ -213,6 +216,7 @@ const ConversationMembers = ({
   channelUsers: UserRecord[]
   currentUserId: string
 }) => {
+  const { t } = useTranslation('channels')
   const removeMember = useRemoveChannelMember()
   const [query, setQuery] = useState('')
   const visibleMembers = useMemo(
@@ -224,10 +228,10 @@ const ConversationMembers = ({
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="border-b border-[color:var(--sep)] px-5 py-3">
         <input
-          aria-label="Search members"
+          aria-label={t('child.info.searchMembers')}
           className="w-full rounded-xl border border-[color:var(--border-strong)] bg-[color:var(--overlay-weak)] px-3 py-2.5 text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)] focus:border-[color:var(--accent)]"
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search members"
+          placeholder={t('child.info.searchMembers')}
           value={query}
         />
       </div>
@@ -238,13 +242,13 @@ const ConversationMembers = ({
             currentUserId={currentUserId}
             key={person.id}
             onRemove={(userId) => removeMember.mutate({ channelId: activeChannel.id, userId })}
-            removeLabel="Remove from channel"
+            removeLabel={t('members.remove')}
             removePending={removeMember.isPending}
             user={person}
           />
         ))}
         {visibleMembers.length === 0 ? (
-          <p className="px-3 py-8 text-center text-sm text-[color:var(--tx3)]">No members match that search.</p>
+          <p className="px-3 py-8 text-center text-sm text-[color:var(--tx3)]">{t('child.info.noMembers')}</p>
         ) : null}
       </div>
     </div>
@@ -262,6 +266,7 @@ const AddConversationMembers = ({
   channelUsers: UserRecord[]
   currentUserId: string
 }) => {
+  const { t } = useTranslation('channels')
   const addMember = useAddChannelMember()
   const [query, setQuery] = useState('')
   const memberIds = useMemo(() => new Set(channelUsers.map((person) => person.id)), [channelUsers])
@@ -277,14 +282,14 @@ const AddConversationMembers = ({
       <div className="border-b border-[color:var(--sep)] px-5 py-3">
         <input
           autoFocus
-          aria-label="Find people to add"
+          aria-label={t('child.info.findPeople')}
           className="w-full rounded-xl border border-[color:var(--border-strong)] bg-[color:var(--overlay-weak)] px-3 py-2.5 text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)] focus:border-[color:var(--accent)]"
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Type a name or email address"
+          placeholder={t('child.info.findPeoplePlaceholder')}
           value={query}
         />
       </div>
-      <p className="px-5 py-3 text-xs text-[color:var(--tx3)]">People already in this conversation are not shown.</p>
+      <p className="px-5 py-3 text-xs text-[color:var(--tx3)]">{t('child.info.peopleAlreadyAdded')}</p>
       <div className="px-3 pb-4">
         {people.map((person) => (
           <AvailableUserRow
@@ -295,7 +300,7 @@ const AddConversationMembers = ({
           />
         ))}
         {people.length === 0 ? (
-          <p className="px-3 py-8 text-center text-sm text-[color:var(--tx3)]">No people are available to add.</p>
+          <p className="px-3 py-8 text-center text-sm text-[color:var(--tx3)]">{t('child.info.noPeopleAvailable')}</p>
         ) : null}
       </div>
     </div>
@@ -320,6 +325,7 @@ export const ConversationInfoFlow = ({
   me,
   onOpenTool,
 }: ConversationInfoFlowProps) => {
+  const { t } = useTranslation('channels')
   const location = useLocation()
   const navigate = useNavigate()
   const phoneLayout = usePhoneLayout()
@@ -334,10 +340,10 @@ export const ConversationInfoFlow = ({
   const members = channelUsers
   const memberCount = members.length
   const title = route.step === 'info'
-    ? 'Conversation info'
+    ? t('child.info.title')
     : route.step === 'members'
-      ? `${memberCount} member${memberCount === 1 ? '' : 's'}`
-      : 'Add people'
+      ? t('child.info.memberTitle', { count: memberCount })
+      : t('child.info.addPeople')
   const mobileClassName = phoneLayout
     // The bottom pad is the iPhone shell's tab-bar clearance where that shell
     // publishes one: this overlay is outside `.phone-navigation-page`, so the
@@ -348,7 +354,7 @@ export const ConversationInfoFlow = ({
   const actions: PageHeaderAction[] | undefined = route.step === 'members' && canManageMembers
     ? [{
         id: 'add-people',
-        label: 'Add',
+        label: t('members.add'),
         onSelect: () => void navigate(`/channels/${activeChannel.id}/info/members/add`),
         priority: 100,
       }]
@@ -394,8 +400,8 @@ export const ConversationInfoFlow = ({
       {route.step === 'add-members' && !canManageMembers ? (
         <p className="px-6 py-8 text-center text-sm text-[color:var(--tx3)]">
           {activeChannel.type === 'dm'
-            ? 'Direct messages are between two participants. Start a channel to include more people.'
-            : 'Ask a team owner to add people to this conversation.'}
+            ? t('child.info.dmCannotAdd')
+            : t('child.info.askOwnerToAdd')}
         </p>
       ) : null}
     </section>
