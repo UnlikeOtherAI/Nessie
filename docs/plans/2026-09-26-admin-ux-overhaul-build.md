@@ -538,7 +538,73 @@ _(the phase writes its task list and as-built notes here)_
 
 ### Phase 3: Overview, the roster, Security
 
-_(the phase writes its task list and as-built notes here)_
+Plan, in build order; each step lands with its tests and docs.
+
+1. **Security › Audit log.** `GET /api/audit-log/export` (owner): the
+   list's filters, every matching entry as CSV, newest first, streamed in
+   keyset pages, cells that a spreadsheet would evaluate written as text; the
+   export records `audit.exported` with its filters. `GET /api/audit-log/verify`
+   adds `unchainedCount` (entries older than the hash chain, which cannot be
+   checked), so the answer is a true sentence ("All 12,431 entries verified,
+   none altered"). `/admin/security` gets its own registry row declaring the
+   filter state (`actor`, `action`, `outcome`, `from`, `to`, `team`,
+   `project`); the audit tab gains those filters, Export and Verify integrity.
+   New route `/admin/security/audit/:entryId` (depth 2, parent Security): one
+   entry, with doorways to the same actor's and action's entries. Tests:
+   `api/test/audit-log-export.test.ts`, the conformance audit test, admin
+   unit tests for the filter address and the verify sentence.
+2. **The people read model.** `GET /api/people[?team=<id>]`
+   (`api/src/routes/people.ts`): on a bound organisation the provider's roster
+   (the organisation's behind the administration standing; a team's with the
+   caller's subject assertion, so the provider authorises that exact team),
+   each person with their teams and role, the teams read from the
+   organisation's per-team rosters and held in process memory only, keyed by
+   organisation, subject, active team and credential epoch, for 30 seconds,
+   dropped on every roster write (the cache machinery is extracted from
+   `uoa-identity-directory.ts` and shared, not copied); on an unbound
+   install the local rows. `/api/team/members*` and `/api/team/invitations*`
+   take `?team=<id>` naming the team a read or write targets (absent: the
+   working team, as before; unknown: 404), and their audit rows name it.
+3. **People.** `/admin/people` reads the model at both scopes: an
+   organisation administrator can open every team, anybody else their own,
+   and the "listed while you are working in it" notice is gone. The provider
+   roster shows each person's teams; a team's roster and every action on it
+   target the team the address names. On a local install the local roster
+   renders both scopes (organisation: role, deactivate, Add member; a team:
+   its people and Add to team), replacing `LocalTeamRoster` /
+   `TeamMembersSection`, which read the provider relay and could only fail.
+4. **"Still using this model."** `GET /api/agents/pinned?provider=&model=[&teamId=]`
+   (`api/src/routes/agents-pinned.ts`): the caller's entitled agents on one
+   pair, excluding deleted agents and subtask helpers, which the catalogue's
+   `agentCount` stops counting so the two agree. On AI models every count is a
+   button, a disabled row's reading "Still used by N agents", opening those
+   agents in a dialog that says how many more are private to their owners.
+5. **Admin › Overview** at `/admin/overview`, the Organisation group's first
+   row (owner, admin or the administration standing); `/admin` still lands on
+   Agents. `GET /api/admin/overview` returns counts only, each item under the
+   gate of the page it opens and omitted when it is not the caller's:
+   invitations not yet accepted (the provider feed, administration standing),
+   schedules stopped (owner), work waiting for an offline computer with
+   standing access (owner, per trigger), shared mailboxes needing a new
+   sign-in (per team) and the company cloud browser needing attention (owner
+   or admin), automatic team access rules needing re-authorisation
+   (administration standing), models turned off but still used (organisation:
+   owner; per team: owner or admin). An item that could not be checked is
+   named, never read as zero. Credits come from the existing billing reads
+   (zero or debt, automatic top-up needing action), for billing managers.
+   Tests: `api/test/admin-overview.test.ts`, admin unit tests for the
+   sentences and doorways.
+6. **Docs and suites.** `team-model.md`, `audit-trail-spec.md`,
+   `scoped-settings.md`, `inference-model-availability.md`,
+   `docs/testing/member-management-e2e.md`, the navigation tables; the
+   member-management fixture targets a named team; screenshots of every
+   changed screen at 1280 and 390 px.
+
+Left as today, with the reason: team administrators without organisation
+standing do not see Overview (§12.2 is owed); a local install still has no
+route to remove somebody from a team or change a team role, so its team
+roster offers Add to team only; "Accounts needing sign-in" counts the company
+connections that exist today until phase 4's accounts read replaces them.
 
 ### Phase 4: accounts
 
