@@ -86,9 +86,9 @@ The direct Android APK follows the equivalent safe native flow: on startup it
 checks `latest.json` by Android `versionCode`, then offers the same three
 choices. **Update** opens the official signed APK in Android's package installer,
 where Android asks the person to confirm the replacement. It never silently
-installs a package. The `device` and `preview` EAS profiles set
-`EXPO_PUBLIC_RELEASE_CHANNEL=direct`; the `production` store profile explicitly
-sets it to `store`, so Google Play and the App Store alone handle their updates.
+installs a package. The direct Android build sets
+`EXPO_PUBLIC_RELEASE_CHANNEL=direct`; a future Play build must set it to
+`store`, so Google Play handles its updates.
 The Mac App Store build also omits the `direct-updater` Cargo feature and its
 native commands, not merely the popup.
 
@@ -101,7 +101,10 @@ needs:
 
 | Name | Type | Purpose |
 | --- | --- | --- |
-| `EXPO_TOKEN` | secret | Expo token for the linked `unlikeotherai/nessie` EAS project |
+| `NESSIE_ANDROID_KEYSTORE_BASE64` | environment secret | Base64 of the dedicated Android app signing keystore |
+| `NESSIE_ANDROID_KEYSTORE_PASSWORD` | environment secret | Keystore password |
+| `NESSIE_ANDROID_KEY_ALIAS` | environment secret | App signing key alias |
+| `NESSIE_ANDROID_KEY_PASSWORD` | environment secret | App signing key password |
 | `TAURI_SIGNING_PRIVATE_KEY` | repository secret | Persistent key for signing direct desktop update artifacts |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | repository secret | Password protecting the Tauri updater private key |
 
@@ -133,9 +136,14 @@ temporary path with Developer ID signing, hardened runtime, notarization,
 stapling, and Gatekeeper verification as soon as a suitable identity is
 available.
 
-EAS retains the Android signing keystore for the `device` profile. Keep that
-keystore under the owning Expo account; replacing it would prevent updates from
-installing over prior Android builds.
+The Android build runs Expo prebuild and Gradle on the GitHub runner. It does
+not use Expo Cloud or an Expo account. The signing key is backed up outside Git
+and supplied to the runner by the protected environment. The workflow checks
+the certificate fingerprint recorded in [the signing standard](standards/build-and-release.md#android-signing).
+The new Android package is `com.unlikeotherai.nessie`; old `com.km.nessie`
+installs are a separate app and cannot be updated in place. Play distribution
+is pending; its app signing key must be set to this same key before the first
+Play release so GitHub APK and Play installs can update each other.
 
 ## Versioning
 

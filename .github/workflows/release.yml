@@ -68,7 +68,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: direct-download-release
     env:
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      NESSIE_ANDROID_KEYSTORE_BASE64: ${{ secrets.NESSIE_ANDROID_KEYSTORE_BASE64 }}
+      NESSIE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.NESSIE_ANDROID_KEYSTORE_PASSWORD }}
+      NESSIE_ANDROID_KEY_ALIAS: ${{ secrets.NESSIE_ANDROID_KEY_ALIAS }}
+      NESSIE_ANDROID_KEY_PASSWORD: ${{ secrets.NESSIE_ANDROID_KEY_PASSWORD }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
@@ -76,7 +79,10 @@ jobs:
         run: |
           set -euo pipefail
           required=(
-            EXPO_TOKEN
+            NESSIE_ANDROID_KEYSTORE_BASE64
+            NESSIE_ANDROID_KEYSTORE_PASSWORD
+            NESSIE_ANDROID_KEY_ALIAS
+            NESSIE_ANDROID_KEY_PASSWORD
             TAURI_SIGNING_PRIVATE_KEY
             TAURI_SIGNING_PRIVATE_KEY_PASSWORD
           )
@@ -439,7 +445,12 @@ jobs:
     runs-on: ubuntu-latest
     environment: direct-download-release
     env:
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      NESSIE_ANDROID_KEYSTORE_BASE64: ${{ secrets.NESSIE_ANDROID_KEYSTORE_BASE64 }}
+      NESSIE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.NESSIE_ANDROID_KEYSTORE_PASSWORD }}
+      NESSIE_ANDROID_KEY_ALIAS: ${{ secrets.NESSIE_ANDROID_KEY_ALIAS }}
+      NESSIE_ANDROID_KEY_PASSWORD: ${{ secrets.NESSIE_ANDROID_KEY_PASSWORD }}
+      EXPO_PUBLIC_ADMIN_URL: https://app.nessie.works
+      EXPO_PUBLIC_RELEASE_CHANNEL: direct
     steps:
       - name: Checkout the tagged source
         uses: actions/checkout@v4
@@ -453,26 +464,25 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Setup Expo and EAS
-        uses: expo/expo-github-action@v8
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
-          eas-version: latest
-          token: ${{ env.EXPO_TOKEN }}
+          distribution: temurin
+          java-version: '17'
 
       - name: Install dependencies
         uses: ./.github/actions/install-dependencies
         with:
           deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
-      - name: Build a signed Android APK with EAS
-        working-directory: mobile
+      - name: Build the signed Android APK locally
         run: |
           set -euo pipefail
-          test -n "$EXPO_TOKEN"
-          pnpm exec expo config --type public
-          eas build --platform android --profile device --non-interactive --wait --json > ../android-build.json
-          artifact_url="$(jq -er '.[0].artifacts.buildUrl' ../android-build.json)"
-          curl --fail --location --retry 3 --output ../Nessie-Android.apk "$artifact_url"
+          keystore="$RUNNER_TEMP/nessie-android-signing.jks"
+          printf '%s' "$NESSIE_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          echo "NESSIE_ANDROID_KEYSTORE_PATH=$keystore" >> "$GITHUB_ENV"
+          NESSIE_ANDROID_KEYSTORE_PATH="$keystore" pnpm --dir mobile build:device:android
+          cp mobile/android/app/build/outputs/apk/release/app-release.apk Nessie-Android.apk
 
       - name: Verify the APK and launch it on an emulator
         uses: reactivecircus/android-emulator-runner@v2
@@ -486,10 +496,12 @@ jobs:
             apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
             test -n "$apksigner"
             "$apksigner" verify --verbose --print-certs Nessie-Android.apk
+            signer_digest="$("$apksigner" verify --print-certs Nessie-Android.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+            test "${signer_digest,,}" = 'b6232d205d9b191f6a9474cf899183aa313d1873e89c1ddc273a1306ff088870'
             adb install -r Nessie-Android.apk
-            adb shell monkey -p com.km.nessie 1
+            adb shell monkey -p com.unlikeotherai.nessie 1
             sleep 10
-            adb shell pidof com.km.nessie
+            adb shell pidof com.unlikeotherai.nessie
 
       - name: Upload the Android download
         uses: actions/upload-artifact@v4
