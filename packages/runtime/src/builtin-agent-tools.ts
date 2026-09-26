@@ -1,4 +1,5 @@
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
+import { AGENT_AVATAR_TOOL_DEFINITIONS } from './builtin-agent-avatar-tools.js'
 
 /**
  * Agent administration the personal assistant can do because its owner can do
@@ -83,10 +84,12 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'and tool policy — the same record the Agent Designer writes. The agent '
       + 'gets an owner-only home conversation when private; a team agent starts '
       + 'in no channel and an owner puts it to work with agent_bind_channel. '
-      + 'Any member can do this. Explicit-grant tools (research, DeepWater) cannot '
-      + 'be granted here; they are owner controls. The result links the new agent '
+      + 'Any member can do this. Explicit-grant tools (browser, research, '
+      + 'DeepWater, mailbox) are not toolPolicy keys: create the agent, then '
+      + 'grant each one with agent_tool_access_set. The result links the new agent '
       + 'as [Name](/agents/<agentId>): the last path segment of that link is the '
-      + 'agentId agent_bind_channel, agent_update and agent_trigger_create take.',
+      + 'agentId agent_bind_channel, agent_update, agent_tool_access_set and '
+      + 'agent_trigger_create take.',
     parameters: {
       type: 'object',
       properties: {
@@ -102,11 +105,20 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
         model: {
           type: 'string',
           description:
-            'Model id from the deployment catalogue. Must be sent together with provider.',
+            'Model id from the models listed in your catalogue — the deployment catalogue '
+            + 'or one of the person\'s own linked plans. Must be sent together with provider.',
         },
         provider: {
           type: 'string',
-          description: 'Provider/service id for the model. Must be sent together with model.',
+          description:
+            'Provider/service id for the model, exactly as the catalogue writes it — a '
+            + 'person\'s own plan is subscription/<key>. Must be sent together with model.',
+        },
+        modelSubscriptionId: {
+          type: 'string',
+          description:
+            'Only when the person has two accounts linked at one provider: the '
+            + 'modelSubscriptionId of the one this agent should spend, from the catalogue.',
         },
         effort: {
           type: 'string',
@@ -134,7 +146,8 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
           type: 'object',
           description:
             'Optional per-tool allow/deny map, e.g. {"web_search": true}. '
-            + 'Explicit-grant tools are rejected.',
+            + 'Explicit-grant tools are rejected here; grant them with '
+            + 'agent_tool_access_set once the agent exists.',
         },
       },
       required: ['name'],
@@ -181,8 +194,9 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'organisation owners); a team-owned one is editable by anyone who can '
       + 'reach it. Visibility cannot be changed after creation, explicit-grant '
       + 'tools (research, DeepWater, browser, mailbox) are refused here and '
-      + 'granted from the owner surfaces, and Nessie-managed agents cannot be '
-      + 'edited at all. When a change is refused, say who can make it.',
+      + 'granted one at a time with agent_tool_access_set, and Nessie-managed '
+      + 'agents cannot be edited at all. When a change is refused, say who can '
+      + 'make it.',
     parameters: {
       type: 'object',
       properties: {
@@ -195,15 +209,22 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
         },
         model: {
           type: 'string',
-          description: 'Model id from the catalogue. Send together with provider.',
+          description:
+            'Model id from the models listed in your catalogue — the deployment catalogue '
+            + 'or one of the owner\'s own linked plans. Send together with provider.',
         },
         provider: {
           type: 'string',
-          description: 'Provider/service id. Send together with model.',
+          description:
+            'Provider/service id, exactly as the catalogue writes it — a person\'s own '
+            + 'plan is subscription/<key>. Send together with model.',
         },
         modelSubscriptionId: {
           type: 'string',
-          description: 'Optional owner-owned personal model subscription id. Send null to use the selected model without a personal subscription.',
+          description:
+            'Only when the owner has two accounts linked at one provider: the '
+            + 'modelSubscriptionId of the one this agent should spend, from the catalogue. '
+            + 'Send null to use the selected model without a personal subscription.',
         },
         localInferenceBindingId: {
           type: 'string',
@@ -288,74 +309,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   { id: 'agent_tool_access_inspect', category: 'agents', summary: 'Inspect protected tool access for an agent.', label: 'Inspect Agent Protected Tool Access', personalAssistantOnly: true, identityDelegatedOnly: true, description: 'Shows protected builtin and active connector tools, and the project_operator capability with what it lets an agent do, each with its exact registry id and whether the target agent currently has that grant.', parameters: { type: 'object', properties: { agentId: { type: 'string' } }, required: ['agentId'] }, safe: true },
   { id: 'agent_deepwater_access_set', category: 'agents', summary: 'Grant or revoke the complete DeepWater bundle.', label: 'Set Agent DeepWater Access', personalAssistantOnly: true, identityDelegatedOnly: true, description: 'Moves the whole ready DeepWater bundle for one agent and team in a single call. This is a convenience, not the only path: agent_tool_access_set grants or revokes an individual DeepWater tool, and revoking one is refused while another still depends on it.', parameters: { type: 'object', properties: { agentId: { type: 'string' }, teamId: { type: 'string' }, enabled: { type: 'boolean' } }, required: ['agentId', 'teamId', 'enabled'] }, safe: false },
-  {
-    id: 'agent_avatar_generate',
-    category: 'agents',
-    summary: 'Draw an agent a new portrait in a named style.',
-    label: 'Generate Agent Avatar',
-    personalAssistantOnly: true,
-    identityDelegatedOnly: true,
-    description:
-      'Generate a portrait for an agent and set it, the same billed generation '
-      + 'the avatar dialog runs. Every agent already gets one when it is '
-      + 'created, so this is for a person who wants a different look. `style` '
-      + 'is the look their portraits are drawn in — "cartoon", "photoreal", '
-      + '"flat vector", whatever words they used — and is REMEMBERED as their '
-      + 'preference for every portrait after this one, so pass it only when '
-      + 'they have said what they like; omit it to use the style they already '
-      + 'chose. `instructions` describe this one picture ("give her a hard '
-      + 'hat") and are forgotten afterwards. Follows the same edit authority as '
-      + 'agent_update.',
-    parameters: {
-      type: 'object',
-      properties: {
-        agentId: { type: 'string', description: 'The agent to draw.' },
-        style: {
-          type: 'string',
-          description:
-            'The durable look, in the person’s own words. Remembered as their '
-            + 'preference. Omit to keep the style they already chose.',
-        },
-        instructions: {
-          type: 'string',
-          description:
-            'One-off guidance for this portrait only. Never remembered.',
-        },
-      },
-      required: ['agentId'],
-    },
-    safe: false,
-  },
-  {
-    id: 'agent_avatar_update',
-    category: 'agents',
-    summary: 'Set or clear an agent’s portrait.',
-    label: 'Update Agent Avatar',
-    personalAssistantOnly: true,
-    identityDelegatedOnly: true,
-    description:
-      'Attach an already-stored image as an agent’s portrait, or clear the one '
-      + 'it has. Follows the same edit authority as agent_update. Newly created '
-      + 'agents already get a generated portrait, so this is for an image the '
-      + 'person supplied; to draw a new one instead, use agent_avatar_generate.',
-    parameters: {
-      type: 'object',
-      properties: {
-        agentId: { type: 'string', description: 'The agent whose portrait changes.' },
-        avatarAttachmentId: {
-          type: 'string',
-          description:
-            'Attachment id of the image to use. Send null to clear the portrait.',
-        },
-        avatarBackgroundColor: {
-          type: 'string',
-          description: 'Optional tile colour behind the portrait, as a hex value.',
-        },
-      },
-      required: ['agentId'],
-    },
-    safe: false,
-  },
+  ...AGENT_AVATAR_TOOL_DEFINITIONS,
   {
     id: 'agent_bind_channel',
     category: 'agents',

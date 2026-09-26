@@ -4,7 +4,6 @@ import {
   faClockRotateLeft,
   faDownload,
   faEllipsis,
-  faPaperclip,
   faPen,
   faTable,
   faUpload,
@@ -50,7 +49,6 @@ type FileNodeViewerProps = {
   onOpenAsSpreadsheet?: () => void
   onSaveMarkdown?: (markdown: string, baseVersionId: string) => Promise<void>
   onUploadVersion: () => void
-  onToggleAttachments: () => void
 }
 
 export const FileNodeViewer = ({
@@ -61,7 +59,6 @@ export const FileNodeViewer = ({
   onOpenHistory,
   onSaveMarkdown,
   onUploadVersion,
-  onToggleAttachments,
 }: FileNodeViewerProps) => {
   const navigate = useNavigate()
   const { token } = useAuthSession()
@@ -100,16 +97,7 @@ export const FileNodeViewer = ({
     // scripts, so they keep the server's media type for correct codec selection.
     previewMime,
   )
-  const headerActions: PageHeaderAction[] = [
-    {
-      compact: true,
-      icon: faPaperclip,
-      id: 'attachments',
-      label: 'Attachments',
-      onSelect: onToggleAttachments,
-      priority: 60,
-      title: 'Show attachments',
-    },
+  const detailActions: PageHeaderAction[] = [
     {
       compact: true,
       icon: faClockRotateLeft,
@@ -187,11 +175,13 @@ export const FileNodeViewer = ({
 
   return (
     <KnowledgePane
-      actions={headerActions}
+      bottomActionLabel="File actions"
+      bottomActions={detailActions}
       onBack={onBack}
       title={page.title}
     >
-      <div className="mx-auto my-8 w-full max-w-4xl px-4">
+      <>
+        <div className="mx-auto my-8 w-full max-w-4xl px-4">
         {version ? (
           <p className="mb-4 text-xs text-[color:var(--tx3)]">Version {version.versionNumber}</p>
         ) : null}
@@ -291,6 +281,8 @@ export const FileNodeViewer = ({
           )}
         </div>
 
+        </div>
+        <div className="mx-auto mt-8 w-full max-w-4xl border-t border-[color:var(--sep)] px-4 pt-6">
         <AttachmentsDrawer
           canWrite={canWrite}
           inline
@@ -298,9 +290,11 @@ export const FileNodeViewer = ({
           open
           pageId={page.id}
         />
-
+        </div>
+        <div className="mx-auto mt-8 w-full max-w-4xl border-t border-[color:var(--sep)] px-4 pt-6">
         <CommentsSection canResolve={canWrite} pageId={page.id} />
-      </div>
+        </div>
+      </>
       {markdownEditorOpen && markdownEditorBaseVersionId && onSaveMarkdown ? (
         <MarkdownFileEditorDialog
           baseVersionId={markdownEditorBaseVersionId}

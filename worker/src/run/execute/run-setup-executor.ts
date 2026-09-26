@@ -1,4 +1,6 @@
-import { bindChatExecutors, carryForwardExecutorBindings, publishExecutorLeaseChanges } from '@nessie/executor-manage'
+import {
+  bindChatExecutors, bindChatReminderExecutors, carryForwardExecutorBindings, publishExecutorLeaseChanges,
+} from '@nessie/executor-manage'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
@@ -13,7 +15,8 @@ type HostOutput = Parameters<typeof buildExecutorToolset>[1]['hostOutput']
  * - A ticket's work is bound by its standing policy, afresh at every wake,
  *   never by a lease: at the start of setup (`prepareTicketWorkRun`), before
  *   any tool is resolved, so a standing run is offered less.
- * - A person's live private chat binds their agent's available machines here.
+ * - A person's live private chat binds their agent's available machines here;
+ *   its self-reminder can rebind those same machines after rechecking access.
  *   Other interactive turns can carry an existing conversation lease, immediately
  *   before the toolset reads the run's bindings. A refusal is an outcome — the carry
  *   runs for every agent's every turn, so an unexpected failure in it (a lost
@@ -32,7 +35,10 @@ export const prepareRunExecutorToolset = async (
 ): Promise<ExecutorToolset> => {
   const { context, payload } = input
   const chatBound = !input.ticketWork
-    && await bindChatExecutors(deps.prisma, { job: payload, runId: context.run.id })
+    && await (async () => {
+      const request = { job: payload, runId: context.run.id }
+      return await bindChatExecutors(deps.prisma, request) || await bindChatReminderExecutors(deps.prisma, request)
+    })()
       .catch((error: unknown) => {
         console.warn('[worker] chat executor binding failed for run', context.run.id, error)
         return false

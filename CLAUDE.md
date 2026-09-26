@@ -26,7 +26,7 @@ Assistant's `channel_list` / `channel_update` tools. Read
 [its browser evaluation](docs/testing/channel-decisions.md) before changing them.
 
 Executor pairing, independent account/server connections on each platform, and live account-menu presence follow [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md), including their browser verification.
-Direct machine access from private agent chat follows [executor sharing](docs/standards/executor-sharing.md); named internal links and `nessie_link` follow [agent voice](docs/standards/agent-voice.md).
+Direct machine access from private agent chat and its self-reminders follows [executor sharing](docs/standards/executor-sharing.md); named internal links and `nessie_link` follow [agent voice](docs/standards/agent-voice.md).
 Authorized executor access has no additional private-conversation write veto; output disclosure still follows [the disclosure standard](docs/standards/disclosure-boundaries.md).
 
 Sequential Task Sets, their native agent tools and the configured
@@ -104,9 +104,12 @@ sentence changes only if the invariant itself did.
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:agent-conversations`.
   Run it locally on fixed ports. It brings up its own scripted inference endpoint
   (`admin/e2e/agent-conversations/mock-server.mjs`) because the isolation proof
-  reads that server's request log. It covers the DM rail, two isolated
+  reads that server's request log; it must also answer the worker's completion
+  check (`[nessie.follow_up_review.v1]`), or every run it scripts fails. It
+  covers an agent DM's sidebar sessions and session home, two isolated
   conversations named by their first message, the one-empty-at-a-time rule
-  behind the "New conversation" button, the rename doorway, an ordinary
+  behind both "New conversation" doorways (a DM's sidebar, and a room's
+  column, which also says why nothing opened), the rename doorway, an ordinary
   room's own doorway and a two-agent room's agent strip, and a ticket's work
   threads folded under Tickets at every width with their wake rows, the row a
   cancelled reminder leaves, and the read-only line for a room member who

@@ -6,6 +6,8 @@ Live private chat now uses direct agent assignments without requiring a lease;
 see [executor sharing](../standards/executor-sharing.md). The lease path below
 continues to cover explicit launches and shared conversations. A direct chat
 run may bind multiple machines, uniquely by `(run_id, executor_id, operation_key)`.
+Its self-reminders can rebind those machines from the completed creating run,
+with current access checks; this does not carry or extend a conversation lease.
 Isolated browser, coding and command workspace launches remain single-machine.
 
 A person who launches **local apps** (`mcp.tools` + `mcp.call`) for an agent

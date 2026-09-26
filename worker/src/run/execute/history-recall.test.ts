@@ -35,6 +35,7 @@ const message = (embedding: {
 
 const context = (sink = createConsumedSourceSink()) => ({
   agent: { agentKind: 'shared', id: AGENT_ID },
+  boundAgentIds: [AGENT_ID],
   channel: {
     dmKey: null,
     id: CHANNEL_ID,
@@ -275,24 +276,95 @@ test('a run lent a project write still recalls public, unrestricted history', as
   assert.deepEqual(sink.list(), [])
 })
 
-// The lineage filter runs on the passages, after the search, so a project
-// write searches deeper to keep the recall from coming back short; any other
-// run searches exactly as deep as before. The last SQL parameter before the
-// thread narrowing is each ranking arm's own limit, four times the take.
-test('a run lent a project write searches three times as deep as any other run', async () => {
-  const depthOf = async (holdsProjectWriteTools: boolean): Promise<unknown> => {
+// The lineage filter runs on the passages, after the search, so a contained
+// run searches deeper to keep the recall from coming back short; a delegate in
+// its own home judges nothing and searches at the normal depth. The last SQL
+// parameter before the thread narrowing is each ranking arm's own limit, four
+// times the take.
+test('a contained run searches three times as deep as a delegate in its own home', async () => {
+  const depthOf = async (
+    runContext: ReturnType<typeof context>,
+    runPayload: typeof payload,
+    input: { holdsProjectWriteTools?: boolean; liveEntitlements?: unknown } = {},
+  ): Promise<unknown> => {
     const deps = historyDeps()
-    await retrieveRelevantHistory(deps as never, context() as never, payload, {
-      holdsProjectWriteTools,
+    await retrieveRelevantHistory(deps as never, runContext as never, runPayload, {
+      ...input,
       prompt: 'what did we decide?',
       tokenBudget: 1_000,
       viewer: agentViewer,
-    })
+    } as never)
     return deps.searchParams.find((params) => params.length >= 11)?.[9]
   }
 
-  assert.equal(await depthOf(false), 12 * 4)
-  assert.equal(await depthOf(true), 36 * 4)
+  assert.equal(await depthOf(context(), payload), 36 * 4)
+  assert.equal(await depthOf(context(), payload, { holdsProjectWriteTools: true }), 36 * 4)
+
+  const home = context()
+  const homeRun = {
+    ...home,
+    agent: { agentKind: 'personal_assistant', id: AGENT_ID },
+    channel: { ...home.channel, systemChannelType: 'personal_assistant' },
+  }
+  const ownerPayload = {
+    actorContext: {
+      actionContext: { effectiveUserId: AUTHOR_ID, requestId: 'history-test' },
+      actor: { actorId: AUTHOR_ID, actorType: 'user' },
+      tenant: { organizationId: ORGANIZATION_ID },
+    },
+  } as never
+  assert.equal(await depthOf(homeRun as never, ownerPayload, {
+    liveEntitlements: { kind: 'local', organizationId: ORGANIZATION_ID, userId: AUTHOR_ID },
+  }), 12 * 4)
+})
+
+// A scheduled joke in a public room recalled its owner's DM with the agent,
+// and the joke was withheld from everyone else in the room. Recall is context
+// the platform assembles: in a contained run it may not be what restricts the
+// reply, wherever the passage came from.
+const OTHER_CHANNEL_ID = '88888888-8888-4888-8888-888888888888'
+// The requester is in that conversation, so it is the gate — not the viewer —
+// that keeps it out.
+const dmMemberViewer = {
+  ...agentViewer,
+  scopes: [...agentViewer.scopes, { scopeId: OTHER_CHANNEL_ID, scopeType: 'channel' }],
+}
+const dmMessage = () => ({ ...message(), thread: { channel: { id: OTHER_CHANNEL_ID, visibility: 'private' } } })
+
+test('a room recalls no passage from a private conversation elsewhere', async () => {
+  const sink = createConsumedSourceSink()
+  const result = await retrieveRelevantHistory(historyDeps(dmMessage()) as never, context(sink) as never, payload, {
+    prompt: 'Čau, je deploy po migraci hotový?',
+    tokenBudget: 1_000,
+    viewer: dmMemberViewer,
+  })
+
+  assert.equal(result.context, null)
+  assert.deepEqual(sink.list(), [])
+  assert.deepEqual(sink.privateConversationSources(), [])
+})
+
+test('a room still recalls another public room, and what the run already holds', async () => {
+  const publicRoom = { ...message(), thread: { channel: { id: OTHER_CHANNEL_ID, visibility: 'public' } } }
+  const fromPublic = await retrieveRelevantHistory(
+    historyDeps(publicRoom) as never,
+    context() as never,
+    payload,
+    { prompt: 'kde je deploy?', tokenBudget: 1_000, viewer: agentViewer },
+  )
+  assert.deepEqual(fromPublic.messageIds, [MESSAGE_ID])
+
+  // A run whose reply that conversation already restricts loses nothing more
+  // by recalling it, so the passage is taken.
+  const sink = createConsumedSourceSink()
+  sink.addPrivateConversationSource({ sourceAuthorUserId: AUTHOR_ID, sourceChannelId: OTHER_CHANNEL_ID })
+  const alreadyHeld = await retrieveRelevantHistory(
+    historyDeps(dmMessage()) as never,
+    context(sink) as never,
+    payload,
+    { prompt: 'kde je deploy?', tokenBudget: 1_000, viewer: dmMemberViewer },
+  )
+  assert.deepEqual(alreadyHeld.messageIds, [MESSAGE_ID])
 })
 
 test('a deeper project-write search still admits no more passages than the normal depth', async () => {

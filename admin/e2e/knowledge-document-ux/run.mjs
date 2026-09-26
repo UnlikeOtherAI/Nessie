@@ -112,6 +112,24 @@ try {
     'Tree file detail uses the adjacent hierarchy instead of a Back button')
   await page.getByRole('button', { name: 'History' }).last().waitFor()
   await page.getByRole('button', { name: 'Upload new version' }).last().waitFor()
+  const fileActions = page.locator('[data-testid="knowledge-detail-action-bar"]:visible').last()
+  await fileActions.waitFor()
+  await fileActions.getByRole('button', { name: 'Download' }).waitFor()
+  assert.equal(await page.locator('header [data-page-header-action="history"]:visible').count(), 0,
+    'file actions are not duplicated in the top navigation')
+  assert.equal(await page.getByRole('tablist', { name: 'File sections' }).count(), 0)
+  await page.locator('#knowledge-page-attachments:visible').last().getByRole('button', { name: 'Add attachment' }).waitFor()
+  await page.locator('#knowledge-comments-title:visible').last().waitFor()
+  assert.equal(new URL(page.url()).searchParams.has('detail'), false)
+  const fileBar = await fileActions.evaluate((element) => ({
+    bottom: element.getBoundingClientRect().bottom,
+    blur: getComputedStyle(element).backdropFilter,
+    viewport: window.innerHeight,
+  }))
+  assert.ok(fileBar.bottom <= fileBar.viewport && fileBar.bottom > fileBar.viewport - 80,
+    `file actions float at the pane bottom: ${JSON.stringify(fileBar)}`)
+  assert.notEqual(fileBar.blur, 'none', 'file actions use a frosted backdrop')
+  await page.waitForTimeout(250)
   await page.screenshot({ path: '/private/tmp/nessie-knowledge-image-tree.png', fullPage: true })
   await page.getByRole('button', { name: 'View: Tree' }).click()
   await page.getByRole('menuitemradio', { name: 'Columns' }).click()
@@ -139,9 +157,45 @@ try {
   })
   const published = publishedPages.find(({ title }) => title === publishedTitle)
   assert.equal(published?.status, 'published', 'primary creation action publishes immediately')
-  await page.getByRole('button', { name: 'Attachments', exact: true }).last().click()
-  await page.waitForFunction(() => document.activeElement?.id === 'knowledge-page-attachments')
+  const documentActions = page.locator('[data-testid="knowledge-detail-action-bar"]:visible').last()
+  await documentActions.waitFor()
+  assert.equal(await page.locator('header [data-page-header-action="history"]:visible').count(), 0,
+    'document actions are not duplicated in the top navigation')
+  await documentActions.getByRole('button', { name: 'More document actions' }).click()
+  await page.getByRole('menuitem', { name: 'Archive document' }).waitFor()
+  await page.keyboard.press('Escape')
+  assert.equal(await page.getByRole('tablist', { name: 'Document sections' }).count(), 0)
+  await page.locator('#knowledge-page-attachments:visible').last().waitFor()
+  await page.locator('#knowledge-comments-title:visible').last().waitFor()
+  await page.screenshot({ path: '/private/tmp/nessie-knowledge-document-tree.png', fullPage: true })
+  const attachmentPanel = page.locator('#knowledge-page-attachments:visible').last()
+  await attachmentPanel.getByRole('button', { name: 'Add attachment' }).waitFor()
+  assert.equal(await attachmentPanel.evaluate((element) => Boolean(element.closest('.kb-reader'))), true,
+    'attachments stay inside the document sheet below its content')
+  await attachmentPanel.locator('input[type="file"]').setInputFiles({
+    buffer: Buffer.from('synthetic browser fixture'),
+    mimeType: 'text/plain',
+    name: 'detail-inline-fixture.txt',
+  })
+  await attachmentPanel.getByText('detail-inline-fixture.txt').waitFor()
   await page.screenshot({ path: '/private/tmp/nessie-knowledge-attachments.png', fullPage: true })
+  await page.locator('#knowledge-comments-title:visible').last().scrollIntoViewIfNeeded()
+  await page.getByPlaceholder('Add a comment…').waitFor()
+  assert.equal(await page.locator('#knowledge-comments-title:visible').last()
+    .evaluate((element) => Boolean(element.closest('.kb-reader'))), true,
+    'comments stay inside the document sheet below attachments')
+  const documentBar = await documentActions.evaluate((element) => ({
+    bottom: element.getBoundingClientRect().bottom,
+    blur: getComputedStyle(element).backdropFilter,
+    viewport: window.innerHeight,
+  }))
+  assert.ok(documentBar.bottom <= documentBar.viewport && documentBar.bottom > documentBar.viewport - 80,
+    `document actions stay visible while scrolling to comments: ${JSON.stringify(documentBar)}`)
+  assert.notEqual(documentBar.blur, 'none', 'document actions use a frosted backdrop')
+  const commentBox = await page.getByPlaceholder('Add a comment…').last().boundingBox()
+  const actionBox = await documentActions.boundingBox()
+  assert.ok(commentBox && actionBox && commentBox.y + commentBox.height < actionBox.y,
+    'the floating actions do not cover the comment composer')
 
   await go(projectPath)
   await page.locator('[data-page-header-action="new"]:visible').last().click()
@@ -156,6 +210,14 @@ try {
   assert.equal(draft?.status, 'draft')
   await row(draft.id).getByText('Draft', { exact: true }).waitFor()
   await page.screenshot({ path: '/private/tmp/nessie-knowledge-draft-tree.png', fullPage: true })
+  await page.locator('[data-testid="knowledge-detail-action-bar"]:visible').last()
+    .getByRole('button', { name: 'Publish' }).click()
+  await row(draft.id).getByText('Draft', { exact: true }).waitFor({ state: 'hidden' })
+  const publishedDraft = await call(`/api/knowledge-base/spaces/${projectRoot.space.spaceId}/pages`, {
+    token: seed.token,
+  })
+  assert.equal(publishedDraft.find(({ id }) => id === draft.id)?.status, 'published',
+    'Publish in the bottom action bar changes the selected document')
   console.log(`Knowledge document UX passed at ${API_URL} and ${ADMIN_URL}`)
 } finally {
   await browser?.close()

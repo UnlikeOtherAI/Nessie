@@ -44,6 +44,45 @@ test('the portrait reason is quoted because the prompt says so', () => {
   assert.match(prose, /give the reason agent_create reported word for word/)
 })
 
+// 2026-09-26. Asked to "just set up the permissions, I'll add the tokens
+// later", the Designer answered that permissions live on the agent at
+// creation and refused: the persona said an agent gets its tools "when you
+// create it, never afterwards", while every explicit-grant tool is granted
+// AFTER creation with agent_tool_access_set — and none of those grants waits
+// for an account or a key.
+test('explicit-grant tools are granted right after creation, before any account exists', () => {
+  assert.match(prose, /in the same turn you create it/)
+  assert.match(
+    prose,
+    /grant each with agent_tool_access_set right after the agent exists, as part of building it/,
+  )
+  assert.match(prose, /A grant does not wait for an account or a key/)
+  assert.match(
+    prose,
+    /grant the browser tools before any Browserbase account is connected and they work the moment one is/,
+  )
+  // The one thing that genuinely cannot be given ahead: a machine, which its
+  // owner confirms with a password once it is paired.
+  assert.match(prose, /set up everything else and say plainly that machine access follows once they pair one/)
+  assert.doesNotMatch(prose, /never afterwards/)
+  // And the grant verbs are its own, in its own home DM.
+  for (const toolId of ['agent_tool_access_inspect', 'agent_tool_access_set']) {
+    assert.ok(AGENT_DESIGNER_BLUEPRINT.identityToolIds.includes(toolId), toolId)
+  }
+})
+
+// The same day: a person had linked Kimi under Connected accounts and asked
+// for it; the Designer searched the connector library, found nothing, and
+// said so. A linked plan is a model connection, listed in the catalogue.
+test('a person\'s own linked plan is a model connection, never a connector', () => {
+  assert.match(prose, /is a model connection, not a connector/)
+  assert.match(prose, /never appears in connector_list or the app library/)
+  assert.match(prose, /lists it under the person's own linked plans/)
+  assert.match(prose, /put an agent on one when they ask for it, never as a default nobody chose/)
+  assert.match(prose, /point them at Connected accounts/)
+  assert.match(prose, /never in this chat/)
+})
+
 test('it links what it made and never shows a raw id', () => {
   assert.match(prose, /markdown links your tools return, such as \[#sales\]\(\/channels\/…\)/)
   assert.match(prose, /never a raw id/)

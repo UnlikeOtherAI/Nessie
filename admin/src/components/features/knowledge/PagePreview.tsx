@@ -3,7 +3,6 @@ import {
   faBoxArchive,
   faClockRotateLeft,
   faEllipsis,
-  faPaperclip,
   faPen,
 } from '@fortawesome/free-solid-svg-icons'
 import { toFormErrors } from '../../../facades/forms/form-errors'
@@ -37,7 +36,6 @@ type PagePreviewProps = {
   onOpenHistory: () => void
   onOpenBreadcrumb: (pageId: string) => void
   onPublish: () => void
-  onToggleAttachments: () => void
   page: KnowledgePageRecord
   publishPending?: boolean
   spaceName: string
@@ -55,7 +53,6 @@ export const PagePreview = ({
   onOpenHistory,
   onOpenBreadcrumb,
   onPublish,
-  onToggleAttachments,
   page,
   publishPending,
   spaceName,
@@ -67,16 +64,7 @@ export const PagePreview = ({
     commentsComposerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     commentsComposerRef.current?.focus()
   }
-  const headerActions: PageHeaderAction[] = [
-    {
-      compact: true,
-      icon: faPaperclip,
-      id: 'attachments',
-      label: 'Attachments',
-      onSelect: onToggleAttachments,
-      priority: 60,
-      title: 'Show attachments',
-    },
+  const detailActions: PageHeaderAction[] = [
     ...(canWrite
       ? [{
           compact: true,
@@ -132,11 +120,13 @@ export const PagePreview = ({
 
   return (
     <KnowledgePane
-      actions={headerActions}
+      bottomActionLabel="Document actions"
+      bottomActions={detailActions}
       onBack={onBack}
       title={page.title}
     >
-      <div className="kb-reader mx-auto my-8 w-full max-w-3xl rounded-xl px-8 py-8 shadow-sm">
+      <>
+        <div className="kb-reader mx-auto my-8 w-full max-w-3xl rounded-xl px-8 py-8 shadow-sm">
         <nav aria-label="Page breadcrumbs" className="mb-5 flex flex-wrap items-center gap-1 text-xs text-[color:var(--tx3)]">
           <button className="hover:text-[color:var(--tx)]" onClick={onBrowseRoot} type="button">
             {spaceName}
@@ -205,6 +195,8 @@ export const PagePreview = ({
           </QueryState>
         </div>
 
+        <BacklinksPanel pageId={page.id} />
+        <div className="mt-8 border-t border-[color:var(--sep)] pt-6">
         <AttachmentsDrawer
           canWrite={canWrite}
           inline
@@ -212,11 +204,12 @@ export const PagePreview = ({
           open
           pageId={page.id}
         />
-
-        <BacklinksPanel pageId={page.id} />
-
+        </div>
+        <div className="mt-8 border-t border-[color:var(--sep)] pt-6" id="knowledge-page-comments">
         <CommentsSection canResolve={canWrite} composerRef={commentsComposerRef} pageId={page.id} />
-      </div>
+        </div>
+        </div>
+      </>
       <ConfirmDialog
         body={
           <>

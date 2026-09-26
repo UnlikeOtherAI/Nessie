@@ -196,3 +196,49 @@ nothing in it may be a secret or an instruction addressed to the model.
   deliberate absence ("designing an agent is never a reason to take an app
   away") is superseded by the owner's rule; the handler's own scope checks
   remain the boundary.
+
+## Amendment 2026-09-26 — a linked plan, a grant before its key, a new team
+
+Three findings from one conversation ("hey I want an agent called Pirate"),
+each a fact the Designer was not given rather than a rule it broke.
+
+- **A person's own plan was invisible to the chat face.** Kimi linked under
+  Settings → Connected accounts is a `ModelSubscription`, not a connector; the
+  model picker lists it (`GET /api/agents/models` composes Ledger plus the
+  person's plans), but the worker's catalogue loader read `listLedgerAgentModels`
+  alone, so the Designer searched the connector library, found nothing, and
+  said so. The loader now reads `listAgentModelOptionsForUser` — the picker's
+  own function, disabled pairs filtered, plans included — for the home-DM face
+  only; the catalogue's model section (`global-agent-model-catalogue.ts`) lists
+  the plans in full in their own group, never behind the twenty-entry
+  deployment shortlist that also hid them on the page sidebar; `agent_create`
+  gained `modelSubscriptionId`; and the persona says what a linked plan is and
+  where one is linked. `packages/team-admin/test/global-agent-catalogue.test.ts`,
+  `worker/test/db/designer-model-catalogue.test.ts`.
+- **"Just set up the permissions, I'll add the tokens later" was refused by
+  prose alone.** Granting a browser tool never reads a Browserbase connection
+  (`setAgentToolPolicyForRegistryEntry`); only using one does. Three texts said
+  otherwise: the main prompt's Browserbase block, rendered for every agent
+  without the `canGrantBrowserTools` fact the catalogue's copy already had
+  ("an owner must explicitly grant … at Agents → Tools", which the Designer
+  quoted); its `browser_login_request` line, which told a deployment-managed
+  agent to have an owner enable a tool on its own fixed toolset; and the
+  persona's "an agent gets its tools when you create it, never afterwards",
+  while every explicit grant is written after creation. The block now takes
+  `canGrantBrowserTools` and `ownToolsetFixed` from the resolved toolset and
+  the agent row, says a grant does not wait for the account, and the persona,
+  the tool descriptions and the validator's message all say create, then
+  grant with `agent_tool_access_set`, before any key exists. Executors stay the
+  honest exception: a grant names one paired machine its owner confirms.
+  `packages/runtime/test/browserbase-setup-prompt.test.ts`,
+  `worker/src/run/execute/prompt.test.ts`,
+  `packages/team-admin/test/agent-designer-blueprint.test.ts`.
+- **A brand-new team had no Personal Assistant and no Agent Designer.** Both
+  are one row per organisation, so every team of an organisation shares them;
+  what was missing was the person's first entry into a *new* organisation —
+  the in-app "New organisation" the create-team dialog defaults to for anyone
+  not an org admin — which lands through `materializeUoaTeam` with no login
+  behind it, and nothing there ran the bootstrap the four login sites ran.
+  One function (`api/src/services/system-agents-bootstrap.ts`) now serves the
+  four sites and runs, best-effort, on every team materialization and on the
+  local context switch. `api/test/uoa-team-switch-system-agents-db.test.ts`.

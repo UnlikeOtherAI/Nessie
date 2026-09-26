@@ -609,7 +609,10 @@ and lands in the target org's Organization — materializing it, and syncing its
 first-party account links, when the user has never entered it before
 (`materializeUoaTeamSwitch` runs the same login path plus
 `syncUoaProductAccountLinks` scoped to the target org, which the rescope
-binding advance requires). `POST /api/auth/switch-context` remains
+binding advance requires, and the same system-agent bootstrap a login runs —
+the Personal Assistant and every global agent, ensured for that person in the
+target org, best-effort through `attemptSystemAgentsBootstrap` because the
+upstream credential is already consumed). `POST /api/auth/switch-context` remains
 the local/non-UOA context route and still refuses to mint a UOA token for a
 different external tuple. The signed session/family proof, rather than
 `ProductAccountLink`, is authoritative for billing actors and delegated calls;
@@ -662,7 +665,7 @@ demotion propagates instead of freezing at first join:
 | Path | Claims come from | Effect |
 |---|---|---|
 | Login (`POST /api/auth/session`, `uoa` branch) | the exchanged access token | `resolveUoaTeamContext` → `ensureTeamPrincipal` → `projectUoaRoles` |
-| Team switch (`POST /api/auth/uoa/team`) | the **target** token UOA returned | `materializeUoaTeamSwitch` runs the same login path against the target claims |
+| Team switch (`POST /api/auth/uoa/team`) | the **target** token UOA returned | `materializeUoaTeamSwitch` runs the same login path against the target claims, then the system-agent bootstrap for the person in the target org |
 | Refresh / rotation (`POST /api/auth/refresh`) | the refreshed access token, threaded through the rotation as `team` | `advanceUoaLocalSessionBinding` re-projects inside the family transaction, so the reissued token carries the new role |
 
 Rules that make this safe to run on every session:

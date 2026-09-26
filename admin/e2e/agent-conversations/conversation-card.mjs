@@ -34,7 +34,10 @@ export const exerciseConversationCard = async ({
 }) => {
   const desktop = gallery.pages.desktop
   const assistantRoom = `/channels/${fixture.assistant.channelId}`
-  await goto(desktop, assistantRoom)
+  // The DM's General thread, where the ask is written: the bare DM is the
+  // assistant's session home, which has no composer of its own.
+  const assistantGeneral = `${assistantRoom}/threads/${fixture.assistant.threadId}`
+  await goto(desktop, assistantGeneral)
 
   const ask = `Please ${START_PHRASE} ${fixture.agent.name} about the pricing page copy`
   await sendMessage(desktop, ask)
@@ -98,7 +101,7 @@ export const exerciseConversationCard = async ({
   // look"), not behind a reply-thread summary under the person's request.
   assert.equal(doorway.rootMessageId, null,
     'a one-on-one chat carries the card in its main chat, not in a reply thread')
-  const cardSurface = assistantRoom
+  const cardSurface = assistantGeneral
 
   // Running — while the target's answer is still delayed by the mock.
   await gallery.capture('card-running', async (page, viewport) => {

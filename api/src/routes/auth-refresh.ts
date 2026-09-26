@@ -104,7 +104,10 @@ export const registerAuthRefreshRoute = (
         ttlSeconds: config.auth.refreshTokenTtlSeconds,
         userAgent: request.headers['user-agent'] ?? null,
         clientType: parseSessionClientType(request.headers[SESSION_CLIENT_HEADER]),
-        ...createUoaRefreshCallbacks(prisma),
+        ...createUoaRefreshCallbacks(prisma, {
+          onSystemAgentsBootstrapError: (error) =>
+            request.log.error({ err: error }, 'system_agents_bootstrap_failed'),
+        }),
       })
     } catch (error) {
       if (error instanceof UoaTeamSwitchError) {

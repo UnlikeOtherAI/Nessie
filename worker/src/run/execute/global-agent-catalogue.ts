@@ -7,7 +7,7 @@ import {
   buildGlobalAgentCatalogueBlock,
   getGlobalAgentBlueprint,
   ledgerAgentModelCatalogRequestHeaders,
-  listLedgerAgentModels,
+  listAgentModelOptionsForUser,
   loadAgentToolCatalog,
   resolveAgentAvatarStyleSafely,
 } from '@nessie/team-admin'
@@ -63,8 +63,12 @@ export const loadGlobalAgentCatalogueBlock = async (
   // block is also assembled for the shared-channel read-only face, where the
   // portrait style is nobody's in particular and stays unresolved.
   const requesterUserId = input.actorContext.actionContext.effectiveUserId ?? null
+  const writeSurface = IDENTITY_WRITE_TOOL_IDS.some((toolId) =>
+    input.resolvedToolIds.has(toolId))
+    ? 'agent_tools'
+    : 'read_only'
 
-  const [catalogue, executors, models, avatarStyle] = await Promise.all([
+  const [catalogue, executors, modelOptions, avatarStyle] = await Promise.all([
     loadAgentToolCatalog(prisma, {
       organizationId: context.channel.organizationId,
     }),
@@ -72,15 +76,26 @@ export const loadGlobalAgentCatalogueBlock = async (
     // conversation is still worth having when a read fails, and `null` is the
     // block's own word for "could not be read", never for "there are none".
     listExecutorCatalogueFacts(prisma, input.actorContext).catch(() => null),
-    listLedgerAgentModels({
+    // The same two sources the model picker composes (`GET /api/agents/models`):
+    // the deployment's Ledger catalogue, minus the pairs the organisation or
+    // team switched off, and the person's own linked plans. Reading Ledger
+    // alone here is how a person who had just linked Kimi under Connected
+    // accounts was told no such connector existed. The plans are read only
+    // for the face that acts as the person: in a shared room the Designer
+    // advises everyone and holds no write verb, so whose plan is linked is
+    // nobody's business there.
+    listAgentModelOptionsForUser(prisma, {
       config: loadConfig().model,
       ...(process.env.LEDGER_PUBLIC_URL
         ? { ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL }
         : {}),
+      organizationId: context.channel.organizationId,
       requestHeaders: await ledgerAgentModelCatalogRequestHeaders({
         actorContext: input.actorContext,
         ledgerIdentity: input.ledgerIdentity,
       }).catch(() => ({})),
+      teamId: input.actorContext.tenant.teamId ?? null,
+      userId: writeSurface === 'agent_tools' ? requesterUserId : null,
     }).catch(() => null),
     requesterUserId
       ? resolveAgentAvatarStyleSafely(prisma, {
@@ -108,10 +123,10 @@ export const loadGlobalAgentCatalogueBlock = async (
     // here" had the Designer refuse executor grants it was holding the verbs
     // for (docs/plans/2026-09-20-agent-designer-capabilities-and-output-recovery.md).
     heldToolIds: input.resolvedToolIds,
-    models,
-    writeSurface: IDENTITY_WRITE_TOOL_IDS.some((toolId) =>
-      input.resolvedToolIds.has(toolId))
-      ? 'agent_tools'
-      : 'read_only',
+    // A Ledger failure with the person's own plans still readable is said as
+    // exactly that — the block must not call it "no models".
+    ledgerCatalogueUnavailable: modelOptions?.ledgerError != null,
+    models: modelOptions ? modelOptions.options : null,
+    writeSurface,
   })
 }

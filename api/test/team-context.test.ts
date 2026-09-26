@@ -734,6 +734,10 @@ test('team switch materialization uses the authoritative target role and is idem
       uoaTokenVersion: 4,
       team: team(target.teamId, 'admin'),
     },
+    // The system-agent bootstrap that follows a materialization reaches
+    // Prisma models this fake does not carry; it is best-effort by contract
+    // and its real-row proof is `uoa-team-switch-system-agents-db.test.ts`.
+    onSystemAgentsBootstrapError: () => {},
     target,
     userId: source!.userId,
   })
@@ -775,6 +779,7 @@ test('a cross-org team switch materializes the TARGET organization and its links
       uoaTokenVersion: 4,
       team: targetTeamClaim,
     },
+    onSystemAgentsBootstrapError: () => {},
     target,
     userId: source!.userId,
   })

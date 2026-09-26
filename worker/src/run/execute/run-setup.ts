@@ -31,7 +31,13 @@ import {
   loadRunCheckpointForRun,
   type LoadedRunCheckpoint,
 } from './checkpoint.js'
-import { buildMemoryContext, retrieveRelevantMemories } from './memory.js'
+import {
+  buildMemoryContext,
+  readsRoomHistoryAsRoom,
+  retrieveRelevantMemories,
+  runDelegationFacts,
+} from './memory.js'
+import { addedReplyRestriction } from './agent-message.js'
 import {
   RETRIEVED_CONTEXT_TOKEN_BUDGET,
   retrieveRelevantHistory,
@@ -445,6 +451,9 @@ export const prepareRunExecution = async (
     rootMessageId: context.conversationRootMessageId,
     threadId: context.run.threadId,
     ...(ticketWorkRun ? { ticketWorkAgentId: context.agent.id } : {}),
+    ...(readsRoomHistoryAsRoom(runDelegationFacts(context), liveRequester)
+      ? { addedRestriction: (scopes) => addedReplyRestriction(context, scopes) }
+      : {}),
     viewer,
   })
   // Every kickoff is built from the ticket: the run has read its project, so
@@ -600,6 +609,12 @@ export const prepareRunExecution = async (
       },
       hasCardTool: hasCardPromptTools(resolvedToolIds),
       hasBrowserLoginRequestTool: browserLoginRequestPromptTools(resolvedToolIds),
+      // Structural, from the resolved toolset and the agent row: the grant
+      // verb is either in this run's schema or it is not, and a Nessie-managed
+      // agent's toolset is the deployment's — nobody can enable a tool on it.
+      canGrantBrowserTools: resolvedToolIds.has('agent_tool_access_set'),
+      ownToolsetFixed: context.agent.agentKind === 'personal_assistant'
+        || Boolean(context.agent.systemSlug),
       temporaryBrowserAccess,
       todoFacts,
       documents: documentsHome

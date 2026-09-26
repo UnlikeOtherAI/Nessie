@@ -807,6 +807,18 @@ returns the first thread and the room still holds one, a message makes the
 button a button again, and a job, a title, and another person each open their
 own) and in the browser by `run.mjs` → `one-empty-at-a-time`.
 
+Since an agent DM's doorway moved to the sidebar
+([reply-threads.md](../standards/reply-threads.md)), a press there is still
+answered `reused` and lands the reader in that conversation, but nothing says
+why: the blink and the notice belong to the column, which a DM no longer
+offers. So the browser case proves the rule at the sidebar and proves the
+notice in a shared room's column, where it still lives. A reader already
+standing in the empty conversation who presses the sidebar's button is
+navigated to where they already are and told nothing
+(`SidebarAgentSessions` ignores `reused`) — the "broken button" this section
+was written to prevent.
+
+
 ## Cross-model review (2026-09-08)
 
 Codex Sol reviewed the committed tip read-only in three briefs (server

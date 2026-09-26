@@ -137,7 +137,11 @@ export const OrchestrateDecideJobPayloadSchema = z.object({
   // keyed by agent id; a PA presence also carries its owner id.
   agentMentions: AgentMentionSchema.array().optional(),
   channelId: ChannelIdSchema,
-  content: z.string().min(1),
+  // Empty for an attachment-only post, a pasted screenshot sent on its own:
+  // its files are the message, and the decision reads their inventory line in
+  // its place (`worker/src/run/orchestrate-context.ts`). Requiring text here
+  // dead-lettered every such job, so nobody ever answered one.
+  content: z.string(),
   messageId: z.string().uuid(),
   role: z.string().min(1),
   threadId: ThreadIdSchema,

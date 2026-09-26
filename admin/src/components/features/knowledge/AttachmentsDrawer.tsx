@@ -28,9 +28,9 @@ import { firstFileOnly, useFileDrop } from '../../../hooks/useFileDrop'
 import { canViewAttachment, useAttachmentViewer } from '../../shared/AttachmentViewer'
 import { SectionLabel } from '../../primitives/SectionLabel'
 
-// Right-hand attachments drawer: a 360 px sheet on a split layout, covering the
-// page on a single-column one. Drag-and-drop, a button, and a native picker all
-// upload an attachment to the page.
+// Attachment list for a document/file detail section, or a sheet for callers that
+// need an overlay. Drag-and-drop, a button, and a native picker all upload an
+// attachment to the page.
 export const AttachmentsDrawer = ({
   canWrite,
   pageId,
@@ -105,7 +105,7 @@ export const AttachmentsDrawer = ({
     inline ? (
       <section
         aria-labelledby="knowledge-attachments-title"
-        className="relative mt-8 border-t border-[color:var(--sep)] pt-5"
+        className="relative"
         id="knowledge-page-attachments"
         tabIndex={-1}
         {...dropHandlers}
