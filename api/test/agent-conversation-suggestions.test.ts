@@ -96,9 +96,12 @@ databaseTest('agent home suggestions: durable cadence, concurrent claims and liv
     } })
     await load()
     assert.equal(calls, 2, 'completion during cooldown keeps cached questions')
-    advance()
+    now = new Date(now.getTime() + 59 * 60 * 1000 + 59_999)
+    assert.deepEqual((await load())?.questions, questions)
+    assert.equal(calls, 2, 'changed history stays cached until one full hour has passed')
+    now = new Date(now.getTime() + 1)
     await load()
-    assert.equal(calls, 3, 'completed reply makes next eligible read regenerate')
+    assert.equal(calls, 3, 'changed history regenerates exactly one hour after the previous attempt')
 
     await prisma.message.update({ where: { id: message.id }, data: { content: 'Edited request' } })
     assert.deepEqual((await load())?.questions, [], 'edited source invalidates derived text during cooldown')
@@ -106,7 +109,9 @@ databaseTest('agent home suggestions: durable cadence, concurrent claims and liv
     advance()
     await load()
     assert.equal(calls, 4)
-    await prisma.messageBasisScope.create({ data: { messageId: message.id, organizationId: org.id, scopeType: 'user', scopeId: userId } })
+    await prisma.messageBasisScope.create({ data: {
+      messageId: message.id, organizationId: org.id, scopeType: 'user', scopeId: userId,
+    } })
     assert.deepEqual((await load())?.questions, [], 'new disclosure scope hides cached text immediately')
     await prisma.messageBasisScope.deleteMany({ where: { messageId: message.id } })
     assert.deepEqual((await load())?.questions, questions)
@@ -114,7 +119,9 @@ databaseTest('agent home suggestions: durable cadence, concurrent claims and liv
     assert.equal(await load(), null, 'adding another human invalidates this private home')
     await prisma.channelMember.deleteMany({ where: { channelId: home.channel.id, userId: users[1]! } })
     assert.equal(await loadAgentConversationSuggestions({ prisma, modelClient }, { ...input, userId: users[1]! }), null)
-    assert.equal(await loadAgentConversationSuggestions({ prisma, modelClient }, { ...input, organizationId: randomUUID() }), null)
+    assert.equal(await loadAgentConversationSuggestions(
+      { prisma, modelClient }, { ...input, organizationId: randomUUID() },
+    ), null)
 
     // A malformed result consumes its window but never replaces valid questions.
     advance()
@@ -126,7 +133,9 @@ databaseTest('agent home suggestions: durable cadence, concurrent claims and liv
     assert.equal(calls, failedCalls, 'bad output does not create a retry storm')
     advance()
     output = { questions }
-    afterInference = async () => { await prisma.message.update({ where: { id: message.id }, data: { deletedAt: now } }) }
+    afterInference = async () => {
+      await prisma.message.update({ where: { id: message.id }, data: { deletedAt: now } })
+    }
     assert.deepEqual((await load())?.questions, [], 'revocation during inference cannot publish stale source text')
     afterInference = undefined
     await prisma.organizationMember.update({
