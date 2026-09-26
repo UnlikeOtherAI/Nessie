@@ -5,6 +5,7 @@ import { useMyAvatarRevision } from '../../facades/auth/hooks'
 import { isReactNativeWebView } from '../../lib/native-shell'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useFocusMode } from '../../providers/FocusModeProvider'
+import { useLocalization } from '../../providers/LocalizationProvider'
 import { useUserPresence } from '../../providers/PresenceProvider'
 import { UserMenuPopover, type UserMenuPopoverPlacement } from './UserMenuPopover'
 import { useTransientMenu } from './TransientMenuContext'
@@ -34,6 +35,7 @@ export const UserMenuTrigger = ({
 }: UserMenuTriggerProps) => {
   const { me, token } = useAuthSession()
   const { focusModeEnabled, toggleFocusMode, updating: focusModeUpdating } = useFocusMode()
+  const { language } = useLocalization()
   // Follows a profile-photo change made on the settings page: the relay URL is
   // fixed, so without this the account button keeps the browser-cached image.
   const avatarRevision = useMyAvatarRevision()
@@ -79,11 +81,13 @@ export const UserMenuTrigger = ({
         userName: me.user.displayName,
         userPresence: selfPresence?.state ?? 'offline',
         userFocusMode: focusModeEnabled,
+        language,
         userStatusEmoji: selfPresence?.statusEmoji ?? null,
       }),
     )
   }, [
     focusModeEnabled,
+    language,
     me,
     nativeAvatarUrl,
     nativeShellBridge,

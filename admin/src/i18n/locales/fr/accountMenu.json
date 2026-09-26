@@ -1,0 +1,15 @@
+{
+  "accountMenu": "Menu du compte",
+  "feedback": "Commentaires",
+  "accountSettings": "Paramètres du compte",
+  "logOut": "Se déconnecter",
+  "language": "Langue",
+  "status": "Statut",
+  "setUpStatus": "Configurer un statut",
+  "active": "Actif",
+  "clearStatus": "Effacer le statut",
+  "editStatuses": "Modifier les statuts",
+  "availabilityStatus": "Disponibilité — {{status}}",
+  "availabilityChoice": { "auto": "Automatique", "active": "Actif", "away": "Absent" },
+  "availabilityState": { "active": "Actif", "away": "Absent", "offline": "Hors ligne" }
+}

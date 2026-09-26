@@ -1,0 +1,15 @@
+{
+  "accountMenu": "Nabídka účtu",
+  "feedback": "Zpětná vazba",
+  "accountSettings": "Nastavení účtu",
+  "logOut": "Odhlásit se",
+  "language": "Jazyk",
+  "status": "Stav",
+  "setUpStatus": "Nastavit stav",
+  "active": "Aktivní",
+  "clearStatus": "Vymazat stav",
+  "editStatuses": "Upravit stavy",
+  "availabilityStatus": "Dostupnost — {{status}}",
+  "availabilityChoice": { "auto": "Automaticky", "active": "Aktivní", "away": "Pryč" },
+  "availabilityState": { "active": "Aktivní", "away": "Pryč", "offline": "Offline" }
+}

@@ -7,6 +7,7 @@ import {
   useClearActiveStatus,
   useStatuses,
 } from '../../../facades/statuses/hooks'
+import { useTranslation } from 'react-i18next'
 
 const rowClassName = [
   'flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left',
@@ -18,6 +19,7 @@ const rowClassName = [
 // no statuses yet it collapses to a single set-up link.
 export const StatusSection = ({ onClose }: { onClose: () => void }) => {
   const { data: statuses = [] } = useStatuses()
+  const { t } = useTranslation('accountMenu')
   const activate = useActivateStatus()
   const clear = useClearActiveStatus()
 
@@ -26,11 +28,11 @@ export const StatusSection = ({ onClose }: { onClose: () => void }) => {
 
   return (
     <div>
-      <div className="px-2 pb-0.5 pt-1 text-xs font-medium text-[color:var(--tx3)]">Status</div>
+      <div className="px-2 pb-0.5 pt-1 text-xs font-medium text-[color:var(--tx3)]">{t('status')}</div>
 
       {statuses.length === 0 ? (
         <Link className={rowClassName} onClick={onClose} to="/settings/statuses">
-          <span className="text-[color:var(--tx2)]">Set up a status</span>
+          <span className="text-[color:var(--tx2)]">{t('setUpStatus')}</span>
           <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--tx3)]" icon={faPenToSquare} />
         </Link>
       ) : (
@@ -58,7 +60,7 @@ export const StatusSection = ({ onClose }: { onClose: () => void }) => {
                 </span>
                 {isActive && (
                   <Pill radius="chip" size="sm" tone="success">
-                    Active
+                    {t('active')}
                   </Pill>
                 )}
               </button>
@@ -74,14 +76,14 @@ export const StatusSection = ({ onClose }: { onClose: () => void }) => {
           onClick={() => clear.mutate()}
           type="button"
         >
-          <span className="text-[color:var(--tx2)]">Clear status</span>
+          <span className="text-[color:var(--tx2)]">{t('clearStatus')}</span>
           <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--tx3)]" icon={faCircleXmark} />
         </button>
       )}
 
       {statuses.length > 0 && (
         <Link className={rowClassName} onClick={onClose} to="/settings/statuses">
-          <span className="text-[color:var(--tx2)]">Edit statuses</span>
+          <span className="text-[color:var(--tx2)]">{t('editStatuses')}</span>
           <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--tx3)]" icon={faPenToSquare} />
         </Link>
       )}

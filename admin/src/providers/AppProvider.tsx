@@ -8,6 +8,7 @@ import { AuthSessionProvider } from './AuthSessionProvider'
 import { ExternalAuthProvider } from './ExternalAuthProvider'
 import { FontScaleProvider } from './FontScaleProvider'
 import { FocusModeProvider } from './FocusModeProvider'
+import { LocalizationProvider } from './LocalizationProvider'
 import { QueryProvider } from './QueryProvider'
 import { ShellEnvironmentProvider } from './ShellEnvironmentProvider'
 import { ThemeProvider } from './ThemeProvider'
@@ -23,16 +24,18 @@ export const AppProvider = () => (
         <ExternalAuthProvider>
           <ApiClientProvider>
             <ThemeProvider>
-              <FontScaleProvider>
-                <FocusModeProvider>
-                  <DesktopWindowFrame>
-                    <TenantReturnHandoff />
-                    <TenantHostGate>
-                      <RouterProvider router={router} />
-                    </TenantHostGate>
-                  </DesktopWindowFrame>
-                </FocusModeProvider>
-              </FontScaleProvider>
+              <LocalizationProvider>
+                <FontScaleProvider>
+                  <FocusModeProvider>
+                    <DesktopWindowFrame>
+                      <TenantReturnHandoff />
+                      <TenantHostGate>
+                        <RouterProvider router={router} />
+                      </TenantHostGate>
+                    </DesktopWindowFrame>
+                  </FocusModeProvider>
+                </FontScaleProvider>
+              </LocalizationProvider>
             </ThemeProvider>
           </ApiClientProvider>
         </ExternalAuthProvider>

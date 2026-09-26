@@ -1,0 +1,15 @@
+{
+  "accountMenu": "Menu account",
+  "feedback": "Feedback",
+  "accountSettings": "Impostazioni account",
+  "logOut": "Esci",
+  "language": "Lingua",
+  "status": "Stato",
+  "setUpStatus": "Imposta uno stato",
+  "active": "Attivo",
+  "clearStatus": "Cancella stato",
+  "editStatuses": "Modifica stati",
+  "availabilityStatus": "Disponibilità — {{status}}",
+  "availabilityChoice": { "auto": "Automatico", "active": "Attivo", "away": "Assente" },
+  "availabilityState": { "active": "Attivo", "away": "Assente", "offline": "Non in linea" }
+}
