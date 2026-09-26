@@ -28,8 +28,10 @@ export const createSettingsSurfaces = (settingsRoot: string): Surface[] => [
   {
     depth: 1,
     // `tab` is Connected accounts' strip, `filter` Your computers' Mine ·
-    // Shared with me, `status` Saved keys' Active · Revoked.
-    intent: { state: ['tab', 'filter', 'status'] },
+    // Shared with me, `status` Saved keys' Active · Revoked. `code` is
+    // Security's: a program's own verification link carries it, and it opens
+    // the pairing dialog on the decision before leaving the address.
+    intent: { consume: ['code'], state: ['tab', 'filter', 'status'] },
     parent: 'origin',
     parentOf: toSettings,
     pattern: /^\/settings\/(?:profile|notifications|appearance|status|accounts|computers|keys|usage|security)$/,

@@ -5,7 +5,7 @@ import { JSDOM } from 'jsdom'
 import type { ApiClient } from '@nessie/client-core'
 
 /**
- * `/approvals` and `/audit` name their actors.
+ * `/approvals` and the audit log (`/admin/security`) name their actors.
  *
  * Both screens exist to answer "who" — which agent is asking for permission,
  * which agent did this — and both used to answer with eight characters of a

@@ -38,7 +38,10 @@ for (const surface of SURFACES) {
 test('the registry declares the intents the app links with', () => {
   assert.deepEqual(
     [...consumedNames].sort(),
-    ['acceptCall', 'connect', 'create', 'incomingCall', 'messageId', 'pageId', 'scopeProjectId', 'spaceId', 'uoa_billing'],
+    [
+      'acceptCall', 'code', 'connect', 'create', 'incomingCall', 'messageId', 'pageId', 'scopeProjectId',
+      'spaceId', 'uoa_billing',
+    ],
   )
   assert.deepEqual([...hashNames].sort(), ['confirmationToken'])
   // A name is either consumed or state on a row, never both.
@@ -50,11 +53,20 @@ test('the registry declares the intents the app links with', () => {
   }
 })
 
+// The same spelling, a different parameter: the identity provider's OAuth
+// `code` on the sign-in routes, which sit outside the stack and belong to the
+// OAuth protocol rather than to any screen's intent. Security's `?code=` is
+// the pairing link's, and is read through the hooks like every other intent.
+const PROTOCOL_READERS: ReadonlyArray<readonly [path: string, name: string]> = [
+  ['lib/external-auth-callback.ts', 'code'],
+]
+
 test('a consumed name is read only through the intent hooks', () => {
   const offenders: string[] = []
   for (const { path, text } of sources) {
     if (path === 'navigation/intent.ts') continue
     for (const name of consumedNames) {
+      if (PROTOCOL_READERS.some(([reader, param]) => reader === path && param === name)) continue
       const reader = new RegExp(`\\.(?:get|getAll|has)\\((['"])${name}\\1\\)`)
       if (reader.test(text)) offenders.push(`${path}: reads ?${name} directly`)
     }

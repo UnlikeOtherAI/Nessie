@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { faPlus } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 
 import { FormError } from '../../shared/FormActions'
 import { Section } from '../../shared/PageBody'
@@ -11,6 +11,7 @@ import {
   useAgentAccessCredentials,
   useRevokeAgentAccessCredential,
 } from '../../../facades/agent-access/hooks'
+import { useConsumedIntent } from '../../../navigation/intent'
 import { PairAgentDialog } from './PairAgentDialog'
 import { PairedAgentsTable } from './PairedAgentsTable'
 
@@ -33,25 +34,23 @@ const pairedAgentsListStore = createListPageStore()
  */
 export const ProgramsSignedInAsYou = () => {
   const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
   const credentials = useAgentAccessCredentials()
   const revoke = useRevokeAgentAccessCredential()
   const [actionError, setActionError] = useState<string | null>(null)
   const [pairOpen, setPairOpen] = useState(false)
 
-  // `?code=` is the program's own verification link. It opens the pairing
-  // dialog on the decision, and is stripped immediately: the code is single
-  // use, and leaving it in the URL invites a reload that can only fail.
-  const linkedCode = searchParams.get('code')
+  // `?code=` is the program's own verification link, a consumed intent of
+  // `/settings/security`. It opens the pairing dialog on the decision and
+  // leaves the address at once: the code is single use, and a reload could
+  // only fail. The dialog is offered it until it closes, so opening "Pair an
+  // agent" later starts from an empty code.
+  const linked = useConsumedIntent('code')
+  const [offeredCode, setOfferedCode] = useState<string | null>(null)
   useEffect(() => {
-    if (!linkedCode) return
+    if (!linked.value) return
+    setOfferedCode(linked.value)
     setPairOpen(true)
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current)
-      next.delete('code')
-      return next
-    }, { replace: true })
-  }, [linkedCode, setSearchParams])
+  }, [linked.serial, linked.value])
 
   const rows = credentials.data?.credentials ?? []
 
@@ -127,8 +126,11 @@ export const ProgramsSignedInAsYou = () => {
       />
 
       <PairAgentDialog
-        {...(linkedCode ? { initialCode: linkedCode } : {})}
-        onClose={() => setPairOpen(false)}
+        {...(offeredCode ? { initialCode: offeredCode } : {})}
+        onClose={() => {
+          setPairOpen(false)
+          setOfferedCode(null)
+        }}
         open={pairOpen}
       />
     </Section>
