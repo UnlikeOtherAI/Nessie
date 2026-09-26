@@ -69,7 +69,6 @@ runDatabaseTest('a brief pended behind a busy home DM drains alone, before the p
   const home = await ensureGlobalAgentBootstrap(prisma, {
     blueprint: AGENT_DESIGNER_BLUEPRINT,
     organizationId: team.organizationId,
-    teamId: team.teamId,
     userId: team.ownerId,
   })
   const busy = await prisma.run.create({

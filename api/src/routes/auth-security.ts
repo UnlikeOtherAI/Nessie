@@ -239,7 +239,7 @@ export const registerAuthSecurityRoutes = (
     // provisions Nessie's own agents for them there is not coming.
     await attemptSystemAgentsBootstrap(
       prisma,
-      { organizationId: session.claims.org, teamId: session.claims.team, userId: user.id },
+      { organizationId: session.claims.org, userId: user.id },
       (error) => request.log.error({ err: error }, 'system_agents_bootstrap_failed'),
     )
     if (session.claims.providerType !== 'uoa') {

@@ -41,7 +41,7 @@ import {
 import { buildAgentTodoFactsBlock } from './agent-todo-facts.js'
 import { buildExecutorReachBlock, type ExecutorReachFacts } from './executor-reach-facts.js'
 import type { AgentTodoPromptFacts } from '@nessie/team-admin'
-import { originalHumanAuthorId } from './private-conversation-lineage.js'
+import { conversationTurnLineage } from './private-conversation-lineage.js'
 import type { RunContext, StoredConversationMessage } from './types.js'
 import {
   coverProviderInputComponent,
@@ -176,6 +176,12 @@ export const buildModelPrompt = (
      * run's bindings and its conversation lease (`loadExecutorReachFacts`).
      */
     executorReach?: ExecutorReachFacts | null
+    /**
+     * What a one-on-one reply is told about Jev's plan for it
+     * (`buildOneOnOnePlanBlock`). Decided per message, so it rides behind the
+     * clock with the other volatile facts.
+     */
+    replyPlan?: string | null
     /** The exact active temporary browser handoff for this resumed run. */
     temporaryBrowserAccess?: {
       expiresAt: Date
@@ -276,6 +282,12 @@ export const buildModelPrompt = (
     const content = 'Executors are connected computers on which your assigned tools run commands and local apps. '
       + executorReach
     messages.push(coverProviderInputComponent({ content, role: 'system' }, 'prompt_system'))
+  }
+  if (options.replyPlan) {
+    messages.push(coverProviderInputComponent(
+      { content: options.replyPlan, role: 'system' },
+      'prompt_system',
+    ))
   }
 
   if (conversation.length > 0) {
@@ -416,29 +428,10 @@ export const loadConversation = async (
   // admitted turn's basis therefore joins the run's sink, and anything this run
   // writes inherits it.
   for (const message of readable) {
-    input.consumedSources.addAll(message.basisScopes)
-    for (const source of message.disclosureSources) {
+    const lineage = conversationTurnLineage(message, message.thread.channel)
+    input.consumedSources.addAll(lineage.basisScopes)
+    for (const source of lineage.disclosureSources) {
       input.consumedSources.addPrivateConversationSource(source)
-    }
-    // Human text in a non-public room has no MessageBasisScope — it is the
-    // source, rather than a derived reply. Record its channel and author here
-    // so a later post into another audience cannot erase that provenance.
-    if (message.thread.channel.visibility !== 'public') {
-      const authorUserId = originalHumanAuthorId(message)
-      if (authorUserId) {
-        input.consumedSources.addPrivateConversationSource({
-          sourceAuthorUserId: authorUserId,
-          sourceChannelId: message.thread.channel.id,
-        })
-      } else if (message.disclosureSources.length === 0) {
-        // A legacy private agent/tool row can carry another person's words but
-        // predates source lineage. Preserve that uncertainty through every
-        // later reply; a known author from another turn cannot cover it.
-        input.consumedSources.addPrivateConversationSource({
-          sourceAuthorUserId: null,
-          sourceChannelId: message.thread.channel.id,
-        })
-      }
     }
   }
 
@@ -465,6 +458,7 @@ export const loadConversation = async (
     const inlined = images.get(message.id)
     return {
       content: message.content,
+      id: message.id,
       role: message.role,
       authorAgentId: message.agentId,
       authorAgentName: message.agent?.name ?? null,

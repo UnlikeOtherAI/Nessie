@@ -13,6 +13,7 @@ import {
   resolveGlobalAgentModel,
   type GlobalAgentBlueprint,
 } from './global-agent-blueprints.js'
+import { ensureSystemTeam } from './system-teams.js'
 
 /**
  * Turning a global-agent blueprint into rows: one system-managed `Agent` per
@@ -45,7 +46,6 @@ const GLOBAL_AGENT_SYSTEM_TEAM_NAME = 'Global Agent System'
 export type GlobalAgentBootstrapInput = {
   blueprint: GlobalAgentBlueprint
   organizationId: string
-  teamId: string
   userId: string
 }
 
@@ -54,54 +54,6 @@ export type GlobalAgentBootstrapResult = {
   channelId: string
   threadId: string
 }
-
-export const ensureGlobalAgentSystemTeam = async (
-  prisma: PrismaClient,
-  input: { organizationId: string; teamId: string },
-): Promise<string> =>
-  prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`
-      SELECT pg_advisory_xact_lock(
-        hashtext(${input.organizationId}),
-        hashtext('global_agent_system_team')
-      )
-    `
-
-    const existing = await tx.team.findFirst({
-      where: {
-        name: GLOBAL_AGENT_SYSTEM_TEAM_NAME,
-        project: { organizationId: input.organizationId },
-        systemManaged: true,
-      },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    })
-    if (existing) {
-      return existing.id
-    }
-
-    const seedTeam = await tx.team.findFirst({
-      where: {
-        id: input.teamId,
-        project: { organizationId: input.organizationId },
-      },
-      select: { projectId: true },
-    })
-    if (!seedTeam) {
-      throw new Error('GLOBAL_AGENT_SYSTEM_TEAM_CONTEXT_NOT_FOUND')
-    }
-
-    const team = await tx.team.create({
-      data: {
-        name: GLOBAL_AGENT_SYSTEM_TEAM_NAME,
-        projectId: seedTeam.projectId,
-        systemManaged: true,
-      },
-      select: { id: true },
-    })
-
-    return team.id
-  })
 
 const buildGlobalAgentData = (
   organizationId: string,
@@ -208,8 +160,8 @@ export const ensureGlobalAgentChannel = async (
     slug: input.blueprint.slug,
     userId: input.userId,
   })
-  // A global-agent home is a system surface with no caller-selected project.
-  // Its team anchor remains the temporary default during the ownership backfill.
+  // A global-agent home is a system surface with no caller-selected project:
+  // it hangs from the system team, under the organisation's channel root.
   const teamProject = await loadTeamProjectScope(prisma, {
     organizationId: input.organizationId,
     teamId: input.teamId,
@@ -219,9 +171,13 @@ export const ensureGlobalAgentChannel = async (
   }
 
   const channelData = {
-    // Bootstrap repairs its own DM: a historical archive would otherwise hide
-    // the one doorway a person has to this agent.
+    // Bootstrap repairs its own DM: nothing legitimate archives or deletes a
+    // system DM (`canModifyChannel` refuses both), so either stamp is
+    // collateral — a project deletion took the whole seed project's channels
+    // with it once — and would otherwise hide the one doorway a person has to
+    // this agent.
     archivedAt: null,
+    deletedAt: null,
     label: input.blueprint.name,
     organizationId: input.organizationId,
     projectId: teamProject.projectId,
@@ -299,9 +255,10 @@ export const ensureGlobalAgentBootstrap = async (
   prisma: PrismaClient,
   input: GlobalAgentBootstrapInput,
 ): Promise<GlobalAgentBootstrapResult> => {
-  const systemTeamId = await ensureGlobalAgentSystemTeam(prisma, {
+  const systemTeamId = await ensureSystemTeam(prisma, {
+    lockKey: 'global_agent_system_team',
+    name: GLOBAL_AGENT_SYSTEM_TEAM_NAME,
     organizationId: input.organizationId,
-    teamId: input.teamId,
   })
   const agentId = await ensureGlobalAgent(prisma, input.blueprint, input.organizationId)
   const channelId = await ensureGlobalAgentChannel(prisma, {
@@ -346,7 +303,7 @@ export class GlobalAgentBootstrapFailures extends Error {
  */
 export const ensureGlobalAgentsForUser = async (
   prisma: PrismaClient,
-  input: { organizationId: string; teamId: string; userId: string },
+  input: { organizationId: string; userId: string },
 ): Promise<GlobalAgentBootstrapResult[]> => {
   const results: GlobalAgentBootstrapResult[] = []
   const failures: { blueprintSlug: string; cause: unknown }[] = []

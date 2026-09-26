@@ -20,7 +20,15 @@ file is the rule**.
   `gagent:{slug}:{orgId}:{userId}`, admitted by the channel-surface CHECK under
   its own `system_agent` type (never a widened pattern — the `extagent:` lesson)
   and held to exactly its encoded member (owner at **segment 4**) by the deferred
-  home-membership trigger. Sole membership is what makes `effectiveUserId =
+  home-membership trigger. It hangs from the organisation's hidden "Global
+  Agent System" team, which lives under the channel-root project like every
+  system team (`ensureSystemTeam`; [team-model](team-model.md) → "The
+  exceptions"), so no project deletion can take it, and the bootstrap takes no
+  team of the person's — it never did anything but seed that container, and a
+  person in no team of the organisation yet was refused their Designer for it.
+  The bootstrap clears both `archivedAt` and `deletedAt` on the DM it ensures:
+  nothing legitimate stamps a system channel, so either is collateral.
+  Sole membership is what makes `effectiveUserId =
   poster` and the single-candidate fast path safe, so it must hold at rest. Three
   refusals keep it true: no agent binds into ANY system channel
   (`bindAgentToChannel`, both routes, the PA tool; `canModifyChannel` likewise

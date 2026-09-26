@@ -7,6 +7,47 @@ import type { PrismaClient } from '@prisma/client'
 import { describeAttachments, loadMessageAttachments } from './message-attachments.js'
 import { engagementIdFor } from './orchestrate-candidates.js'
 
+/**
+ * Whose eyes a decision window is read through: the triggering person's live
+ * visibility, or the delegating agent's when a turn was written for someone.
+ * Shared by the engagement judgement and the one-on-one judgement, so the two
+ * windows cannot disagree about what exists.
+ */
+export const resolveDecisionViewer = (
+  prisma: PrismaClient,
+  actorContext: OrchestrateDecideJobPayload['actorContext'],
+  organizationId: string,
+) => resolveDisclosureViewer(
+  prisma,
+  organizationId,
+  actorContext.actionContext.effectiveUserId
+    ?? (actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : undefined),
+  {
+    agentId: actorContext.actor.actorType === 'agent'
+      ? actorContext.actor.actorId
+      : actorContext.actionContext.agentId,
+    uoaIdentity: actorContext.actionContext.uoaIdentity,
+  },
+)
+
+/**
+ * A message can be nothing but a photo. Naming its files gives a judgement
+ * something to read — without an inventory line an image-only post looks like
+ * an empty message and nobody answers it.
+ */
+export const loadAttachmentAnnotator = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  messageIds: string[],
+): Promise<(content: string, messageId: string) => string> => {
+  const attachments = await loadMessageAttachments(prisma, organizationId, messageIds)
+  return (content, messageId) => {
+    const note = describeAttachments(attachments.get(messageId) ?? [])
+    if (!note) return content
+    return content.trim() ? `${content}\n${note}` : note
+  }
+}
+
 /** Loads the decision window once, under the triggering person's live visibility. */
 export const loadOrchestrationContext = async (
   deps: { prisma: PrismaClient },
@@ -39,36 +80,17 @@ export const loadOrchestrationContext = async (
   // windows disagreeing about what exists is its own defect. Withheld turns
   // are dropped rather than placeheld: there is no reader here to show a
   // placeholder to.
-  const viewer = await resolveDisclosureViewer(
-    deps.prisma,
-    channel.organizationId,
-    actorContext.actionContext.effectiveUserId
-      ?? (actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : undefined),
-    {
-      agentId: actorContext.actor.actorType === 'agent'
-        ? actorContext.actor.actorId
-        : actorContext.actionContext.agentId,
-      uoaIdentity: actorContext.actionContext.uoaIdentity,
-    },
-  )
+  const viewer = await resolveDecisionViewer(deps.prisma, actorContext, channel.organizationId)
   const visible = partitionByDisclosure(recentDbMessages, viewer).visible
   // Policy effects can include a public reaction. Do not derive those effects
   // from turns restricted beyond the room, even when the requester can read them.
   const recentOrdered = visible.filter((message) =>
     !policyDecision || message.basisScopes.length === 0).reverse()
-  // A message can be nothing but a photo. Naming its files gives the
-  // engagement judgement something to read — without an inventory line an
-  // image-only post looks like an empty message and nobody answers it.
-  const attachments = await loadMessageAttachments(
+  const annotate = await loadAttachmentAnnotator(
     deps.prisma,
     channel.organizationId,
     [...recentOrdered.map((m) => m.id), messageId],
   )
-  const annotate = (messageContent: string, id: string): string => {
-    const note = describeAttachments(attachments.get(id) ?? [])
-    if (!note) return messageContent
-    return messageContent.trim() ? `${messageContent}\n${note}` : note
-  }
 
   const recentMessages = recentOrdered
     .filter((message) => message.id !== messageId)

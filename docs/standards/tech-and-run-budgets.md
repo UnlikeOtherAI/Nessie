@@ -222,6 +222,40 @@ summary and points here; **this file is the rule**.
     bounded recovery, even after earlier tool calls: no visible answer is not
     evidence that the work is complete. A recovered text answer still passes
     the structured completion review; repeated empty responses fail visibly.
+  - **Jev gates.** The structured completion review (`reviewFollowUp`,
+    `worker/src/run/follow-up-review.ts`) sends the whole transcript to the
+    utility model after every text answer. Jev is asked first, over a bounded
+    digest (`completionDigest`, `packages/runtime/src/run-decisions.ts`):
+    the latest request, up to four turns before it, this turn's tool calls
+    with excerpted results — the oldest dropped first to stay under 18 KB,
+    with the number dropped said — and the proposed answer; never the system
+    prompt or the agent's documents. At 0.9 or more on `complete`
+    (`COMPLETION_MINIMUM_PROBABILITY`) the review is skipped. Jev never sends
+    a run back to work: `unfinished`, doubt, a timeout (4 s) or a failure
+    asks the generative review, whose written reason is what a continuing
+    turn is told. The same evaluator answers a rolling watch's disposition
+    first ([rolling-watch-status.md](rolling-watch-status.md)). The evaluator
+    (`RunInference.decide`) is the installation's Ledger route attributed to
+    the run; a run on a personal subscription or a local model has none, so
+    its evidence stays in its own lane and it keeps the generative judges.
+    Jev's usage is recorded in the installation's usage ledger, not in the
+    run's invocation totals (about $0.00003 a call). The security judges —
+    tool auto-review, the send boundary and disclosure sharing — stay
+    generative: a confident classifier mistake there is a disclosure, not a
+    wasted call.
+  - **Memory capture's extraction gate.** Every captured thought — each person's
+    message, a run's consolidated memories, a remembered note — paid for two
+    generative JSON extractions: metadata (people, topics, kind, action items,
+    dates) and decision reasoning. Where the deployment reaches Ledger,
+    `captureThought` (`packages/memory/src/capture.ts`) first asks Jev
+    (`gateExtraction`, `packages/memory/src/extraction-gate.ts`), beside the
+    embedding, over the same first 4,000 characters: is there anything worth
+    indexing, what kind of note it is, and does it explain a decision. A sure
+    "nothing to index" (0.8, `EXTRACTION_GATE_MINIMUM_PROBABILITY`) stores
+    empty metadata of Jev's kind (a note when unsure) without generating it; a
+    sure "no reasoning" skips the reasoning extraction. Anything unsure, and any
+    failure, extracts exactly as before. The API's and the worker's capture
+    configs carry the same Ledger decision client as the orchestrator.
 
   - MCP tool descriptors are name-sorted with exposed names allocated in a
     fixed order, so the tool array is byte-identical across iterations and the

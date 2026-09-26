@@ -74,7 +74,6 @@ dbTest('a shared channel keeps one PA presence per live member and removes it on
     })
     const assistant = await ensurePersonalAssistantBootstrap(prisma, {
       organizationId,
-      teamId: team.id,
       userId: firstUserId,
     })
 
@@ -216,7 +215,6 @@ dbTest('a PA presence is a viewer-relative participant projection, never an agen
     })
     const assistant = await ensurePersonalAssistantBootstrap(prisma, {
       organizationId,
-      teamId: team.id,
       userId: ownerUserId,
     })
     await addPersonalAssistantPresence(prisma, { channelId: channel.id, organizationId, userId: ownerUserId })

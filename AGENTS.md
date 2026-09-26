@@ -241,6 +241,8 @@ when one changes, the same turn updates it, not this section.
   before writing code here.
 - **Jev channel decisions.** Channel settings and the Personal Assistant share
   the enum policy; configured work carries its authorizer through queued runs.
+  A room without a policy asks Jev first and the generative orchestrator only
+  on Jev's doubt; a run's completion review and watch disposition do the same.
   Read [`docs/standards/channel-decision-policy.md`](docs/standards/channel-decision-policy.md)
   before changing classification, policy editing or its execution.
 - **A recurring watch keeps one rolling status message.** A sweep that finds
@@ -614,7 +616,9 @@ before writing code here.
 
 Slack-style reply threads live one level deep on `Message.rootMessageId`;
 where a run's reply lands is decided before the run starts, and **where a run
-replies and what it reads are separate questions**. Thinking bubbles and the
+replies and what it reads are separate questions**. A room whose only person is
+the one talking answers in its main chat, and with one agent in it Jev decides
+each reply's shape and whether it goes back to an earlier message. Thinking bubbles and the
 client-only liveness hint are part of the same standard. A container `Thread`
 with an `agent_id` is a **conversation with that agent** — one agent, many
 isolated contexts in the same room — and a top-level `user` turn inside one

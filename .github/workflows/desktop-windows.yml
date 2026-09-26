@@ -311,7 +311,9 @@ jobs:
             "NESSIE_DESKTOP_WINDOWS_SIGNER_EKU=$env:WINDOWS_SIGNER_EKU" |
               Out-File -FilePath $env:GITHUB_ENV -Append
             $signScript = Join-Path $env:GITHUB_WORKSPACE 'scripts\sign-windows-artifact.ps1'
-            $signCommand = "pwsh.exe -NoProfile -ExecutionPolicy Bypass -File `"$signScript`" -FilePath `"%1`""
+            # Tauri and the executor packaging helper each quote the substituted
+            # artifact path; quoting `%1` here would produce `""C:\...""`.
+            $signCommand = "pwsh.exe -NoProfile -ExecutionPolicy Bypass -File `"$signScript`" -FilePath %1"
             "WINDOWS_SIGN_COMMAND=$signCommand" | Out-File -FilePath $env:GITHUB_ENV -Append
           } elseif ($releaseSource) {
             Write-Host '::warning::Publishing an unsigned Windows installer; SmartScreen may warn before installation.'
@@ -356,9 +358,26 @@ jobs:
           }
           if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
             $env:NESSIE_WINDOWS_SIGN_COMMAND = $env:WINDOWS_SIGN_COMMAND
-            $config = @{ bundle = @{ windows = @{ signCommand = $env:WINDOWS_SIGN_COMMAND } } } |
+            $configPath = Join-Path $env:RUNNER_TEMP 'nessie-tauri-windows-signing.json'
+            $signScript = Join-Path $env:GITHUB_WORKSPACE 'scripts\sign-windows-artifact.ps1'
+            # Tauri's string notation splits on every space without honouring
+            # quotes. Use its object notation so PowerShell receives the script
+            # path and substituted artifact path as exact arguments.
+            $signCommand = @{
+              cmd = 'pwsh.exe'
+              args = @(
+                '-NoProfile',
+                '-ExecutionPolicy', 'Bypass',
+                '-File', $signScript,
+                '-FilePath', '%1'
+              )
+            }
+            $config = @{ bundle = @{ windows = @{ signCommand = $signCommand } } } |
               ConvertTo-Json -Depth 5 -Compress
-            $arguments += @('--config', $config)
+            Set-Content -LiteralPath $configPath -Value $config -Encoding utf8NoBOM
+            # A path avoids PowerShell/native argument parsing stripping the
+            # JSON property's quotes before the Tauri CLI receives it.
+            $arguments += @('--config', $configPath)
           }
           # Call Tauri directly after runtime preparation. Passing a second
           # argument separator through the package script reaches Cargo as a
@@ -470,7 +489,7 @@ jobs:
             $subject = $signature.SignerCertificate.Subject
             $ekus = @(
               $signature.SignerCertificate.EnhancedKeyUsageList |
-                ForEach-Object { $_.ObjectId.Value }
+                ForEach-Object { $_.Value }
             )
             Write-Host "$($_.Name): $($signature.Status) $subject $($ekus -join ',')"
             if (

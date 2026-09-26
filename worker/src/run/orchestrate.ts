@@ -22,6 +22,12 @@ import type { PrismaClient } from '@prisma/client'
 import { dispatchOrchestratorDecisions } from './orchestrate-dispatch.js'
 import { isDelegatedSystemDmChannelType } from './delegated-identity.js'
 import { loadOrchestrationContext } from './orchestrate-context.js'
+import {
+  answerInMainChat,
+  decideOneOnOneTurn,
+  isOneOnOneAgentRoom,
+  isSinglePersonRoom,
+} from './orchestrate-one-on-one.js'
 import { evaluateChannelPolicy } from './orchestrate-policy.js'
 import { postOrchestrationNotice } from './orchestration-notice.js'
 import {
@@ -69,8 +75,41 @@ export const resolveSystemDmDecisions = (
   }
 
   // Structural, like the @mention fast path: every turn in one of these DMs is
-  // addressed to its one agent, so its answer belongs to that exchange.
-  return [{ action: 'reply', agentId: assistant.id, replyPlacement: 'thread' }]
+  // addressed to its one agent. One person and one agent leave nobody to keep
+  // the exchange apart from, so the answer goes to the main chat; a turn
+  // written inside a reply thread still continues there, because
+  // `resolveReplyRootMessageId` decides that before any placement.
+  return [{ action: 'reply', agentId: assistant.id, replyPlacement: 'channel' }]
+}
+
+/**
+ * A card press answers the agent that posted the card, so it wakes that agent
+ * structurally. The API writes the press as a person's reply under the card and
+ * records it on the card in the same transaction (`AgentCard.responseMessageId`,
+ * a column no client can write), which is the fact read here — never the
+ * message's words. No judgement is asked: a one-on-one judgement or an
+ * engagement decision is free to answer "only react" or "stay out", and either
+ * would leave the agent that asked waiting on an answer it never hears
+ * (docs/standards/agent-cards.md → "The press is a message").
+ */
+export const resolveCardResponseDecisions = async (
+  prisma: Pick<PrismaClient, 'agentCard'>,
+  input: { channelAgents: ChannelAgent[]; messageId: string; role: string; rootMessageId: string | null },
+): Promise<OrchestratorDecision[] | null> => {
+  // A press is always a person's, and always a reply under its card.
+  if (input.role !== 'user' || input.rootMessageId === null) return null
+  const card = await prisma.agentCard.findUnique({
+    where: { responseMessageId: input.messageId },
+    select: { agentId: true },
+  })
+  const agent = card ? input.channelAgents.find((candidate) => candidate.id === card.agentId) : undefined
+  if (!agent) return null
+  return [{
+    action: 'reply',
+    agentId: agent.id,
+    ...(agent.principalUserId ? { principalUserId: agent.principalUserId } : {}),
+    replyPlacement: 'thread',
+  }]
 }
 
 /**
@@ -185,6 +224,9 @@ export const executeOrchestrateDecideJob = async (
       decisionPolicyAuthorizer: true,
       archivedAt: true,
       deletedAt: true,
+      // Who is in the room decides where its answers go: a DM whose only
+      // member is the person talking has nobody else for a thread to spare.
+      _count: { select: { members: true } },
     },
   })
 
@@ -256,7 +298,34 @@ export const executeOrchestrateDecideJob = async (
   }
 
   let policyAuthorizer: AuthorizedActionContext | null = null
-  let decisions = resolveSystemDmDecisions(
+  const room = {
+    memberCount: channel._count?.members ?? 0,
+    systemChannelType: channel.systemChannelType,
+    type: channel.type,
+  }
+  const topLevelTrigger = triggerMessage ? triggerMessage.rootMessageId === null : false
+  const answeredCard = triggerMessage
+    ? await resolveCardResponseDecisions(deps.prisma, {
+      channelAgents,
+      messageId: triggerMessage.id,
+      role: triggerMessage.role,
+      rootMessageId: triggerMessage.rootMessageId,
+    })
+    : null
+  // One person and one agent: Jev decides how the agent answers — a reply, the
+  // work done and marked, or a reaction — and whether the message goes back to
+  // an earlier one. Null means there is no judgement to act on, and the room
+  // answers the way it always has, below.
+  let decisions = answeredCard ?? (triggerMessage && isOneOnOneAgentRoom(room, channelAgents)
+    ? await decideOneOnOneTurn(deps, {
+      agent: channelAgents[0]!,
+      channel,
+      payload,
+      trigger: triggerMessage,
+    })
+    : null)
+  const judgedOneOnOne = answeredCard === null && decisions !== null
+  decisions ??= resolveSystemDmDecisions(
     channel.systemChannelType,
     role,
     channelAgents,
@@ -304,6 +373,7 @@ export const executeOrchestrateDecideJob = async (
         agents: channelAgents.map(asEngagementCandidate),
         agentMentions,
         ...decisionContext,
+        ...(deps.decisionClient ? { decisionClient: deps.decisionClient } : {}),
         triggerIsHuman: role === 'user',
         usage: attributionFromActorContext(actorContext, {
           systemComponent: 'orchestrator',
@@ -344,6 +414,9 @@ export const executeOrchestrateDecideJob = async (
 
   if (decisions.length === 0) {
     return
+  }
+  if (!judgedOneOnOne && topLevelTrigger && isSinglePersonRoom(room)) {
+    decisions = answerInMainChat(decisions)
   }
 
   await dispatchOrchestratorDecisions(deps, payload, channel, decisions, policyAuthorizer)

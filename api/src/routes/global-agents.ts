@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
 import { GlobalAgentHomeResponseSchema } from '../contracts/agents.js'
-import { DEFAULT_BOOTSTRAP_RECORD_IDS } from '../db/bootstrap.js'
 import { createApiResponse, sendApiError } from '../lib/api.js'
 import { openGlobalAgentHome } from '../services/global-agent-home.js'
 import type { RouteDeps } from './types.js'
@@ -31,10 +30,6 @@ export const registerGlobalAgentRoutes = (app: FastifyInstance, deps: RouteDeps)
     const home = await openGlobalAgentHome(prisma, {
       organizationId: actorContext.tenant.organizationId,
       slug,
-      teamId:
-        actorContext.tenant.teamId
-        ?? actorContext.actionContext.teamId
-        ?? DEFAULT_BOOTSTRAP_RECORD_IDS.teamId,
       userId: actorContext.actor.actorId,
     })
     if (!home) {

@@ -23,7 +23,7 @@ import { ensureGlobalAgentsForUser } from '@nessie/team-admin'
  */
 export const attemptGlobalAgentsBootstrap = async (
   prisma: PrismaClient,
-  input: { organizationId: string; teamId: string; userId: string },
+  input: { organizationId: string; userId: string },
   onError: (error: unknown) => void,
 ): Promise<void> => {
   try {

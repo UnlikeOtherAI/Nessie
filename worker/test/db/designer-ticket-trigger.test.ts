@@ -112,7 +112,6 @@ const seed = async (prisma: PrismaClient) => {
   const designer = await ensureGlobalAgentBootstrap(prisma, {
     blueprint: AGENT_DESIGNER_BLUEPRINT,
     organizationId: organization.id,
-    teamId: team.id,
     userId: owner.id,
   })
   return {

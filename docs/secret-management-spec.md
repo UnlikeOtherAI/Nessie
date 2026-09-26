@@ -228,8 +228,34 @@ credential-bearing connection URLs, and explicit token assignments); it does
 not use an LLM or infer intent from prose.
 
 The composer scan happens before a chat request, optimistic message, or draft
-write can survive. Every channel composer opens the same protected capture
-form with a suggested key name and scope. Its value control contains only the
+write can survive. Every message composer runs it through one hook,
+`admin/src/components/features/channels/useSecretCapture.ts`, and opens the
+same protected capture form with a suggested key name.
+
+**The form always opens on Personal.** Personal is the one scope every
+signed-in person may write (`canManageSecretScope`). A project secret is
+listed to every member of the project and, through the cascade above,
+outranks their team's and organisation's secret of the same name. Making a
+credential the project's is therefore the person's choice, never the default.
+
+- **Where the project is offered.** The room's project appears as "This
+  project", never preselected, only in an ordinary project room
+  (`type: 'standard'`, `scope: 'project'`, neither a group DM nor a system
+  conversation). It is offered only to an organisation owner, the one role
+  that may write it. `secretCaptureProjectId` states the rule.
+- **Where it never is.** A DM, a group DM and a system conversation are stored
+  in their team's own project whoever they address, and a standalone room in a
+  hidden container. That project says nothing about who is being written to,
+  so it is never offered.
+- **Why the rule changed.** The form used to preselect the room's project,
+  which every room carries. Every member and admin who pressed Save got
+  `403 SECRET_SCOPE_DENIED` until they switched to Personal. An owner's DM
+  credential went to the team's storage project.
+- **New message.** The New message page's first message has no room at all.
+  It is scanned before `POST /api/channels/conversations`, so a discarded
+  credential leaves no conversation behind.
+
+The form's value control contains only the
 provider's structural prefix (for example `sk_live_`) plus twelve bullet
 circles; the raw value remains transient React state and is posted only to
 `POST /api/secrets`. An explicit assignment such as `API_KEY=…` stores only

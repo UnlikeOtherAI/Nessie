@@ -271,6 +271,13 @@ const client = {
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
+// The detail panel reads its tab from the URL (`useTabParam`), and the Local
+// apps section is what a machine's Sessions tab shows; the Permissions tab is
+// the sharing panel, which without a team says only "Select a team to manage
+// sharing." So the entry is the executor's own page on that tab, as a person's
+// address bar would carry it, and the runner pins that Sessions is selected.
+const INITIAL_ENTRY = `/admin/computers/${EXECUTOR_ID}?tab=sessions`
+
 const scenarioName = new URLSearchParams(window.location.search).get('scenario') ?? 'available'
 const grantingWholeSuite = scenarioName === 'whole-suite-grant'
 const review = REVIEW_SCENARIOS[scenarioName]
@@ -279,7 +286,7 @@ const view = scenarios[scenarioName]
 createRoot(document.getElementById('root')!).render(
   <QueryClientProvider client={queryClient}>
     <ApiClientProvider client={client}>
-      <MemoryRouter initialEntries={['/admin/computers?tab=permissions']}>
+      <MemoryRouter initialEntries={[INITIAL_ENTRY]}>
         <div style={{ background: 'var(--bg)', minHeight: '100vh', padding: '24px' }}>
           <div style={{ margin: '0 auto', maxWidth: '720px' }}>
             {grantingWholeSuite ? (
