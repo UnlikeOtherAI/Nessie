@@ -336,13 +336,13 @@ const framed = (body: ReactNode) => (
 // A data router, because the docs tab's upload guard blocks navigation (`useBlocker`).
 const router = createMemoryRouter([
   // The trigger's own page reads its id from the route, as the admin's router gives it.
-  ...(scenario === 'page' ? [{ element: framed(<TriggerPageScenario />), path: '/agents/triggers/:triggerId' }] : []),
+  ...(scenario === 'page' ? [{ element: framed(<TriggerPageScenario />), path: '/admin/automations/triggers/:triggerId' }] : []),
   { element: framed(<Scenario />), path: '*' },
 ], {
   // `&view=list` opens the docs tab in the Finder's list view.
   initialEntries: [scenario === 'docs'
     ? `/projects/${PROJECT}/docs${params.get('view') ? `?view=${params.get('view')}` : ''}`
-    : scenario === 'page' ? `/agents/triggers/${TICKET_TRIGGER}` : '/agents/triggers'],
+    : scenario === 'page' ? `/admin/automations/triggers/${TICKET_TRIGGER}` : '/admin/automations?tab=triggers'],
 })
 
 createRoot(document.getElementById('root')!).render(

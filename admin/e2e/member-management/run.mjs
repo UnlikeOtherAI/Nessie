@@ -26,7 +26,7 @@ try {
     page.on('pageerror', (error) => errors.push(error.message))
     const open = async (params = '') => {
       await page.goto(`http://localhost:5455/e2e/member-management/index.html${params}`)
-      await page.getByRole('heading', { name: 'Members', exact: true }).waitFor()
+      await page.getByRole('heading', { name: 'People', exact: true }).waitFor()
     }
     const member = () => page.getByRole('button', { name: 'Open Jakub Rafaj', exact: true })
     const dialogClosed = () => page.getByRole('dialog').waitFor({ state: 'hidden' })
@@ -49,8 +49,8 @@ try {
     await page.locator('button[aria-label="Alerts"]').click()
     await page.getByText('Automatic access to Design needs reauthorization', { exact: true }).click()
     await page.waitForFunction(() => (
-      window.location.pathname === '/settings/members'
-      && new URLSearchParams(window.location.search).get('membersTab') === 'automatic'
+      window.location.pathname === '/admin/people'
+      && new URLSearchParams(window.location.search).get('tab') === 'automatic'
     ))
     const repair = page.getByRole('button', { name: 'Re-authorize Design', exact: true })
     await repair.waitFor()

@@ -171,7 +171,7 @@ try {
       new RegExp('Pick up tickets[\\s\\S]*set up by Ondrej[\\s\\S]*CTO[\\s\\S]*Live[\\s\\S]*'
         + 'NES-140 Fix login redirect[\\s\\S]*holds this machine, working'))
     assert.equal(await standingSection.getByRole('link', { name: 'Pick up tickets' }).getAttribute('href'),
-      `/agents/triggers/${triggerId(1)}`, 'the trigger links to its own screen')
+      `/admin/automations/triggers/${triggerId(1)}`, 'the trigger links to its own screen')
     // Which ticket holds the machine (T5), linked to the ticket on its board.
     assert.equal(
       await standingSection.getByRole('link', { name: 'NES-140 Fix login redirect' }).first().getAttribute('href'),

@@ -15,10 +15,10 @@ if (!(root instanceof HTMLElement)) throw new Error('Executor detail fixture roo
 createRoot(root).render(
   <QueryClientProvider client={queries}>
     <ApiClientProvider client={client}>
-      <MemoryRouter initialEntries={[projectView ? '/project-executors' : '/agents/executors/33333333-3333-4333-8333-333333333333']}>
+      <MemoryRouter initialEntries={[projectView ? '/project-executors' : '/admin/computers/33333333-3333-4333-8333-333333333333']}>
         <LocalBackProvider><main className="h-screen bg-[color:var(--main)] text-[color:var(--tx)]">
           <Routes>
-            <Route path="/agents/executors/:executorId" element={<ExecutorDetailContent teamId="77777777-7777-4777-8777-777777777777" token={null} />} />
+            <Route path="/admin/computers/:executorId" element={<ExecutorDetailContent teamId="77777777-7777-4777-8777-777777777777" token={null} />} />
             <Route path="/project-executors" element={<ProjectExecutorsTab projectId="11111111-1111-4111-8111-111111111111" />} />
           </Routes>
         </main></LocalBackProvider>

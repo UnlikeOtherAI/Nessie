@@ -23,7 +23,7 @@ import { createFixtureServer } from './fixture-server'
 /**
  * DeepWater research in the admin, over a stubbed API (Water plan nessie.md
  * §7.7, §7.9). The real brief dialog, research card, notice actions,
- * Knowledge › Research view and `/apps/deep-water` hero render; only the
+ * Knowledge › Research view and `/admin/apps/deep-water` hero render; only the
  * transport is fake (`fixture-server.ts`, which also reads the query switches
  * that shape the server's answers). The runner drives the server's side
  * through `window.__research`.
@@ -221,7 +221,7 @@ createRoot(document.getElementById('root')!).render(
                 <Route element={<Inbox />} path="/threads" />
                 <Route element={<Elsewhere />} path="/elsewhere" />
                 <Route element={<DeepWaterResearchView />} path="/knowledge-base/views/deep-water-research" />
-                <Route element={<Hero />} path="/apps/deep-water" />
+                <Route element={<Hero />} path="/admin/apps/deep-water" />
               </Routes>
             </div>
           </MemoryRouter>

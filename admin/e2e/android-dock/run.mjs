@@ -159,7 +159,7 @@ const main = async () => {
     // A settings page, where the body is a scroller of its own rather than a
     // conversation: the surface still reaches the floor, and the scrolling body
     // is what ends above the dock.
-    await gotoPath(app.page, '/audit')
+    await gotoPath(app.page, '/admin/security?tab=audit')
     await app.page.waitForSelector('.admin-page-body')
     await app.page.waitForTimeout(400)
     const settings = await measure(app.page)
