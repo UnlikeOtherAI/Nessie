@@ -30,8 +30,9 @@ the separately configured deployment model.
 Pair an additional connection using a separate owner-only executor state
 directory and the local API origin. Do not replace a production connection or
 copy its machine key. Configure an actually installed terminal executable,
-approve its descriptor once and grant the CTO access through the normal API/UI.
-Adding that agent within the approved boundary requires no second password/code.
+assign the CTO through the normal machine Agents surface or its API. Pairing
+establishes the connection; current capability reports and agent assignments
+require no second password/code or separate machine-permission approval.
 The native account-management flow remains separate from this CLI test setup.
 
 Rebuild the worker after changing worker source; the API watches its output.
@@ -116,3 +117,30 @@ the Release compiler also checks definite initialization of property wrappers.
 That build caught an account-controller initializer reading a `@Published`
 property before all stored properties were initialized. Constructing the initial
 controllers in a local value before assigning either published property fixes it.
+
+## Ordinary chat across three machines — 2026-09-26
+
+A fresh private CTO used the owner's personal Kimi connection through a normal
+conversation message, without an executor-run launch or conversation lease.
+The run bound all three assigned, online machines and returned measured disk
+space after one OS query per machine: PowerShell `Get-Volume` on Windows and
+`df -h` on Ubuntu and Mac (the Mac test connection used Claude Code).
+All three session files then reported `closed` with no process identity.
+No additional approval or code was requested.
+
+This covers the ordinary-chat route that the earlier explicit-launch tests
+missed. The model corrected an invalid optional folder path before executing
+the commands. Initial fixture startup also exposed stale local capability and
+connection state; reconnecting the existing test connections resolved that
+before the successful run. Production connections were left running.
+
+Document-link verification exposed guessed arguments when the new link tool
+was deferred. Its small schema now stays inline, argument mistakes are
+correctable, and knowledge listings/search/reads return canonical links.
+A clean repeat completed with one `kb_list` call and a named, clickable home-space
+link, with no raw identifiers in the visible reply.
+A subsequent ordinary Mac-only follow-up ran one `df -h /`, reported the
+measured free space, closed its session and included the named machine link.
+The other two computers received no commands for that follow-up.
+An explicit link-tool request then completed with one successful `nessie_link`
+call and a named Mac link, without a schema-discovery call or visible GUID.

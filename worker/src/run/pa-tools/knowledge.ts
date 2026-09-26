@@ -11,6 +11,7 @@ import {
   type SpaceViewer,
 } from '@nessie/knowledge'
 import { attributionFromActorContext, type DisclosureViewer } from '@nessie/runtime'
+import { buildNessieResourcePath } from '@nessie/schemas'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import {
   loadReadableVersion,
@@ -143,6 +144,7 @@ export const runKbSearchTool = async (
     [
       `${index + 1}. ${hit.page.title}`,
       `   pageId=${hit.page.id} spaceId=${hit.page.spaceId}`,
+      `   link=${buildNessieResourcePath({ kind: 'document', id: hit.page.id, spaceId: hit.page.spaceId })}`,
       `   ${truncate(hit.snippet, 240)}`,
     ].join('\n'),
   )
@@ -196,6 +198,7 @@ export const runKbPageReadTool = async (
   const lines = [
     `Title: ${page.title}`,
     `pageId=${page.id} spaceId=${page.spaceId} status=${page.status}`,
+    `link=${buildNessieResourcePath({ kind: 'document', id: page.id, spaceId: page.spaceId })}`,
     `versionId=${version.id} versionNumber=${version.versionNumber}`,
     `characters=${Math.min(offset, plain.length)}-${end} of ${plain.length} nextOffset=${nextOffset ?? 'none'}`,
     `Labels: ${page.labels.length ? page.labels.join(', ') : '(none)'}`,
@@ -213,12 +216,13 @@ export const runKbPageReadTool = async (
 // Renders a page tree as an indented outline, depth-first, following the
 // provider's own ordering (parentPageId, then position, then title) for
 // sibling order at every level.
-const renderPageTree = (nodes: KnowledgePageTreeNode[]): string => {
+const renderPageTree = (nodes: KnowledgePageTreeNode[], spaceId: string): string => {
   const byId = new Map(nodes.map((node) => [node.id, node]))
   const roots = nodes.filter((node) => !node.parentPageId || !byId.has(node.parentPageId))
   const lines: string[] = []
   const walk = (node: KnowledgePageTreeNode, depth: number): void => {
-    lines.push(`${'  '.repeat(depth)}- ${node.title} (pageId=${node.id})`)
+    lines.push(`${'  '.repeat(depth)}- ${node.title} (pageId=${node.id}) `
+      + `link=${buildNessieResourcePath({ kind: 'document', id: node.id, spaceId })}`)
     for (const childId of node.childPageIds) {
       const child = byId.get(childId)
       if (child) walk(child, depth + 1)
@@ -280,7 +284,8 @@ const runKbListByTaskTool = async (
   for (const page of visible) recordPageVersionRead(context, page)
 
   const lines = visible.map(
-    (page, index) => `${index + 1}. ${page.title} (pageId=${page.id}, kind=${page.kind})`,
+    (page, index) => `${index + 1}. ${page.title} (pageId=${page.id}, kind=${page.kind}) `
+      + `link=${buildNessieResourcePath({ kind: 'document', id: page.id, spaceId: page.spaceId })}`,
   )
   return { inputSummary: `taskId=${taskId}`, outputPreview: lines.join('\n'), toolName: 'kb_list' }
 }
@@ -319,7 +324,8 @@ export const runKbListTool = async (
     // and withhold an ordinary shared-channel reply, so catalogue listing never
     // contributes provenance. The task-scoped page-list path remains recorded.
     const lines = result.data.map(
-      (space, index) => `${index + 1}. ${space.name} (spaceId=${space.id}, visibility=${space.visibility})`,
+      (space, index) => `${index + 1}. ${space.name} (spaceId=${space.id}, visibility=${space.visibility}) `
+        + `link=${buildNessieResourcePath({ kind: 'space', id: space.id })}`,
     )
     return { inputSummary: 'spaces', outputPreview: lines.join('\n'), toolName: 'kb_list' }
   }
@@ -351,10 +357,14 @@ export const runKbListTool = async (
   if (visiblePages.length === 0) {
     return {
       inputSummary: `spaceId=${spaceId}`,
-      outputPreview: `${space.name} has no pages yet.`,
+      outputPreview: `${space.name} has no pages yet. link=${buildNessieResourcePath({ kind: 'space', id: spaceId })}`,
       toolName: 'kb_list',
     }
   }
 
-  return { inputSummary: `spaceId=${spaceId}`, outputPreview: renderPageTree(visiblePages), toolName: 'kb_list' }
+  return {
+    inputSummary: `spaceId=${spaceId}`, toolName: 'kb_list',
+    outputPreview: `${space.name} link=${buildNessieResourcePath({ kind: 'space', id: spaceId })}\n`
+      + renderPageTree(visiblePages, spaceId),
+  }
 }

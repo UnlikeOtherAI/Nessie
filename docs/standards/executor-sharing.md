@@ -19,6 +19,17 @@ The acting person must manage the machine and have the existing authority over
 the agent; private-agent visibility is unchanged. This action has no approval
 continuation, password prompt or fresh-authentication code.
 
+On a person's live private chat turn, run setup binds the agent's available
+assigned machines directly. No composer launch, conversation lease or additional
+approval is needed. The normal availability and dispatch checks still apply on
+each machine. Multiple machines expose the same tools with an `executorId`
+selector; session state, catalogs and command records remain separate. An
+explicitly launched run retains its selected machine. Shared conversations and
+unattended ticket work retain their existing launch and standing-policy paths.
+The home is still the executor's Agents tab; ordinary agent chat is the doorway
+for using that assignment. This is a machine-only tool contract, with results
+delivered through the existing chat and terminal viewer surfaces.
+
 **Permissions** means sharing:
 
 - A named person gets **Can use** or **Admin**. An administrator manages agents,

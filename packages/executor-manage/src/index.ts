@@ -232,3 +232,4 @@ export * from './executor-sharing.js'
 export * from './executor-direct-access.js'
 
 export * from './executor-project-inventory.js'
+export { bindChatExecutors } from './executor-chat-binding.js'

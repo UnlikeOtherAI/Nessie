@@ -1,4 +1,4 @@
-import { carryForwardExecutorBindings, publishExecutorLeaseChanges } from '@nessie/executor-manage'
+import { bindChatExecutors, carryForwardExecutorBindings, publishExecutorLeaseChanges } from '@nessie/executor-manage'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
@@ -13,9 +13,9 @@ type HostOutput = Parameters<typeof buildExecutorToolset>[1]['hostOutput']
  * - A ticket's work is bound by its standing policy, afresh at every wake,
  *   never by a lease: at the start of setup (`prepareTicketWorkRun`), before
  *   any tool is resolved, so a standing run is offered less.
- * - Any other run: a person's own follow-up in the conversation they launched
- *   local apps in is bound afresh here, immediately before the toolset reads
- *   the run's bindings. A refusal is an outcome, never a throw — and the carry
+ * - A person's live private chat binds their agent's available machines here.
+ *   Other interactive turns can carry an existing conversation lease, immediately
+ *   before the toolset reads the run's bindings. A refusal is an outcome — the carry
  *   runs for every agent's every turn, so an unexpected failure in it (a lost
  *   connection) must not sink an ordinary one either: the run goes on with
  *   whatever bindings it already has, and no reach facts are told.
@@ -31,7 +31,15 @@ export const prepareRunExecutorToolset = async (
   },
 ): Promise<ExecutorToolset> => {
   const { context, payload } = input
-  const lease = input.ticketWork
+  const chatBound = !input.ticketWork
+    && await bindChatExecutors(deps.prisma, { job: payload, runId: context.run.id })
+      .catch((error: unknown) => {
+        console.warn('[worker] chat executor binding failed for run', context.run.id, error)
+        return false
+      })
+  const lease = chatBound
+    ? { kind: 'already_bound' as const, lease: null }
+    : input.ticketWork
     ? undefined
     : await carryForwardExecutorBindings(deps.prisma, { job: payload, runId: context.run.id })
       .catch((error: unknown) => {

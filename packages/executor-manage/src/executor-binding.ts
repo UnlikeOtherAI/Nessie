@@ -170,8 +170,26 @@ export const bindExecutorCandidateInTransaction = async (
   await lockRunBindings(tx, input.runId)
   if (!allowIsolatedBundle) await assertRunHasNoIsolatedBinding(tx, input.runId)
   await lockBinding(tx, input.runId, operationKey)
+  const candidate = await tx.executorAvailabilityCandidate.findUnique({
+    where: { handleDigest: candidateHandleDigest },
+    include: {
+      capabilityRevision: true,
+      executor: {
+        include: {
+          capabilityRevisions: { orderBy: { revision: 'desc' }, take: 1 },
+          operationGrants: { where: { operationKey }, select: { state: true } },
+          privateAssignments: {
+            select: { agentId: true, principalKind: true, role: true, userId: true },
+          },
+        },
+      },
+    },
+  })
+  if (!candidate) {
+    return candidateError('CANDIDATE_INVALID', 'The executor choice is invalid.')
+  }
   const existing = await tx.executorBinding.findUnique({
-    where: { runId_operationKey: { operationKey, runId: input.runId } },
+    where: { runId_executorId_operationKey: { operationKey, runId: input.runId, executorId: candidate.executorId } },
     include: { capabilityRevision: { select: { revision: true } } },
   })
   if (existing) {
@@ -191,24 +209,6 @@ export const bindExecutorCandidateInTransaction = async (
     }
   }
 
-  const candidate = await tx.executorAvailabilityCandidate.findUnique({
-    where: { handleDigest: candidateHandleDigest },
-    include: {
-      capabilityRevision: true,
-      executor: {
-        include: {
-          capabilityRevisions: { orderBy: { revision: 'desc' }, take: 1 },
-          operationGrants: { where: { operationKey }, select: { state: true } },
-          privateAssignments: {
-            select: { agentId: true, principalKind: true, role: true, userId: true },
-          },
-        },
-      },
-    },
-  })
-  if (!candidate) {
-    return candidateError('CANDIDATE_INVALID', 'The executor choice is invalid.')
-  }
   if (candidate.consumedAt || candidate.expiresAt <= now) {
     return candidateError('CANDIDATE_EXPIRED', 'The executor choice has expired.')
   }
