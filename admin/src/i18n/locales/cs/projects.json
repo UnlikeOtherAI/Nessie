@@ -44,5 +44,8 @@
   "There are no projects in this organisation yet.": "V této organizaci zatím nejsou žádné projekty.",
   "Project boards": "Projektové nástěnky",
   "column_few": "sloupce",
-  "column_many": "sloupců"
+  "column_many": "sloupců",
+  "This board has cards, but none are assigned to the person selected in the filter.": "Na této nástěnce jsou karty, ale žádná není přiřazena osobě vybrané ve filtru.",
+  "Iterations": "Sprinty",
+  "Kanban": "Kanban"
 }

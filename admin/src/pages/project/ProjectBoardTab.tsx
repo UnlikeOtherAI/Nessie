@@ -121,7 +121,7 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
             }
             title={t('No cards for this assignee.')}
           >
-          {t('This board has {{count}} card, none of them assigned to whoever the filter names.', { count: tasks.length })}
+          {t('This board has cards, but none are assigned to the person selected in the filter.')}
           </EmptyState>
         ) : columns.length === 0 ? (
           <EmptyState

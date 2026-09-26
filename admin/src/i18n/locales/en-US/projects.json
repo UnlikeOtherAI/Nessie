@@ -44,5 +44,8 @@
   "There are no projects in this organisation yet.": "There are no projects in this organization yet.",
   "Project boards": "Project boards",
   "column_few": "columns",
-  "column_many": "columns"
+  "column_many": "columns",
+  "This board has cards, but none are assigned to the person selected in the filter.": "This board has cards, but none are assigned to the person selected in the filter.",
+  "Iterations": "Iterations",
+  "Kanban": "Kanban"
 }

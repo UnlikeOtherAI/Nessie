@@ -21,9 +21,6 @@ const boardPath = (projectId: string, board: BoardRecord): string =>
     ? `/projects/${projectId}/board`
     : `/projects/${projectId}/board?board=${encodeURIComponent(board.id)}`
 
-const styleLabel = (board: BoardRecord): string =>
-  board.style === 'scrum' ? 'Iterations' : 'Kanban'
-
 /** The project's board directory: a person can see every board and choose its next action. */
 export const ProjectBoardsPage = () => {
   const { t } = useTranslation('projects')
@@ -110,7 +107,7 @@ export const ProjectBoardsPage = () => {
                       <span className="break-words">{board.name}</span>
                     </span>
                     <span className="text-xs text-[color:var(--tx3)]">
-                      {styleLabel(board)} · {board.isDefault ? t('Default') : t('Not default')} · {t('column', { count: board.columns.length })}
+                      {board.style === 'scrum' ? t('Iterations') : t('Kanban')} · {board.isDefault ? t('Default') : t('Not default')} · {t('column', { count: board.columns.length })}
                     </span>
                   </span>
                 ),
