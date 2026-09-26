@@ -87,7 +87,7 @@ export const desktopBrowserPushTenant = {
       await route.continue()
     })
 
-    await gotoPath(page, '/settings/account?tab=notifications')
+    await gotoPath(page, '/settings/notifications')
     await page.getByText('Enabled for this organization on this browser').waitFor()
     await page.getByRole('switch', { name: 'Toggle browser notifications' }).click()
     await page.getByText('Disabled for this organization', { exact: true }).waitFor()

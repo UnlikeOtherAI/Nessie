@@ -4,8 +4,8 @@
 // once and stripped, leaving only the reader-selected tab.
 //
 // A trigger used to be the list's `?trigger=` selection; it is its own route
-// now, which is what this case walks. The old address still has to work — a
-// bookmark or an older notification holds it — so the forward is proved first.
+// now, which is what this case walks. Automations still honours `?trigger=` —
+// an older notification holds that shape — so the forward is proved first.
 import { createChecks } from '../lib/expect.mjs'
 import { gotoPath, pushPath, shot } from '../lib/page.mjs'
 
@@ -30,11 +30,11 @@ export const phoneIntentStrip = {
     const triggerId = 'does-not-matter'
 
     await gotoPath(page, '/channels')
-    await pushPath(page, `/agents/triggers?trigger=${triggerId}`)
+    await pushPath(page, `/admin/automations?trigger=${triggerId}`)
     checks.equal(
       `${caseName}: the old selection address forwards to the trigger's own screen`,
-      await waitForLocation(page, `/agents/triggers/${triggerId}`),
-      `/agents/triggers/${triggerId}`,
+      await waitForLocation(page, `/admin/automations/triggers/${triggerId}`),
+      `/admin/automations/triggers/${triggerId}`,
     )
     await shot(page, caseName, 'triggers-with-selection')
 
@@ -53,8 +53,8 @@ export const phoneIntentStrip = {
     await page.goBack({ waitUntil: 'commit' }).catch(() => undefined)
     checks.equal(
       `${caseName}: Back returns to the trigger's own screen`,
-      await waitForLocation(page, `/agents/triggers/${triggerId}`),
-      `/agents/triggers/${triggerId}`,
+      await waitForLocation(page, `/admin/automations/triggers/${triggerId}`),
+      `/admin/automations/triggers/${triggerId}`,
     )
 
     checks.close()
