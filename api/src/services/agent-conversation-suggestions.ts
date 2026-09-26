@@ -100,7 +100,7 @@ export const loadAgentConversationSuggestions = async (
     }),
     prisma.run.findFirst({
       where: { agentId: input.agentId, thread: threadWhere,
-        status: { in: ['pending', 'running', 'waiting_input', 'waiting_approval'] } },
+        status: { in: ['pending', 'running'] } },
       select: { id: true },
     }),
     prisma.run.findFirst({

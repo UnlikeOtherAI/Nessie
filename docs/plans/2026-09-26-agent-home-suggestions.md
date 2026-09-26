@@ -7,7 +7,8 @@
 2. Persist the result per organisation, person and agent. Detect newly created
    conversations and changed messages; refresh on the next home read after activity,
    at most once every six hours. Never regenerate unchanged history merely because
-   time passed or the person opened the homepage. Defer while a run is active.
+   time passed or the person opened the homepage. Defer while a run is pending or running; an older conversation waiting for
+   input or approval does not block fresh suggestions.
 3. Atomically claim attempts in Postgres, including failed attempts, so replicas,
    reloads and simultaneous tabs cannot spend the budget twice.
 4. Keep the existing generic prompts when no usable history or model result exists.

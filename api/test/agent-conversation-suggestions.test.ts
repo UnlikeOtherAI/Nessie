@@ -87,9 +87,10 @@ databaseTest('agent home suggestions: durable cadence, concurrent claims and liv
     } })
     await load()
     assert.equal(calls, 1, 'ongoing conversation waits for a terminal run')
-    await prisma.run.update({ where: { id: activeRun.id }, data: { status: 'completed', finishedAt: now } })
+    await prisma.run.update({ where: { id: activeRun.id }, data: { status: 'waiting_input' } })
     await load()
-    assert.equal(calls, 2, 'new conversation refreshes after cooldown')
+    assert.equal(calls, 2, 'new conversation refreshes; an older run waiting for input does not block it')
+    await prisma.run.update({ where: { id: activeRun.id }, data: { status: 'completed', finishedAt: now } })
     await prisma.message.create({ data: {
       threadId: home.thread.id, agentId: agent.id, role: 'assistant', content: 'Here is the completed next-step plan.',
     } })
