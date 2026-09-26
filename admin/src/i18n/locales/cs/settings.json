@@ -695,6 +695,41 @@
       "resend": "Poslat znovu",
       "cancelling": "Rušení…",
       "cancel": "Zrušit pozvání"
+    },
+    "details": {
+      "saveFailed": "Změny se nepodařilo uložit. Zkuste to znovu.",
+      "removeFromTeam": "Odebrat z týmu",
+      "deactivate": "Deaktivovat",
+      "reactivate": "Znovu aktivovat",
+      "removeTitle": "Odebrat člena {{name}} z tohoto týmu?",
+      "deactivateTitle": "Deaktivovat člena {{name}}?",
+      "reactivateTitle": "Znovu aktivovat člena {{name}}?",
+      "actionFailed": "Změnu se nepodařilo provést. Zkuste to znovu.",
+      "teamDescription": "Změnit roli v tomto týmu.",
+      "organizationDescription": "Změnit roli v organizaci a vybrat týmy, jejichž je členem.",
+      "role": "Role",
+      "organizationRole": "Role v organizaci",
+      "noOtherRoles": "Nemůžete přidělit žádné další role.",
+      "rolePermissionDenied": "Nemáte oprávnění změnit jejich roli.",
+      "ownsOrganization": "Jsou vlastníkem této organizace. Vlastnictví lze předat pouze v UnlikeOtherAI.",
+      "teamAccess": "Přístup k týmům",
+      "managedTeamsOnly": "Zobrazují se pouze týmy, které spravujete.",
+      "noManagedTeams": "Nespravujete žádné týmy.",
+      "teamAccessLoadFailed": "Přístup k týmům se nepodařilo načíst.",
+      "loadingTeams": "Načítání týmů…",
+      "teamPermissionDenied": "Nemáte oprávnění měnit jejich týmy.",
+      "localOllamaHint": "Vlastní zásady Local Ollama jim můžete nastavit po prvním přihlášení do Nessie. Do té doby platí zásady týmu.",
+      "reactivateInOrganization": "Znovu aktivovat v organizaci",
+      "deactivateInOrganization": "Deaktivovat v organizaci",
+      "saveChanges": "Uložit změny",
+      "removeBody": "Ztratí přístup k tomuto týmu. Jejich ostatních týmů se to nedotkne.",
+      "deactivateBody": "Dokud je znovu neaktivujete, nebudou moci používat žádný tým v organizaci.",
+      "reactivateBody": "Znovu získají přístup k organizaci."
+    },
+    "roles": {
+      "admin": "Správce",
+      "member": "Člen",
+      "owner": "Vlastník"
     }
   }
 }

@@ -695,6 +695,41 @@
       "resend": "Invia di nuovo",
       "cancelling": "Annullamento…",
       "cancel": "Annulla invito"
+    },
+    "details": {
+      "saveFailed": "Impossibile salvare le modifiche. Riprova.",
+      "removeFromTeam": "Rimuovi dal team",
+      "deactivate": "Disattiva",
+      "reactivate": "Riattiva",
+      "removeTitle": "Rimuovere {{name}} da questo team?",
+      "deactivateTitle": "Disattivare {{name}}?",
+      "reactivateTitle": "Riattivare {{name}}?",
+      "actionFailed": "Impossibile applicare la modifica. Riprova.",
+      "teamDescription": "Modifica il ruolo in questo team.",
+      "organizationDescription": "Modifica il ruolo nell’organizzazione e scegli i team di appartenenza.",
+      "role": "Ruolo",
+      "organizationRole": "Ruolo nell’organizzazione",
+      "noOtherRoles": "Non puoi assegnare altri ruoli.",
+      "rolePermissionDenied": "Non hai l’autorizzazione per modificare il ruolo.",
+      "ownsOrganization": "È proprietario dell’organizzazione. Il trasferimento della proprietà è possibile solo in UnlikeOtherAI.",
+      "teamAccess": "Accesso ai team",
+      "managedTeamsOnly": "Sono elencati solo i team che gestisci.",
+      "noManagedTeams": "Non gestisci alcun team.",
+      "teamAccessLoadFailed": "Impossibile caricare l’accesso ai team.",
+      "loadingTeams": "Caricamento dei team…",
+      "teamPermissionDenied": "Non hai l’autorizzazione per modificare i team.",
+      "localOllamaHint": "Potrai impostare la policy Local Ollama personale dopo il primo accesso a Nessie. Fino ad allora si applica la policy del team.",
+      "reactivateInOrganization": "Riattiva nell’organizzazione",
+      "deactivateInOrganization": "Disattiva nell’organizzazione",
+      "saveChanges": "Salva modifiche",
+      "removeBody": "Perderà l’accesso a questo team. Gli altri team non saranno interessati.",
+      "deactivateBody": "Non potrà usare alcun team dell’organizzazione finché non verrà riattivato.",
+      "reactivateBody": "Potrà usare di nuovo l’organizzazione."
+    },
+    "roles": {
+      "admin": "Admin",
+      "member": "Membro",
+      "owner": "Proprietario"
     }
   }
 }

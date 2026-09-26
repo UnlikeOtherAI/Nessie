@@ -695,6 +695,41 @@
       "resend": "Resend",
       "cancelling": "Cancelling…",
       "cancel": "Cancel invitation"
+    },
+    "details": {
+      "saveFailed": "Couldn’t save your changes. Try again.",
+      "removeFromTeam": "Remove from team",
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate",
+      "removeTitle": "Remove {{name}} from this team?",
+      "deactivateTitle": "Deactivate {{name}}?",
+      "reactivateTitle": "Reactivate {{name}}?",
+      "actionFailed": "Couldn’t make that change. Try again.",
+      "teamDescription": "Change their role in this team.",
+      "organizationDescription": "Change their role in your organisation and choose which teams they’re in.",
+      "role": "Role",
+      "organizationRole": "Organisation role",
+      "noOtherRoles": "There are no other roles you can give them.",
+      "rolePermissionDenied": "You don’t have permission to change their role.",
+      "ownsOrganization": "They own this organisation. Ownership can only be handed over in UnlikeOtherAI.",
+      "teamAccess": "Team access",
+      "managedTeamsOnly": "Only teams you manage are listed.",
+      "noManagedTeams": "You don’t manage any teams.",
+      "teamAccessLoadFailed": "Team access could not be loaded.",
+      "loadingTeams": "Loading teams…",
+      "teamPermissionDenied": "You don’t have permission to change their teams.",
+      "localOllamaHint": "You can set their own Local Ollama policy after they first sign in to Nessie. Until then, any team policy applies.",
+      "reactivateInOrganization": "Reactivate in organisation",
+      "deactivateInOrganization": "Deactivate in organisation",
+      "saveChanges": "Save changes",
+      "removeBody": "They’ll lose access to this team. Their other teams aren’t affected.",
+      "deactivateBody": "They won’t be able to use any team in your organisation until you reactivate them.",
+      "reactivateBody": "They’ll be able to use your organisation again."
+    },
+    "roles": {
+      "admin": "Admin",
+      "member": "Member",
+      "owner": "Owner"
     }
   }
 }

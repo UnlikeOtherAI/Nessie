@@ -695,6 +695,41 @@
       "resend": "Erneut senden",
       "cancelling": "Wird abgebrochen…",
       "cancel": "Einladung abbrechen"
+    },
+    "details": {
+      "saveFailed": "Ihre Änderungen konnten nicht gespeichert werden. Versuchen Sie es erneut.",
+      "removeFromTeam": "Aus Team entfernen",
+      "deactivate": "Deaktivieren",
+      "reactivate": "Reaktivieren",
+      "removeTitle": "{{name}} aus diesem Team entfernen?",
+      "deactivateTitle": "{{name}} deaktivieren?",
+      "reactivateTitle": "{{name}} reaktivieren?",
+      "actionFailed": "Die Änderung konnte nicht durchgeführt werden. Versuchen Sie es erneut.",
+      "teamDescription": "Rolle in diesem Team ändern.",
+      "organizationDescription": "Rolle in Ihrer Organisation ändern und Teams auswählen.",
+      "role": "Rolle",
+      "organizationRole": "Organisationsrolle",
+      "noOtherRoles": "Sie können keine weitere Rolle vergeben.",
+      "rolePermissionDenied": "Sie dürfen die Rolle nicht ändern.",
+      "ownsOrganization": "Diese Person ist Eigentümer der Organisation. Die Eigentümerschaft kann nur in UnlikeOtherAI übertragen werden.",
+      "teamAccess": "Teamzugriff",
+      "managedTeamsOnly": "Es werden nur Teams angezeigt, die Sie verwalten.",
+      "noManagedTeams": "Sie verwalten keine Teams.",
+      "teamAccessLoadFailed": "Der Teamzugriff konnte nicht geladen werden.",
+      "loadingTeams": "Teams werden geladen…",
+      "teamPermissionDenied": "Sie dürfen die Teams nicht ändern.",
+      "localOllamaHint": "Die Local-Ollama-Richtlinie kann erst nach der ersten Nessie-Anmeldung festgelegt werden. Bis dahin gilt die Richtlinie des Teams.",
+      "reactivateInOrganization": "In der Organisation reaktivieren",
+      "deactivateInOrganization": "In der Organisation deaktivieren",
+      "saveChanges": "Änderungen speichern",
+      "removeBody": "Die Person verliert den Zugriff auf dieses Team. Andere Teams sind nicht betroffen.",
+      "deactivateBody": "Die Person kann kein Team Ihrer Organisation nutzen, bis Sie sie reaktivieren.",
+      "reactivateBody": "Die Person kann Ihre Organisation wieder nutzen."
+    },
+    "roles": {
+      "admin": "Admin",
+      "member": "Mitglied",
+      "owner": "Eigentümer"
     }
   }
 }

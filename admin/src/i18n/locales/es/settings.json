@@ -695,6 +695,41 @@
       "resend": "Volver a enviar",
       "cancelling": "Cancelando…",
       "cancel": "Cancelar invitación"
+    },
+    "details": {
+      "saveFailed": "No se pudieron guardar los cambios. Inténtalo de nuevo.",
+      "removeFromTeam": "Quitar del equipo",
+      "deactivate": "Desactivar",
+      "reactivate": "Reactivar",
+      "removeTitle": "¿Quitar a {{name}} de este equipo?",
+      "deactivateTitle": "¿Desactivar a {{name}}?",
+      "reactivateTitle": "¿Reactivar a {{name}}?",
+      "actionFailed": "No se pudo realizar el cambio. Inténtalo de nuevo.",
+      "teamDescription": "Cambiar su rol en este equipo.",
+      "organizationDescription": "Cambiar su rol en la organización y elegir sus equipos.",
+      "role": "Rol",
+      "organizationRole": "Rol en la organización",
+      "noOtherRoles": "No puedes asignarle otros roles.",
+      "rolePermissionDenied": "No tienes permiso para cambiar su rol.",
+      "ownsOrganization": "Es propietario de esta organización. La propiedad solo se puede transferir en UnlikeOtherAI.",
+      "teamAccess": "Acceso a equipos",
+      "managedTeamsOnly": "Solo se muestran los equipos que administras.",
+      "noManagedTeams": "No administras ningún equipo.",
+      "teamAccessLoadFailed": "No se pudo cargar el acceso a equipos.",
+      "loadingTeams": "Cargando equipos…",
+      "teamPermissionDenied": "No tienes permiso para cambiar sus equipos.",
+      "localOllamaHint": "Podrás configurar su política Local Ollama cuando inicie sesión en Nessie por primera vez. Hasta entonces se aplica la política del equipo.",
+      "reactivateInOrganization": "Reactivar en la organización",
+      "deactivateInOrganization": "Desactivar en la organización",
+      "saveChanges": "Guardar cambios",
+      "removeBody": "Perderá el acceso a este equipo. Sus otros equipos no se verán afectados.",
+      "deactivateBody": "No podrá usar ningún equipo de la organización hasta que lo reactives.",
+      "reactivateBody": "Podrá volver a usar la organización."
+    },
+    "roles": {
+      "admin": "Administrador",
+      "member": "Miembro",
+      "owner": "Propietario"
     }
   }
 }
