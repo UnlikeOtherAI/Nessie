@@ -121,5 +121,21 @@
     "loading": "Loading messages…",
     "empty": "No messages yet. Send the first message to start this thread.",
     "waiting": "Waiting for a reply"
+  },
+  "header": {
+    "personalAssistant": "Personal Assistant",
+    "channels": "Channels",
+    "callInProgress": "Call in progress",
+    "callAssistant": "Call your assistant",
+    "startingCall": "Starting call…",
+    "startCall": "Start a call",
+    "humanCallsOnly": "You can only start a call with humans for now",
+    "removeFavorite": "Remove favorite",
+    "addFavorite": "Add favorite",
+    "conversationInfo": "Conversation info",
+    "members": "Members ({{count}})",
+    "join": "Join",
+    "searchMessages": "Search messages",
+    "systemManaged": "System managed"
   }
 }

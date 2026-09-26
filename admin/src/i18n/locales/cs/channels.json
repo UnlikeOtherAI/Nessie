@@ -121,5 +121,21 @@
     "loading": "Načítání zpráv…",
     "empty": "Zatím tu nejsou žádné zprávy. Odešlete první zprávu a začněte vlákno.",
     "waiting": "Čekání na odpověď"
+  },
+  "header": {
+    "personalAssistant": "Osobní asistent",
+    "channels": "Kanály",
+    "callInProgress": "Hovor probíhá",
+    "callAssistant": "Zavolat asistentovi",
+    "startingCall": "Zahajování hovoru…",
+    "startCall": "Zahájit hovor",
+    "humanCallsOnly": "Zatím můžete volat pouze lidem",
+    "removeFavorite": "Odebrat z oblíbených",
+    "addFavorite": "Přidat do oblíbených",
+    "conversationInfo": "Informace o konverzaci",
+    "members": "Členové ({{count}})",
+    "join": "Připojit se",
+    "searchMessages": "Hledat zprávy",
+    "systemManaged": "Spravováno systémem"
   }
 }

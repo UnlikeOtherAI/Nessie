@@ -121,5 +121,21 @@
     "loading": "Cargando mensajes…",
     "empty": "Aún no hay mensajes. Envía el primero para iniciar este hilo.",
     "waiting": "Esperando una respuesta"
+  },
+  "header": {
+    "personalAssistant": "Asistente personal",
+    "channels": "Canales",
+    "callInProgress": "Llamada en curso",
+    "callAssistant": "Llamar al asistente",
+    "startingCall": "Iniciando llamada…",
+    "startCall": "Iniciar llamada",
+    "humanCallsOnly": "Por ahora solo puedes llamar a personas",
+    "removeFavorite": "Quitar de favoritos",
+    "addFavorite": "Añadir a favoritos",
+    "conversationInfo": "Información de la conversación",
+    "members": "Miembros ({{count}})",
+    "join": "Unirse",
+    "searchMessages": "Buscar mensajes",
+    "systemManaged": "Gestionado por el sistema"
   }
 }

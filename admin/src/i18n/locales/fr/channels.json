@@ -121,5 +121,21 @@
     "loading": "Chargement des messages…",
     "empty": "Aucun message pour le moment. Envoyez le premier message pour démarrer ce fil.",
     "waiting": "En attente d’une réponse"
+  },
+  "header": {
+    "personalAssistant": "Assistant personnel",
+    "channels": "Canaux",
+    "callInProgress": "Appel en cours",
+    "callAssistant": "Appeler votre assistant",
+    "startingCall": "Démarrage de l’appel…",
+    "startCall": "Démarrer un appel",
+    "humanCallsOnly": "Pour le moment, vous pouvez uniquement appeler des personnes",
+    "removeFavorite": "Retirer des favoris",
+    "addFavorite": "Ajouter aux favoris",
+    "conversationInfo": "Infos sur la conversation",
+    "members": "Membres ({{count}})",
+    "join": "Rejoindre",
+    "searchMessages": "Rechercher des messages",
+    "systemManaged": "Géré par le système"
   }
 }

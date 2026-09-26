@@ -121,5 +121,21 @@
     "loading": "Caricamento dei messaggi…",
     "empty": "Ancora nessun messaggio. Invia il primo messaggio per avviare questo thread.",
     "waiting": "In attesa di una risposta"
+  },
+  "header": {
+    "personalAssistant": "Assistente personale",
+    "channels": "Canali",
+    "callInProgress": "Chiamata in corso",
+    "callAssistant": "Chiama l’assistente",
+    "startingCall": "Avvio della chiamata…",
+    "startCall": "Avvia una chiamata",
+    "humanCallsOnly": "Per ora puoi chiamare solo le persone",
+    "removeFavorite": "Rimuovi dai preferiti",
+    "addFavorite": "Aggiungi ai preferiti",
+    "conversationInfo": "Informazioni sulla conversazione",
+    "members": "Membri ({{count}})",
+    "join": "Partecipa",
+    "searchMessages": "Cerca messaggi",
+    "systemManaged": "Gestito dal sistema"
   }
 }
