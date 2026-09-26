@@ -88,5 +88,6 @@
     "saveFailed": "Cenu se nepodařilo uložit.",
     "requiredFields": "Poskytovatel a vzor modelu jsou povinné.",
     "invalidRates": "Sazby musí být nezáporné částky v USD za milion tokenů. Pro vynechání nechte pole prázdné."
-  }
+  },
+  "modelExample": "např. gpt-5-mini"
 }

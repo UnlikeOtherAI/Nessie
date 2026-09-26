@@ -88,5 +88,6 @@
     "saveFailed": "Impossible d’enregistrer les tarifs.",
     "requiredFields": "Le fournisseur et le modèle ou motif sont obligatoires.",
     "invalidRates": "Les tarifs doivent être des montants USD positifs ou nuls par million de jetons. Laissez vide pour ignorer."
-  }
+  },
+  "modelExample": "p. ex. gpt-5-mini"
 }

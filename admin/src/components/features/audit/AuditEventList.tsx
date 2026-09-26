@@ -1,4 +1,5 @@
 import { Pill } from '../../primitives/Pill'
+import { useTranslation } from 'react-i18next'
 import { Row, RowList } from '../../shared/RowList'
 import { ActorName, shortId, useActorNames } from '../../shared/ActorName'
 
@@ -22,10 +23,11 @@ export type AuditEntry = {
  * which events are shown; this owns how one reads.
  */
 export const AuditEventList = ({ entries }: { entries: AuditEntry[] }) => {
+  const { t, i18n } = useTranslation('operations')
   const resolveActor = useActorNames()
 
   return (
-    <RowList label="Audit events">
+    <RowList label={t('audit.events')}>
       {entries.map((entry) => (
         <Row
           key={entry.id}
@@ -49,13 +51,13 @@ export const AuditEventList = ({ entries }: { entries: AuditEntry[] }) => {
                 size="sm"
                 tone={entry.outcome === 'success' ? 'success' : 'danger'}
               >
-                {entry.outcome}
+                {entry.outcome === 'success' ? t('audit.success') : t('audit.failure')}
               </Pill>
             </span>
           }
           trailing={
             <span className="text-xs text-[color:var(--tx3)]">
-              {new Date(entry.createdAt).toLocaleString()}
+              {new Date(entry.createdAt).toLocaleString(i18n.resolvedLanguage ?? 'en-GB')}
             </span>
           }
         />

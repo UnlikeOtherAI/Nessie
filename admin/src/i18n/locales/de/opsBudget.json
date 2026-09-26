@@ -88,5 +88,6 @@
     "saveFailed": "Preise konnten nicht gespeichert werden.",
     "requiredFields": "Anbieter und Modellmuster sind erforderlich.",
     "invalidRates": "Preise müssen nichtnegative USD-Beträge pro Million Token sein. Zum Auslassen leer lassen."
-  }
+  },
+  "modelExample": "z. B. gpt-5-mini"
 }

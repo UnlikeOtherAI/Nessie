@@ -344,7 +344,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
             <input
               className="admin-input mt-1"
               onChange={(e) => setDegradeModel(e.target.value)}
-              placeholder="e.g. gpt-5-mini"
+              placeholder={t('modelExample')}
               value={degradeModel}
             />
           </label>

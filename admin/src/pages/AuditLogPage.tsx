@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AuditEventList, type AuditEntry } from '../components/features/audit/AuditEventList'
 import { ListToolbar } from '../components/shared/ListToolbar'
 import { PageBody, Section } from '../components/shared/PageBody'
@@ -11,6 +12,7 @@ import { auditLogKeys } from '../lib/query-keys'
 import { usePagedList } from '../facades/pagination/usePagedList'
 
 export const AuditLogPage = () => {
+  const { t } = useTranslation('operations')
   const [actionFilter, setActionFilter] = useState('')
   // Still the page's own flag: the query below must stay disabled for a
   // non-owner, exactly as before OwnerGate wrapped the render.
@@ -33,24 +35,24 @@ export const AuditLogPage = () => {
     <section className="flex h-full min-h-0 flex-col">
       {/* The header is always rendered: a refusal is a state of this screen,
           not a screen of its own, so Back never disappears with it. */}
-      <ScreenHeader title="Audit Log" />
+      <ScreenHeader title={t('audit.title')} />
       <OwnerGate>
         <PageBody>
-          <Section title="Events">
+          <Section title={t('audit.events')}>
             <ListToolbar
               search={{
-                label: 'Filter by action',
+                label: t('audit.filterLabel'),
                 onChange: setActionFilter,
-                placeholder: 'Filter by action…',
+                placeholder: t('audit.filterPlaceholder'),
                 value: actionFilter,
               }}
             />
 
             <QueryState
-              emptyLabel="No audit events found"
-              errorLabel="Audit events could not be loaded."
+              emptyLabel={t('audit.empty')}
+              errorLabel={t('audit.loadFailed')}
               isEmpty={rows.items.length === 0}
-              loadingLabel="Loading audit events…"
+              loadingLabel={t('audit.loading')}
               query={rows.query}
             >
               {() => (

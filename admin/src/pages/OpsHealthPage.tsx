@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { Pill, type PillTone } from '../components/primitives/Pill'
 import { SectionLabel } from '../components/primitives/SectionLabel'
 import { QueryState } from '../components/shared/QueryState'
@@ -66,6 +67,9 @@ const WORKER_TONE: Record<WorkerHealthStatus, PillTone> = {
 }
 
 export const OpsHealthPage = () => {
+  const { t, i18n } = useTranslation('operations')
+  const locale = i18n.resolvedLanguage ?? 'en-GB'
+  const formatDate = (value: string) => new Date(value).toLocaleString(locale)
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   // Instance administration: this page reads deployment-wide worker, queue and
@@ -91,7 +95,7 @@ export const OpsHealthPage = () => {
     {
       disabled: refresh.isPending,
       id: 'refresh',
-      label: 'Refresh',
+      label: t('health.refresh'),
       onSelect: () => refresh.mutate(),
       priority: 100,
     },
@@ -102,49 +106,48 @@ export const OpsHealthPage = () => {
       {/* The header is always rendered: a refusal is a state of this screen,
           not a screen of its own, so Back never disappears with it
           (docs/navigation/deep-links-and-headers.md §9). */}
-      <ScreenHeader actions={headerActions} title="System Health" />
+      <ScreenHeader actions={headerActions} title={t('health.title')} />
       <SuperAdminGate>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <p className="mb-4 text-xs text-[color:var(--tx3)]">
-            Worker and queue metrics are deployment-wide infrastructure; dead-letter
-            messages are scoped to your organization.
+            {t('health.description')}
           </p>
 
           <QueryState
-            errorLabel="Failed to load system health."
-            loadingLabel="Loading system health…"
+            errorLabel={t('health.loadFailed')}
+            loadingLabel={t('health.loading')}
             query={query}
           >
             {() => (
               <>
-                <SectionLabel>Worker</SectionLabel>
+                <SectionLabel>{t('health.worker')}</SectionLabel>
                 <StatGrid className="mt-2 sm:grid-cols-3">
                   <StatTile
-                    label="Status"
+                    label={t('health.status')}
                     value={
                       <Pill className="w-fit" tone={worker ? WORKER_TONE[worker.status] : 'muted'}>
-                        {worker?.status ?? '—'}
+                        {worker?.status ? t(`health.workerStatus.${worker.status}`) : '—'}
                       </Pill>
                     }
                   />
-                  <StatTile label="Active runners" value={worker?.activeRunners ?? 0} />
-                  <StatTile label="Last heartbeat" value={heartbeat == null ? '—' : `${heartbeat}s`} />
+                  <StatTile label={t('health.activeRunners')} value={worker?.activeRunners ?? 0} />
+                  <StatTile label={t('health.lastHeartbeat')} value={heartbeat == null ? '—' : t('health.seconds', { count: heartbeat })} />
                 </StatGrid>
 
-                <SectionLabel className="mt-5">Queue</SectionLabel>
+                <SectionLabel className="mt-5">{t('health.queue')}</SectionLabel>
                 <StatGrid className="mt-2 sm:grid-cols-4">
-                  <StatTile label="Pending" value={data?.queue.pending ?? 0} />
-                  <StatTile label="Processing" value={data?.queue.processing ?? 0} />
-                  <StatTile label="Done" value={data?.queue.done ?? 0} />
+                  <StatTile label={t('health.pending')} value={data?.queue.pending ?? 0} />
+                  <StatTile label={t('health.processing')} value={data?.queue.processing ?? 0} />
+                  <StatTile label={t('health.done')} value={data?.queue.done ?? 0} />
                   <StatTile
-                    label="Dead"
+                    label={t('health.dead')}
                     tone={(data?.queue.dead ?? 0) > 0 ? 'danger' : 'default'}
                     value={data?.queue.dead ?? 0}
                   />
                 </StatGrid>
 
                 <SectionLabel className="mt-5">
-                  Dead-letter jobs ({data?.deadJobs.length ?? 0})
+                  {t('health.deadJobs', { count: data?.deadJobs.length ?? 0 })}
                 </SectionLabel>
                 <div className="mt-2 grid gap-2">
                   {(data?.deadJobs ?? []).map((job) => (
@@ -152,7 +155,7 @@ export const OpsHealthPage = () => {
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-mono text-sm font-semibold text-[color:var(--tx)]">{job.topic}</span>
                         <span className="text-xs text-[color:var(--tx3)]">
-                          attempt {job.attempt}/{job.maxAttempts} · {new Date(job.enqueuedAt).toLocaleString()}
+                          {t('health.attempt', { attempt: job.attempt, max: job.maxAttempts })} · {formatDate(job.enqueuedAt)}
                         </span>
                       </div>
                       {job.errorMessage && (
@@ -163,24 +166,24 @@ export const OpsHealthPage = () => {
                     </div>
                   ))}
                   {data && data.deadJobs.length === 0 && (
-                    <div className="py-6 text-center text-[color:var(--tx3)]">No dead-letter jobs</div>
+                    <div className="py-6 text-center text-[color:var(--tx3)]">{t('health.noDeadJobs')}</div>
                   )}
                 </div>
 
                 <SectionLabel className="mt-5">
-                  Dead-letter messages ({data?.deadLetters.count ?? 0})
+                  {t('health.deadMessages', { count: data?.deadLetters.count ?? 0 })}
                 </SectionLabel>
                 <div className="mt-2 grid gap-2">
                   {(data?.deadLetters.recent ?? []).map((message) => (
                     <div key={message.id} className="admin-card flex items-center justify-between p-3">
-                      <span className="text-sm text-[color:var(--tx)]">{message.subject ?? '(no subject)'}</span>
+                      <span className="text-sm text-[color:var(--tx)]">{message.subject ?? t('health.noSubject')}</span>
                       <span className="text-xs text-[color:var(--tx3)]">
-                        {message.attempts} attempts · {new Date(message.createdAt).toLocaleString()}
+                        {t('health.attempts', { count: message.attempts })} · {formatDate(message.createdAt)}
                       </span>
                     </div>
                   ))}
                   {data && data.deadLetters.recent.length === 0 && (
-                    <div className="py-6 text-center text-[color:var(--tx3)]">No dead-letter messages</div>
+                    <div className="py-6 text-center text-[color:var(--tx3)]">{t('health.noDeadMessages')}</div>
                   )}
                 </div>
 
@@ -189,14 +192,13 @@ export const OpsHealthPage = () => {
                     replica, the second is this API process's own tally. A
                     reader who cannot tell them apart reads a fleet number as
                     one instance's share of it, or the reverse. */}
-                <SectionLabel className="mt-5">Rate limiting (deployment-wide)</SectionLabel>
+                <SectionLabel className="mt-5">{t('health.rateLimitDeployment')}</SectionLabel>
                 <p className="mt-1 text-xs text-[color:var(--tx3)]">
-                  The current window of every limiter that is counting, summed across all
-                  API instances.
+                  {t('health.rateLimitDeploymentDescription')}
                 </p>
                 {data?.rateLimit && !data.rateLimit.deploymentWide.available && (
                   <div className="admin-card mt-2 p-3 text-sm text-[color:var(--tx2)]">
-                    Unavailable — the limiter counters could not be read.
+                    {t('health.rateLimitUnavailable')}
                   </div>
                 )}
                 {data?.rateLimit?.deploymentWide.available && (
@@ -205,32 +207,31 @@ export const OpsHealthPage = () => {
                       <div key={entry.bucket} className="admin-card flex items-center justify-between gap-2 p-3">
                         <span className="font-mono text-sm text-[color:var(--tx)]">{entry.bucket}</span>
                         <span className="flex items-center gap-2 text-xs text-[color:var(--tx3)]">
-                          {entry.identities} in window · busiest {entry.maxCount}/{entry.limit}
+                          {t('health.limiterWindow', { identities: entry.identities,
+                            busiest: entry.maxCount, limit: entry.limit })}
                           {entry.limitedIdentities > 0 && (
-                            <Pill tone="danger">{entry.limitedIdentities} locked out</Pill>
+                            <Pill tone="danger">{t('health.lockedOut', { count: entry.limitedIdentities })}</Pill>
                           )}
                         </span>
                       </div>
                     ))}
                     {data.rateLimit.deploymentWide.buckets.length === 0 && (
                       <div className="py-6 text-center text-[color:var(--tx3)]">
-                        No limiter is counting in its current window
+                        {t('health.noLimiter')}
                       </div>
                     )}
                   </div>
                 )}
 
-                <SectionLabel className="mt-5">Rate limiting (this API instance)</SectionLabel>
+                <SectionLabel className="mt-5">{t('health.rateLimitInstance')}</SectionLabel>
                 <p className="mt-1 text-xs text-[color:var(--tx3)]">
-                  This process only, since it booted — one replica&apos;s share, not a fleet
-                  total. Store errors are the exception with no fleet-wide equivalent: a
-                  hit that never reached the database left no row to count.
+                  {t('health.rateLimitInstanceDescription')}
                 </p>
                 <StatGrid className="mt-2 sm:grid-cols-3">
-                  <StatTile label="Checks" value={data?.rateLimit?.thisInstance.checks ?? 0} />
-                  <StatTile label="Limited" value={data?.rateLimit?.thisInstance.limited ?? 0} />
+                  <StatTile label={t('health.checks')} value={data?.rateLimit?.thisInstance.checks ?? 0} />
+                  <StatTile label={t('health.limited')} value={data?.rateLimit?.thisInstance.limited ?? 0} />
                   <StatTile
-                    label="Store errors"
+                    label={t('health.storeErrors')}
                     tone={(data?.rateLimit?.thisInstance.storeErrors ?? 0) > 0 ? 'danger' : 'default'}
                     value={data?.rateLimit?.thisInstance.storeErrors ?? 0}
                   />

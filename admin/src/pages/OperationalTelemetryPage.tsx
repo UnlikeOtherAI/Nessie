@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { BudgetManager } from '../components/features/budgets/BudgetManager'
 import {
   PricingManager,
@@ -82,29 +83,26 @@ type FileUsageSummary = {
   }>
 }
 
-const formatCount = (count: number) => new Intl.NumberFormat('en-US').format(count)
-
-const formatCost = (amount: number, currency: string) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount)
-
-const formatTokens = (count: number) =>
-  new Intl.NumberFormat('en-US').format(count)
-
-const formatBytes = (bytes: number): string => {
-  if (bytes < 1024) return `${formatCount(bytes)} B`
-  const units = ['KB', 'MB', 'GB', 'TB']
-  let value = bytes / 1024
-  let unitIndex = 0
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024
-    unitIndex += 1
-  }
-  return `${new Intl.NumberFormat('en-US', {
-    maximumFractionDigits: value >= 10 ? 1 : 2,
-  }).format(value)} ${units[unitIndex]}`
-}
-
 export const OperationalTelemetryPage = () => {
+  const { t, i18n } = useTranslation('operations')
+  const locale = i18n.resolvedLanguage ?? 'en-GB'
+  const formatCount = (count: number) => new Intl.NumberFormat(locale).format(count)
+  const formatTokens = formatCount
+  const formatCost = (amount: number, currency: string) =>
+    new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amount)
+  const formatBytes = (bytes: number): string => {
+    if (bytes < 1024) return `${formatCount(bytes)} B`
+    const units = ['KB', 'MB', 'GB', 'TB']
+    let value = bytes / 1024
+    let unitIndex = 0
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024
+      unitIndex += 1
+    }
+    return `${new Intl.NumberFormat(locale, {
+      maximumFractionDigits: value >= 10 ? 1 : 2,
+    }).format(value)} ${units[unitIndex]}`
+  }
   const { me } = useAuthSession()
   const apiClient = useApiClient()
   const [groupBy, setGroupBy] = useState('model')
@@ -155,6 +153,16 @@ export const OperationalTelemetryPage = () => {
 
   const costTrackingInactive =
     (pricingProfiles?.length ?? 0) === 0 && (summary?.totalTokens ?? 0) > 0
+  const outcomeNames: Record<string, string> = {
+    pending: t('telemetry.outcome.pending'),
+    running: t('telemetry.outcome.running'),
+    waiting_approval: t('telemetry.outcome.waitingApproval'),
+    waiting_input: t('telemetry.outcome.waitingInput'),
+    completed: t('telemetry.outcome.completed'),
+    failed: t('telemetry.outcome.failed'),
+    cancelled: t('telemetry.outcome.cancelled'),
+    unknown: t('telemetry.outcome.unknown'),
+  }
 
   // `me` is null only when there is no session at all, which is never an
   // owner — OwnerGate refuses either way. This early return is what narrows
@@ -162,7 +170,7 @@ export const OperationalTelemetryPage = () => {
   if (!me) {
     return (
       <section className="flex h-full min-h-0 flex-col">
-        <ScreenHeader title="Operational usage" />
+        <ScreenHeader title={t('telemetry.title')} />
         <OwnerGate />
       </section>
     )
@@ -172,61 +180,63 @@ export const OperationalTelemetryPage = () => {
     <section className="flex h-full min-h-0 flex-col">
       {/* The header is always rendered: a refusal is a state of this screen,
           not a screen of its own, so Back never disappears with it. */}
-      <ScreenHeader title="Operational usage" />
+      <ScreenHeader title={t('telemetry.title')} />
       <OwnerGate>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <div className="mb-4 w-full max-w-xs">
             <select
-              aria-label="Group token telemetry"
+              aria-label={t('telemetry.groupTokens')}
               className="admin-input"
               onChange={(event) => setGroupBy(event.target.value)}
               value={groupBy}
             >
-              <option value="model">By Model</option>
-              <option value="provider">By Provider</option>
-              <option value="agentId">By Agent</option>
-              <option value="actorId">By User</option>
-              <option value="channelId">By Channel</option>
-              <option value="runId">By Run</option>
+              <option value="model">{t('telemetry.byModel')}</option>
+              <option value="provider">{t('telemetry.byProvider')}</option>
+              <option value="agentId">{t('telemetry.byAgent')}</option>
+              <option value="actorId">{t('telemetry.byUser')}</option>
+              <option value="channelId">{t('telemetry.byChannel')}</option>
+              <option value="runId">{t('telemetry.byRun')}</option>
             </select>
           </div>
           <div className="admin-card mb-4 border border-[color:var(--sep)] p-4">
-            <SectionLabel>Internal operations only</SectionLabel>
+            <SectionLabel>{t('telemetry.internalOnly')}</SectionLabel>
             <p className="mt-1 text-sm text-[color:var(--tx2)]">
-              These token, connector, file, budget, and model-pricing signals help
-              owners operate Nessie. They are not customer credits, a tariff, or an
-              invoice. Customer balances, statements, subscriptions, and charges
-              are supplied by UOA on Credits &amp; billing.
+              {t('telemetry.internalDescription')}
             </p>
           </div>
 
           {costTrackingInactive && (
             <Notice className="mb-4" tone="warning">
-              Cost tracking is inactive — {formatTokens(summary?.totalTokens ?? 0)} tokens recorded but
-              no model pricing is configured, so every internal estimate shows $0. Add rates under
-              <span className="font-semibold"> Model pricing</span> below to see operational estimates.
+              {t('telemetry.costInactive', {
+                tokens: formatTokens(summary?.totalTokens ?? 0),
+              })}
             </Notice>
           )}
 
           <QueryState
-            errorLabel="Failed to load token usage."
-            loadingLabel="Loading token usage…"
+            errorLabel={t('telemetry.tokenLoadFailed')}
+            loadingLabel={t('telemetry.tokenLoading')}
             query={summaryQuery}
           >
             {() => (
               <StatGrid className="lg:grid-cols-3">
                 <StatTile
-                  detail={`${formatTokens(summary?.totalInputTokens ?? 0)} in / ${formatTokens(summary?.totalOutputTokens ?? 0)} out`}
-                  label="Total Tokens"
+                  detail={t('telemetry.inputOutput', {
+                    input: formatTokens(summary?.totalInputTokens ?? 0),
+                    output: formatTokens(summary?.totalOutputTokens ?? 0),
+                  })}
+                  label={t('telemetry.totalTokens')}
                   value={formatTokens(summary?.totalTokens ?? 0)}
                 />
                 <StatTile
-                  label="Estimated Cost"
+                  label={t('telemetry.estimatedCost')}
                   value={formatCost(summary?.totalEstimatedCost ?? 0, summary?.currency ?? 'USD')}
                 />
                 <StatTile
-                  detail={`Day ${estimate?.daysElapsed ?? 0} of ${estimate?.daysInMonth ?? 30}`}
-                  label="Monthly Projection"
+                  detail={t('telemetry.dayOf', {
+                    day: estimate?.daysElapsed ?? 0, total: estimate?.daysInMonth ?? 30,
+                  })}
+                  label={t('telemetry.monthlyProjection')}
                   value={formatCost(estimate?.projectedMonthlyCost ?? 0, estimate?.currency ?? 'USD')}
                 />
               </StatGrid>
@@ -239,7 +249,7 @@ export const OperationalTelemetryPage = () => {
 
           {(summary?.breakdowns ?? []).length > 0 && (
             <div className="mt-4">
-              <SectionLabel>Breakdown</SectionLabel>
+              <SectionLabel>{t('telemetry.breakdown')}</SectionLabel>
               <div className="mt-2 grid gap-2">
                 {(summary?.breakdowns ?? []).map((breakdown) => (
                   <div
@@ -249,8 +259,10 @@ export const OperationalTelemetryPage = () => {
                     <div>
                       <div className="font-semibold text-[color:var(--tx)]">{breakdown.key}</div>
                       <div className="text-xs text-[color:var(--tx2)]">
-                        {formatTokens(breakdown.inputTokens)} in /{' '}
-                        {formatTokens(breakdown.outputTokens)} out
+                        {t('telemetry.inputOutput', {
+                          input: formatTokens(breakdown.inputTokens),
+                          output: formatTokens(breakdown.outputTokens),
+                        })}
                       </div>
                     </div>
                     <div className="text-right">
@@ -269,7 +281,7 @@ export const OperationalTelemetryPage = () => {
 
           {(outcomeUsage?.outcomes ?? []).length > 0 && (
             <div className="mt-6">
-              <SectionLabel>Spend by Run Outcome</SectionLabel>
+              <SectionLabel>{t('telemetry.spendByOutcome')}</SectionLabel>
               <div className="mt-2 grid gap-2">
                 {(outcomeUsage?.outcomes ?? []).map((row) => (
                   <div
@@ -278,10 +290,11 @@ export const OperationalTelemetryPage = () => {
                   >
                     <div>
                       <div className="font-semibold capitalize text-[color:var(--tx)]">
-                        {row.outcome}
+                        {outcomeNames[row.outcome] ?? t('telemetry.outcome.unknown')}
                       </div>
                       <div className="text-xs text-[color:var(--tx2)]">
-                        {formatCount(row.runCount)} {row.runCount === 1 ? 'run' : 'runs'}
+                        {t('telemetry.runCount', { count: row.runCount,
+                          formattedCount: formatCount(row.runCount) })}
                       </div>
                     </div>
                     <div className="text-right">
@@ -299,26 +312,28 @@ export const OperationalTelemetryPage = () => {
           )}
 
           <div className="mt-6">
-            <SectionLabel>File Usage</SectionLabel>
+            <SectionLabel>{t('telemetry.fileUsage')}</SectionLabel>
             <QueryState
               className="mt-2 py-6"
-              errorLabel="Failed to load file usage."
-              loadingLabel="Loading file usage…"
+              errorLabel={t('telemetry.fileLoadFailed')}
+              loadingLabel={t('telemetry.fileLoading')}
               query={fileUsageQuery}
             >
               {() => (
                 <>
                   <StatGrid className="lg:grid-cols-4">
                     <StatTile
-                      detail={`${formatCount(fileUsage?.currentAttachmentCount ?? 0)} files`}
-                      label="Stored"
+                      detail={t('telemetry.fileCount', { count: fileUsage?.currentAttachmentCount ?? 0,
+                        formattedCount: formatCount(fileUsage?.currentAttachmentCount ?? 0) })}
+                      label={t('telemetry.stored')}
                       value={formatBytes(fileUsage?.currentStoredBytes ?? 0)}
                     />
-                    <StatTile label="Uploaded" value={formatBytes(fileUsage?.uploadBytes ?? 0)} />
-                    <StatTile label="Downloaded" value={formatBytes(fileUsage?.downloadBytes ?? 0)} />
+                    <StatTile label={t('telemetry.uploaded')} value={formatBytes(fileUsage?.uploadBytes ?? 0)} />
+                    <StatTile label={t('telemetry.downloaded')} value={formatBytes(fileUsage?.downloadBytes ?? 0)} />
                     <StatTile
-                      detail={`${formatCount(fileUsage?.totalTransferEvents ?? 0)} events`}
-                      label="Transfers"
+                      detail={t('telemetry.eventCount', { count: fileUsage?.totalTransferEvents ?? 0,
+                        formattedCount: formatCount(fileUsage?.totalTransferEvents ?? 0) })}
+                      label={t('telemetry.transfers')}
                       value={formatBytes(fileUsage?.totalTransferBytes ?? 0)}
                     />
                   </StatGrid>
@@ -337,7 +352,8 @@ export const OperationalTelemetryPage = () => {
                               {formatBytes(breakdown.bytes)}
                             </div>
                             <div className="text-xs text-[color:var(--tx2)]">
-                              {formatCount(breakdown.events)} events
+                              {t('telemetry.eventCount', { count: breakdown.events,
+                                formattedCount: formatCount(breakdown.events) })}
                             </div>
                           </div>
                         </div>
@@ -350,34 +366,34 @@ export const OperationalTelemetryPage = () => {
           </div>
 
           <div className="mt-6 flex items-center gap-4">
-            <SectionLabel>Connector Usage</SectionLabel>
+            <SectionLabel>{t('telemetry.connectorUsage')}</SectionLabel>
             <div className="ml-auto w-44">
               <select
-                aria-label="Group connector telemetry"
+                aria-label={t('telemetry.groupConnectors')}
                 className="admin-input"
                 onChange={(event) => setConnectorGroupBy(event.target.value)}
                 value={connectorGroupBy}
               >
-                <option value="connectorType">By Type</option>
-                <option value="agentId">By Agent</option>
-                <option value="channelId">By Channel</option>
-                <option value="connectorId">By Connector</option>
-                <option value="operation">By Operation</option>
+                <option value="connectorType">{t('telemetry.byType')}</option>
+                <option value="agentId">{t('telemetry.byAgent')}</option>
+                <option value="channelId">{t('telemetry.byChannel')}</option>
+                <option value="connectorId">{t('telemetry.byConnector')}</option>
+                <option value="operation">{t('telemetry.byOperation')}</option>
               </select>
             </div>
           </div>
           <QueryState
             className="mt-2 py-6"
-            errorLabel="Failed to load connector usage."
-            loadingLabel="Loading connector usage…"
+            errorLabel={t('telemetry.connectorLoadFailed')}
+            loadingLabel={t('telemetry.connectorLoading')}
             query={connectorsQuery}
           >
             {() => (
               <>
                 <StatGrid className="lg:grid-cols-2">
-                  <StatTile label="Total Calls" value={formatCount(connectors?.totalCalls ?? 0)} />
+                  <StatTile label={t('telemetry.totalCalls')} value={formatCount(connectors?.totalCalls ?? 0)} />
                   <StatTile
-                    label="Connector Cost"
+                    label={t('telemetry.connectorCost')}
                     value={formatCost(connectors?.totalCost ?? 0, connectors?.currency ?? 'USD')}
                   />
                 </StatGrid>
@@ -391,7 +407,8 @@ export const OperationalTelemetryPage = () => {
                         <div className="font-semibold text-[color:var(--tx)]">{breakdown.key}</div>
                         <div className="text-right">
                           <div className="font-mono text-sm text-[color:var(--tx)]">
-                            {formatCount(breakdown.calls)} calls
+                            {t('telemetry.callCount', { count: breakdown.calls,
+                              formattedCount: formatCount(breakdown.calls) })}
                           </div>
                           <div className="text-xs text-[color:var(--tx2)]">
                             {formatCost(breakdown.cost, connectors?.currency ?? 'USD')}

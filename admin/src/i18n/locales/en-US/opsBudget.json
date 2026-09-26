@@ -88,5 +88,6 @@
     "saveFailed": "Could not save pricing.",
     "requiredFields": "Provider and model pattern are required.",
     "invalidRates": "Rates must be non-negative USD amounts per million tokens. Leave blank to skip."
-  }
+  },
+  "modelExample": "e.g. gpt-5-mini"
 }

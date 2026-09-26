@@ -88,5 +88,6 @@
     "saveFailed": "No se pudieron guardar los precios.",
     "requiredFields": "El proveedor y el modelo o patrón son obligatorios.",
     "invalidRates": "Las tarifas deben ser importes en USD no negativos por millón de tokens. Deja el campo vacío para omitirlo."
-  }
+  },
+  "modelExample": "p. ej. gpt-5-mini"
 }

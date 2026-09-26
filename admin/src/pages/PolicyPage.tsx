@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Pill } from '../components/primitives/Pill'
 import { Card } from '../components/shared/Card'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
@@ -36,6 +37,7 @@ const RESOURCE_TYPES = ['agent', 'channel', 'project', 'tool', 'session', 'task'
 const ACTIONS = ['view', 'invoke', 'create', 'edit', 'bind', 'admin', 'approve']
 
 export const PolicyPage = () => {
+  const { t } = useTranslation('operations')
   const { me } = useAuthSession()
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
@@ -98,94 +100,111 @@ export const PolicyPage = () => {
   const createErrors = createRule.isError ? toFormErrors(createRule.error) : EMPTY_FORM_ERRORS
   const deleteErrors = deleteRule.isError ? toFormErrors(deleteRule.error) : EMPTY_FORM_ERRORS
   const pendingDeleteRule = rows.items.find((rule) => rule.id === pendingDeleteId) ?? null
+  const resourceLabels: Record<string, string> = {
+    agent: t('policy.resource.agent'), channel: t('policy.resource.channel'),
+    project: t('policy.resource.project'), tool: t('policy.resource.tool'),
+    session: t('policy.resource.session'), task: t('policy.resource.task'),
+    admin: t('policy.resource.admin'),
+  }
+  const actionLabels: Record<string, string> = {
+    view: t('policy.action.view'), invoke: t('policy.action.invoke'),
+    create: t('policy.action.create'), edit: t('policy.action.edit'),
+    bind: t('policy.action.bind'), admin: t('policy.action.admin'),
+    approve: t('policy.action.approve'),
+  }
 
   return (
     <section className="flex h-full min-h-0 flex-col">
       {/* The header is always rendered: a refusal is a state of this screen,
           not a screen of its own, so Back never disappears with it. */}
-      <ScreenHeader title="Policy Rules" />
+      <ScreenHeader title={t('policy.title')} />
       <OwnerGate>
         <PageBody>
-          <Section title="Create rule">
+          <Section title={t('policy.createTitle')}>
             <Card variant="section">
               <form className="grid gap-3" onSubmit={handleCreate}>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-                  <FormField error={createErrors.fieldErrors.resourceType} label="Resource type" required>
+                  <FormField error={createErrors.fieldErrors.resourceType && t('policy.invalidResource')} label={t('policy.resourceType')} required>
                     <Select onChange={(e) => setNewResourceType(e.target.value)} value={newResourceType}>
-                      {RESOURCE_TYPES.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
+                      {RESOURCE_TYPES.map((resource) => (
+                        <option key={resource} value={resource}>
+                          {resourceLabels[resource]}
                         </option>
                       ))}
                     </Select>
                   </FormField>
-                  <FormField error={createErrors.fieldErrors.action} label="Action" required>
+                  <FormField error={createErrors.fieldErrors.action && t('policy.invalidAction')} label={t('policy.actionLabel')} required>
                     <Select onChange={(e) => setNewAction(e.target.value)} value={newAction}>
                       {ACTIONS.map((a) => (
                         <option key={a} value={a}>
-                          {a}
+                          {actionLabels[a]}
                         </option>
                       ))}
                     </Select>
                   </FormField>
-                  <FormField error={createErrors.fieldErrors.effect} label="Effect" required>
+                  <FormField error={createErrors.fieldErrors.effect && t('policy.invalidEffect')} label={t('policy.effect')} required>
                     <Select onChange={(e) => setNewEffect(e.target.value)} value={newEffect}>
-                      <option value="allow">Allow</option>
-                      <option value="deny">Deny</option>
+                      <option value="allow">{t('policy.allow')}</option>
+                      <option value="deny">{t('policy.deny')}</option>
                     </Select>
                   </FormField>
                   <FormField
-                    error={createErrors.fieldErrors.bindings}
-                    help="Use * to match everyone."
-                    label="Actor ID"
+                    error={createErrors.fieldErrors.bindings && t('policy.invalidActor')}
+                    help={t('policy.actorHelp')}
+                    label={t('policy.actorId')}
                     required
                   >
                     <Input
                       onChange={(e) => setNewActorId(e.target.value)}
-                      placeholder="Actor ID (* for all)"
+                      placeholder={t('policy.actorPlaceholder')}
                       value={newActorId}
                     />
                   </FormField>
                 </div>
 
-                <FormError>{createErrors.formError}</FormError>
+                <FormError>{createErrors.formError && t('policy.createFailed')}</FormError>
 
                 <FormActions>
                   <button className="admin-button admin-button-primary" disabled={createRule.isPending} type="submit">
-                    Create rule
+                    {t('policy.create')}
                   </button>
                 </FormActions>
               </form>
             </Card>
           </Section>
 
-          <Section title="Rules">
-            <FormError>{deleteErrors.formError}</FormError>
+          <Section title={t('policy.rules')}>
+            <FormError>{deleteErrors.formError && t('policy.deleteFailed')}</FormError>
 
             <QueryState
-              emptyLabel="No policy rules configured"
-              errorLabel="Policy rules could not be loaded."
+              emptyLabel={t('policy.empty')}
+              errorLabel={t('policy.loadFailed')}
               isEmpty={rows.items.length === 0}
-              loadingLabel="Loading policy rules…"
+              loadingLabel={t('policy.loading')}
               query={rows.query}
             >
               {() => (
                 <>
-                  <RowList label="Policy rules">
+                  <RowList label={t('policy.title')}>
                     {rows.items.map((rule) => (
                       <Row
                         key={rule.id}
                         subtitle={
-                          `${rule.scope}:${rule.scopeId.slice(0, 8)} → `
-                          + `${rule.bindings.map((b) => `${b.actorType}:${b.actorId}`).join(', ')} · priority ${rule.priority}`
+                          t('policy.ruleSubtitle', {
+                            scope: rule.scope === 'organization' ? t('policy.organisation') : rule.scope,
+                            id: rule.scopeId.slice(0, 8),
+                            bindings: rule.bindings.map((binding) => `${binding.actorType}:${binding.actorId}`).join(', '),
+                            priority: rule.priority,
+                          })
                         }
                         title={
                           <span className="flex items-center gap-2">
                             <Pill radius="chip" size="sm" tone={rule.effect === 'allow' ? 'success' : 'danger'}>
-                              {rule.effect}
+                              {rule.effect === 'allow' ? t('policy.allow') : t('policy.deny')}
                             </Pill>
                             <span className="font-mono text-[color:var(--tx)]">
-                              {rule.resourceType}.{rule.action}
+                              {resourceLabels[rule.resourceType] ?? rule.resourceType}
+                              .{actionLabels[rule.action] ?? rule.action}
                             </span>
                           </span>
                         }
@@ -195,7 +214,7 @@ export const PolicyPage = () => {
                             onClick={() => setPendingDeleteId(rule.id)}
                             type="button"
                           >
-                            Delete
+                            {t('policy.delete')}
                           </button>
                         }
                       />
@@ -221,10 +240,15 @@ export const PolicyPage = () => {
         <ConfirmDialog
           body={
             pendingDeleteRule
-              ? `${pendingDeleteRule.resourceType}.${pendingDeleteRule.action} for ${pendingDeleteRule.scope}:${pendingDeleteRule.scopeId.slice(0, 8)} will stop applying immediately.`
+              ? t('policy.deleteBody', {
+                resource: resourceLabels[pendingDeleteRule.resourceType] ?? pendingDeleteRule.resourceType,
+                action: actionLabels[pendingDeleteRule.action] ?? pendingDeleteRule.action,
+                scope: pendingDeleteRule.scope === 'organization' ? t('policy.organisation') : pendingDeleteRule.scope,
+                id: pendingDeleteRule.scopeId.slice(0, 8),
+              })
               : undefined
           }
-          confirmLabel="Delete rule"
+          confirmLabel={t('policy.deleteRule')}
           destructive
           onCancel={() => setPendingDeleteId(null)}
           onConfirm={() => {
@@ -232,7 +256,7 @@ export const PolicyPage = () => {
           }}
           open={pendingDeleteId !== null}
           pending={deleteRule.isPending}
-          title="Delete this policy rule?"
+          title={t('policy.deleteTitle')}
         />
       </OwnerGate>
     </section>

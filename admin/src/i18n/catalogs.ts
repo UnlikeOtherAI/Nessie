@@ -12,6 +12,7 @@ import enGBKnowledgeFinder from './locales/en-GB/knowledgeFinder.json'
 import enGBChannels from './locales/en-GB/channels.json'
 import enGBAgentConversations from './locales/en-GB/agentConversations.json'
 import enGBOpsBudget from './locales/en-GB/opsBudget.json'
+import enGBOperations from './locales/en-GB/operations.json'
 import enUSAccountMenu from './locales/en-US/accountMenu.json'
 import enUSShell from './locales/en-US/shell.json'
 import enUSProjects from './locales/en-US/projects.json'
@@ -26,6 +27,7 @@ import enUSKnowledgeFinder from './locales/en-US/knowledgeFinder.json'
 import enUSChannels from './locales/en-US/channels.json'
 import enUSAgentConversations from './locales/en-US/agentConversations.json'
 import enUSOpsBudget from './locales/en-US/opsBudget.json'
+import enUSOperations from './locales/en-US/operations.json'
 import csAccountMenu from './locales/cs/accountMenu.json'
 import csShell from './locales/cs/shell.json'
 import csProjects from './locales/cs/projects.json'
@@ -40,6 +42,7 @@ import csKnowledgeFinder from './locales/cs/knowledgeFinder.json'
 import csChannels from './locales/cs/channels.json'
 import csAgentConversations from './locales/cs/agentConversations.json'
 import csOpsBudget from './locales/cs/opsBudget.json'
+import csOperations from './locales/cs/operations.json'
 import deAccountMenu from './locales/de/accountMenu.json'
 import deShell from './locales/de/shell.json'
 import deProjects from './locales/de/projects.json'
@@ -54,6 +57,7 @@ import deKnowledgeFinder from './locales/de/knowledgeFinder.json'
 import deChannels from './locales/de/channels.json'
 import deAgentConversations from './locales/de/agentConversations.json'
 import deOpsBudget from './locales/de/opsBudget.json'
+import deOperations from './locales/de/operations.json'
 import frAccountMenu from './locales/fr/accountMenu.json'
 import frShell from './locales/fr/shell.json'
 import frProjects from './locales/fr/projects.json'
@@ -68,6 +72,7 @@ import frKnowledgeFinder from './locales/fr/knowledgeFinder.json'
 import frChannels from './locales/fr/channels.json'
 import frAgentConversations from './locales/fr/agentConversations.json'
 import frOpsBudget from './locales/fr/opsBudget.json'
+import frOperations from './locales/fr/operations.json'
 import itAccountMenu from './locales/it/accountMenu.json'
 import itShell from './locales/it/shell.json'
 import itProjects from './locales/it/projects.json'
@@ -82,6 +87,7 @@ import itKnowledgeFinder from './locales/it/knowledgeFinder.json'
 import itChannels from './locales/it/channels.json'
 import itAgentConversations from './locales/it/agentConversations.json'
 import itOpsBudget from './locales/it/opsBudget.json'
+import itOperations from './locales/it/operations.json'
 import esAccountMenu from './locales/es/accountMenu.json'
 import esShell from './locales/es/shell.json'
 import esProjects from './locales/es/projects.json'
@@ -96,6 +102,7 @@ import esKnowledgeFinder from './locales/es/knowledgeFinder.json'
 import esChannels from './locales/es/channels.json'
 import esAgentConversations from './locales/es/agentConversations.json'
 import esOpsBudget from './locales/es/opsBudget.json'
+import esOperations from './locales/es/operations.json'
 import type { Language } from './languages'
 import { translationNamespaces, type TranslationNamespace } from './namespaces'
 
@@ -115,6 +122,7 @@ export const catalogs = {
     channels: enGBChannels,
     agentConversations: enGBAgentConversations,
     opsBudget: enGBOpsBudget,
+    operations: enGBOperations,
   },
   'en-US': {
     accountMenu: enUSAccountMenu,
@@ -131,6 +139,7 @@ export const catalogs = {
     channels: enUSChannels,
     agentConversations: enUSAgentConversations,
     opsBudget: enUSOpsBudget,
+    operations: enUSOperations,
   },
   'cs': {
     accountMenu: csAccountMenu,
@@ -147,6 +156,7 @@ export const catalogs = {
     channels: csChannels,
     agentConversations: csAgentConversations,
     opsBudget: csOpsBudget,
+    operations: csOperations,
   },
   'de': {
     accountMenu: deAccountMenu,
@@ -163,6 +173,7 @@ export const catalogs = {
     channels: deChannels,
     agentConversations: deAgentConversations,
     opsBudget: deOpsBudget,
+    operations: deOperations,
   },
   'fr': {
     accountMenu: frAccountMenu,
@@ -179,6 +190,7 @@ export const catalogs = {
     channels: frChannels,
     agentConversations: frAgentConversations,
     opsBudget: frOpsBudget,
+    operations: frOperations,
   },
   'it': {
     accountMenu: itAccountMenu,
@@ -195,6 +207,7 @@ export const catalogs = {
     channels: itChannels,
     agentConversations: itAgentConversations,
     opsBudget: itOpsBudget,
+    operations: itOperations,
   },
   'es': {
     accountMenu: esAccountMenu,
@@ -211,6 +224,7 @@ export const catalogs = {
     channels: esChannels,
     agentConversations: esAgentConversations,
     opsBudget: esOpsBudget,
+    operations: esOperations,
   },
 } satisfies Record<Language, Record<TranslationNamespace, unknown>>
 
