@@ -43,7 +43,7 @@ test('document terminology is consistent across creation and document actions', 
   assert.match(editor, /Publish/)
   assert.match(editor, /New document/)
   assert.match(preview, /Archive document/)
-  assert.match(preview, /Document actions/)
+  assert.match(preview, /More document actions/)
   assert.match(review, /New document/)
   assert.match(createLink, /Create document/)
 })

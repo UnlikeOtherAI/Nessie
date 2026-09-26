@@ -54,6 +54,12 @@ for it. Four pieces, plus one cache underneath them all.
   Knowledge backlinks (`admin/src/facades/knowledge/backlinks-hooks.ts`) also
   opt out: their rows describe links to one exact page and must never appear
   under another page while it loads.
+  The Knowledge provider keeps the pages query's previous result cached but
+  treats it as loading until it belongs to the newly selected space. Otherwise
+  opening a folder just after changing spaces briefly paints the previous
+  space's document tree and can resolve its old document into the detail pane.
+  A space-detail placeholder is likewise accepted only when its id matches
+  the selected space, so its old name and write permissions never flash.
   The corollary is that **`isSuccess` no longer means "this entity's data"** —
   a query serving placeholder data reports success — so a consumer that acts
   on identity guards with the id: the thread read marker refuses while its

@@ -26,13 +26,33 @@ try {
   const projectRoot = root.projects.find(({ projectId }) => projectId === seed.project.id)
   assert.ok(projectRoot, 'project root is visible')
   assert.ok(root.agentHomes.length > 0, 'fixture includes an agent document home')
+  const suffix = Date.now().toString(36)
+  const folder = await call(`/api/knowledge-base/spaces/${projectRoot.space.spaceId}/pages`, {
+    body: { kind: 'folder', title: `Tree transition ${suffix}` },
+    method: 'POST',
+    token: seed.token,
+  })
+  const imageTitle = `Tree preview ${suffix}.png`
+  const imageBytes = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR1sAAAAASUVORK5CYII=',
+    'base64',
+  )
+  const imageForm = new FormData()
+  imageForm.set('file', new Blob([imageBytes], { type: 'image/png' }), imageTitle)
+  const imageResponse = await fetch(`${API_URL}/api/knowledge-base/spaces/${projectRoot.space.spaceId}/files`, {
+    body: imageForm,
+    headers: { authorization: `Bearer ${seed.token}` },
+    method: 'POST',
+  })
+  const imageResult = await imageResponse.json()
+  assert.equal(imageResponse.status, 201, `test image uploads: ${JSON.stringify(imageResult)}`)
+  const imagePage = imageResult.data
   browser = await launchBrowser()
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
   await page.addInitScript((token) => localStorage.setItem('nessie.admin.token', token), seed.token)
   const treePane = page.locator('[data-knowledge-tree-pane]').last()
   const tree = treePane.locator('.knowledge-sidebar-tree-panel')
   const row = (id) => tree.locator(`[data-finder-tree-row="true"][data-finder-row="${id}"]`)
-  const suffix = Date.now().toString(36)
   const publishedTitle = `Published from create ${suffix}`
   const draftTitle = `Saved as draft ${suffix}`
   const go = (path) => page.goto(
@@ -66,6 +86,40 @@ try {
   const projectPath = `/knowledge-base/spaces/${projectRoot.space.spaceId}`
   await go(projectPath)
   await row(projectRoot.space.spaceId).waitFor()
+  await row(folder.id).waitFor()
+  await page.route(`**/api/knowledge-base/spaces/${root.myDocuments.spaceId}/pages`, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    await route.continue()
+  })
+  await row(root.myDocuments.spaceId).click()
+  await page.waitForURL(new RegExp(`/knowledge-base/spaces/${root.myDocuments.spaceId}\\?view=tree`))
+  await page.waitForTimeout(100)
+  assert.equal(await row(folder.id).count(), 0,
+    'the previous project folder never flashes under My Documents while its pages load')
+  await row(projectRoot.space.spaceId).click()
+  await page.waitForURL(new RegExp(`/knowledge-base/spaces/${projectRoot.space.spaceId}\\?view=tree`))
+  await row(folder.id).click()
+  await row(folder.id).and(page.locator('[aria-selected="true"]')).waitFor()
+  assert.equal(await page.locator('[data-column-browser-track]').count(), 0)
+  await page.screenshot({ path: '/private/tmp/nessie-knowledge-folder-tree.png', fullPage: true })
+  await row(projectRoot.space.spaceId).click()
+  await row(imagePage.id).waitFor()
+  await row(imagePage.id).getByText('Draft', { exact: true }).waitFor({ state: 'hidden' })
+  await row(imagePage.id).click()
+  await page.getByText(imageTitle, { exact: true }).last().waitFor()
+  await page.getByRole('img', { name: imageTitle }).waitFor()
+  assert.equal(await page.getByRole('button', { name: `Back from ${imageTitle}` }).count(), 0,
+    'Tree file detail uses the adjacent hierarchy instead of a Back button')
+  await page.getByRole('button', { name: 'History' }).last().waitFor()
+  await page.getByRole('button', { name: 'Upload new version' }).last().waitFor()
+  await page.screenshot({ path: '/private/tmp/nessie-knowledge-image-tree.png', fullPage: true })
+  await page.getByRole('button', { name: 'View: Tree' }).click()
+  await page.getByRole('menuitemradio', { name: 'Columns' }).click()
+  await page.getByRole('button', { name: `Back from ${imageTitle}` }).click()
+  await page.getByRole('button', { name: 'View: Columns' }).click()
+  await page.getByRole('menuitemradio', { name: 'Tree' }).click()
+  assert.equal(await page.getByRole('button', { name: `Back from ${imageTitle}` }).count(), 0)
+  await row(projectRoot.space.spaceId).click()
   await page.locator('[data-page-header-action="sharing-settings"]:visible').last().click()
   const settings = page.getByRole('dialog').last()
   await settings.getByText(`${seed.project.name} settings`).waitFor()
@@ -78,6 +132,8 @@ try {
   await page.getByRole('textbox', { name: 'Document title' }).fill(publishedTitle)
   await page.getByRole('button', { name: 'Publish', exact: true }).click()
   await page.getByRole('heading', { name: publishedTitle, exact: true }).last().waitFor()
+  assert.equal(await page.getByRole('button', { name: `Back from ${publishedTitle}` }).count(), 0,
+    'Tree document detail uses the adjacent hierarchy instead of a Back button')
   const publishedPages = await call(`/api/knowledge-base/spaces/${projectRoot.space.spaceId}/pages`, {
     token: seed.token,
   })

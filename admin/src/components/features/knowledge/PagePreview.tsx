@@ -4,6 +4,7 @@ import {
   faClockRotateLeft,
   faEllipsis,
   faPaperclip,
+  faPen,
 } from '@fortawesome/free-solid-svg-icons'
 import { toFormErrors } from '../../../facades/forms/form-errors'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
@@ -68,60 +69,65 @@ export const PagePreview = ({
   }
   const headerActions: PageHeaderAction[] = [
     {
+      compact: true,
       icon: faPaperclip,
       id: 'attachments',
       label: 'Attachments',
       onSelect: onToggleAttachments,
       priority: 60,
+      title: 'Show attachments',
     },
     ...(canWrite
-      ? [
-          {
-            id: 'edit',
-            label: 'Edit',
-            onSelect: onEdit,
-            priority: 40,
-          },
-          ...(page.status !== 'published'
-            ? [{
-                disabled: publishPending,
-                id: 'publish',
-                label: 'Publish',
-                onSelect: onPublish,
-                primary: true,
-                priority: 100,
-              } satisfies PageHeaderAction]
-            : []),
-        ] satisfies PageHeaderAction[]
+      ? [{
+          compact: true,
+          icon: faPen,
+          id: 'edit',
+          label: 'Edit',
+          onSelect: onEdit,
+          priority: 50,
+          title: 'Edit document',
+        } satisfies PageHeaderAction]
       : []),
     {
       compact: true,
-      icon: faEllipsis,
-      id: 'page-actions',
-      items: [
-        {
-          icon: faClockRotateLeft,
-          id: 'history',
-          label: 'History',
-          onSelect: onOpenHistory,
-        },
-        ...(canWrite
-          ? [{
-              disabled: archivePending,
-              icon: faBoxArchive,
-              id: 'archive-page',
-              label: 'Archive document',
-              onSelect: () => {
-                setArchiveError(null)
-                setArchiveConfirmOpen(true)
-              },
-            }]
-          : []),
-      ],
-      kind: 'menu',
-      label: 'Document actions',
-      priority: 10,
+      icon: faClockRotateLeft,
+      id: 'history',
+      label: 'History',
+      onSelect: onOpenHistory,
+      priority: 40,
+      title: 'Version history',
     },
+    ...(canWrite
+      ? [{
+          compact: true,
+          icon: faEllipsis,
+          id: 'document-actions',
+          items: [{
+            disabled: archivePending,
+            icon: faBoxArchive,
+            id: 'archive-page',
+            label: 'Archive document',
+            onSelect: () => {
+              setArchiveError(null)
+              setArchiveConfirmOpen(true)
+            },
+          }],
+          kind: 'menu',
+          label: 'More document actions',
+          priority: 10,
+          title: 'More document actions',
+        } satisfies PageHeaderAction]
+      : []),
+    ...(canWrite && page.status !== 'published'
+      ? [{
+          disabled: publishPending,
+          id: 'publish',
+          label: 'Publish',
+          onSelect: onPublish,
+          primary: true,
+          priority: 100,
+        } satisfies PageHeaderAction]
+      : []),
   ]
 
   return (
