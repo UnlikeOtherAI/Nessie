@@ -41,7 +41,7 @@ test('an owner label does not rename a shared agent as team-owned', () => {
   )
   assert.equal(
     agentOwnershipLabel({ ...agent, ownerUserId: null }, { isOrgOwner: false, userId: 'viewer-1' }),
-    'Team-owned',
+    'Managed by the team',
   )
 })
 

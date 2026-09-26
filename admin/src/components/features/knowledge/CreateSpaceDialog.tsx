@@ -34,7 +34,7 @@ const VISIBILITY_OPTIONS: { value: SpaceVisibility; label: string; description: 
   { value: 'channel', label: 'Channel', description: 'Everyone in a channel you pick' },
   { value: 'team', label: 'Team', description: 'Everyone on your team' },
   { value: 'project', label: 'Project', description: 'Everyone on the project' },
-  { value: 'organization', label: 'Organization', description: 'Everyone in the organization' },
+  { value: 'organization', label: 'Organisation', description: 'Everyone in the organisation' },
 ]
 
 export const CreateSpaceDialog = ({

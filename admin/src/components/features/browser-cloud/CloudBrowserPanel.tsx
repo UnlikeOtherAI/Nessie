@@ -29,14 +29,17 @@ type CloudBrowserPanelProps = {
 }
 
 const HEALTH_COPY: Record<string, string> = {
-  auth_failed: 'Browserbase rejected the stored key. Replace it to start browsing again.',
-  unreachable: 'Browserbase could not be reached the last time an agent tried.',
-  disabled_by_owner: 'Saved sign-ins remain in your Browserbase account. Reconnect to use them again.',
+  auth_failed: 'The saved key was rejected. Replace it to start browsing again.',
+  unreachable: 'The cloud browser could not be reached the last time an agent tried.',
+  disabled_by_owner: 'Saved sign-ins remain in your account. Reconnect to use them again.',
 }
 
 const SCOPE_COPY: Record<CloudBrowserScope, { title: string; blurb: string; empty: string }> = {
   organization: {
     title: 'Company account',
+    // Browserbase is named once, here, where a person actually needs it: the
+    // account they are about to connect. Every other message in this panel
+    // says "cloud browser" or "account" instead.
     blurb:
       'Connect the organisation’s Browserbase account. Every agent granted the browser '
       + 'tools can then open a browser, for anyone who asks them to.',
@@ -45,7 +48,7 @@ const SCOPE_COPY: Record<CloudBrowserScope, { title: string; blurb: string; empt
   team: {
     title: 'Team account',
     blurb:
-      'Connect a Browserbase account for this team. It sits between the company account '
+      'Connect a cloud browser account for this team. It sits between the company account '
       + 'and people’s own, and agents working for this team use it by default.',
     empty:
       'No team account is connected, so this team falls back to the company account or to '
@@ -54,7 +57,7 @@ const SCOPE_COPY: Record<CloudBrowserScope, { title: string; blurb: string; empt
   user: {
     title: 'Your account',
     blurb:
-      'Connect your own Browserbase account. It powers only the runs you start, and the '
+      'Connect your own cloud browser account. It powers only the runs you start, and the '
       + 'free tier is enough to try this out.',
     empty: 'Connect your own account to let your agents browse before the company subscribes.',
   },
@@ -136,7 +139,7 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
           ) : connection ? (
             <p className="mt-1 text-sm text-[color:var(--tx2)]">
               {disconnected
-                ? 'Saved sign-ins remain in your Browserbase account. Reconnect to use them again.'
+                ? 'Saved sign-ins remain in your account. Reconnect to use them again.'
                 : <>
                     {connection.projectId ? (
                       <>Project <span className="font-mono">{connection.projectId}</span></>
@@ -202,8 +205,8 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
             Disconnect
           </button>
           <p className="mt-2 text-xs text-[color:var(--tx3)]">
-            Disconnecting deletes the stored key but keeps saved browser sign-ins in Browserbase.
-            Any browsers still open must be closed first, because nothing could tell Browserbase
+            Disconnecting deletes the stored key but keeps saved browser sign-ins there.
+            Any browsers still open must be closed first, because nothing could tell it
             to stop them afterwards.
           </p>
         </div>
@@ -212,14 +215,14 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
       <FormError className="mt-3">{error}</FormError>
 
       <ConfirmDialog
-        body="Agents will not be able to open a browser through this account until it is reconnected. Saved browser sign-ins stay in Browserbase."
+        body="Agents will not be able to open a browser through this account until it is reconnected. Saved browser sign-ins stay there."
         confirmLabel="Disconnect"
         destructive
         onCancel={() => setConfirming(false)}
         onConfirm={remove}
         open={confirming}
         pending={disconnect.isPending}
-        title="Disconnect this Browserbase account?"
+        title="Disconnect this cloud browser account?"
       />
     </section>
   )

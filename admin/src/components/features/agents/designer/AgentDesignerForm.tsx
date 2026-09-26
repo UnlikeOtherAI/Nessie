@@ -80,7 +80,7 @@ const DESIGNER_SECTIONS: ReadonlyArray<{
   { label: 'Model', value: 'model' },
   { label: 'Behavior', value: 'behavior' },
   { label: 'To-dos', value: 'todos' },
-  { label: 'Tools', value: 'tools' },
+  { label: 'Built-in tools', value: 'tools' },
 ]
 
 export const AgentDesignerForm = ({

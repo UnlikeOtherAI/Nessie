@@ -163,15 +163,15 @@ export const PolicyPage = () => {
             <FormError>{deleteErrors.formError}</FormError>
 
             <QueryState
-              emptyLabel="No policy rules configured"
-              errorLabel="Policy rules could not be loaded."
+              emptyLabel="No access rules configured"
+              errorLabel="Access rules could not be loaded."
               isEmpty={rows.items.length === 0}
-              loadingLabel="Loading policy rules…"
+              loadingLabel="Loading access rules…"
               query={rows.query}
             >
               {() => (
                 <>
-                  <RowList label="Policy rules">
+                  <RowList label="Access rules">
                     {rows.items.map((rule) => (
                       <Row
                         key={rule.id}
@@ -232,7 +232,7 @@ export const PolicyPage = () => {
           }}
           open={pendingDeleteId !== null}
           pending={deleteRule.isPending}
-          title="Delete this policy rule?"
+          title="Delete this access rule?"
         />
       </OwnerGate>
     </section>
