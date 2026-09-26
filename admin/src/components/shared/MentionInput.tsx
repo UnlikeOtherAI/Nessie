@@ -62,10 +62,18 @@ export type MentionInputHandle = {
 }
 
 type Props = {
+  /** Enter sends an empty draft — set while staged files are the message. */
+  canSubmitEmpty?: boolean
   entities: MentionEntity[]
   maxLength?: number
   onChange?: (text: string) => void
   onOversizePaste?: (paste: string) => void
+  /**
+   * Receives a paste that carries files and no text: a screenshot, a copied
+   * image, a file copied in the file manager. Without it that paste inserts
+   * nothing.
+   */
+  onPasteFiles?: (files: File[]) => void
   onSubmit: (text: string, agentMentions: AgentMention[]) => void
   /** Holds the draft in place while a related composer action is in progress. */
   submitDisabled?: boolean
@@ -78,7 +86,17 @@ type Props = {
 
 export const MentionInput = forwardRef<MentionInputHandle, Props>(
   (
-    { entities, maxLength, onChange, onOversizePaste, onSubmit, submitDisabled = false, placeholder },
+    {
+      canSubmitEmpty = false,
+      entities,
+      maxLength,
+      onChange,
+      onOversizePaste,
+      onPasteFiles,
+      onSubmit,
+      submitDisabled = false,
+      placeholder,
+    },
     ref,
   ) => {
     const editorRef = useRef<HTMLDivElement>(null)
@@ -401,7 +419,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
               const editor = editorRef.current
               if (!editor) return
               const text = extractEditorText(editor).trim()
-              if (!text) return
+              if (!text && !canSubmitEmpty) return
               const agentMentions = readAgentMentions(editor)
               // Clear synchronously BEFORE notifying the caller so a second
               // Enter keystroke can't re-read the same text.
@@ -415,6 +433,15 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
           onPaste={(e) => {
             e.preventDefault()
             const text = e.clipboardData.getData('text/plain')
+            // A paste that carries text is text, even when the app it came
+            // from put a picture of it beside it — Excel, Word and PowerPoint
+            // all do. Files arrive on their own only when files are what was
+            // copied.
+            const files = Array.from(e.clipboardData.files)
+            if (onPasteFiles && files.length > 0 && !text.trim()) {
+              onPasteFiles(files)
+              return
+            }
             if (maxLength && onOversizePaste) {
               const currentLength = editorRef.current
                 ? extractEditorText(editorRef.current).length
