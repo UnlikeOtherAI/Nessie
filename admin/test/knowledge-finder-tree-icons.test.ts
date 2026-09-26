@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createElement } from 'react'
+import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { JSDOM } from 'jsdom'
 import { FinderTreeView } from '../src/components/features/knowledge/finder/FinderTreeView'
 import type { KnowledgePageRecord } from '../src/facades/knowledge/hooks'
 
 test('Tree gives images and documents quiet outline glyphs beside folders', () => {
+  // The node:test loader compiles test-only TSX through the classic runtime;
+  // production uses Vite's automatic JSX runtime.
+  ;(globalThis as typeof globalThis & { React: typeof React }).React = React
   const rows = [
     { id: 'image', kind: 'file', title: 'photo.png' },
     { id: 'pdf', kind: 'file', title: 'report.pdf' },
@@ -14,7 +17,7 @@ test('Tree gives images and documents quiet outline glyphs beside folders', () =
     { id: 'document', kind: 'document', title: 'Notes' },
     { id: 'spreadsheet', kind: 'spreadsheet', title: 'Budget' },
   ] as KnowledgePageRecord[]
-  const markup = renderToStaticMarkup(createElement(FinderTreeView, {
+  const markup = renderToStaticMarkup(React.createElement(FinderTreeView, {
     onOpenPage: () => undefined,
     pagePath: [],
     rowsIn: (parentPageId) => parentPageId ? [] : rows,

@@ -18,7 +18,7 @@ import { stubResizeObserver } from './support/resize-observer-stub'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   pretendToBeVisual: true,
-  url: 'http://localhost:5455/agents/designer/agent-1',
+  url: 'http://localhost:5455/admin/agents/designer/agent-1',
 })
 stubResizeObserver(dom.window as unknown as Window & typeof globalThis)
 // jsdom implements no scrolling, and the list scrolls its active row into view

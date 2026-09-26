@@ -1,6 +1,6 @@
 # Sequential task sets
 
-Task Sets live at **Agents → Task sets** (`/agents/task-sets`). A Documents
+Task Sets live at **Admin › Automations › Batch jobs** (`/admin/automations?tab=batch-jobs`). A Documents
 file version has a **Process with task set** entry. The same set detail owns
 configuration, its paginated Items table, progress, processor availability,
 Pause/Resume/Cancel/Retry/Skip and the saved output link. Health alerts link

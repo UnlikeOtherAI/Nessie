@@ -179,7 +179,7 @@ export const ExecutorAccessChangeDialog = ({
               {...(revisions ? { descriptorRevisions: revisions } : {})}
             />
             {!policyFound ? <FormError>
-              The machine’s permissions could not be loaded. Close this change and try again.
+              The computer’s permissions could not be loaded. Close this change and try again.
             </FormError> : null}
             <FormError>{confirmationToken ? undefined : MISSING_ACCESS_TOKEN}</FormError>
             {unavailable ? <FormError>
@@ -188,7 +188,7 @@ export const ExecutorAccessChangeDialog = ({
             {sso ? <div className="grid gap-3">
               <p className="text-sm text-[color:var(--tx2)]" role="status">
                 {verification ? 'We sent a code to your sign-in email. Enter it to approve this change.'
-                  : 'To protect your machine, confirm this change with a code sent to your sign-in email.'}
+                  : 'To protect your computer, confirm this change with a code sent to your sign-in email.'}
               </p>
               {verification ? <>
                 <label className="grid gap-1 text-xs font-medium text-[color:var(--tx2)]">

@@ -1,13 +1,11 @@
-import { createElement } from 'react'
-import { CloudUpload, FileInput, FileText, FolderPlus, Table2, type LucideIcon } from 'lucide-react'
-import type { MenuGlyphIcon } from '../../../primitives/MenuGlyph'
-
-const outlineIcon = (icon: LucideIcon): MenuGlyphIcon => createElement(icon, {
-  className: 'h-full w-full',
-  strokeWidth: 1.8,
-})
-
-export const NEW_FOLDER_ICON = outlineIcon(FolderPlus)
+import {
+  faCloudArrowUp,
+  faFileImport,
+  faFileLines,
+  faTable,
+  type IconDefinition,
+} from '@fortawesome/free-solid-svg-icons'
+import { CloudUpload, FileInput, FileText, Table2, type LucideIcon } from 'lucide-react'
 
 /**
  * "What are you making?" — the one question the Finder's New control asks, and
@@ -68,7 +66,8 @@ export type NewFileType = {
   inFolderLabel: string
   /** The second line, where the surface is wide enough to show one. */
   description: string
-  icon: MenuGlyphIcon
+  icon: IconDefinition
+  outlineIcon: LucideIcon
   /** `false` when this build cannot make the kind; the row is then absent. */
   available?: (context: NewFileTypeContext) => boolean
   invoke: (context: NewFileTypeContext) => void
@@ -77,7 +76,8 @@ export type NewFileType = {
 export const NEW_FILE_TYPES: NewFileType[] = [
   {
     description: 'A page you write here',
-    icon: outlineIcon(FileText),
+    icon: faFileLines,
+    outlineIcon: FileText,
     id: 'document',
     inFolderLabel: 'New document',
     invoke: ({ openCreate, parentPageId }) => openCreate(parentPageId),
@@ -86,7 +86,8 @@ export const NEW_FILE_TYPES: NewFileType[] = [
   {
     available: ({ openSpreadsheetCreate }) => Boolean(openSpreadsheetCreate),
     description: 'Rows and columns, edited here',
-    icon: outlineIcon(Table2),
+    icon: faTable,
+    outlineIcon: Table2,
     id: 'spreadsheet',
     inFolderLabel: 'New spreadsheet',
     invoke: ({ openSpreadsheetCreate, parentPageId }) => openSpreadsheetCreate?.(parentPageId),
@@ -99,7 +100,8 @@ export const NEW_FILE_TYPES: NewFileType[] = [
     // point differs. An `.xlsx` dropped on the folder is still a file node;
     // this is the doorway that says otherwise.
     description: 'From an .xlsx, .csv or .tsv',
-    icon: outlineIcon(FileInput),
+    icon: faFileImport,
+    outlineIcon: FileInput,
     id: 'spreadsheet-import',
     inFolderLabel: 'Import spreadsheet…',
     invoke: ({ openSpreadsheetImport, parentPageId }) => openSpreadsheetImport?.(parentPageId),
@@ -107,7 +109,8 @@ export const NEW_FILE_TYPES: NewFileType[] = [
   },
   {
     description: 'Files from your computer',
-    icon: outlineIcon(CloudUpload),
+    icon: faCloudArrowUp,
+    outlineIcon: CloudUpload,
     id: 'upload',
     inFolderLabel: 'Upload files…',
     invoke: ({ openUploadPicker, parentPageId }) => openUploadPicker(parentPageId),
@@ -116,7 +119,8 @@ export const NEW_FILE_TYPES: NewFileType[] = [
 ]
 
 export type NewFileTypeItem = {
-  icon: MenuGlyphIcon
+  icon: IconDefinition
+  outlineIcon: LucideIcon
   id: string
   label: string
   onSelect: () => void
@@ -134,6 +138,7 @@ export const newFileTypeItems = (
 ): NewFileTypeItem[] =>
   NEW_FILE_TYPES.filter((type) => type.available?.(context) ?? true).map((type) => ({
     icon: type.icon,
+    outlineIcon: type.outlineIcon,
     id: `new-${type.id}`,
     label: where === 'in-folder' ? type.inFolderLabel : type.label,
     onSelect: () => type.invoke(context),

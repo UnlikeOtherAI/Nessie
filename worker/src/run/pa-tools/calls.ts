@@ -32,17 +32,17 @@ const rethrowCallLinkError = (error: CallLinkError): never => {
   const code = String(error.code)
   if (code === 'GOOGLE_NOT_CONNECTED') {
     throw new Error(
-      'Connect Google at /settings/connections, then ask me to create the Meet link again.',
+      'Connect Google at /settings/accounts, then ask me to create the Meet link again.',
     )
   }
   if (code === 'MEET_SCOPE_MISSING') {
     throw new Error(
-      'Reconnect Google at /settings/connections and grant the Meet space scope, then ask again.',
+      'Reconnect Google at /settings/accounts and grant the Meet space scope, then ask again.',
     )
   }
   if (code === 'GOOGLE_REAUTH_REQUIRED') {
     throw new Error(
-      'Reconnect Google at /settings/connections, then ask me to create the Meet link again.',
+      'Reconnect Google at /settings/accounts, then ask me to create the Meet link again.',
     )
   }
   // Microsoft Teams is not connected yet in this deployment. Keep this typed
@@ -50,7 +50,7 @@ const rethrowCallLinkError = (error: CallLinkError): never => {
   // on a provider-name heuristic in the agent layer.
   if (code === 'MICROSOFT_NOT_CONNECTED') {
     throw new Error(
-      'Connect Microsoft at /settings/connections, then ask me to create the Teams link again.',
+      'Connect Microsoft at /settings/accounts, then ask me to create the Teams link again.',
     )
   }
   if (error.code === 'TEAM_NOT_FOUND') throw new Error('Team not found')

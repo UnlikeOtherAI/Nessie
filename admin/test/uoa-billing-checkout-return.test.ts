@@ -11,8 +11,8 @@ test('root checkout returns preserve the complete query when routing to credits'
   const complete = '?source=a%2Fb&uoa_billing=checkout_complete&campaign=summer+sale'
   const cancelled = '?uoa_billing=checkout_cancelled&source=pricing'
 
-  assert.equal(resolveRootLandingPath(complete), `/tokens${complete}`)
-  assert.equal(resolveRootLandingPath(cancelled), `/tokens${cancelled}`)
+  assert.equal(resolveRootLandingPath(complete), `/admin/billing${complete}`)
+  assert.equal(resolveRootLandingPath(cancelled), `/admin/billing${cancelled}`)
 })
 
 test('a native notification target wins over the default root landing route', () => {

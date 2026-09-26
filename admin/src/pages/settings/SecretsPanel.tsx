@@ -26,7 +26,7 @@ import {
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useTabParam } from '../../navigation/useTabParam'
 import { FeedbackBanner, type SettingsFeedback } from './FeedbackBanner'
-import { SettingsPanel } from '../../components/shared/SettingsPanel'
+import { SettingsPanel, type SettingsTabHostProps } from '../../components/shared/SettingsPanel'
 
 const SECRETS_TABS = ['active', 'revoked'] as const
 
@@ -39,36 +39,52 @@ type SecretsPanelCopy = {
   cascade: string
   eyebrow: string
   intro: string
+  title: string
 }
 
 /**
  * One page per level, each saying what its own level is rather than restating
- * the whole cascade three times. The eyebrow is the nav group the page lives
- * in (`User`, `Team`, `Organization`), so the three read as one family.
+ * the whole cascade three times. The eyebrow is where the page lives — Your
+ * settings, or the Organisation group, whose Keys page shows the organisation
+ * and each team behind its scope switch — so the levels read as one family.
  */
 const COPY: Record<SecretPageScope, SecretsPanelCopy> = {
   organization: {
-    cascade: 'A team or a person can save their own secret with the same key and theirs wins — '
+    cascade: 'A team or a person can save their own key under the same name and theirs wins — '
       + 'unless this one is locked, in which case theirs is refused and this one applies everywhere.',
     eyebrow: 'Organisation',
     intro: 'The company\'s credentials. Every team and every person inherits these unless they '
       + 'save their own under the same key.',
+    title: 'Keys',
   },
   personal: {
-    cascade: 'Your own secret beats your project\'s, which beats your team\'s, which beats the '
+    cascade: 'Your own key beats your project\'s, which beats your team\'s, which beats the '
       + 'organisation\'s. A key locked at a level above cannot be overridden, and is greyed out here.',
-    eyebrow: 'User',
-    intro: 'Everything that reaches you: your own secrets, plus what your team and organisation set.',
+    eyebrow: 'Your settings',
+    intro: 'Everything that reaches you: your own keys, plus what your team and organisation set.',
+    title: 'Saved keys',
   },
   team: {
-    cascade: 'A team secret beats the organisation\'s, and a person\'s own beats both — unless a '
+    cascade: 'A team key beats the organisation\'s, and a person\'s own beats both — unless a '
       + 'key is locked, which pins it for everybody below and greys it out there.',
-    eyebrow: 'Team',
-    intro: 'What this team\'s work runs on: the team\'s own secrets, plus what the organisation set.',
+    eyebrow: 'Organisation',
+    intro: 'What this team\'s work runs on: the team\'s own keys, plus what the organisation set.',
+    title: 'Keys',
   },
 }
 
-type SecretsPanelProps = { scope: SecretPageScope }
+type SecretsPanelProps = {
+  /** The screen hosting this panel: Keys, whose scope switch owns the header's strip. */
+  host?: SettingsTabHostProps
+  scope: SecretPageScope
+  /**
+   * The team a team-scope panel reads and writes. Named explicitly by the page
+   * that shows the team — Keys at `?scope=team:<id>` — never taken from the
+   * session's current team: a team's keys are that team's, whichever team the
+   * person is working in.
+   */
+  teamId?: string
+}
 
 export type SecretsPageWindow = {
   /** The page actually shown, which is not always the page that was stored. */
@@ -101,7 +117,7 @@ export const secretsPageWindow = (
   const end = Math.min(start + pageSize, total)
   return {
     end,
-    label: total === 0 ? 'No secrets' : `${start + 1}–${end} of ${total}`,
+    label: total === 0 ? 'No keys' : `${start + 1}–${end} of ${total}`,
     page,
     pageCount,
     start,
@@ -123,16 +139,20 @@ export const secretsPageWindow = (
  * which of them is the effective one. The footer still carries the shared
  * contract — Page X of Y, the result range and the 10/25/50/100 picker.
  */
-export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
+export const SecretsPanel = ({ host, scope, teamId: namedTeamId }: SecretsPanelProps) => {
   const { data: secrets = [], isLoading } = useSecrets()
   const { data: projects = [] } = useProjects()
   const { me } = useAuthSession()
   const userId = me?.user.id ?? ''
-  const teamId = me?.context.teamId ?? ''
+  // Keys names its team in the address; the personal page resolves the
+  // cascade that reaches the person, through the team they are working in.
+  const teamId = (scope === 'team' ? namedTeamId : undefined) ?? me?.context.teamId ?? ''
   const projectId = me?.context.projectId ?? ''
   const createSecret = useCreateSecret()
   const revokeSecret = useRevokeSecret()
-  const [tab, setTab] = useTabParam<SecretsTab>('tab', SECRETS_TABS, 'active')
+  // `status`, not `tab`: the strip narrows the list rather than switching a
+  // section, and a host keeps `tab` (and Keys `scope`) for its own strip.
+  const [tab, setTab] = useTabParam('status', SECRETS_TABS, 'active')
   const [createOpen, setCreateOpen] = useState(false)
   const [feedback, setFeedback] = useState<SettingsFeedback | null>(null)
   const [pendingRevoke, setPendingRevoke] = useState<string | null>(null)
@@ -148,7 +168,7 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
   // The level this page writes into. Personal needs none — the API binds a
   // personal secret to the caller — and a project secret names its own.
   const pageScopeId = scope === 'team'
-    ? me?.context.teamId ?? ''
+    ? teamId
     : scope === 'organization'
       ? me?.context.organizationId ?? ''
       : ''
@@ -173,10 +193,10 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
     setFeedback(null)
     try {
       await revokeSecret.mutateAsync(reference)
-      setFeedback({ kind: 'success', message: 'Secret revoked.' })
+      setFeedback({ kind: 'success', message: 'Key revoked.' })
       setPendingRevoke(null)
     } catch (caught) {
-      setFeedback({ kind: 'error', message: caught instanceof Error ? caught.message : 'Could not revoke secret.' })
+      setFeedback({ kind: 'error', message: caught instanceof Error ? caught.message : 'Could not revoke key.' })
     }
   }
 
@@ -185,13 +205,22 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
     label: TAB_LABEL[value],
     value,
   }))
+  const statusStrip = (
+    <TabBar
+      ariaLabel="Key status"
+      idPrefix={`secrets-${scope}`}
+      items={tabItems}
+      onChange={setTab}
+      value={tab}
+    />
+  )
 
   return (
     <SettingsPanel
       actions={canCreate ? [
         {
           id: 'new-secret',
-          label: 'New secret',
+          label: 'Add a key',
           onSelect: () => {
             setFeedback(null)
             setCreateOpen(true)
@@ -201,6 +230,7 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
         } satisfies PageHeaderAction,
       ] : []}
       eyebrow={copy.eyebrow}
+      host={host}
       footer={
         // Always visible, as on Agents: an empty or single-page tab keeps its
         // size control, and the table above it does not jump as pages change.
@@ -222,24 +252,19 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
         <div className="grid gap-1">
           <p className="text-sm text-[color:var(--tx2)]">{copy.intro}</p>
           <p className="text-sm text-[color:var(--tx3)]">
-            Values go directly to Infisical and are never displayed here. Copy a secret key or
+            Values go straight to the vault and are never displayed here. Copy a key or
             reference when you need to bind it elsewhere.
           </p>
           <p className="text-sm text-[color:var(--tx3)]">{copy.cascade}</p>
         </div>
       }
-      tabs={
-        <TabBar
-          ariaLabel="Secret status"
-          idPrefix={`secrets-${scope}`}
-          items={tabItems}
-          onChange={setTab}
-          value={tab}
-        />
-      }
-      title="Secrets"
+      tabs={statusStrip}
+      title={copy.title}
     >
       <div className="space-y-5">
+        {/* A host's own strip takes the header's tabs slot; the status strip
+            then leads the body instead of stacking a second bar up there. */}
+        {host?.tabs ? statusStrip : null}
         <FeedbackBanner feedback={feedback} />
         {/* The table owns its own frame and is never wrapped in a card
             (docs/standards/design-system.md → no nesting), which is also what
@@ -277,8 +302,8 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
         />
       ) : null}
       <ConfirmDialog
-        body="Anything still using this secret reference will stop working."
-        confirmLabel="Revoke secret"
+        body="Anything still using this key’s reference will stop working."
+        confirmLabel="Revoke key"
         destructive
         onCancel={() => setPendingRevoke(null)}
         onConfirm={() => {
@@ -286,7 +311,7 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
         }}
         open={pendingRevoke != null}
         pending={revokeSecret.isPending}
-        title="Revoke this secret?"
+        title="Revoke this key?"
       />
     </SettingsPanel>
   )

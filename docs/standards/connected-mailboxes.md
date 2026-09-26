@@ -49,13 +49,17 @@ Plan and as-built deltas:
   two of them must never have an ambiguous send path, which is why they are
   three families rather than one with a mode.
 - **One panel, two homes** (`components/features/mailbox-connections/`): personal
-  mailboxes on `/settings/connections`, shared ones on `/settings/organization`,
-  scope as a parameter â€” the `CloudBrowserPanel` shape. Both carry per-agent
+  mailboxes on `/settings/accounts`, shared ones on `/admin/connections` at
+  their team's scope (`?scope=team:<id>`, which lists that team's mailboxes and
+  shares a new one with it), scope as a parameter — the `CloudBrowserPanel`
+  shape. A mail surface's "Open mailbox settings" finds a shared mailbox's team
+  when it is pressed and opens that scope. Both carry per-agent
   access rows: a connection no agent may use does nothing. Connecting resolves
   and proves both legs before it stores, and only a provider rejection
   (`auth`-kind) flips a connection to `needs_reauthorization`. The personal
-  Email doorway is address-first: a server-approved Google or Microsoft OAuth
-  route starts its native connector, while an IMAP/SMTP route asks for a
+  doorway, Connect email on Connected accounts' Mail and calendar tab, is
+  address-first: a server-approved Google or Microsoft OAuth route starts its
+  native connector, while an IMAP/SMTP route asks for a
   password and lets the server find the endpoints, escalating one question at a
   time only when it cannot. A team shared mailbox stays Model A-only and never
   starts a personal OAuth connection.
@@ -125,7 +129,7 @@ broader set they may see: membership makes a shared mailbox visible, and only
 an owner or admin may change one, so listing by visibility handed the model
 ids whose every mutation would be refused.
 `email_account_connect` posts a doorway into the
-  same address-first form used by Settings; it accepts no password, server, or
+  same address-first form used by Connected accounts; it accepts no password, server, or
   OAuth-code argument. Connection status carries only fixed structural remedies: a provider's own
 error text is neither persisted nor presented, and never reaches a run's
 transcript, because a mail server chooses it. `presentMailboxConnection`

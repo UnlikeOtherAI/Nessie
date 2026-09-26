@@ -23,6 +23,12 @@ type ExecutorRow = {
 
 export type ExecutorRecord = {
   sharedWithTeam?: boolean
+  /**
+   * Whether the person reading the list paired this machine. Present only on a
+   * list read for a person, so Your computers can split what they paired from
+   * what others share with them without naming anybody's account.
+   */
+  pairedByViewer?: boolean
   id: string
   scope: ExecutorScope
   label: string
@@ -46,9 +52,10 @@ const platformFactsFor = (stored: unknown): { platformFacts?: ExecutorPlatformFa
   return parsed.success ? { platformFacts: parsed.data } : {}
 }
 
-export const recordFromRow = (row: ExecutorRow): ExecutorRecord => ({
+export const recordFromRow = (row: ExecutorRow, viewerUserId?: string): ExecutorRecord => ({
   id: row.id,
   sharedWithTeam: Boolean(row.teamAccess?.everyone || row._count?.projectAccess),
+  ...(viewerUserId ? { pairedByViewer: row.pairingOwnerUserId === viewerUserId } : {}),
   scope: ExecutorScopeSchema.parse(row.scopeKind === 'project'
     ? { kind: 'project', organizationId: row.organizationId, projectId: row.projectId! }
     : { kind: row.scopeKind, organizationId: row.organizationId }),

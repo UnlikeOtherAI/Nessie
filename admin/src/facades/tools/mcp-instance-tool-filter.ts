@@ -36,4 +36,4 @@ export const matchesMcpInstanceToolFilter = (
 }
 
 export const mcpInstanceToolsPath = (instanceId: string): string =>
-  `/agents/tools?status=pending_review&${INSTANCE_PARAM}=${encodeURIComponent(instanceId)}`
+  `/admin/advanced/tools?status=pending_review&${INSTANCE_PARAM}=${encodeURIComponent(instanceId)}`

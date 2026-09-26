@@ -43,7 +43,7 @@ export const AgentAvailability = ({
       {repair ? (
         <Link
           className="text-[color:var(--lnk)] hover:underline"
-          to={`/agents/designer/${agentId}?designerSection=model`}
+          to={`/admin/agents/designer/${agentId}?designerSection=model`}
         >
           Repair
         </Link>

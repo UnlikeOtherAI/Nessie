@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   ADMIN_NAV,
+  isAdminNavGroupVisible,
   isAdminNavItemActive,
   isAdminNavItemVisible,
   type AdminNavViewer,
@@ -23,31 +24,43 @@ const navItem = (path: string) => {
   return item
 }
 
-const membersItem = () => navItem('/settings/members')
-const teamMembersItem = () => navItem('/settings/team/members')
+const peopleItem = () => navItem('/admin/people')
+const organisationGroup = () => {
+  const group = ADMIN_NAV.find((entry) => entry.id === 'organisation')
+  assert.ok(group, 'no Organisation nav group')
+  return group
+}
 
-test('Organization Members requires the live organisation capability', () => {
-  assert.equal(isAdminNavItemVisible(membersItem(), viewer({ isUoaSession: true })), false)
+test('a UOA session shows People to every active member, who reads their own teams', () => {
+  assert.equal(isAdminNavItemVisible(peopleItem(), viewer({ isUoaSession: true })), true)
   assert.equal(
-    isAdminNavItemVisible(membersItem(), viewer({ canManageOrganization: true, isUoaSession: true })),
+    isAdminNavItemVisible(peopleItem(), viewer({ canManageOrganization: true, isUoaSession: true })),
     true,
   )
 })
 
-test('a UOA session shows Team > Members to every active member', () => {
-  assert.equal(isAdminNavItemVisible(teamMembersItem(), viewer({ isUoaSession: true })), true)
-  assert.equal(
-    isAdminNavItemVisible(teamMembersItem(), viewer({ isUoaSession: true, isOwner: true })),
-    true,
+test('a local session keeps People to the owner or an organisation administrator', () => {
+  assert.equal(isAdminNavItemVisible(peopleItem(), viewer()), false)
+  assert.equal(isAdminNavItemVisible(peopleItem(), viewer({ isOwner: true })), true)
+  assert.equal(isAdminNavItemVisible(peopleItem(), viewer({ canManageOrganization: true })), true)
+})
+
+test('the Organisation group renders whenever one of its items does', () => {
+  // A plain member on an SSO session sees "Organisation · People" and nothing
+  // else from the group.
+  const member = viewer({ isUoaSession: true })
+  assert.equal(isAdminNavGroupVisible(organisationGroup(), member), true)
+  assert.deepEqual(
+    organisationGroup().items
+      .filter((item) => isAdminNavItemVisible(item, member))
+      .map((item) => item.label),
+    ['People'],
   )
+  // A plain member of a local install sees no group at all.
+  assert.equal(isAdminNavGroupVisible(organisationGroup(), viewer()), false)
 })
 
-test('a local session keeps Team > Members owner-only', () => {
-  assert.equal(isAdminNavItemVisible(teamMembersItem(), viewer()), false)
-  assert.equal(isAdminNavItemVisible(teamMembersItem(), viewer({ isOwner: true })), true)
-})
-
-test('the UOA session flag widens only Team Members', () => {
+test('the UOA session flag widens only People', () => {
   const widened = ADMIN_NAV.flatMap((group) => group.items).filter(
     (item) =>
       !isAdminNavItemVisible(item, viewer())
@@ -56,12 +69,12 @@ test('the UOA session flag widens only Team Members', () => {
 
   assert.deepEqual(
     widened.map((item) => item.path).sort(),
-    ['/settings/team/members'],
+    ['/admin/people'],
   )
 })
 
 test('owner-only items stay owner-only on a UOA session', () => {
-  for (const path of ['/agents/tools', '/audit', '/ops/usage']) {
+  for (const path of ['/admin/advanced/tools', '/admin/keys', '/admin/usage']) {
     assert.equal(
       isAdminNavItemVisible(navItem(path), viewer({ isUoaSession: true })),
       false,
@@ -70,7 +83,28 @@ test('owner-only items stay owner-only on a UOA session', () => {
   }
 })
 
-test('Team Members owns its route without also selecting Team Settings', () => {
-  assert.equal(isAdminNavItemActive(navItem('/settings/team/members'), '/settings/team/members'), true)
-  assert.equal(isAdminNavItemActive(navItem('/settings/team'), '/settings/team/members'), false)
+test('the organisation items carry the gates the audience of each page needs', () => {
+  const admin = viewer({ isAdmin: true })
+  assert.deepEqual(
+    organisationGroup().items
+      .filter((item) => isAdminNavItemVisible(item, admin))
+      .map((item) => item.label),
+    ['Teams', 'AI models', 'Company connections', 'Credits and billing', 'Security'],
+  )
+  const owner = viewer({ canManageOrganization: true, isOwner: true })
+  assert.deepEqual(
+    organisationGroup().items
+      .filter((item) => isAdminNavItemVisible(item, owner))
+      .map((item) => item.label),
+    [
+      'People', 'Teams', 'Organisation', 'AI models', 'Company connections', 'Keys',
+      'Usage and limits', 'Credits and billing', 'Security',
+    ],
+  )
+})
+
+test('a team page keeps Teams active, and People owns its own route', () => {
+  assert.equal(isAdminNavItemActive(navItem('/admin/teams'), '/admin/teams/team-1'), true)
+  assert.equal(isAdminNavItemActive(navItem('/admin/people'), '/admin/people'), true)
+  assert.equal(isAdminNavItemActive(navItem('/admin/teams'), '/admin/people'), false)
 })

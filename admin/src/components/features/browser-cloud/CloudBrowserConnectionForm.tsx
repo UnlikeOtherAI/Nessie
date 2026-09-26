@@ -52,7 +52,7 @@ export const CloudBrowserConnectionForm = ({
           setError(
             cause instanceof Error
               ? cause.message
-              : 'That key could not be verified with Browserbase.',
+              : 'That key could not be verified.',
           )
         },
         onSuccess: () => {
@@ -68,7 +68,7 @@ export const CloudBrowserConnectionForm = ({
     <form className="mt-4 grid gap-3" onSubmit={submit}>
       <p className="text-sm text-[color:var(--tx2)]">{blurb}</p>
       <label className="grid gap-1">
-        <SectionLabel as="span" size="xs">API key</SectionLabel>
+        <SectionLabel as="span" size="xs">Key</SectionLabel>
         <input
           autoComplete="off"
           className="admin-input"
@@ -80,8 +80,8 @@ export const CloudBrowserConnectionForm = ({
         />
       </label>
       <p className="text-xs text-[color:var(--tx3)]">
-        The key is stored encrypted and never shown again. Browsers opened with it run on
-        Browserbase’s infrastructure, so the pages an agent visits — and any sessions it is
+        The key is stored encrypted and never shown again. Browsers opened with it run in the
+        cloud, so the pages an agent visits — and any sessions it is
         signed in to — live in that account.
       </p>
       <div className="flex items-center gap-3">

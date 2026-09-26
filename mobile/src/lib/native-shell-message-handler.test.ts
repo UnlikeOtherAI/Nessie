@@ -142,10 +142,10 @@ test('nessie:search-overlay closing restores the last-known section\'s tab, not 
   handleNativeShellMessage({
     depth: 0,
     hasBack: false,
-    path: '/settings',
+    path: '/admin',
     screenType: 'root',
     section: 'admin',
-    title: 'Settings',
+    title: 'Admin',
     type: 'nessie:screen',
   }, input)
   assert.equal(state.index, TABS.findIndex((tab) => tab.key === 'admin'))

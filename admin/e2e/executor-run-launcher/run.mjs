@@ -7,7 +7,7 @@ import { ADMIN_URL, REPO_ROOT } from '../navigation/lib/config.mjs'
 import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
 
 /**
- * The executor run launcher's eighth bundle: "Local apps on this machine".
+ * The executor run launcher's eighth bundle: "Local apps on this computer".
  *
  * A pure fixture suite — the real dialog and the real API client, with the
  * runner answering `/api/**` — so it needs the admin and nothing behind it.
@@ -33,18 +33,18 @@ const PROJECT_ID = '00000000-0000-4000-8000-0000000000b7'
 const THREAD_ID = '00000000-0000-4000-8000-0000000000c7'
 const HANDLE = `candidate-${'7'.repeat(40)}`
 const LOCAL_APPS = ['mcp.tools', 'mcp.call']
-const LOCAL_APPS_DESCRIPTION = 'Programs this machine’s owner named in its reviewed policy — '
+const LOCAL_APPS_DESCRIPTION = 'Programs this computer’s owner named in its reviewed policy — '
   + 'for example a local browser or a coding agent. The agent sees each program’s own tools.'
 
 const OPTIONS = [
   ['file.list', 'List workspace files'],
   ['file.read', 'Read a workspace file'],
-  ['file.write', 'Write a sandbox draft'],
-  ['file.write+workspace.review', 'Write and review a sandbox draft'],
+  ['file.write', 'Write a draft copy'],
+  ['file.write+workspace.review', 'Write and review a draft copy'],
   ['browser.open+browser.observe+browser.act+sandbox.stop', 'Act in an approved site'],
   ['command.run+workspace.review+sandbox.stop', 'Run and review a workspace command'],
   ['coding.launch+coding.observe+workspace.review+sandbox.stop', 'Work in a managed Codex session'],
-  ['mcp.tools+mcp.call', 'Local apps on this machine'],
+  ['mcp.tools+mcp.call', 'Local apps on this computer'],
 ]
 
 const uuid = (tail) => `00000000-0000-4000-8000-${tail.padStart(12, '0')}`
@@ -113,7 +113,7 @@ const openCase = async (browser, { localAppsReady, width }) => {
   const errors = []
   page.on('pageerror', (error) => errors.push(String(error)))
   await page.goto(`${ADMIN_URL}/e2e/executor-run-launcher/index.html`)
-  await page.getByRole('dialog').getByText('Run on an executor', { exact: true }).waitFor()
+  await page.getByRole('dialog').getByText('Run on a computer', { exact: true }).waitFor()
   return { availability, context, errors, launches, page }
 }
 
@@ -127,7 +127,7 @@ try {
       localAppsReady: true,
       width,
     })
-    const capability = page.getByLabel('Executor capability')
+    const capability = page.getByLabel('Computer capability')
     const options = await capability.locator('option').evaluateAll((nodes) => (
       nodes.map((node) => [node.value, node.textContent])
     ))
@@ -135,7 +135,7 @@ try {
 
     await capability.selectOption('mcp.tools+mcp.call')
     await page.getByText(LOCAL_APPS_DESCRIPTION, { exact: true }).waitFor()
-    await page.getByText('Private executor', { exact: true }).waitFor()
+    await page.getByText('Private computer', { exact: true }).waitFor()
     const asked = availability.at(-1)
     assert.deepEqual(asked, { agentId: AGENT_ID, operationKeys: LOCAL_APPS, projectId: PROJECT_ID })
 
@@ -147,8 +147,8 @@ try {
     assert.ok(await page.getByRole('radio').isChecked(), 'the only candidate is preselected')
     await page.screenshot({ fullPage: true, path: resolve(screenshots, `local-apps-${width}.png`) })
 
-    await page.getByRole('button', { name: 'Start executor run', exact: true }).click()
-    await page.getByText('Executor run started', { exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Start computer run', exact: true }).click()
+    await page.getByText('Computer run started', { exact: true }).waitFor()
     assert.deepEqual(launches, [{
       agentId: AGENT_ID,
       candidateHandle: HANDLE,
@@ -168,11 +168,11 @@ try {
       localAppsReady: false,
       width: 1280,
     })
-    await page.getByLabel('Executor capability').selectOption('mcp.tools+mcp.call')
-    await page.getByText('No executor ready: descriptor unreviewed.', { exact: true }).waitFor()
+    await page.getByLabel('Computer capability').selectOption('mcp.tools+mcp.call')
+    await page.getByText('No computer ready: descriptor unreviewed.', { exact: true }).waitFor()
     assert.equal(await page.getByRole('radio').count(), 0)
     assert.ok(
-      await page.getByRole('button', { name: 'Start executor run', exact: true }).isDisabled(),
+      await page.getByRole('button', { name: 'Start computer run', exact: true }).isDisabled(),
       'nothing to start without a candidate',
     )
     await page.screenshot({ fullPage: true, path: resolve(screenshots, 'local-apps-unavailable.png') })

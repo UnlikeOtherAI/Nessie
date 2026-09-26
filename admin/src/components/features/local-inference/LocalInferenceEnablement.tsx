@@ -64,7 +64,7 @@ export const LocalInferenceEnablement = ({
       value: enabled,
     }, {
       onError: (cause) =>
-        setError(cause instanceof Error ? cause.message : 'Local Ollama access could not be saved.'),
+        setError(cause instanceof Error ? cause.message : 'AI on people’s own computers could not be saved.'),
       onSuccess: () => setSuccess(saved),
     })
   }
@@ -75,7 +75,7 @@ export const LocalInferenceEnablement = ({
       data-testid={`local-inference-policy-${scope}`}
     >
       <div>
-        <SectionLabel as="h2">Local Ollama</SectionLabel>
+        <SectionLabel as="h2">AI on people’s own computers</SectionLabel>
         <p className="mt-1 max-w-3xl text-sm leading-6 text-[color:var(--tx2)]">
           Permit {target} to use a model installed on their own computer. This only permits
           setup; it does not discover, inspect, or activate anyone’s computer.
@@ -83,8 +83,8 @@ export const LocalInferenceEnablement = ({
       </div>
 
       <QueryState
-        errorLabel="Local Ollama policy could not be loaded."
-        loadingLabel="Loading Local Ollama policy…"
+        errorLabel="This policy could not be loaded."
+        loadingLabel="Loading policy…"
         query={settings}
       >
         {() => (
@@ -95,7 +95,7 @@ export const LocalInferenceEnablement = ({
             <ScopedSettingGate setting={setting}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium text-[color:var(--tx)]">Allow local Ollama</p>
+                  <p className="text-sm font-medium text-[color:var(--tx)]">Allow AI on people’s own computers</p>
                   <p className="mt-1 text-xs text-[color:var(--tx3)]">
                     People still choose a specific computer and model for each agent.
                   </p>
@@ -103,11 +103,11 @@ export const LocalInferenceEnablement = ({
                 <Switch
                   checked={state.enabled}
                   disabled={!state.canEdit || write.isPending}
-                  label={`${state.enabled ? 'Disable' : 'Enable'} local Ollama for ${target}`}
+                  label={`${state.enabled ? 'Disable' : 'Enable'} AI on people’s own computers for ${target}`}
                   onChange={(enabled) => commit(
                     enabled,
                     state.lockedHere,
-                    enabled ? 'Local Ollama enabled.' : 'Local Ollama disabled.',
+                    enabled ? 'Enabled.' : 'Disabled.',
                   )}
                 />
               </div>
@@ -116,7 +116,7 @@ export const LocalInferenceEnablement = ({
               <ScopedSettingLock
                 disabled={write.isPending}
                 locked={state.lockedHere}
-                onChange={(locked) => commit(state.enabled, locked, 'Local Ollama policy saved.')}
+                onChange={(locked) => commit(state.enabled, locked, 'Policy saved.')}
                 scope={scope}
               />
             ) : null}

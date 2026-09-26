@@ -57,10 +57,12 @@ file is the rule**.
   status and directs detailed settings to billing managers. Every mutation
   re-fetches the UOA view,
   validates the exact frozen action, and relays it unchanged.
-  `/tokens` is the customer Credits & Billing surface and contains only these
-  UOA-authored models. Nessie's owner-only local token, pricing, estimate,
-  projection, connector, file, and budget telemetry is isolated at
-  `/ops/usage`; it must never be rendered beside customer credits or statements.
+  `/admin/billing` (Credits and billing) is the customer billing surface, and
+  a person's own `/settings/usage` (Usage) is the same screen's member
+  projection; both contain only these UOA-authored models. Nessie's
+  owner-only local token, pricing, estimate, projection, connector, file, and
+  budget telemetry is isolated at `/admin/usage` (Usage and limits); it must
+  never be rendered beside customer credits or statements.
   Integrated-product APIs do not query or return local usage summaries.
   A successful direct Nessie SSO exchange confirms `nessie` access through
   UOA's exact `/billing/v1/service-access/confirm` seam before Nessie issues its

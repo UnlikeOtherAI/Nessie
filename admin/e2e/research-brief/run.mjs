@@ -36,7 +36,7 @@ import {
  * amendments-fable F4, F8; amendments N8.5, N10).
  *
  * A pure fixture over a stubbed ApiClient — the real brief dialog, research
- * card, notice actions, Knowledge › Research and `/apps/deep-water` hero, no
+ * card, notice actions, Knowledge › Research and `/admin/apps/deep-water` hero, no
  * database. The runner plays the server: the planner answering, a launch
  * landing, a revision conflict. It walks the person's whole brief (a one-tap
  * answer carrying an unsent pillar and setting edit, the planner's answer, a
@@ -289,7 +289,7 @@ try {
   await adminReady.getByText('Ask a team owner to turn it on.', { exact: false }).waitFor()
   assert.equal(await adminReady.getByRole('link').count(), 0)
   await adminPage.close()
-  const adminHero = await open(desktop, 'readiness=team_off&admin=1&at=/apps/deep-water')
+  const adminHero = await open(desktop, 'readiness=team_off&admin=1&at=/admin/apps/deep-water')
   const adminControls = adminHero.getByTestId('deep-water-team-controls')
   await adminControls.getByText('Ask a team owner to turn it on.', { exact: false }).waitFor()
   assert.equal(await adminControls.getByRole('button').count(), 0, 'an admin is offered no team control')
@@ -312,19 +312,19 @@ try {
   await snap(ownerPage, '14-owner-turned-on.png')
   await ownerPage.close()
   // 14b — a team that needs updating: update it, or turn it off without updating first.
-  const outdated = await open(desktop, 'readiness=contract_outdated&owner=1&at=/apps/deep-water')
+  const outdated = await open(desktop, 'readiness=contract_outdated&owner=1&at=/admin/apps/deep-water')
   await walkOutdatedTeam(outdated, snap)
   await outdated.close()
 
   // 14c — a verdict the admin cannot read: said as that, on the hero and behind the composer's button.
-  const unreadHero = await open(desktop, 'readiness=unreadable&owner=1&at=/apps/deep-water')
+  const unreadHero = await open(desktop, 'readiness=unreadable&owner=1&at=/admin/apps/deep-water')
   const unreadThread = await open(desktop, 'readiness=unreadable')
   await walkReadinessUnread(unreadHero, unreadThread, snap)
   await unreadHero.close()
   await unreadThread.close()
 
   // 15–17 — turning it off is refused by an open research, which the owner cancels here.
-  const hero = await open(desktop, 'owner=1&at=/apps/deep-water')
+  const hero = await open(desktop, 'owner=1&at=/admin/apps/deep-water')
   const heroControls = hero.getByTestId('deep-water-team-controls')
   await heroControls.getByRole('button', { name: 'Turn off DeepWater' }).click()
   const confirm = hero.getByRole('dialog', { name: 'Turn off DeepWater for this team?' })
@@ -356,10 +356,10 @@ try {
   await snap(hero, '17-hero-turned-off.png')
   await hero.close()
   // 16c — accepted, then refused by DeepWater: said, and Cancel offered again; 16d — an owner who can't read it.
-  const refusedCancel = await open(desktop, 'owner=1&at=/apps/deep-water')
+  const refusedCancel = await open(desktop, 'owner=1&at=/admin/apps/deep-water')
   await walkHeroCancelRefused(refusedCancel, snap)
   await refusedCancel.close()
-  const unseenCancel = await open(desktop, 'owner=1&block=hidden&at=/apps/deep-water')
+  const unseenCancel = await open(desktop, 'owner=1&block=hidden&at=/admin/apps/deep-water')
   await walkHeroCancelUnseen(unseenCancel, snap)
   await unseenCancel.close()
 

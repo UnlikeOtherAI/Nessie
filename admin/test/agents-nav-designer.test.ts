@@ -7,43 +7,52 @@ import {
 } from '../src/layouts/admin-shell/AdminSidebarNav.js'
 
 const agentsGroup = ADMIN_NAV.find((group) => group.id === 'agents')
-const agentsItem = agentsGroup?.items.find((item) => item.path === '/agents')
+const agentsItem = agentsGroup?.items.find((item) => item.path === '/admin/agents')
 
-test('the Designer item is gone from the agents menu', () => {
+test('the Agents group is Agents, Apps, Computers and Automations, with no Designer item', () => {
   assert.ok(agentsGroup, 'agents group exists')
+  assert.deepEqual(
+    agentsGroup.items.map((item) => [item.path, item.label]),
+    [
+      ['/admin/agents', 'Agents'],
+      ['/admin/apps', 'Apps'],
+      ['/admin/computers', 'Computers'],
+      ['/admin/automations', 'Automations'],
+    ],
+  )
   assert.equal(
-    agentsGroup.items.some((item) => item.path === '/agents/designer'),
+    agentsGroup.items.some((item) => item.path.includes('designer')),
     false,
     'no standalone Designer nav item',
   )
 })
 
-test('editing an agent keeps "Agents" highlighted, not a Designer item', () => {
+test('an agent, its designer and its mailbox keep "Agents" highlighted', () => {
   assert.ok(agentsItem, 'Agents item exists')
   for (const path of [
-    '/agents',
-    '/agents/designer',
-    '/agents/designer/abc-123',
-    '/agents/agent-abc-123',
+    '/admin/agents',
+    '/admin/agents/designer',
+    '/admin/agents/designer/abc-123',
+    '/admin/agents/agent-abc-123',
+    '/admin/agents/agent-abc-123/mailbox',
   ]) {
     assert.equal(isAdminNavItemActive(agentsItem, path), true, `Agents active on ${path}`)
   }
 })
 
-test('sibling agent pages still own their own routes (no double-highlight)', () => {
+test('sibling pages own their own routes (no double-highlight)', () => {
   // The designer routes light up ONLY the Agents item.
-  const others = agentsGroup!.items.filter((item) => item.path !== '/agents')
+  const others = agentsGroup!.items.filter((item) => item.path !== '/admin/agents')
   for (const item of others) {
     assert.equal(
-      isAdminNavItemActive(item, '/agents/designer/abc-123'),
+      isAdminNavItemActive(item, '/admin/agents/designer/abc-123'),
       false,
       `${item.path} must not activate on the agent designer`,
     )
   }
-  // And Agents does not steal a sibling's own route.
-  assert.equal(isAdminNavItemActive(agentsItem!, '/agents/activity'), false)
-  assert.equal(isAdminNavItemActive(agentsItem!, '/agents/triggers'), false)
-  assert.equal(isAdminNavItemActive(agentsItem!, '/agents/workflows'), false)
-  assert.equal(isAdminNavItemActive(agentsItem!, '/agents/tools'), false)
-  assert.equal(isAdminNavItemActive(agentsItem!, '/agents/executors'), false)
+  // And Agents does not steal a sibling's own route, nor a prefix look-alike.
+  assert.equal(isAdminNavItemActive(agentsItem!, '/admin/automations'), false)
+  assert.equal(isAdminNavItemActive(agentsItem!, '/admin/automations/triggers/t-1'), false)
+  assert.equal(isAdminNavItemActive(agentsItem!, '/admin/computers/c-1'), false)
+  assert.equal(isAdminNavItemActive(agentsItem!, '/admin/agentsX'), false)
 })

@@ -45,7 +45,7 @@ export const AgentDetailDrawer = ({
             {canEdit ? (
               <button
                 className="admin-button admin-button-secondary"
-                onClick={() => void navigate(`/agents/designer/${agent.id}`)}
+                onClick={() => void navigate(`/admin/agents/designer/${agent.id}`)}
                 type="button"
               >
                 Edit details

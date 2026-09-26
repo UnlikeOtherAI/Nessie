@@ -95,7 +95,7 @@ try {
   const shot = (name) => page.screenshot({ path: resolve(outDir, `${name}.png`) })
 
   console.log('no palette yet')
-  await goto(page, '/settings/organization?tab=appearance')
+  await goto(page, '/admin/organisation?tab=appearance')
   await shot('01-empty')
   check('the Appearance tab is on the organisation screen',
     (await page.locator('[role="tablist"] >> text=Appearance').count()) > 0, true)
@@ -135,7 +135,7 @@ try {
     await new Promise((settle) => { setTimeout(settle, 4000) })
     await route.continue()
   })
-  await page.goto(`${ADMIN_URL}/settings/organization?tab=appearance`, { waitUntil: 'commit' })
+  await page.goto(`${ADMIN_URL}/admin/organisation?tab=appearance`, { waitUntil: 'commit' })
   await page.waitForTimeout(700)
   state = await themeState(page)
   check('painted from the first-paint cache', state.dataTheme, 'organization')
@@ -143,7 +143,7 @@ try {
   await page.unroute('**/api/organizations/current')
 
   console.log('the member doorway')
-  await goto(page, '/settings/account?tab=appearance')
+  await goto(page, '/settings/appearance')
   await shot('05-colours-panel')
   const cards = await page.locator('fieldset label').allInnerTexts()
   check('the organisation card comes first', (cards[0] ?? '').includes('Default'), true)
@@ -168,7 +168,7 @@ try {
   await goto(page, '/channels')
   await page.getByLabel('Account menu').first().click()
   await page.waitForTimeout(800)
-  await page.locator('text=Log out').first().click()
+  await page.locator('text=Sign out').first().click()
   await page.waitForURL((url) => url.pathname.startsWith('/login'), { timeout: 30_000 })
   await page.waitForTimeout(2000)
   await shot('06-login')

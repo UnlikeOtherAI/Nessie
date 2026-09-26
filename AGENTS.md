@@ -27,7 +27,7 @@ Four checks, applied to every change that adds or alters a capability:
    decision or action a number, row, or chip enables, cut it. Prefer a short
    screen that is all signal. Owner-only operational telemetry never appears on
    a member-facing surface, and customer billing never renders beside local
-   ops telemetry (see the `/tokens` vs `/ops/usage` split).
+   ops telemetry (see the `/admin/billing` vs `/admin/usage` split).
 4. **Reuse the surface; never fork it.** When the same thing must appear in two
    places, it is one component parameterised by scope — as the project Docs tab
    reuses the knowledge team. A second implementation of the same view is a
@@ -203,7 +203,7 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 - Every UI change must be visually verified using Playwright before considering the work complete.
 - Use Playwright (`mcp__plugin_playwright`, or a local Playwright script) to load `http://localhost:<admin port>/<path>` — 5455 unless this worktree set `NESSIE_ADMIN_PORT` — screenshot the affected page, and confirm the feature renders correctly.
 - Always run Playwright headless unless the user explicitly requests otherwise.
-- Executor pairing, independent account/server connections on each platform, live account-menu presence, and their browser verification are documented in [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md).
+- Executor pairing, independent account/server connections on each platform, live presence on the computers lists, and their browser verification are documented in [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md).
   The shared macOS/Windows console and machine-only, per-team resource permissions follow [local executor controls](docs/executor-local-controls.md).
 - Direct machine access from private agent chat and its self-reminders follows [executor sharing](docs/standards/executor-sharing.md); named internal links and the `nessie_link` tool follow [agent voice](docs/standards/agent-voice.md).
 - This applies to all frontend work: new components, layout changes, styling fixes, and interaction flows.
@@ -491,7 +491,7 @@ when one changes, the same turn updates it, not this section.
   the horizontal-scaling block in the root `eslint.config.js` is the ratchet.
   Read [`docs/standards/horizontal-scaling/overview.md`](docs/standards/horizontal-scaling/overview.md)
   before writing code here.
-- **The App Store (`/apps`).** One row is one app on `McpCatalogEntry`; the store
+- **The App Store (`/admin/apps`).** One row is one app on `McpCatalogEntry`; the store
   reads a decision rather than re-deriving one, and connect orchestrates the
   existing OAuth/instance machinery.
   Read [`docs/standards/app-store.md`](docs/standards/app-store.md)
@@ -541,7 +541,7 @@ when one changes, the same turn updates it, not this section.
   Read [`docs/standards/google-workspace.md`](docs/standards/google-workspace.md)
   before writing code here.
 
-## Personal model subscriptions
+## Personal model subscriptions (Your AI plans on Connected accounts)
 
 A person links a consumer AI plan they already pay for and the agents **they
 own** run on it instead of the organisation's Ledger credits. The lane is

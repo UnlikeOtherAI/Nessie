@@ -9,6 +9,7 @@ import {
   faFileArrowUp,
   faFileLines,
   faFolderOpen,
+  faFolderPlus,
   faLink,
   faLocationCrosshairs,
   faPenToSquare,
@@ -20,6 +21,7 @@ import {
   faUserGroup,
   faUserMinus,
 } from '@fortawesome/free-solid-svg-icons'
+import { CloudUpload, FileText, FolderPlus } from 'lucide-react'
 import type {
   KnowledgeAccessSummary,
   KnowledgeIndexingState,
@@ -27,7 +29,7 @@ import type {
 } from '@nessie/schemas'
 import { LEGACY_XLS_REASON, spreadsheetSourceFor } from '../../../shared/file-icons'
 import type { ContextMenuItem } from '../../../overlays/ContextMenu'
-import { NEW_FOLDER_ICON, newFileTypeItems, type NewFileTypeContext } from './new-file-types'
+import { newFileTypeItems, type NewFileTypeContext } from './new-file-types'
 
 /**
  * What a right-click offers, as data (menus-and-dialogs.md §2).
@@ -304,7 +306,8 @@ const pageItems = (
     // (standing somewhere else) does not have.
     ...(folder && !virtual && mayEdit
       ? [item('new-folder-inside', 'New folder inside', on.newFolderInside, {
-        icon: NEW_FOLDER_ICON,
+        icon: faFolderPlus,
+        outlineIcon: FolderPlus,
       })]
       : []),
     ...(mayEdit ? [item('rename', 'Rename', on.rename, {
@@ -418,7 +421,8 @@ const backgroundItems = (
     return tidy([
       ...(on.newSharedFolder
         ? [item('new-shared-folder', 'New space…', on.newSharedFolder, {
-          icon: NEW_FOLDER_ICON,
+          icon: faFolderPlus,
+          outlineIcon: FolderPlus,
         })]
         : []),
       SEPARATOR,
@@ -436,11 +440,14 @@ const backgroundItems = (
   // a host that has not wired the registry still gets a working menu.
   const newRows: ContextMenuItem[] = on.newFileTypeContext
     ? newFileTypeItems(on.newFileTypeContext, 'in-folder').map((row) =>
-      item(row.id, row.label, row.onSelect, { icon: row.icon }))
+      item(row.id, row.label, row.onSelect, { icon: row.icon, outlineIcon: row.outlineIcon }))
     : [
-      item('new-document', 'New document', on.newDocument, { icon: faFileLines }),
+      item('new-document', 'New document', on.newDocument, { icon: faFileLines, outlineIcon: FileText }),
       ...(on.uploadFiles
-        ? [item('upload-files', 'Upload files…', on.uploadFiles, { icon: faCloudArrowUp })]
+        ? [item('upload-files', 'Upload files…', on.uploadFiles, {
+          icon: faCloudArrowUp,
+          outlineIcon: CloudUpload,
+        })]
         : []),
     ]
   return tidy([
@@ -448,7 +455,8 @@ const backgroundItems = (
       ? [
         ...(on.newFolder
           ? [item('new-folder', 'New folder', on.newFolder, {
-            icon: NEW_FOLDER_ICON,
+            icon: faFolderPlus,
+            outlineIcon: FolderPlus,
             shortcut: 'Mod+Shift+N',
           })]
           : []),

@@ -23,10 +23,10 @@ const Fixture = () => {
         <BrowserRouter>
           <LocalBackProvider>
             <main className="min-h-screen bg-[color:var(--bg)] p-8 text-[color:var(--tx)]">
-              <h1>Executors</h1>
+              <h1>Computers</h1>
               {new URLSearchParams(location.search).has('pending') ? <ExecutorPairingPendingNotice /> : null}
-              <button className="admin-button admin-button-primary" onClick={() => setOpen(true)} type="button">Add executor</button>
-              {finished ? <p>Executor opened</p> : null}
+              <button className="admin-button admin-button-primary" onClick={() => setOpen(true)} type="button">Pair a computer</button>
+              {finished ? <p>Computer opened</p> : null}
               <ExecutorPairDialog
                 initialAudience={new URLSearchParams(location.search).has('team') ? 'team' : 'personal'}
                 fixedProjectId={new URLSearchParams(location.search).has('project') ? projectId : undefined}

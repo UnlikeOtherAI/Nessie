@@ -132,8 +132,8 @@ const main = async () => {
     const accountMenu = app.page.getByRole('menu', { name: 'Account menu', exact: true })
     await accountMenu.waitFor({ state: 'visible' })
     await app.page.screenshot({ path: `${SHOTS}android-channel-account-menu.png` })
-    await accountMenu.getByRole('link', { name: 'Account settings', exact: true }).click()
-    await app.page.waitForURL('**/settings/account')
+    await accountMenu.getByRole('link', { name: 'Your settings', exact: true }).click()
+    await app.page.waitForURL('**/settings/profile')
     check('the native account control opens settings from a loaded chat', true)
     await gotoPath(app.page, channelPath)
     await app.page.waitForSelector('form')
@@ -172,7 +172,7 @@ const main = async () => {
     // A settings page, where the body is a scroller of its own rather than a
     // conversation: the surface still reaches the floor, and the scrolling body
     // is what ends above the dock.
-    await gotoPath(app.page, '/audit')
+    await gotoPath(app.page, '/admin/security?tab=audit')
     await app.page.waitForSelector('.admin-page-body')
     await app.page.waitForTimeout(400)
     const settings = await measure(app.page)

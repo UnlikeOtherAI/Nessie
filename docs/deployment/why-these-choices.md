@@ -55,7 +55,7 @@ scoped to it every one of them.
 Both the API and the **worker** need these: inference runs in the worker, so it
 holds its own machine identity for this project (the executor and agent
 sandboxes still receive nothing). With any of the three unset, the feature is
-simply unavailable — `/settings/connections` says so and linking is refused;
+simply unavailable — `/settings/accounts?tab=ai` says so and linking is refused;
 there is deliberately no PostgreSQL fallback. Because both services need them,
 these four live in the Compose `.env` (which `api` and `worker` both read via
 `env_file`), not in the API-only Docker secret that carries the Nessie Secrets

@@ -34,10 +34,10 @@ test('local calculations remain on the owner-only operations surface', () => {
   assert.match(telemetry, /\/api\/ledger\/tokens\/summary/)
   assert.match(telemetry, /BudgetManager/)
   assert.match(telemetry, /PricingManager/)
-  assert.match(router, /path: '\/ops\/usage'/)
+  assert.match(router, /path: '\/admin\/usage'/)
   assert.match(
     navigation,
-    /path: '\/ops\/usage',[\s\S]{0,120}label: 'Operational usage',[\s\S]{0,120}ownerOnly: true/,
+    /path: '\/admin\/usage',[\s\S]{0,120}label: 'Usage and limits',[\s\S]{0,120}ownerOnly: true/,
   )
 })
 

@@ -34,7 +34,7 @@ import { StatusScheduleForm } from './statuses/StatusScheduleForm'
  * One status: what it is called, whether its response agent answers, and the
  * schedules and contact rules that make it worth having.
  *
- * Reached by opening a row in the Statuses table. "Set active" and Delete are
+ * Reached by opening a row in the Status table. "Set active" and Delete are
  * the screen's own header actions rather than controls buried in the editor,
  * so what changes the world sits apart from what edits a draft.
  */
@@ -78,13 +78,13 @@ export const StatusDetailPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status?.id])
 
-  const backToList = () => void navigate('/settings/statuses')
+  const backToList = () => void navigate('/settings/status')
 
   if (!status) {
     // The header is rendered here too: loading, failure and not-found are
     // states of this screen, and a phone with no header has no Back at all.
     return (
-      <SettingsPanel backLabel="Back to Statuses" eyebrow="Statuses" onBack={backToList} title="Status">
+      <SettingsPanel backLabel="Back to Status" eyebrow="Status" onBack={backToList} title="Status">
         <QueryState
           className="py-12"
           emptyLabel="This status could not be found. It may have been deleted."
@@ -120,7 +120,7 @@ export const StatusDetailPage = () => {
   const remove = async () => {
     setConfirmingDelete(false)
     await deleteStatus.mutateAsync(status.id)
-    void navigate('/settings/statuses', { replace: true })
+    void navigate('/settings/status', { replace: true })
   }
 
   const actions: PageHeaderAction[] = [
@@ -145,8 +145,8 @@ export const StatusDetailPage = () => {
   return (
     <SettingsPanel
       actions={actions}
-      backLabel="Back to Statuses"
-      eyebrow="Statuses"
+      backLabel="Back to Status"
+      eyebrow="Status"
       onBack={backToList}
       subtitle={
         <div className="flex flex-wrap items-center gap-2">

@@ -1,0 +1,175 @@
+import type { ReactNode } from 'react'
+
+// The glyphs the Admin and Your settings sidebars draw beside their rows: one
+// stroke weight, one box, so the two lists read as one family.
+const icon = (path: ReactNode) => (
+  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+    {path}
+  </svg>
+)
+
+export const personIcon = icon(
+  <>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 20c0-4 3.582-7 8-7s8 3 8 7" strokeLinecap="round" strokeLinejoin="round" />
+  </>,
+)
+
+export const peopleIcon = icon(
+  <>
+    <circle cx="9" cy="8" r="3.2" />
+    <path d="M3.5 19c0-3 2.46-5 5.5-5s5.5 2 5.5 5" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M16 5.2a3 3 0 010 5.6M18 19c0-2.2-.9-4-2.4-5" strokeLinecap="round" strokeLinejoin="round" />
+  </>,
+)
+
+export const teamsIcon = icon(
+  <>
+    <circle cx="9" cy="8" r="3" />
+    <path d="M3 20c0-3.3 2.7-5 6-5s6 1.7 6 5" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M16 11a3 3 0 100-6M17 20c0-2.4-.9-4.1-2.3-5" strokeLinecap="round" strokeLinejoin="round" />
+  </>,
+)
+
+export const organizationIcon = icon(
+  <>
+    <path d="M4 21V7l8-4 8 4v14" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9 21v-6h6v6M9 11h.01M15 11h.01" strokeLinecap="round" strokeLinejoin="round" />
+  </>,
+)
+
+export const modelsIcon = icon(
+  <>
+    <rect height="14" rx="2" width="14" x="5" y="5" />
+    <path d="M9 9h6v6H9z" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" strokeLinecap="round" />
+  </>,
+)
+
+export const keyIcon = icon(
+  <>
+    <rect height="10" rx="2" width="14" x="5" y="11" />
+    <path d="M8 11V8a4 4 0 018 0v3" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M12 14v3" strokeLinecap="round" />
+  </>,
+)
+
+export const connectionsIcon = icon(
+  <>
+    <path d="M9 12a3 3 0 013-3h2a3 3 0 010 6h-1" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M15 12a3 3 0 01-3 3h-2a3 3 0 010-6h1" strokeLinecap="round" strokeLinejoin="round" />
+  </>,
+)
+
+export const computerIcon = icon(
+  <>
+    <rect height="12" rx="2" width="16" x="4" y="6" />
+    <path d="M8 10h.01M12 10h4M8 14h8" strokeLinecap="round" />
+  </>,
+)
+
+export const appsIcon = icon(
+  <>
+    <rect height="7" rx="2" width="7" x="3" y="3" />
+    <rect height="7" rx="2" width="7" x="14" y="3" />
+    <rect height="7" rx="2" width="7" x="3" y="14" />
+    <path d="M17.5 14v7M14 17.5h7" strokeLinecap="round" strokeLinejoin="round" />
+  </>,
+)
+
+export const automationsIcon = icon(
+  <>
+    <path d="M12 4v6M12 16v4M20 12h-4M8 12H4" strokeLinecap="round" strokeLinejoin="round" />
+    <circle cx="12" cy="12" r="3.5" />
+  </>,
+)
+
+export const usageIcon = icon(
+  <>
+    <path d="M4 19V9M10 19V5M16 19v-7M22 19V3" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M2 19h22" strokeLinecap="round" strokeLinejoin="round" />
+  </>,
+)
+
+export const creditsIcon = icon(
+  <>
+    <circle cx="12" cy="12" r="8" />
+    <path d="M12 8v8M9.5 10.5h3.5a1.5 1.5 0 010 3H9.5" strokeLinecap="round" strokeLinejoin="round" />
+  </>,
+)
+
+export const shieldIcon = icon(
+  <path
+    d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6l7-3z"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  />,
+)
+
+export const toolIcon = icon(
+  <path
+    d="M14.7 6.3a4 4 0 105 5l-6.9 6.9a2 2 0 11-2.8-2.8l6.9-6.9a4 4 0 00-2.2-2.2z"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  />,
+)
+
+export const rulesIcon = icon(
+  <>
+    <path d="M6 3h9l3 3v15H6z" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9 9h6M9 13h6M9 17h4" strokeLinecap="round" strokeLinejoin="round" />
+  </>,
+)
+
+export const healthIcon = icon(
+  <path d="M3 12h4l2 6 4-12 2 6h6" strokeLinecap="round" strokeLinejoin="round" />,
+)
+
+export const pushIcon = icon(
+  <>
+    <circle cx="8" cy="8" r="3.5" />
+    <path
+      d="M10.6 10.6L20 20M16.5 16.5l2-2M18.5 18.5l1.5-1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </>,
+)
+
+export const debugIcon = icon(
+  <>
+    <path d="M9 7.13v-1a3 3 0 116 0v1" strokeLinecap="round" strokeLinejoin="round" />
+    <path
+      d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 014-4h4a4 4 0 014 4v3c0 3.3-2.7 6-6 6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path d="M12 20v-9M6 13H2M22 13h-4" strokeLinecap="round" strokeLinejoin="round" />
+  </>,
+)
+
+export const bellIcon = icon(
+  <>
+    <path d="M6 16V11a6 6 0 1112 0v5l2 2H4l2-2z" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M10 20a2 2 0 004 0" strokeLinecap="round" strokeLinejoin="round" />
+  </>,
+)
+
+export const paletteIcon = icon(
+  <>
+    <path
+      d="M12 3a9 9 0 100 18c1.1 0 1.5-.9 1.5-1.6 0-1-.8-1.4-.8-2.4 0-.8.7-1.5 1.5-1.5H16a5 5 0 005-5c0-4-4-7.5-9-7.5z"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path d="M7.5 11h.01M10 7.5h.01M14.5 7.5h.01" strokeLinecap="round" />
+  </>,
+)
+
+export const statusIcon = icon(
+  <>
+    <circle cx="8" cy="8" r="3" />
+    <path d="M4 20c0-3 1.8-5 4-5" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M14 6h6M14 11h4M14 16h6" strokeLinecap="round" strokeLinejoin="round" />
+  </>,
+)

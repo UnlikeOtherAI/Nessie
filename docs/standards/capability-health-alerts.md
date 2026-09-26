@@ -78,5 +78,5 @@ restated there:
   channel, while reads traverse the run's installation and its **current**
   channel to re-check the same workflow-read entitlement as the run route. Its
   doorway is the exact run in the Failed runs surface
-  (`/agents/workflows?failedRuns=1&run=<id>`), which is safe to open cold and
+  (`/admin/automations?tab=workflows&failedRuns=1&run=<id>`), which is safe to open cold and
   does not depend on a registered device.

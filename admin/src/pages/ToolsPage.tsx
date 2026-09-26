@@ -48,12 +48,13 @@ const STATUS_OPTIONS: Array<{ label: string; value: StatusFilter }> = [
 ]
 
 /**
- * `/agents/tools` — the single, canonical tool surface.
+ * Advanced › Tool registry (`/admin/advanced/tools`) — the single, canonical tool
+ * surface.
  *
  * It was a column browser: a filtered rail beside the selected tool's detail.
  * It is now the section's ordinary shape — one header whose tabs are the source
  * strip, one table, one pager — and a tool is its own screen at
- * `/agents/tools/:toolId`.
+ * `/admin/advanced/tools/:toolId`.
  *
  * Reads the full tool registry (`/api/mcp/tools`, owner-only): builtin, MCP and
  * bundle tools with source, transport, tags and status.
@@ -71,7 +72,7 @@ export const ToolsPage = () => {
 
   // Source, status and the search phrase are all part of what the list shows,
   // so they live in the URL (docs/navigation/overview.md §1, "Tab hosts"):
-  // `/agents/tools?source=mcp-remote&status=pending_review` is linkable and
+  // `/admin/advanced/tools?source=mcp-remote&status=pending_review` is linkable and
   // survives a refresh.
   const [sourceSegment, setSourceSegment] = useTabParam('source', TOOL_SOURCE_SEGMENTS, 'all')
   const [statusFilter, setStatusFilter] = useTabParam('status', STATUS_FILTERS, 'all')
@@ -175,7 +176,7 @@ export const ToolsPage = () => {
           (docs/navigation/deep-links-and-headers.md §9). Only the body below
           is owner-gated. */}
       <ScreenHeader
-        eyebrow="Agents"
+        eyebrow="Advanced"
         subtitle={
           <p className="max-w-3xl text-sm text-[color:var(--tx3)]">
             Every tool an agent can be given: the ones Nessie ships, the ones your connectors
@@ -194,7 +195,7 @@ export const ToolsPage = () => {
             value={sourceSegment}
           />
         }
-        title="Tools"
+        title="Tool registry"
       />
 
       <div
@@ -262,7 +263,7 @@ export const ToolsPage = () => {
               }
               isLoading={toolsQuery.isPending}
               isReviewable={isReviewable}
-              onOpen={(toolId) => void navigate(`/agents/tools/${toolId}`)}
+              onOpen={(toolId) => void navigate(`/admin/advanced/tools/${toolId}`)}
               onToggleSelected={toggleSelected}
               selectedForReview={selectedForReview}
               tools={pageTools}

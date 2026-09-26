@@ -117,7 +117,7 @@ export const runWorkflowCreateTool = async (
     outputPreview: [
       `Created workflow "${workflow.name}" (version ${workflow.version}).`,
       `workflowTemplateId=${workflow.id}`,
-      `Admin: /agents/workflow-designer/${workflow.id}`,
+      `Admin: /admin/automations/workflows/designer/${workflow.id}`,
       'Install it with workflow_install before creating a workflow trigger.',
     ].join('\n'),
     toolName: 'workflow_create',
@@ -152,7 +152,7 @@ export const runWorkflowUpdateTool = async (
     outputPreview: [
       `Updated workflow "${workflow.name}" (version ${workflow.version}).`,
       `workflowTemplateId=${workflow.id}`,
-      `Admin: /agents/workflow-designer/${workflow.id}`,
+      `Admin: /admin/automations/workflows/designer/${workflow.id}`,
     ].join('\n'),
     toolName: 'workflow_update',
   }
@@ -318,7 +318,7 @@ export const runWorkflowPreviewTool = async (
     outputPreview: [
       `Posted a live workflow preview for "${workflow.name}".`,
       `messageId=${message.id}`,
-      `Admin: /agents/workflow-designer/${workflow.id}`,
+      `Admin: /admin/automations/workflows/designer/${workflow.id}`,
     ].join('\n'),
     toolName: 'workflow_preview',
   }

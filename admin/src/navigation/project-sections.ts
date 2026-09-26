@@ -121,6 +121,6 @@ export const projectSections = ({
     label: 'Dashboards',
     to: `/projects/${projectId}/dashboards`,
   },
-  { icon: faServer, id: 'executors', label: 'Executors', to: `/projects/${projectId}/executors` },
+  { icon: faServer, id: 'executors', label: 'Computers', to: `/projects/${projectId}/executors` },
   { icon: faGear, id: 'settings', label: 'Settings', to: `/projects/${projectId}/settings` },
 ]

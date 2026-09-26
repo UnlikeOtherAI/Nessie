@@ -8,10 +8,10 @@ export const executorChangePresentation = (
 ): { title: string; description: string; action: string; reviewable: boolean } => {
   if (change.kind === 'lifecycle') {
     const states: Record<string, [string, string]> = {
-      pause: ['Pause executor', 'Stops current work and prevents new work until you resume this machine.'],
-      resume: ['Resume executor', 'Allows new work on this machine. Stopped sessions will not restart.'],
-      revoke: ['Disconnect executor', 'Stops all work and revokes this pairing. Pair the machine again to use it. Its history stays in Nessie.'],
-      remove: ['Delete executor', 'Stops all work, revokes this pairing and removes the machine from Executors. Pair it again to use it. Its history stays in Nessie.'],
+      pause: ['Pause computer', 'Stops current work and prevents new work until you resume this computer.'],
+      resume: ['Resume computer', 'Allows new work on this computer. Stopped sessions will not restart.'],
+      revoke: ['Disconnect computer', 'Stops all work and revokes this pairing. Pair the computer again to use it. Its history stays in Nessie.'],
+      remove: ['Delete computer', 'Stops all work, revokes this pairing and removes it from the Computers list. Pair it again to use it. Its history stays in Nessie.'],
       drain: ['Stop accepting work', 'Stops current sessions and prevents new work. This state cannot be resumed.'],
     }
     const value = typeof change.action === 'string' ? states[change.action] : undefined
@@ -20,7 +20,7 @@ export const executorChangePresentation = (
   if (change.kind === 'descriptor_review') {
     const active = change.status === 'active'
     return {
-      title: active ? 'Approve machine changes' : 'Disable machine permissions',
+      title: active ? 'Approve computer changes' : 'Disable computer permissions',
       description: active ? 'These are the permissions agents will be allowed to use.' : 'Agents will no longer be able to use these permissions.',
       action: active ? 'Approve changes' : 'Disable permissions', reviewable: true,
     }
@@ -31,8 +31,8 @@ export const executorChangePresentation = (
     return {
       title: allowed ? 'Add agent' : 'Remove agent access',
       description: agentName ? allowed
-        ? `${agentName} will be able to ${operation ?? 'use this machine’s approved permissions'}.`
-        : `${agentName} will no longer be allowed to ${operation ?? 'use this machine'}.`
+        ? `${agentName} will be able to ${operation ?? 'use this computer’s approved permissions'}.`
+        : `${agentName} will no longer be allowed to ${operation ?? 'use this computer'}.`
         : 'The selected agent could not be loaded. Close this change and try again.',
       action: allowed ? 'Allow access' : 'Remove access', reviewable: Boolean(agentName),
     }
@@ -43,10 +43,10 @@ export const executorChangePresentation = (
     const name = assignment.principalKind === 'agent' ? agentName : personName
     const remove = change.action === 'remove'
     return {
-      title: remove ? 'Remove machine access' : 'Change machine access',
-      description: name ? remove ? `${name} will lose access to this machine.`
-        : assignment.role === 'admin' ? `${name} will be able to manage this machine and who can use it.`
-          : `${name} will be able to use this machine.`
+      title: remove ? 'Remove computer access' : 'Change computer access',
+      description: name ? remove ? `${name} will lose access to this computer.`
+        : assignment.role === 'admin' ? `${name} will be able to manage this computer and who can use it.`
+          : `${name} will be able to use this computer.`
         : 'The selected person or agent could not be loaded. Close this change and try again.',
       action: remove ? 'Remove access' : 'Allow access', reviewable: Boolean(name),
     }
@@ -73,5 +73,5 @@ export const executorChangePresentation = (
       reviewable: Boolean(agentName && trigger && machines),
     }
   }
-  return { title: 'Review machine change', description: 'This change cannot be reviewed in this version of Nessie.', action: 'Confirm', reviewable: false }
+  return { title: 'Review computer change', description: 'This change cannot be reviewed in this version of Nessie.', action: 'Confirm', reviewable: false }
 }

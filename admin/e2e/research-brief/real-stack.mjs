@@ -90,7 +90,7 @@ const walkTeamOff = async (page, channel) => {
   })
   await snap(page, '01-composer-team-off.png')
   await readiness.getByRole('link', { name: 'Turn on DeepWater' }).click()
-  await page.waitForURL(/\/apps\/deep-water/u)
+  await page.waitForURL(/\/admin\/apps\/deep-water/u)
   const controls = page.getByTestId('deep-water-team-controls')
   await controls.getByRole('button', { name: 'Turn on DeepWater' }).waitFor({ timeout: 30_000 })
   await snap(page, '02-hero-team-off.png')

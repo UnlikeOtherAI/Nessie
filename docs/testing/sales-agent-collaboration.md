@@ -12,7 +12,7 @@ below records the earlier verification passes.
 
 KiloTalk is the primary research source. Its admin is
 <https://kilosupport.kilomayo.dev/admin>; its Streamable HTTP MCP endpoint is
-<https://kilosupport.kilomayo.dev/mcp>. Settings → API keys issues a revocable,
+<https://kilosupport.kilomayo.dev/mcp>. Your settings → Saved keys issues a revocable,
 read-only research key; the legacy `KILOTALK_MCP_BEARER_TOKEN` has broader access.
 Both are separate from the portal password. Keep credentials in the configured
 secret store, never in agent instructions, task details, or this document.
@@ -247,7 +247,7 @@ The researcher saves findings and source URLs throughout the run, keeps missing
 evidence explicit, and returns a short recommendation referencing its ticket.
 The prompts identify the peer agents directly, preserve the reusable templates,
 and explicitly defer Calendar/Meet and client outreach. A separate read-only
-KiloTalk research credential was created through Settings → API keys for the
+KiloTalk research credential was created through Your settings → Saved keys for the
 project-scoped connection; its value is not recorded in this document.
 
 Peer delegation is asynchronous mail, not a result RPC. A normal researcher

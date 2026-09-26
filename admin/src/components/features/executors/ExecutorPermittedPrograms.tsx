@@ -40,7 +40,7 @@ export const ExecutorPermittedPrograms = ({
     : (
       <p className="mt-1 text-[color:var(--warning-text)]">
         <span className="font-medium">Permitted programs: none named.</span>{' '}
-        No programs can run until one is selected on the machine.
+        No programs can run until one is selected on the computer.
       </p>
     )
 }

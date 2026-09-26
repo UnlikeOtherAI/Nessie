@@ -1,4 +1,3 @@
-import { ExecutorSection } from './user-menu/ExecutorSection'
 import { type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import { faArrowRightFromBracket, faCircleQuestion, faGear } from '@fortawesome/free-solid-svg-icons'
@@ -6,7 +5,6 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { MeUser } from '@nessie/schemas'
 import { Popover } from '../../components/overlays/Popover'
 import { UserAvatar } from '../../components/shared/UserAvatar'
-import { DebugTokenButton } from '../../components/shared/DebugTokenButton'
 import { useFocusMode } from '../../providers/FocusModeProvider'
 import { PresenceControl } from './user-menu/PresenceControl'
 import { StatusSection } from './user-menu/StatusSection'
@@ -36,6 +34,10 @@ const panelClassName = [
 // one set of account actions while opening away from the trigger in each shell
 // — beside it on the rail, beneath its right edge in the top bar — through the
 // one Popover primitive, so the flip and clamp are not its business.
+//
+// Availability · Status · Your settings · Send feedback · Sign out, and
+// nothing else: the computers a person paired are Your settings › Your
+// computers, and the session debug is Admin › Advanced.
 export const UserMenuPopover = ({
   anchorRef,
   user,
@@ -87,25 +89,21 @@ export const UserMenuPopover = ({
       <StatusSection onClose={onClose} />
 
       <div className="my-1 h-px bg-[color:var(--sep)]" />
-      <ExecutorSection onClose={onClose} />
 
-      <div className="my-1 h-px bg-[color:var(--sep)]" />
-
+      <Link className={rowClassName} onClick={onClose} to="/settings">
+        <span>Your settings</span>
+        <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--tx3)]" icon={faGear} />
+      </Link>
       <Link className={rowClassName} onClick={onClose} to="/feedback">
-        <span>Feedback</span>
+        <span>Send feedback</span>
         <FontAwesomeIcon
           className="h-3.5 w-3.5 text-[color:var(--tx3)]"
           icon={faCircleQuestion}
         />
       </Link>
-      <DebugTokenButton variant="menu" />
 
       <div className="my-1 h-px bg-[color:var(--sep)]" />
 
-      <Link className={rowClassName} onClick={onClose} to="/settings/account">
-        <span>Account settings</span>
-        <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--tx3)]" icon={faGear} />
-      </Link>
       <button
         className={rowClassName}
         onClick={() => {
@@ -114,7 +112,7 @@ export const UserMenuPopover = ({
         }}
         type="button"
       >
-        <span>Log out</span>
+        <span>Sign out</span>
         <FontAwesomeIcon
           className="h-3.5 w-3.5 text-[color:var(--tx3)]"
           icon={faArrowRightFromBracket}

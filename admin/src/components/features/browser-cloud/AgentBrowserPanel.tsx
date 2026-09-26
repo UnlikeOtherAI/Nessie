@@ -89,8 +89,8 @@ export const AgentBrowserPanel = ({ agent, heading = true, threadId = null }: Ag
           <div className="flex items-start justify-between gap-4">
             <p className="text-sm text-[color:var(--tx2)]">
               {row.connectionScope === 'organization'
-                ? 'Runs on the company Browserbase account.'
-                : 'Runs on its owner’s personal Browserbase account.'}
+                ? 'Runs on the company cloud browser account.'
+                : 'Runs on its owner’s personal cloud browser account.'}
               {row.lastUsedAt ? ` Last used ${formatDate(row.lastUsedAt)}.` : ' Never used yet.'}
             </p>
             {row.inUse ? <Pill size="sm" tone="success">Open now</Pill> : null}

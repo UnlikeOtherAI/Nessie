@@ -124,7 +124,7 @@ test('an app whose rows all take an explicit grant is switchable', () => {
 
   assert.equal(control.kind, 'manageable')
   // Nothing is unaccounted for, so the notice stays silent.
-  assert.equal(appAccessNotice(control, () => '/agents/tools'), null)
+  assert.equal(appAccessNotice(control, () => '/admin/advanced/tools'), null)
 })
 
 test('one grantable row still earns the switch, and the rest are disclosed', () => {
@@ -138,7 +138,7 @@ test('one grantable row still earns the switch, and the rest are disclosed', () 
 
   // Withdrawing the control over rows nothing can revoke would lose a real
   // decision; claiming it covers them would claim a write the route refuses.
-  const notice = appAccessNotice(control, () => '/agents/tools')
+  const notice = appAccessNotice(control, () => '/admin/advanced/tools')
   assert.match(String(notice?.body), /^2 of this app's capabilities need no per-agent grant/)
   assert.match(String(notice?.body), /cover the other 1\./)
 })
@@ -150,7 +150,7 @@ test('an app with no grantable row at all is read-only, and says why', () => {
   ])
 
   assert.equal(control.kind, 'open-to-everyone')
-  const notice = appAccessNotice(control, () => '/agents/tools')
+  const notice = appAccessNotice(control, () => '/admin/advanced/tools')
   assert.match(String(notice?.body), /This app's 2 capabilities need no per-agent grant/)
   assert.match(String(notice?.body), /cannot be given one agent at a time/)
   assert.equal(notice?.href, null)
@@ -181,8 +181,8 @@ test('capabilities nobody has reviewed point at the connection holding them', ()
 
   // The waiting rows are on the second account, so pointing at the first would
   // open a filtered list with nothing in it.
-  const notice = appAccessNotice(control, (id) => `/agents/tools?instance=${id}`)
-  assert.equal(notice?.href, '/agents/tools?instance=conn-2')
+  const notice = appAccessNotice(control, (id) => `/admin/advanced/tools?instance=${id}`)
+  assert.equal(notice?.href, '/admin/advanced/tools?instance=conn-2')
 })
 
 test('a reviewed connection does not hide another connection awaiting review', () => {
@@ -196,9 +196,9 @@ test('a reviewed connection does not hide another connection awaiting review', (
   )
   assert.equal(control.kind, 'manageable')
 
-  const notice = appAccessNotice(control, (id) => `/agents/tools?instance=${id}`)
+  const notice = appAccessNotice(control, (id) => `/admin/advanced/tools?instance=${id}`)
   assert.match(String(notice?.body), /2 of this app's capabilities are waiting to be reviewed/)
-  assert.equal(notice?.href, '/agents/tools?instance=conn-2')
+  assert.equal(notice?.href, '/admin/advanced/tools?instance=conn-2')
   assert.equal(notice?.hrefLabel, 'Review capabilities')
 })
 
@@ -212,7 +212,7 @@ test('a disconnected app offers no control and no notice', () => {
   assert.equal(control.kind, 'not-connected')
   // "You have not connected it" is the empty state's job; a notice that names
   // no next action is cut.
-  assert.equal(appAccessNotice(control, () => '/agents/tools'), null)
+  assert.equal(appAccessNotice(control, () => '/admin/advanced/tools'), null)
 })
 
 // ─── Rows ───────────────────────────────────────────────────────────────────

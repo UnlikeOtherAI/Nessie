@@ -1,7 +1,7 @@
 import type { IconDefinition } from '@fortawesome/free-solid-svg-icons'
+import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { ScreenBarIconName } from '../../navigation/screen-bar'
-import type { MenuGlyphIcon } from '../primitives/MenuGlyph'
 
 type PageHeaderMenuItemBase = {
   checked?: boolean
@@ -16,7 +16,9 @@ type PageHeaderMenuItemBase = {
   // The row stays one press; the detail is read, not pressed.
   detail?: string
   disabled?: boolean
-  icon?: MenuGlyphIcon
+  icon?: IconDefinition
+  /** Optional outlined web glyph for menus that match the Channels icon style. */
+  outlineIcon?: LucideIcon
   id: string
   label: string
   title?: string
@@ -65,6 +67,7 @@ type PageHeaderActionBase = {
   disabled?: boolean
   form?: string
   icon?: IconDefinition
+  outlineIcon?: LucideIcon
   id: string
   label: string
   // Never collapses into More. For a control that carries the screen's own

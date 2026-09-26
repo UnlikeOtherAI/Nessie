@@ -97,7 +97,7 @@ nessie-executor login --api nessie --workspace "/path/to/work"
 nessie-executor teams
 ```
 
-Paste the eight-digit code into **Agents → Executors → Add executor** in
+Paste the eight-digit code into **Admin › Computers › Pair a computer** in
 Nessie, then confirm the team on the computer. Repeat to pair more teams.
 Each team has separate folder and command permissions stored only on the
 computer. Nessie manages who may use the executor; it cannot change those

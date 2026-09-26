@@ -19,7 +19,7 @@ left alone on request.
   Designer, and the Designer's proposal card (name, role, description, location,
   model picker, Accept/Edit/Decline).
 - Machine-first executor pairing end to end: eight-digit code from the CLI,
-  claim in **Agents → Executors → Pair executor**, fingerprint confirmation,
+  claim in **Admin › Computers › Pair a computer**, fingerprint confirmation,
   machine-side confirm, online heartbeat.
 - The reviewed policy revision flow and the whole-suite agent grant, both with
   fresh password verification, and the executor page's live view of local MCP

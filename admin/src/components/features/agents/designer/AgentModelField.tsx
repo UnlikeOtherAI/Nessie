@@ -32,7 +32,7 @@ export const AgentModelField = ({
         emptyLabel="No models match that search"
         highlighted={streaming}
         id="agent-model"
-        onLinkSubscription={() => { window.open('/settings/connections?tab=inference', '_blank', 'noopener,noreferrer') }}
+        onLinkSubscription={() => { window.open('/settings/accounts?tab=ai', '_blank', 'noopener,noreferrer') }}
         onSelect={onSelect}
         options={options}
         placeholder={loading ? 'Loading models…' : 'Search models…'}
@@ -55,7 +55,7 @@ export const AgentModelField = ({
       ) : null}
       <p className="text-xs leading-5 text-[color:var(--tx3)]">
         To run this agent locally, connect Ollama on your own computer in{' '}
-        <Link className="underline" to="/settings/connections?tab=inference">Connected accounts</Link>.
+        <Link className="underline" to="/settings/accounts?tab=ai">Connected accounts</Link>.
         Local models never fall back to a cloud provider.
       </p>
       {error ? <p className="text-xs text-[color:var(--danger-text)]" role="alert">{error}</p> : null}

@@ -18,7 +18,7 @@ import {
  * `budget_alerts` marker before enqueue. This resolves the people who should
  * know — the organisation owners who can inspect and change operational
  * budgets — filters them by their push preferences, and delivers through the
- * shared {@link deliverToRecipients} core, deep-linking to `/ops/usage`.
+ * shared {@link deliverToRecipients} core, deep-linking to `/admin/usage`.
  *
  * This carries ONLY Nessie-local operational budget telemetry; it never touches
  * UOA customer credits/statements, which live on a separate surface.
@@ -77,7 +77,7 @@ const buildBudgetAlertPayload = (payload: BudgetAlertDispatchJobPayload): PushPa
       kind: payload.kind,
       scopeType: payload.scopeType,
       scopeId: payload.scopeId,
-      url: '/ops/usage',
+      url: '/admin/usage',
     },
     collapseId: `budget:${payload.scopeType}:${payload.scopeId}:${payload.kind}`,
   }
@@ -123,7 +123,7 @@ export const handleBudgetAlertDispatch = async (
     payload: buildBudgetAlertPayload(payload),
     recipientIds,
     organizationId: payload.organizationId,
-    deepLinkUrl: '/ops/usage',
+    deepLinkUrl: '/admin/usage',
     messageId: null,
     // Mirrors the enqueue key (`budget-alert:<scope>:<periodStart>:<kind>`), so
     // a redelivered job rings nothing twice while the next period's alert for

@@ -50,18 +50,18 @@ const operationOptions: OperationOption[] = [
   },
   {
     description: 'Let the selected agent create a copy-on-write draft; it cannot alter the paired root.',
-    label: 'Write a sandbox draft',
+    label: 'Write a draft copy',
     operationKeys: ['file.write'],
     value: 'file.write',
   },
   {
     description: 'Let the selected agent write a draft and produce a read-only change manifest for human review.',
-    label: 'Write and review a sandbox draft',
+    label: 'Write and review a draft copy',
     operationKeys: ['file.write', 'workspace.review'],
     value: 'file.write+workspace.review',
   },
   {
-    description: 'Let the selected agent open, inspect, and take accessibility-node actions on one site allowed by the executor owner. Confirm the site with that human owner first: the local origin ceiling is not uploaded to Nessie.',
+    description: 'Let the selected agent open, inspect, and take accessibility-node actions on one site allowed by the computer’s owner. Confirm the site with that human owner first: the local origin ceiling is not uploaded to Nessie.',
     label: 'Act in an approved site',
     operationKeys: ['browser.open', 'browser.observe', 'browser.act', 'sandbox.stop'],
     value: 'browser.open+browser.observe+browser.act+sandbox.stop',
@@ -82,8 +82,8 @@ const operationOptions: OperationOption[] = [
     // The pair is a transport onto whatever programs the reviewed policy
     // names. The dialog never learns those names: candidates are opaque, so
     // the copy says what the owner decided rather than what is installed.
-    description: 'Programs this machine’s owner enabled in its local configuration — for example a local browser or a coding agent. The agent sees each program’s own tools.',
-    label: 'Local apps on this machine',
+    description: 'Programs this computer’s owner enabled in its local configuration — for example a local browser or a coding agent. The agent sees each program’s own tools.',
+    label: 'Local apps on this computer',
     operationKeys: ['mcp.tools', 'mcp.call'],
     value: 'mcp.tools+mcp.call',
   },
@@ -91,9 +91,9 @@ const operationOptions: OperationOption[] = [
 
 const scopeLabel = (scopeKind: ExecutorAvailabilityCandidate['scopeKind']): string => {
   switch (scopeKind) {
-    case 'private': return 'Private executor'
-    case 'project': return 'Project executor'
-    case 'organization': return 'Organization executor'
+    case 'private': return 'Private computer'
+    case 'project': return 'Project computer'
+    case 'organization': return 'Organisation computer'
   }
 }
 
@@ -156,7 +156,7 @@ export const ExecutorRunLauncherDialog = ({
       setCandidates(eligible)
       setExplanation(
         eligible.length === 0
-          ? response.explanations[0]?.reason.replaceAll('_', ' ') ?? 'No eligible executor is online.'
+          ? response.explanations[0]?.reason.replaceAll('_', ' ') ?? 'No eligible computer is online.'
           : null,
       )
       const onlyCandidate = eligible.length === 1 ? eligible[0] : undefined
@@ -164,7 +164,7 @@ export const ExecutorRunLauncherDialog = ({
         setSelectedHandle(onlyCandidate.handle)
       }
     }).catch((error: unknown) => {
-      if (!cancelled) setAvailabilityError(formErrorMessage(error, 'Unable to check executor availability.'))
+      if (!cancelled) setAvailabilityError(formErrorMessage(error, 'Unable to check computer availability.'))
     })
     return () => { cancelled = true }
   }, [agentId, open, operationValue, projectId, resolveAvailability])
@@ -193,19 +193,19 @@ export const ExecutorRunLauncherDialog = ({
 
   return (
     <Dialog
-      description="Choose a channel agent and a currently eligible executor capability. The executor is selected by scope only; its identity and other people’s access remain private."
+      description="Choose a channel agent and a currently eligible computer capability. The computer is selected by scope only; its identity and other people’s access remain private."
       dismissDisabled={launch.isPending}
       onClose={close}
       open={open}
       size="lg"
-      title="Run on an executor"
+      title="Run on a computer"
     >
       <div className="grid gap-4">
         {threadId ? <ExecutorLeaseLauncherNotice agents={agents} threadId={threadId} /> : null}
         <label className="grid gap-1 text-sm">
           <span className="font-semibold text-[var(--tx2)]">Agent</span>
           <select
-            aria-label="Executor run agent"
+            aria-label="Computer run agent"
             className="admin-input"
             onChange={(event) => setAgentId(event.target.value)}
             value={agentId}
@@ -221,7 +221,7 @@ export const ExecutorRunLauncherDialog = ({
         <label className="grid gap-1 text-sm">
           <span className="font-semibold text-[var(--tx2)]">Capability</span>
           <select
-            aria-label="Executor capability"
+            aria-label="Computer capability"
             className="admin-input"
             onChange={(event) => setOperationValue(event.target.value)}
             value={operationValue}
@@ -234,10 +234,10 @@ export const ExecutorRunLauncherDialog = ({
         </label>
 
         <fieldset className="grid gap-2">
-          <legend className="text-sm font-semibold text-[var(--tx2)]">Available executor</legend>
+          <legend className="text-sm font-semibold text-[var(--tx2)]">Available computer</legend>
           {isCheckingAvailability ? <p className="text-sm text-[var(--tx3)]">Checking eligibility…</p> : null}
           <FormError>{availabilityError}</FormError>
-          {explanation ? <p className="text-sm text-[var(--tx3)]">No executor ready: {explanation}.</p> : null}
+          {explanation ? <p className="text-sm text-[var(--tx3)]">No computer ready: {explanation}.</p> : null}
           {candidates.map((candidate, index) => (
             <label
               className="flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--sep)] px-3 py-2 text-sm text-[var(--tx2)] has-[:checked]:border-[var(--accent)] has-[:checked]:bg-[var(--accent-soft)]"
@@ -259,7 +259,7 @@ export const ExecutorRunLauncherDialog = ({
         <label className="grid gap-1 text-sm">
           <span className="font-semibold text-[var(--tx2)]">Instruction</span>
           <textarea
-            aria-label="Executor run instruction"
+            aria-label="Computer run instruction"
             className="admin-input min-h-28"
             maxLength={CHAT_MESSAGE_MAX_CHARS}
             onChange={(event) => setContent(event.target.value)}
@@ -268,12 +268,12 @@ export const ExecutorRunLauncherDialog = ({
           />
         </label>
 
-        <FormError>{launch.error ? formErrorMessage(launch.error, 'Unable to check executor availability.') : undefined}</FormError>
+        <FormError>{launch.error ? formErrorMessage(launch.error, 'Unable to check computer availability.') : undefined}</FormError>
 
         <div className="flex justify-end gap-2">
           <button className="admin-button admin-button-secondary" onClick={close} type="button">Cancel</button>
           <button className="admin-button admin-button-primary" disabled={!canLaunch} onClick={() => void submit()} type="button">
-            {launch.isPending ? 'Starting…' : 'Start executor run'}
+            {launch.isPending ? 'Starting…' : 'Start computer run'}
           </button>
         </div>
       </div>

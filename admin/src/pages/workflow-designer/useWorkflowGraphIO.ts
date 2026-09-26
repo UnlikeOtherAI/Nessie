@@ -121,11 +121,11 @@ export const useWorkflowGraphIo = ({
       navigation.back({
         returnTo: workflowDesignerLocationState.returnTo,
         returnToState: workflowDesignerLocationState.returnToState,
-        fallback: '/agents/workflows',
+        fallback: '/admin/automations?tab=workflows',
       })
       return
     }
-    void navigate(workflowDesignerLocationState.returnTo ?? '/agents/workflows', {
+    void navigate(workflowDesignerLocationState.returnTo ?? '/admin/automations?tab=workflows', {
       replace: true,
       state: workflowDesignerLocationState.returnToState,
     })
@@ -313,7 +313,7 @@ export const useWorkflowGraphIo = ({
       setSaveMessage(mode === 'auto' ? 'Draft saved' : 'Workflow saved')
 
       if (!workflowTemplateId) {
-        void navigate(`/agents/workflow-designer/${savedWorkflow.id}`, {
+        void navigate(`/admin/automations/workflows/designer/${savedWorkflow.id}`, {
           replace: true,
           state: location.state ?? undefined,
         })

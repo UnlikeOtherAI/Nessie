@@ -18,8 +18,8 @@ Two independent vault projects gate two surfaces. Configure the one you need:
 
 | Surface | Requires | Without it |
 | --- | --- | --- |
-| **Save a secret** (`/settings/secrets`, `POST /api/secrets`) | `INFISICAL_API_URL`, `INFISICAL_PROJECT_ID`, `INFISICAL_SERVICE_TOKEN[_FILE]` | `503 SECRETS_NOT_CONFIGURED` on save, rotate and revoke |
-| **Personal model subscriptions** (`/settings/connections`) | `NESSIE_SUBSCRIPTION_VAULT_API_URL`, `_PROJECT_ID`, `_TOKEN` | Card reads "Not available on this deployment"; linking refused |
+| **Save a secret** (`/settings/keys`, `POST /api/secrets`) | `INFISICAL_API_URL`, `INFISICAL_PROJECT_ID`, `INFISICAL_SERVICE_TOKEN[_FILE]` | `503 SECRETS_NOT_CONFIGURED` on save, rotate and revoke |
+| **Personal model subscriptions** (Your AI plans; `/settings/accounts?tab=ai`) | `NESSIE_SUBSCRIPTION_VAULT_API_URL`, `_PROJECT_ID`, `_TOKEN` | Card reads "Not available on this deployment"; linking refused |
 
 These are **two separate Infisical projects on purpose**, never one shared
 identity: the Secrets project's personal partition holds a person's ordinary
@@ -199,25 +199,28 @@ personal secret silently stopped applying had nothing on screen to explain why.
 This exposes no value, ciphertext or vault path: a `Secret` row holds none (see
 "Authority split"), and using a secret still runs through `SecretGrant`.
 
-### The three screens
+### The screens
 
-One page per level, all three the same component
-(`admin/src/pages/settings/SecretsPanel.tsx`):
+One component at every level (`admin/src/pages/settings/SecretsPanel.tsx`),
+on two pages — a person's own, and the organisation's with a scope switch
+between the organisation and each team:
 
-| Page | Route | Shows | "New secret" writes |
+| Page | Route | Shows | "Add a key" writes |
 | --- | --- | --- | --- |
-| User → Secrets | `/settings/secrets` | organisation + team + project + own | personal; a project too, for an organisation owner |
-| Team → Secrets | `/settings/team/secrets` | organisation + this team | this team |
-| Organization → Secrets | `/settings/organization/secrets` | organisation | the organisation |
+| Your settings → Saved keys | `/settings/keys` | organisation + team + project + own | personal; a project too, for an organisation owner |
+| Admin → Keys, a team's scope | `/admin/keys?scope=team:<id>` | organisation + that team | that team |
+| Admin → Keys, the organisation's scope | `/admin/keys` | organisation | the organisation |
 
-Each page splits Active from Revoked with a `TabBar` in a `?tab=` param, and
-the organisation page drops the Scope column — every row there is the
-organisation's. The two upper pages are owner-only doorways, matching
-`canManageSecretScope`; a member reaches what their team and organisation set
-through their own page, where it is the part of the cascade that applies to
-them.
+Each level splits Active from Revoked with a `TabBar` in a `?status=` param,
+and the organisation's scope drops the Scope column — every row there is the
+organisation's. Keys is the owner's, matching `canManageSecretScope`: nobody
+else is offered a scope there, and they are pointed at Saved keys, where what
+their team and organisation set is the part of the cascade that applies to
+them. A team's scope is named in the address and never taken from the team the
+owner happens to be working in; a team's page links to it from its Overrides
+tab.
 
-"New secret" offers only what the viewer's role may write.
+"Add a key" offers only what the viewer's role may write.
 
 - **The rule.** `secretCreationScopes` filters the page's
   `SECRET_CREATION_SCOPES` through `secretScopeWritable`
@@ -225,15 +228,16 @@ them.
   `canManageSecretScope`, which stays the authority. Personal is anyone's;
   every level above it is an organisation owner's alone, admins included, so
   the role comes from `useIsOwner`.
-- **A member or an admin** on their own page is offered their own secret only.
+- **A member or an admin** on their own page is offered their own key only.
   In place of the Scope picker, a line says that only an organisation owner
-  can save a project secret, so they know whom to ask instead of saving one
+  can save a project key, so they know whom to ask instead of saving one
   for themselves.
 - **Why.** The form used to offer Project to everyone, and the server then
   refused their save with `403 SECRET_SCOPE_DENIED`.
-- **A page with nothing left to write** offers no "New secret" at all. That is
-  what a non-owner sees on an upper page reached by its address, which is
-  hidden from the navigation but not guarded as a route.
+- **A page with nothing left to write** offers no "Add a key" at all. Keys
+  never reaches that state: it refuses anyone but an organisation owner at
+  every scope and points them at Saved keys, so a non-owner who opens an upper
+  level by its address sees the refusal, not an empty page.
 
 ## Capture and ingestion
 

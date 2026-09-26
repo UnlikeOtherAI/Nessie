@@ -16,7 +16,7 @@ import { AgentVisibilityPill } from '../../../shared/AgentVisibilityPill'
  * The Agents section of a *channel*: who works in this room, and the way
  * through to each one. It is a roster and nothing more — the agent's own
  * detail (identity, tools, to-dos, triggers, editing) belongs to
- * `/agents/:id`, which every row opens.
+ * `/admin/agents/:id`, which every row opens.
  */
 const AgentRow = ({ agent, onOpen }: { agent: AgentRecord; onOpen: () => void }) => {
   const { token } = useAuthSession()
@@ -96,7 +96,7 @@ export const ChannelAgentsPanel = ({
             <AgentRow
               agent={agent}
               key={agent.id}
-              onOpen={() => void navigate(`/agents/${agent.id}`)}
+              onOpen={() => void navigate(`/admin/agents/${agent.id}`)}
             />
           ))}
         </div>

@@ -91,7 +91,7 @@ sudo dnf install nessie-executor`}</code></pre>
       </li>
 
       <li>
-        {"In Nessie, open "}<strong>Agents → Executors → Add executor</strong>{". Paste the code,"}
+        {"In Nessie, open "}<strong>Admin › Computers › Pair a computer</strong>{". Paste the code,"}
         {"   select the organisation, team and access scope, and review the fingerprint."}
       </li>
 

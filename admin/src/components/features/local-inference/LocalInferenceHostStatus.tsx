@@ -87,7 +87,7 @@ export const LocalInferenceHostStatus = ({
               >
                 <div>
                   <p className="text-sm font-medium text-[color:var(--tx)]">
-                    {host.transport === 'desktop' ? 'Nessie Desktop' : 'Paired executor'} · {host.availability}
+                    {host.transport === 'desktop' ? 'Nessie Desktop' : 'Paired computer'} · {host.availability}
                   </p>
                   <p className="mt-1 text-xs text-[color:var(--tx3)]">{hostCopy(host)}</p>
                   {host.resource ? <p className="mt-1 text-xs text-[color:var(--tx3)]">
@@ -107,8 +107,8 @@ export const LocalInferenceHostStatus = ({
                     </Select>
                   </FormField> : null}
                   {executorId === undefined && host.transport === 'executor' && host.executorId ? (
-                    <Link className="admin-button admin-button-secondary" to={`/agents/executors/${host.executorId}`}>
-                      Open executor
+                    <Link className="admin-button admin-button-secondary" to={`/admin/computers/${host.executorId}`}>
+                      Open computer
                     </Link>
                   ) : null}
                   {host.status !== 'revoked' ? (
@@ -137,7 +137,7 @@ export const LocalInferenceHostStatus = ({
       </QueryState>
       <ConfirmDialog
         blocking={confirmInDialog}
-        body="Agents will stop using this computer’s local models. The executor pairing and other machine permissions stay connected."
+        body="Agents will stop using this computer’s local models. The computer pairing and other computer permissions stay connected."
         confirmLabel="Disconnect"
         destructive
         onCancel={() => setRevokeTarget(null)}

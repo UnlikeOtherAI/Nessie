@@ -281,7 +281,7 @@ test('callback page CSP pins its inline script and style by hash', async () => {
 })
 
 test('admin origin comes from operator config only, normalised and validated', async () => {
-  await withAdminOrigin('https://admin.example.test/settings/connections', async () => {
+  await withAdminOrigin('https://admin.example.test/settings/accounts', async () => {
     // Path, query and case are dropped: an origin is scheme + host + port.
     assert.equal(resolveAdminOrigin({ mode: 'selfHosted' }), 'https://admin.example.test')
   })

@@ -101,7 +101,7 @@ export const AgentCardMessage = ({
   // the moment the press succeeds.
   const [secrets, setSecrets] = useState<Record<string, string>>({})
   // An executor review card's press answers with a confirmation token minted
-  // for this person. It opens the one review dialog the Executors page uses,
+  // for this person. It opens the one review dialog the Computers page uses,
   // right here, and lives only in this state: never an address, never the
   // query cache, gone when the review closes. The card stays open while the
   // change is pending, so closing the review without confirming — or losing

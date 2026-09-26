@@ -35,7 +35,7 @@ import { APP_DOWNLOADS, downloadUrl } from '@nessie/sign-in-surface'
 
 export const signInUrl = 'https://app.nessie.works/login?launch=sso'
 /** Where the top bar sends someone who is already signed in. */
-export const accountUrl = 'https://app.nessie.works/settings/account'
+export const accountUrl = 'https://app.nessie.works/settings/profile'
 export const docsUrl = 'https://github.com/UnlikeOtherAI/nessie'
 export const androidDownloadUrl = downloadUrl(APP_DOWNLOADS.android)
 export const contactUrl = 'mailto:hello@nessie.works'
