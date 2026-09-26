@@ -157,6 +157,7 @@ const complete = async (
   deps: ExecutionDependencies,
   context: RunContext,
   responseText: string,
+  outcome: Partial<Parameters<typeof completeRunExecution>[4]> = {},
 ): Promise<void> => withRunExecutorFence(context.run.id, async () => {
   registerExecutorFence(context.run.id, RUN_ID)
   await completeRunExecution(deps, makePayload(), context, {
@@ -168,6 +169,7 @@ const complete = async (
     memories: [],
     responseText,
     toolCallsUsed: 0,
+    ...outcome,
   })
 })
 
@@ -339,7 +341,9 @@ test('a completed run with nothing to say writes no message at all', async () =>
 
 // The guard on the line above: silence is emptiness, not a judgement about
 // whether the words were worth posting. A bare emoji is a real answer and is
-// only ever withheld by the reaction branch, which knows the run reacted.
+// only ever withheld by the reaction branch, which knows the run reacted —
+// or by configured policy work, which is told to answer with a bare mark when
+// it has nothing to report (`concludesQuietly`).
 test('a wordless but non-empty answer is still posted', async () => {
   const { deps, messageCreates, queuedPayloads } = makeDeps()
 
@@ -348,6 +352,17 @@ test('a wordless but non-empty answer is still posted', async () => {
   assert.equal(messageCreates.length, 1)
   assert.equal(messageCreates[0]!.data.content, '👍')
   assert.equal((queuedPayloads[0]?.delivery as Record<string, unknown>).kind, 'message')
+})
+
+test('policy work that concluded quietly writes no message at all', async () => {
+  const { deps, messageCreates, queuedPayloads, sse, ws } = makeDeps()
+
+  await complete(deps, makeContext(ROOT_MESSAGE_ID), '✅', { concludedQuietly: true })
+
+  assert.equal(messageCreates.length, 0)
+  assert.deepEqual(queuedPayloads[0]?.delivery, { kind: 'silent' })
+  assert.deepEqual(ws, [])
+  assert.deepEqual(sse, [])
 })
 
 // The delegated Personal Assistant branch writes its answer as the owner's own

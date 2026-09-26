@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { DEFAULT_CHANNEL_DECISION_POLICY, type ChannelDecisionChoice, type ChannelDecisionPolicy } from '@nessie/schemas'
-import { decideChannelActions } from '../src/channel-decisions.js'
+import { decideChannelActions, POLICY_WORK_QUIET_MARK } from '../src/channel-decisions.js'
 import type { DecisionModelClient } from '../src/decision-model.js'
 
 const agent = {
@@ -40,6 +40,17 @@ const model = (picks: Record<string, string>, probability = 1): DecisionModelCli
   })),
 })
 
+/**
+ * How background work ends when it has nothing to report, as the run is told.
+ * It names a mark the worker really suppresses (`concludesQuietly`), not a
+ * tool: `conclude_silently` was removed, and a run told to call a tool it does
+ * not have improvises instead. Not silence either — an empty answer is what a
+ * failed provider looks like, and the agent loop asks again.
+ */
+const QUIET_END = 'This is background work. Complete the configured work. When nothing about it needs '
+  + 'to reach anyone, answer with just ✅ and nothing else: that answer is not posted. Write a failure, '
+  + 'a result someone needs, or an action required of them in words.'
+
 for (const content of ['Platí, použijeme PostgreSQL. Díky!', 'yep lets do it, thx', 'sí, decisión tomada']) {
   test(`acknowledgement and enum-selected background work coexist: ${content}`, async () => {
     const decisions = await decideChannelActions(model({
@@ -53,10 +64,23 @@ for (const content of ['Platí, použijeme PostgreSQL. Díky!', 'yep lets do it,
     assert.equal(run.background, true)
     assert.equal(run.policyWork, true)
     assert.match(run.promptOverride!, /Record the confirmed decision/)
-    assert.match(run.promptOverride!, /conclude_silently/)
+    assert.ok(run.promptOverride!.includes(QUIET_END))
     assert.ok(run.promptOverride!.includes(content))
   })
 }
+
+test('background work is told to end with the bare mark, never a tool it does not have', async () => {
+  const decisions = await decideChannelActions(model({
+    engagement: 'no_action', agent: 'none', custom_decision: 'confirmed',
+  }), input('Platí, jdeme na PostgreSQL.'))
+  assert.equal(decisions.length, 1)
+  const work = decisions[0]!
+  if (work.action !== 'reply') throw new Error('Expected background work')
+  assert.equal(work.background, true)
+  assert.equal(POLICY_WORK_QUIET_MARK, '✅')
+  assert.ok(work.promptOverride!.includes(QUIET_END), work.promptOverride)
+  assert.doesNotMatch(work.promptOverride!, /conclude_silently/)
+})
 
 test('custom options are a multi-valued enum and all questions share one request', async () => {
   let calls = 0
@@ -128,6 +152,8 @@ test('reply depth is prompt guidance and policy work stays separate from a conve
   if (run.action !== 'reply') throw new Error('Expected reply')
   assert.match(run.promptOverride!, /thorough answer/)
   assert.doesNotMatch(run.promptOverride!, /Record the confirmed decision/)
+  // A conversational reply owes the person an answer: it is never offered the quiet end.
+  assert.ok(!run.promptOverride!.includes(QUIET_END))
   assert.equal(run.background, undefined)
   assert.equal(run.policyWork, undefined)
   const work = decisions[1]!
