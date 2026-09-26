@@ -620,14 +620,14 @@ the same search, the switches disabled.
 ## Addressable, not bound — the Direct messages address book
 
 The Direct-messages list shows *conversations*: a row appears once its channel
-carries a message. Its `+` opens one address book with **People** and **Agents**
-tabs. People starts a human conversation. Agents answers both agent decisions in
-one place: it lists every agent a person may talk to, including the Agent
-Designer and Personal Assistant, and offers creation only after an explicit
-**Private** or **Public** choice. Public is the product label for the stored
-organization-visible `team` value and says that the agent may be invited to any
-normal channel; Private stays owner-only and DM-only. The global Create menu and
-native creation sheet enter the matching tab of this same flow.
+carries a message. Its `+` opens one address book with people and agents side by
+side. It includes addressable system agents such as the Agent Designer and
+Personal Assistant. Choosing one starts a conversation; agent creation has its
+own doorway.
+
+The recipient search matches names and people's email addresses, but its field
+does not request browser email autofill: that native menu would cover the
+address book while choosing a person or agent.
 
 A DM-homed system agent is never *bound* into a new conversation:
 `bindAgentToChannel` refuses every `systemManaged` agent and every system
