@@ -37,4 +37,3 @@ export const withChatMachines = async (action: (world: LeaseWorld, machines: str
     try { await world.cleanup() } finally { await prisma.$disconnect() }
   }
 }
-
