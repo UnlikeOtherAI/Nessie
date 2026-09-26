@@ -367,7 +367,9 @@ As built:
   a shared cloud browser account (company or team) is the owner's to connect,
   and its panel now says so to an admin while keeping the lock and home page.
   The team catalogue's pagination no longer writes its own `?scope=`, which
-  collided with the switch.
+  collided with the switch, and the page's provider filter is
+  `?modelProvider=`, because T3 made `?provider=` Connected accounts'
+  consumed OAuth return and a name is state or consumed, never both.
 - **Company connections.** The organisation's scope holds the company cloud
   browser and Locked apps. The lock list is read from the catalogue's
   Installed view, the only read that reports a lock and can be read whole:
