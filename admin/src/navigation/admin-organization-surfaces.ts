@@ -65,7 +65,30 @@ export const createAdminOrganizationSurfaces = (adminRoot: string): Surface[] =>
     depth: 1,
     intent: { state: ['tab'] },
     parentOf: toAdmin,
-    pattern: /^\/admin\/(?:organisation|usage|security)$/,
+    pattern: /^\/admin\/(?:organisation|usage)$/,
+    root: adminRoot,
+    section: 'admin',
+    type: 'detail',
+  },
+  {
+    // Security: its tab, and the audit log's filters — who, what, whether it
+    // worked, from and to (a day each), and a team or a project — so a
+    // filtered trail is an address an entry's doorways can write.
+    depth: 1,
+    intent: { state: ['tab', 'actor', 'action', 'outcome', 'from', 'to', 'team', 'project'] },
+    parentOf: toAdmin,
+    pattern: /^\/admin\/security$/,
+    root: adminRoot,
+    section: 'admin',
+    type: 'detail',
+  },
+  {
+    // One audit entry, pushed from a row of the trail.
+    depth: 2,
+    identityOf: (match) => `audit-entry:${match[1]}`,
+    keyScope: () => 'audit-entry',
+    parentOf: toOrganizationSecurity,
+    pattern: /^\/admin\/security\/audit\/([^/]+)$/,
     root: adminRoot,
     section: 'admin',
     type: 'detail',

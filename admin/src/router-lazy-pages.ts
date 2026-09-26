@@ -144,6 +144,9 @@ export const OrganizationPairedAgentDetailPage = lazy(() =>
     (m) => ({ default: m.OrganizationPairedAgentDetailPage }),
   ),
 )
+export const AuditEntryPage = lazy(() =>
+  import('./pages/admin/AuditEntryPage').then((m) => ({ default: m.AuditEntryPage })),
+)
 export const PushCredentialsPage = lazy(() =>
   import('./pages/settings/PushCredentialsPage').then((m) => ({ default: m.PushCredentialsPage })),
 )

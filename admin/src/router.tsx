@@ -22,6 +22,7 @@ import {
   AppDetailPage,
   AppearancePage,
   AppsPage,
+  AuditEntryPage,
   AutomationsPage,
   BillingPage,
   BoardSettingsPage,
@@ -347,6 +348,7 @@ export const router = createBrowserRouter([
       { path: '/admin/usage', element: lazyElement(OperationalTelemetryPage, 'detail') },
       { path: '/admin/billing', element: lazyElement(BillingPage, 'detail') },
       { path: '/admin/security', element: lazyElement(OrganizationSecurityPage, 'list') },
+      { path: '/admin/security/audit/:entryId', element: lazyElement(AuditEntryPage, 'detail') },
       {
         path: '/admin/security/programs/:credentialId',
         element: lazyElement(OrganizationPairedAgentDetailPage, 'detail'),

@@ -1,4 +1,5 @@
 import { TabBar } from '../../components/primitives/TabBar'
+import { AUDIT_FILTER_PARAMS, AUDIT_PAGE_PARAMS } from '../../components/features/audit/audit-filters'
 import type { SettingsTabHostProps } from '../../components/shared/SettingsPanel'
 import { useIsOwner } from '../../facades/auth/hooks'
 import { useTabParam } from '../../navigation/useTabParam'
@@ -14,6 +15,10 @@ const TABS: ReadonlyArray<{ label: string; value: SecurityTab }> = [
   { label: 'Programs signed in as people', value: 'programs' },
 ]
 
+// The audit log's filters and its page belong to that tab's list: the
+// programs tab has no use for them, and coming back starts the trail afresh.
+const TAB_OWNED_PARAMS = [...AUDIT_FILTER_PARAMS, ...AUDIT_PAGE_PARAMS] as const
+
 /**
  * Admin › Security: what happened (the audit log) and what is holding
  * people's logins (the programs signed in as them, and whether pairing is
@@ -23,7 +28,9 @@ const TABS: ReadonlyArray<{ label: string; value: SecurityTab }> = [
  */
 export const OrganizationSecurityPage = () => {
   const isOwner = useIsOwner()
-  const [activeTab, setActiveTab] = useTabParam('tab', SECURITY_TABS, isOwner ? 'audit' : 'programs')
+  const [activeTab, setActiveTab] = useTabParam('tab', SECURITY_TABS, isOwner ? 'audit' : 'programs', {
+    clears: TAB_OWNED_PARAMS,
+  })
   const host: SettingsTabHostProps = {
     eyebrow: 'Organisation',
     tabs: (

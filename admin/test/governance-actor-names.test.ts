@@ -119,6 +119,7 @@ const entry = (fields: Record<string, unknown>) => ({
   ...fields,
 })
 
+// Every row opens its entry, so the rows render inside a router.
 const renderAuditRows = (entries: ReturnType<typeof entry>[]): string =>
   renderToStaticMarkup(
     createElement(
@@ -130,7 +131,11 @@ const renderAuditRows = (entries: ReturnType<typeof entry>[]): string =>
         createElement(
           AgentIdentityProvider,
           null,
-          createElement(AuditEventList, { entries }),
+          createElement(
+            MemoryRouter,
+            { initialEntries: ['/admin/security'] },
+            createElement(AuditEventList, { entries }),
+          ),
         ),
       ),
     ),

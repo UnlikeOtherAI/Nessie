@@ -33,7 +33,7 @@
  * invariant test walks every `keys.ts` under `src/facades` and holds the whole
  * union to both rules. Two kinds of key stay here: `paginationKeys`, which
  * builds a page key from *any* resource key and so belongs to no domain, and
- * the five families below, whose readers are pages and feature components with
+ * the four families below, whose readers are pages and feature components with
  * no facade behind them yet — they move the day one appears, rather than
  * earning an empty facade directory now.
  */
@@ -47,10 +47,6 @@ export const paginationKeys = {
     direction: string | undefined,
     limit: number,
   ) => [...resourceKey, paramsKey, cursor ?? null, direction ?? null, limit] as const,
-}
-
-export const auditLogKeys = {
-  forAction: (action: string) => ['audit-log', action] as const,
 }
 
 export const budgetKeys = {

@@ -337,8 +337,27 @@ report whether it is intact.
 //   valid: boolean;
 //   checkedCount: number;               // chained (non-epoch) entries verified
 //   firstBreak?: { id: string; reason: string };
+//   unchainedCount: number;             // pre-chain entries, which carry no hash
 // }>
 ```
+
+`unchainedCount` exists so an answer is never a claim about entries nobody
+checked: the admin says "All 12,431 entries verified, none altered" of the
+chained entries and names the older ones separately.
+
+### `GET /api/audit-log/export`
+
+Owner-only. Every entry the list's filters match (the same query parameters
+as `GET /api/audit-log`, minus `cursor`, `direction` and `limit`), for the
+caller's organisation, as CSV: newest first, streamed in keyset pages of 500
+over `(createdAt, id)`, one header row, the entry's own fields and exact ids
+(no resolved names). A cell beginning with `=`, `+`, `-`, `@`, a tab or a
+carriage return is written with a leading apostrophe so a spreadsheet opens it
+as text. The list, the entry and the export build their `where` and their
+record through one function each (`buildAuditLogWhere`, `toAuditLogRecord` in
+`api/src/services/audit.ts`), so a filter cannot mean one thing on screen and
+another in the file. Taking an export is itself recorded, as `audit.exported`
+with the filters it was taken with.
 
 ### `GET /api/audit-log/summary`
 
@@ -393,26 +412,45 @@ Phase 2 retention rules:
 
 ## 8) Frontend integration
 
-### Admin UI additions
+### Admin UI — Admin › Security › Audit log (built)
 
-- **Audit log page** accessible from settings/admin navigation
-- **Filterable table** with columns: timestamp, actor, action, resource, outcome
-- **The actor column is a name, not an id.** `actorType` + `actorId` are
-  resolved to a display name by `admin/src/components/shared/ActorName.tsx`,
-  shared with the approvals surface; the kind word is always printed beside it
-  and the exact `actorId` stays on the row's `title`. An actor no directory can
-  name (a deleted agent, a named system component) keeps its id rather than
-  rendering blank.
-- **Filter controls**: action type dropdown, actor search, date range picker, outcome filter
-- **Entry detail** expandable row showing full metadata and request context
-- **Summary widget** on the settings dashboard showing recent activity counts
+The trail is the owner's tab of `/admin/security` (`AuditLogPage`); the page
+itself also serves organisation administrators the programs signed in as
+people.
+
+- **Rows** read as words: the action through `audit-words.ts` in the admin's
+  vocabulary ("Team member added"; a knowledge page is a document, an executor
+  a computer), its outcome as Succeeded, Refused or Failed, who did it, what
+  it touched, and when. Each row opens the entry.
+- **The actor is a name, not an id.** `actorType` + `actorId` are resolved to
+  a display name by `admin/src/components/shared/ActorName.tsx`, shared with
+  the approvals surface; the kind word is always printed beside it and the
+  exact `actorId` stays on the row's `title`. An actor no directory can name (a
+  deleted agent, a named system component) keeps its id rather than rendering
+  blank.
+- **Filters are the API's own, in the address:** Who (`?actor=`, the actors
+  the trail holds, most active first), What (`?action=`, the actions it
+  holds), the outcome strip (`?outcome=`), From and To (`?from=` / `?to=`, a
+  day each, sent as the first and last instant of that day where the reader
+  is), and one Where choice (`?team=` or `?project=`). Who and What offer what
+  is there because the list filters by exact value. A filter change drops the
+  list's page; leaving the tab drops the filters.
+- **An entry** is its own screen, `/admin/security/audit/:entryId` (depth 2,
+  parent Security): what happened in words, its details, the exact record
+  (action code, ids, request, address, client), and doorways to the same
+  actor's entries and every entry of the same action.
+- **Export** downloads what the filters match (`GET /api/audit-log/export`).
+- **Verify integrity** runs the chain walk on request and answers in a
+  sentence: "All 12,431 entries verified, none altered", the entries older
+  than the chain counted separately, or the kind of break and how many
+  entries before it are intact, with a link to the entry it stopped at.
 
 ### Domain facade
 
-Add `audit` facade:
-
-- `audit/hooks.ts` with `useAuditLog()`, `useAuditEntry()`, `useAuditSummary()`
-- Standard cursor pagination support
+`admin/src/facades/audit/hooks.ts`: `useAuditLog` (the paged list, cursor in
+the address), `useAuditEntry`, `useAuditSummary` (the actions and actors the
+filters offer), `useAuditVerification` (run on request) and
+`downloadAuditExport`; its key family is `facades/audit/keys.ts`.
 
 ## 9) Security
 

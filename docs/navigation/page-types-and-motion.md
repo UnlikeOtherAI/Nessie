@@ -98,7 +98,8 @@ shrinks.
 | an executor (`ExecutorDetailPanels`) | `tab` | `overview` · `access` · `operations` · `sessions` · `attention` |
 | the computers list (`ExecutorsPage`, Your computers) | `filter` | `mine` · `shared` |
 | Automations (`AutomationsPage`) | `tab` | `triggers` · `batch-jobs` · `workflows`; a change clears the list's own search, filters, selection and page |
-| Admin › Security (`OrganizationSecurityPage`) | `tab` | `audit` · `programs` (default: `audit` for an owner, `programs` otherwise) |
+| Admin › Security (`OrganizationSecurityPage`) | `tab` | `audit` · `programs` (default: `audit` for an owner, `programs` otherwise); a change drops the audit log's filters and page |
+| Security's audit log (`AuditLogPage`) | `outcome` | `all` · `success` · `denied` · `error`; a change drops the list's page. Its other filters (`actor`, `action`, `from`, `to`, `team`, `project`) are plain state params beside it |
 | Admin › Organisation (`OrganizationPage`) | `tab` | `profile` · `appearance` |
 | a team (`TeamPage`) | `tab` | `general` · `overrides` |
 | People, AI models, Company connections, Keys (`useAdminScope`) | `scope` | `organisation` · `team:<id>` as each page's API gates allow the viewer, the rest listed disabled with the reason; People offers only the teams the viewer is in, and a change clears its roster's `tab` and page; AI models' change clears its catalogue page |

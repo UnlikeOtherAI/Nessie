@@ -45,7 +45,8 @@ inner scroller — see `page-types-and-motion.md` §2). Everything else derives 
   `debug`). One thing each page lists is depth 2: `/admin/agents/:id`,
   `/admin/apps/:slug`, `/admin/computers/:id`, `/admin/computers/sessions`,
   `/admin/automations/triggers/:id`, `/admin/automations/batch-jobs/:id`,
-  `/admin/teams/:teamId`, `/admin/security/programs/:id` and
+  `/admin/teams/:teamId`, `/admin/security/programs/:id`,
+  `/admin/security/audit/:entryId` and
   `/admin/advanced/tools/:toolId`; the agent designer, the workflow designer
   and a new batch job are Flows at 2 returning to the list they edit; an
   agent's mailbox and a computer's session are 3. Your settings is a root of
