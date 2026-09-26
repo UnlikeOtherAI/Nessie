@@ -293,5 +293,12 @@
     "noSystemPrompt": "No system prompt configured for this agent yet.",
     "tools": "Tools",
     "toolsDescription": "Everything {{name}} can reach in a run."
+  },
+  "userInfo": {
+    "conversationUnavailable": "Conversation unavailable",
+    "title": "{{name}} info",
+    "close": "Close",
+    "opening": "Opening conversation…",
+    "messagePlaceholder": "Message {{name}}"
   }
 }

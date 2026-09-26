@@ -293,5 +293,12 @@
     "noSystemPrompt": "Pro tohoto agenta zatím nejsou nakonfigurovány žádné systémové pokyny.",
     "tools": "Nástroje",
     "toolsDescription": "Vše, k čemu má {{name}} při běhu přístup."
+  },
+  "userInfo": {
+    "conversationUnavailable": "Konverzace není dostupná",
+    "title": "Informace o uživateli {{name}}",
+    "close": "Zavřít",
+    "opening": "Otevírání konverzace…",
+    "messagePlaceholder": "Zpráva pro {{name}}"
   }
 }

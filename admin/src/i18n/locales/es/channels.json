@@ -293,5 +293,12 @@
     "noSystemPrompt": "Este agente aún no tiene instrucciones de sistema configuradas.",
     "tools": "Herramientas",
     "toolsDescription": "Todo lo que {{name}} puede usar durante una ejecución."
+  },
+  "userInfo": {
+    "conversationUnavailable": "Conversación no disponible",
+    "title": "Información de {{name}}",
+    "close": "Cerrar",
+    "opening": "Abriendo conversación…",
+    "messagePlaceholder": "Mensaje para {{name}}"
   }
 }

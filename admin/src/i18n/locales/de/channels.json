@@ -293,5 +293,12 @@
     "noSystemPrompt": "Für diesen Agent ist noch kein System-Prompt konfiguriert.",
     "tools": "Tools",
     "toolsDescription": "Alles, worauf {{name}} während einer Ausführung zugreifen kann."
+  },
+  "userInfo": {
+    "conversationUnavailable": "Unterhaltung nicht verfügbar",
+    "title": "Infos zu {{name}}",
+    "close": "Schließen",
+    "opening": "Unterhaltung wird geöffnet…",
+    "messagePlaceholder": "Nachricht an {{name}}"
   }
 }

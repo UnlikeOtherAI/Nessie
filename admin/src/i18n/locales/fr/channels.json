@@ -293,5 +293,12 @@
     "noSystemPrompt": "Aucun prompt système n’est encore configuré pour cet agent.",
     "tools": "Outils",
     "toolsDescription": "Tout ce à quoi {{name}} peut accéder pendant une exécution."
+  },
+  "userInfo": {
+    "conversationUnavailable": "Conversation indisponible",
+    "title": "Infos sur {{name}}",
+    "close": "Fermer",
+    "opening": "Ouverture de la conversation…",
+    "messagePlaceholder": "Message pour {{name}}"
   }
 }
