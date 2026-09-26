@@ -2,6 +2,7 @@ import {
   CardPostToolInputSchema,
   CardPostToolOutputSchema,
   type AgentCardSpec,
+  type CardPostToolInput,
 } from '@nessie/schemas'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
@@ -112,6 +113,37 @@ const resolveRespondentUserIds = async (
   return requested
 }
 
+/** A prepared call's arguments are stored on the row; a card is not a file store. */
+const MAX_PREPARED_ARGUMENT_BYTES = 16_000
+
+/**
+ * A prepared call runs when its button is pressed, without the model reading
+ * anything first, so it may only stand for a decision the press makes whole:
+ * a plain button (not a doorway), on a card with nothing to fill in (entered
+ * values could never reach the prepared arguments), posted by a run that
+ * finishes its turn rather than waiting on the answer (a waiting run is
+ * resumed to carry on its own work). Refused here, where the agent can still
+ * fix it, rather than at the press.
+ */
+const assertPreparedActions = (input: CardPostToolInput): void => {
+  const prepared = Object.entries(input.prepared ?? {})
+  if (prepared.length === 0) return
+  if (input.wait) throw new Error('A card with prepared buttons cannot also wait: drop wait or prepared.')
+  if (input.card.blocks.some((block) => block.type === 'input' || block.type === 'secret')) {
+    throw new Error('Prepared buttons need a card with no input or secret fields: '
+      + 'what the person types could never reach the prepared arguments.')
+  }
+  for (const [key, call] of prepared) {
+    const action = input.card.actions.find((candidate) => candidate.key === key)
+    if (!action) throw new Error(`prepared names "${key}", which is not one of this card's buttons.`)
+    if (action.href) throw new Error(`The "${action.label}" button opens a page, so it cannot also run a call.`)
+    if (call.tool === 'card_post') throw new Error('A prepared button cannot post another card.')
+    if (Buffer.byteLength(JSON.stringify(call.arguments), 'utf8') > MAX_PREPARED_ARGUMENT_BYTES) {
+      throw new Error(`The "${action.label}" button's prepared arguments are too large.`)
+    }
+  }
+}
+
 export const runCardPostTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
@@ -121,6 +153,7 @@ export const runCardPostTool = async (
     throw new Error(parsed.error.issues[0]?.message ?? 'That card is not valid.')
   }
   const args = parsed.data
+  assertPreparedActions(args)
   const runContext = context.runContext
   if (!runContext) {
     throw new Error('Unable to resolve the current conversation.')
@@ -139,6 +172,7 @@ export const runCardPostTool = async (
   const created = await postAgentCard(context, runContext, {
     card: args.card,
     expiresAt,
+    ...(args.prepared && Object.keys(args.prepared).length > 0 ? { preparedActions: args.prepared } : {}),
     respondentUserIds,
   })
 
@@ -156,6 +190,7 @@ export const runCardPostTool = async (
       `title=${args.card.title}; actions=${args.card.actions.length}`
       + `; respondents=${respondentUserIds.length === 0 ? 'thread' : respondentUserIds.length}`
       + `${args.wait ? '; wait' : ''}`
+      + `${args.prepared ? `; prepared=${Object.keys(args.prepared).length}` : ''}`
       + `${secretDestinations.length > 0 ? `; secrets=${secretDestinations.length}` : ''}`,
     outputPreview: JSON.stringify(output),
     ...(args.wait ? { pendingInput: { cardId: created.cardId } } : {}),

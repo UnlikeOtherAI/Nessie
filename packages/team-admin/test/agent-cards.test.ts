@@ -369,3 +369,32 @@ test('a card without a message renders exactly as it did before the field existe
     ].join('\n'),
   )
 })
+
+test('a prepared button says what it runs, and the answer says how the run went', () => {
+  const base = {
+    expiresAt: null,
+    resolutionValues: {},
+    resolvedAtLabel: null,
+    resolvedByName: 'Ondrej',
+    secretKeys: [],
+    spec: formSpec,
+    waitingForNames: [],
+    preparedTools: { send: 'deploy_hotfix' },
+  }
+  const open = buildAgentCardStateNote({ ...base, resolvedActionKey: null, status: 'open' })
+  assert.match(open, /buttons: Send \(runs deploy_hotfix\), Cancel/)
+
+  const ran = buildAgentCardStateNote({
+    ...base, preparedOutcome: 'succeeded', resolvedActionKey: 'send', status: 'resolved',
+  })
+  assert.match(ran, /deploy_hotfix ran as prepared and succeeded/)
+  const handed = buildAgentCardStateNote({
+    ...base, preparedOutcome: 'handed_to_model', resolvedActionKey: 'send', status: 'resolved',
+  })
+  assert.match(handed, /deploy_hotfix did not finish as prepared; the agent took over/)
+  // Cancel runs nothing, so its answer says nothing about a call.
+  const cancelled = buildAgentCardStateNote({
+    ...base, preparedOutcome: 'succeeded', resolvedActionKey: 'cancel', status: 'resolved',
+  })
+  assert.doesNotMatch(cancelled, /ran as prepared/)
+})

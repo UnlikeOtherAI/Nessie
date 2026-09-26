@@ -526,3 +526,94 @@ test('a shared room Jev is sure about never reaches the engagement model', async
   assert.deepEqual(fixture.modelCalls, [])
   assert.deepEqual(fixture.runs, [{ replyPlacement: 'thread' }])
 })
+
+const OFFER_CARD_ID = '00000000-0000-4000-8000-0000000000c2'
+const OFFER_MESSAGE_ID = '00000000-0000-4000-8000-0000000000c3'
+
+/** The agent's last main-chat message is an open card of prepared buttons. */
+const offeredRoom = (card: Record<string, unknown> = {}) => {
+  const room = windowPrisma()
+  const claims: unknown[] = []
+  const published: unknown[] = []
+  const row: Record<string, unknown> = {
+    agentId: AGENT_ID, expiresAt: null, id: OFFER_CARD_ID, messageId: OFFER_MESSAGE_ID,
+    preparedActions: { friday: { arguments: { day: 'friday' }, tool: 'room_book' } },
+    respondentUserIds: [PERSON_ID], status: 'open', waitRunId: null,
+    spec: {
+      schemaVersion: 1, title: 'Book the Aquarium room',
+      blocks: [{ type: 'text', markdown: 'Which slot?' }],
+      actions: [
+        { key: 'thursday', label: 'Thu 10:00', style: 'primary', submits: false },
+        { key: 'friday', label: 'Fri 14:00', style: 'secondary', submits: false },
+      ],
+    },
+    ...card,
+  }
+  const prisma = {
+    ...(room.prisma as object),
+    message: {
+      ...(room.prisma as { message: object }).message,
+      findFirst: async () => ({ basisScopes: [], id: OFFER_MESSAGE_ID }),
+    },
+    agentCard: {
+      findUnique: async ({ where }: { where: { messageId: string } }) =>
+        where.messageId === OFFER_MESSAGE_ID ? row : null,
+      updateMany: async ({ data }: { data: Record<string, unknown> }) => {
+        claims.push(data)
+        return { count: row.status === 'open' ? 1 : 0 }
+      },
+    },
+  }
+  const realtimeTransport = {
+    publishWs: async (_scopes: unknown, event: unknown) => { published.push(event) },
+  } as never
+  return { claims, pinned: room.pinned, prisma: prisma as never, published, realtimeTransport }
+}
+
+const answerCard = (
+  room: ReturnType<typeof offeredRoom>,
+  judge: ReturnType<typeof jev>,
+  content: string,
+) => decideOneOnOneTurn(
+  { decisionClient: judge.client, prisma: room.prisma, realtimeTransport: room.realtimeTransport },
+  {
+    agent,
+    channel: { organizationId: ORGANIZATION_ID, visibility: 'private' },
+    payload: payload(content),
+    trigger: { ...trigger(), userId: PERSON_ID },
+  },
+)
+
+test('words that take a prepared button as offered answer its card, in the main chat', async () => {
+  const room = offeredRoom()
+  const judge = jev({
+    response: ['acknowledge', 0.9], offer_answer: ['b_friday', 0.97], offer_exact: ['exact', 0.98],
+  })
+  const decisions = await answerCard(room, judge, 'pátek se hodí 👍')
+
+  // Only the prepared button is offered, and Jev reads the card as the person did.
+  assert.deepEqual(Object.keys(judge.calls[0]!.questions.offer_answer!.criteria), ['none', 'b_friday'])
+  assert.match(String(judge.calls[0]!.state.offered_card), /Book the Aquarium room/)
+  assert.deepEqual(room.claims, [{
+    resolvedActionKey: 'friday', resolvedAt: (room.claims[0] as { resolvedAt: Date }).resolvedAt,
+    resolvedByUserId: PERSON_ID, responseMessageId: TRIGGER_ID, status: 'resolved',
+  }])
+  assert.equal((room.published[0] as { event: string }).event, 'card.updated')
+  // An answer is owed a run, even where Jev alone would only have reacted.
+  assert.deepEqual(decisions, [{ action: 'reply', agentId: AGENT_ID, replyPlacement: 'channel' }])
+})
+
+test('a changed detail, doubt, or a card someone else must answer claims nothing', async () => {
+  const cases: Array<[Record<string, unknown>, Record<string, [string, number]>]> = [
+    [{}, { offer_answer: ['b_friday', 0.97], offer_exact: ['changed', 0.98] }],
+    [{}, { offer_answer: ['b_friday', 0.8], offer_exact: ['exact', 0.98] }],
+    [{ respondentUserIds: [OTHER_AGENT_ID] }, { offer_answer: ['b_friday', 0.99], offer_exact: ['exact', 0.99] }],
+    [{ waitRunId: OTHER_AGENT_ID }, { offer_answer: ['b_friday', 0.99], offer_exact: ['exact', 0.99] }],
+    [{ status: 'resolved' }, { offer_answer: ['b_friday', 0.99], offer_exact: ['exact', 0.99] }],
+  ]
+  for (const [card, answers] of cases) {
+    const room = offeredRoom(card)
+    await answerCard(room, jev({ response: ['reply', 0.9], ...answers }), 'pátek, ale ve tři?')
+    assert.deepEqual(room.claims, [], JSON.stringify(card))
+  }
+})

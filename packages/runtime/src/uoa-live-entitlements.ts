@@ -2,12 +2,11 @@ import type { PrismaClient } from '@prisma/client'
 import type { UoaSessionIdentity } from '@nessie/schemas'
 
 import {
-  createUoaSubjectAssertion,
   loadUoaDelegatedIdentitySettings,
   type UoaDelegatedIdentitySettings,
 } from './uoa-delegated-identity.js'
+import { readUoaOrgMe } from './uoa-org-me.js'
 import {
-  requestUoaOrganization,
   UoaOrgRequestRejectedError,
   UoaOrgRequestUnavailableError,
   type UoaOrgRequestDeps,
@@ -169,7 +168,8 @@ const localTeamIds = async (
 
 /**
  * Reads one live UOA membership response and translates it to existing Nessie
- * team ids. It intentionally neither writes nor caches UOA roster data.
+ * team ids. It intentionally neither writes nor caches UOA roster data; only a
+ * read already in flight for the same identity is shared (`readUoaOrgMe`).
  */
 const resolveLiveEntitlementsInternal = async (
   prisma: UoaLiveEntitlementsPrisma,
@@ -201,10 +201,9 @@ const resolveLiveEntitlementsInternal = async (
   if (!identity || !settings) return { kind: 'denied' }
 
   try {
-    const payload = await requestUoaOrganization(settings, '/org/me', { method: 'GET' }, {
+    const payload = await readUoaOrgMe(settings, identity, {
       fetchImpl: deps.fetchImpl,
       resolveHost: deps.resolveHost,
-      subjectAssertion: createUoaSubjectAssertion(settings, identity, `${settings.authBaseUrl}/org`),
     })
     const org = record(record(payload)?.org)
     const resolvedOrgId = text(org?.org_id)

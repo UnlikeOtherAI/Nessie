@@ -9,6 +9,7 @@ import type { PaginationMeta } from '@nessie/schemas'
 import {
   createUoaSubjectAssertion,
   type UoaDelegatedIdentitySettings,
+  type UoaSubjectAssertionIdentity,
 } from '@nessie/runtime'
 
 import {
@@ -108,6 +109,27 @@ export type UoaRosterPage<T, TPermissions> = {
   items: T[]
   meta: PaginationMeta
   permissions: TPermissions
+}
+
+/**
+ * The caller's UOA session, which must be current and must belong to exactly
+ * the organisation an org-scoped call is about. Anything else never reaches UOA.
+ */
+export const requireOrgSessionIdentity = (
+  orgId: string,
+  identity: UoaSessionIdentity | undefined,
+): UoaSubjectAssertionIdentity => {
+  if (!identity || identity.tokenVersion === null || identity.organizationId !== orgId) {
+    throw new UoaRosterIdentityError(
+      'A current UnlikeOtherAI session for this organisation is required.',
+    )
+  }
+  return {
+    organizationId: identity.organizationId,
+    subject: identity.subject,
+    teamId: identity.teamId,
+    tokenVersion: identity.tokenVersion,
+  }
 }
 
 /** Exported for `uoa-org-members.ts`'s org-scoped subject assertion. */

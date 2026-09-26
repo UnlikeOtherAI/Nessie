@@ -146,6 +146,18 @@ export const CARD_POST_TOOL_DEFINITION: BuiltinToolDefinition = {
         maximum: 2592000,
         description: 'Seconds until the card stops accepting an answer. Omit for no expiry.',
       },
+      prepared: {
+        type: 'object',
+        description:
+          'The exact tool call a button stands for, when you already know every argument: '
+          + '{"<actionKey>":{"tool":"<tool name as you call it>","arguments":{...}}}. '
+          + 'Pressing that button — or, in a one-on-one chat, answering with that choice in '
+          + 'words — runs the call exactly as prepared, through the same permission checks as '
+          + 'if you called it, without asking you first, and marks the answer ✅ when it '
+          + 'succeeds. If it fails or needs approval you are woken to handle it. Only for plain '
+          + 'buttons (no href) on a card with no input or secret fields, and never with wait. '
+          + 'Leave a button out when its answer needs your judgement, such as "something else".',
+      },
     },
     required: ['card'],
   },
