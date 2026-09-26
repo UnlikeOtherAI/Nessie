@@ -149,7 +149,7 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
 
   // ── Automations ──────────────────────────────────────────────────────────
   {
-    // One page, three tabs: Schedules & triggers, Batch jobs, Workflows. Each
+    // One page, three tabs: Schedules and triggers, Batch jobs, Workflows. Each
     // tab keeps the filters and selections it had as a page of its own; the
     // workflow browser's column stages are state, not routes.
     depth: 1,

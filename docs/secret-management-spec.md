@@ -19,7 +19,7 @@ Two independent vault projects gate two surfaces. Configure the one you need:
 | Surface | Requires | Without it |
 | --- | --- | --- |
 | **Save a secret** (`/settings/keys`, `POST /api/secrets`) | `INFISICAL_API_URL`, `INFISICAL_PROJECT_ID`, `INFISICAL_SERVICE_TOKEN[_FILE]` | `503 SECRETS_NOT_CONFIGURED` on save, rotate and revoke |
-| **Personal model subscriptions** (`/settings/accounts?tab=ai`) | `NESSIE_SUBSCRIPTION_VAULT_API_URL`, `_PROJECT_ID`, `_TOKEN` | Card reads "Not available on this deployment"; linking refused |
+| **Personal model subscriptions** (Your AI plans; `/settings/accounts?tab=ai`) | `NESSIE_SUBSCRIPTION_VAULT_API_URL`, `_PROJECT_ID`, `_TOKEN` | Card reads "Not available on this deployment"; linking refused |
 
 These are **two separate Infisical projects on purpose**, never one shared
 identity: the Secrets project's personal partition holds a person's ordinary

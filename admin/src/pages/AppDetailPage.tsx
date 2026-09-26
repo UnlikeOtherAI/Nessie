@@ -116,7 +116,7 @@ export const AppDetailPage = () => {
     <div className="flex h-full min-w-0 flex-col overflow-x-hidden">
       {header}
       {/*
-        Full-bleed to match /apps and the agents detail page. The reading
+        Full-bleed to match /admin/apps and the agent page. The reading
         measure that a centred column was providing belongs on the prose
         itself — AppDetailHero caps its description — not on the whole page,
         which also has to hold a capability table and an accounts list that

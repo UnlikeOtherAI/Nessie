@@ -30,7 +30,7 @@ const TYPE_OPTIONS: Array<{ label: string; value: TriggerTypeFilter }> = [
 ]
 
 /**
- * Schedules & triggers — the first tab of Automations.
+ * Schedules and triggers — the first tab of Automations.
  *
  * It was a column browser: a filtered rail on the left and the selected
  * trigger's whole detail beside it, with the selection carried in `?trigger=`.
@@ -97,7 +97,7 @@ export const TriggersPage = ({ host }: { host?: SettingsTabHostProps }) => {
           </p>
         }
         tabs={host?.tabs}
-        title={host?.title ?? 'Schedules & triggers'}
+        title={host?.title ?? 'Schedules and triggers'}
       />
 
       <div

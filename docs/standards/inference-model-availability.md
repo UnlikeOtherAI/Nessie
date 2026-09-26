@@ -86,7 +86,7 @@ upgrading a deployment that used the control-plane API directly.
    would be bypassed by the personal assistant's `agent_create`/`agent_config`
    tools and by any client posting the pair directly.
 
-**Personal model subscriptions are deliberately unfiltered.** An organisation
+**Personal model subscriptions (Your AI plans on Connected accounts) are deliberately unfiltered.** An organisation
 owner has no standing to enable, disable or spend a person's own consumer plan —
 see [`personal-model-subscriptions.md`](personal-model-subscriptions.md). The
 page copy states the omission so it reads as a decision.

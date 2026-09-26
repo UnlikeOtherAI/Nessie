@@ -10,7 +10,7 @@ const AUTOMATION_TABS = ['triggers', 'batch-jobs', 'workflows'] as const
 type AutomationTab = (typeof AUTOMATION_TABS)[number]
 
 const TABS: ReadonlyArray<{ label: string; value: AutomationTab }> = [
-  { label: 'Schedules & triggers', value: 'triggers' },
+  { label: 'Schedules and triggers', value: 'triggers' },
   { label: 'Batch jobs', value: 'batch-jobs' },
   { label: 'Workflows', value: 'workflows' },
 ]
@@ -27,7 +27,7 @@ const TAB_OWNED_PARAMS = [
 
 /**
  * Admin › Automations: everything that runs without anybody asking — what
- * wakes an agent (Schedules & triggers), ordered work processed one item at a
+ * wakes an agent (Schedules and triggers), ordered work processed one item at a
  * time (Batch jobs), and multi-step workflows. One header with one strip; each
  * tab is the list page it replaced, with its own filters and links intact.
  */

@@ -129,7 +129,7 @@ file is the rule**.
   policy half is written first. Revoking a laptop once cut an agent off the
   server it was still granted on, and recovery needed a fresh prepare, confirm
   and password on the other machine. The per-operation kind and its tool
-  stay: a *person* may still pick one capability on the Executors page. What no
+  stay: a *person* may still pick one capability on the Computers page. What no
   agent may do is issue that pick, because one confirmation per operation key
   is how an ordinary "let the researcher use my Mac" became a dozen reviews.
   `docs/global-agents.md`.

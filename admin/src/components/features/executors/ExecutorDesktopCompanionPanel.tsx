@@ -232,7 +232,7 @@ export const ExecutorDesktopCompanionPanel = ({
         {status ? (
           <div className="grid gap-3">
             <p className="text-xs text-[color:var(--tx2)]">
-              Executor: <span className="font-semibold text-[color:var(--tx)]">{status.daemonStatus.replaceAll('_', ' ')}</span>
+              Computer: <span className="font-semibold text-[color:var(--tx)]">{status.daemonStatus.replaceAll('_', ' ')}</span>
               {' · '}Folder: <span className="font-semibold text-[color:var(--tx)]">{status.workspaceLabel}</span>
             </p>
             {status.daemonStatus === 'awaiting_confirmation' ? (

@@ -83,7 +83,7 @@ const KNOWLEDGE_SPACE_PATH = /^\/knowledge-base\/spaces\/([^/]+)\/?$/
 
 /**
  * `tab` is the route's `?tab=` state, the one query value that changes which
- * surface a path is: Automations' list is Schedules & triggers only on that
+ * surface a path is: Automations' list is Schedules and triggers only on that
  * tab, which is also where the bare address lands.
  */
 export const resolvePushSurface = (pathname: string, tab: string | null = null): PushSurface | null => {

@@ -120,7 +120,7 @@ const OrganizationPairedAgentsBody = ({ host }: { host?: SettingsTabHostProps })
           Pairing lets a member connect an outside program — Claude Code, Codex, and others —
           to their own account, which the program then works as for ninety days.{' '}
           {allowed
-            ? 'Members may pair outside agents today.'
+            ? 'People may sign in programs today.'
             : 'Nobody can complete a new pairing. Credentials already issued keep working until '
               + 'they are revoked or expire — revoke them below if that is not what you want.'}
         </p>

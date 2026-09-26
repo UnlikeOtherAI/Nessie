@@ -258,7 +258,7 @@ test('clears the Ops usage surface for a non-owner', async () => {
   assert.equal(created?.channelId, null)
 })
 
-test('records the Schedules & triggers list for an owner and clears it for anyone else', async () => {
+test('records the Schedules and triggers list for an owner and clears it for anyone else', async () => {
   const rows = new Map<string, Record<string, unknown>>()
   const owners = new Set([userId])
   const prisma = withSession({

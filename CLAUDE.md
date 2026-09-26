@@ -35,7 +35,7 @@ The shared macOS/Windows console and machine-only, per-team resource permissions
 Direct machine access from private agent chat and its self-reminders follows [executor sharing](docs/standards/executor-sharing.md); named internal links and `nessie_link` follow [agent voice](docs/standards/agent-voice.md).
 Authorized executor access has no additional private-conversation write veto; output disclosure still follows [the disclosure standard](docs/standards/disclosure-boundaries.md).
 
-Sequential Task Sets, their native agent tools and the configured
+Sequential Task Sets (Batch jobs in the admin), their native agent tools and the configured
 `serve-ollama-search-mcp` executor bridge follow
 [docs/standards/task-sets.md](docs/standards/task-sets.md).
 
