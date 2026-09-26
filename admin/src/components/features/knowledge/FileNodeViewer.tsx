@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   faClockRotateLeft,
   faDownload,
   faEllipsis,
   faPen,
+  faPaperclip,
   faTable,
   faUpload,
 } from '@fortawesome/free-solid-svg-icons'
@@ -74,6 +75,7 @@ export const FileNodeViewer = ({
   const markdownPreview = previewKind === 'text'
     && (Boolean(version?.sourceContentHash) || isMarkdownFilename(page.title))
   const [markdownEditorOpen, setMarkdownEditorOpen] = useState(false)
+  const attachmentPickerRef = useRef<HTMLInputElement>(null)
   const [markdownEditorBaseVersionId, setMarkdownEditorBaseVersionId] = useState<string | null>(null)
   // Pin the PDF preview blob's MIME to application/pdf so a file with an
   // attacker-controlled content-type (e.g. text/html bytes named "x.pdf") can
@@ -98,6 +100,15 @@ export const FileNodeViewer = ({
     previewMime,
   )
   const detailActions: PageHeaderAction[] = [
+    ...(canWrite
+      ? [{
+          icon: faPaperclip,
+          id: 'add-attachment',
+          label: 'Add attachment',
+          onSelect: () => attachmentPickerRef.current?.click(),
+          priority: 110,
+        } satisfies PageHeaderAction]
+      : []),
     {
       compact: true,
       icon: faClockRotateLeft,
@@ -131,7 +142,6 @@ export const FileNodeViewer = ({
       : []),
     ...(canWrite && markdownPreview && downloadPath && onSaveMarkdown
       ? [{
-          compact: true,
           icon: faPen,
           id: 'edit-markdown',
           label: 'Edit',
@@ -140,7 +150,8 @@ export const FileNodeViewer = ({
             setMarkdownEditorBaseVersionId(version.id)
             setMarkdownEditorOpen(true)
           },
-          priority: 70,
+          primary: true,
+          priority: 120,
           title: 'Edit text file',
         } satisfies PageHeaderAction]
       : []),
@@ -168,7 +179,7 @@ export const FileNodeViewer = ({
       id: 'download',
       label: 'Download',
       onSelect: () => downloadPath && void downloadAuthedPath(downloadPath, page.title, token),
-      primary: true,
+      primary: !(canWrite && markdownPreview && downloadPath && onSaveMarkdown),
       priority: 100,
     },
   ]
@@ -282,13 +293,14 @@ export const FileNodeViewer = ({
         </div>
 
         </div>
-        <div className="mx-auto mt-8 w-full max-w-4xl border-t border-[color:var(--sep)] px-4 pt-6">
+        <div className="mx-auto w-full max-w-4xl px-4">
         <AttachmentsDrawer
           canWrite={canWrite}
           inline
           onClose={() => undefined}
           open
           pageId={page.id}
+          pickerRef={attachmentPickerRef}
         />
         </div>
         <div className="mx-auto mt-8 w-full max-w-4xl border-t border-[color:var(--sep)] px-4 pt-6">

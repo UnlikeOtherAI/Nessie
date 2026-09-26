@@ -118,7 +118,9 @@ try {
   assert.equal(await page.locator('header [data-page-header-action="history"]:visible').count(), 0,
     'file actions are not duplicated in the top navigation')
   assert.equal(await page.getByRole('tablist', { name: 'File sections' }).count(), 0)
-  await page.locator('#knowledge-page-attachments:visible').last().getByRole('button', { name: 'Add attachment' }).waitFor()
+  await fileActions.getByRole('button', { name: 'Add attachment' }).waitFor()
+  assert.equal(await page.locator('#knowledge-page-attachments:visible').count(), 0,
+    'a file with no attachments has no attachment section')
   await page.locator('#knowledge-comments-title:visible').last().waitFor()
   assert.equal(new URL(page.url()).searchParams.has('detail'), false)
   const fileBar = await fileActions.evaluate((element) => ({
@@ -146,6 +148,13 @@ try {
   await settings.getByRole('button', { name: 'Close' }).click()
 
   await page.locator('[data-page-header-action="new"]:visible').last().click()
+  const newMenu = page.getByRole('menu', { name: 'New' })
+  await newMenu.waitFor()
+  await page.waitForTimeout(250)
+  await page.screenshot({ path: '/private/tmp/nessie-knowledge-new-menu.png', fullPage: true })
+  assert.ok((await newMenu.boundingBox())?.width <= 260, 'New uses the compact sidebar menu width')
+  assert.equal(await newMenu.getByText('New', { exact: true }).count(), 0,
+    'New does not repeat its trigger label inside the menu')
   await page.getByRole('menuitem', { name: 'Document' }).click()
   await page.getByRole('textbox', { name: 'Document title' }).fill(publishedTitle)
   await page.getByRole('button', { name: 'Publish', exact: true }).click()
@@ -165,19 +174,28 @@ try {
   await page.getByRole('menuitem', { name: 'Archive document' }).waitFor()
   await page.keyboard.press('Escape')
   assert.equal(await page.getByRole('tablist', { name: 'Document sections' }).count(), 0)
-  await page.locator('#knowledge-page-attachments:visible').last().waitFor()
+  const editAction = documentActions.getByRole('button', { name: 'Edit' })
+  await editAction.waitFor()
+  assert.equal(await editAction.textContent(), 'Edit', 'Edit keeps its visible label')
+  assert.equal(await editAction.evaluate((element) => element.classList.contains('admin-page-action-primary')), true,
+    'Edit uses the primary blue action style')
+  assert.equal(await page.locator('#knowledge-page-attachments:visible').count(), 0,
+    'a document with no attachments has no attachment section')
   await page.locator('#knowledge-comments-title:visible').last().waitFor()
   await page.screenshot({ path: '/private/tmp/nessie-knowledge-document-tree.png', fullPage: true })
-  const attachmentPanel = page.locator('#knowledge-page-attachments:visible').last()
-  await attachmentPanel.getByRole('button', { name: 'Add attachment' }).waitFor()
-  assert.equal(await attachmentPanel.evaluate((element) => Boolean(element.closest('.kb-reader'))), true,
-    'attachments stay inside the document sheet below its content')
-  await attachmentPanel.locator('input[type="file"]').setInputFiles({
+  const [fileChooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    documentActions.getByRole('button', { name: 'Add attachment' }).click(),
+  ])
+  await fileChooser.setFiles({
     buffer: Buffer.from('synthetic browser fixture'),
     mimeType: 'text/plain',
     name: 'detail-inline-fixture.txt',
   })
+  const attachmentPanel = page.locator('#knowledge-page-attachments:visible').last()
   await attachmentPanel.getByText('detail-inline-fixture.txt').waitFor()
+  assert.equal(await attachmentPanel.evaluate((element) => Boolean(element.closest('.kb-reader'))), true,
+    'attachments stay inside the document sheet below its content')
   await page.screenshot({ path: '/private/tmp/nessie-knowledge-attachments.png', fullPage: true })
   await page.locator('#knowledge-comments-title:visible').last().scrollIntoViewIfNeeded()
   await page.getByPlaceholder('Add a comment…').waitFor()

@@ -96,6 +96,8 @@ export type PageHeaderLinkAction = PageHeaderActionBase & {
 export type PageHeaderMenuAction = PageHeaderActionBase & {
   items: PageHeaderMenuItem[]
   kind: 'menu'
+  /** Compact rows without a repeated heading, matching sidebar action menus. */
+  menuStyle?: 'sidebar'
 }
 
 // A header filter that is on or off rather than an action you fire: the label

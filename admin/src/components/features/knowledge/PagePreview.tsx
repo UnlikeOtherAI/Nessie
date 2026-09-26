@@ -4,6 +4,7 @@ import {
   faClockRotateLeft,
   faEllipsis,
   faPen,
+  faPaperclip,
 } from '@fortawesome/free-solid-svg-icons'
 import { toFormErrors } from '../../../facades/forms/form-errors'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
@@ -58,6 +59,7 @@ export const PagePreview = ({
   spaceName,
 }: PagePreviewProps) => {
   const commentsComposerRef = useRef<HTMLTextAreaElement>(null)
+  const attachmentPickerRef = useRef<HTMLInputElement>(null)
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const [archiveError, setArchiveError] = useState<string | null>(null)
   const focusComments = () => {
@@ -67,13 +69,22 @@ export const PagePreview = ({
   const detailActions: PageHeaderAction[] = [
     ...(canWrite
       ? [{
-          compact: true,
           icon: faPen,
           id: 'edit',
           label: 'Edit',
           onSelect: onEdit,
-          priority: 50,
+          primary: true,
+          priority: 120,
           title: 'Edit document',
+        } satisfies PageHeaderAction]
+      : []),
+    ...(canWrite
+      ? [{
+          icon: faPaperclip,
+          id: 'add-attachment',
+          label: 'Add attachment',
+          onSelect: () => attachmentPickerRef.current?.click(),
+          priority: 110,
         } satisfies PageHeaderAction]
       : []),
     {
@@ -112,7 +123,6 @@ export const PagePreview = ({
           id: 'publish',
           label: 'Publish',
           onSelect: onPublish,
-          primary: true,
           priority: 100,
         } satisfies PageHeaderAction]
       : []),
@@ -196,15 +206,14 @@ export const PagePreview = ({
         </div>
 
         <BacklinksPanel pageId={page.id} />
-        <div className="mt-8 border-t border-[color:var(--sep)] pt-6">
         <AttachmentsDrawer
           canWrite={canWrite}
           inline
           onClose={() => undefined}
           open
           pageId={page.id}
+          pickerRef={attachmentPickerRef}
         />
-        </div>
         <div className="mt-8 border-t border-[color:var(--sep)] pt-6" id="knowledge-page-comments">
         <CommentsSection canResolve={canWrite} composerRef={commentsComposerRef} pageId={page.id} />
         </div>

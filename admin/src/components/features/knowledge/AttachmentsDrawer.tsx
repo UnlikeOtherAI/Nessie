@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type RefObject } from 'react'
 import {
   faDownload,
   faEye,
@@ -37,6 +37,7 @@ export const AttachmentsDrawer = ({
   open,
   onClose,
   inline = false,
+  pickerRef,
 }: {
   canWrite: boolean
   pageId: string
@@ -44,6 +45,8 @@ export const AttachmentsDrawer = ({
   onClose: () => void
   /** Keep the same attachment workflow in the document surface or as a sheet. */
   inline?: boolean
+  /** Lets the detail action bar open the same native picker used by this list. */
+  pickerRef?: RefObject<HTMLInputElement | null>
 }) => {
   const { token } = useAuthSession()
   const attachmentsQuery = usePageAttachments(inline || open ? pageId : undefined)
@@ -68,13 +71,12 @@ export const AttachmentsDrawer = ({
   )
 
   const attachments = attachmentsQuery.data ?? []
+  const showInlineSection = attachments.length > 0 || attachmentsQuery.isError
 
   const attachmentList = inline ? (
     <QueryState
       className="py-6"
-      emptyLabel={canWrite ? 'No attachments yet. Add one or drop a file here.' : 'No attachments yet.'}
       errorLabel="Couldn’t load attachments."
-      isEmpty={attachments.length === 0}
       loadingLabel="Loading attachments…"
       query={attachmentsQuery}
     >
@@ -103,9 +105,15 @@ export const AttachmentsDrawer = ({
 
   return (
     inline ? (
-      <section
+      <>
+      {canWrite ? <input className="hidden" onChange={(event) => {
+        const file = event.target.files?.[0]
+        if (file) handleFile(file)
+        event.target.value = ''
+      }} disabled={upload.isPending} ref={pickerRef ?? inputRef} type="file" /> : null}
+      {showInlineSection ? <section
         aria-labelledby="knowledge-attachments-title"
-        className="relative"
+        className="relative mt-8 border-t border-[color:var(--sep)] pt-6"
         id="knowledge-page-attachments"
         tabIndex={-1}
         {...dropHandlers}
@@ -131,22 +139,10 @@ export const AttachmentsDrawer = ({
               type="button"
             ><FontAwesomeIcon className="h-4 w-4" icon={faGrip} /></button>
           </div>
-          {canWrite ? (
-            <button
-              className="admin-button admin-button-secondary admin-button-compact"
-              disabled={upload.isPending}
-              onClick={() => inputRef.current?.click()}
-              type="button"
-            >{upload.isPending ? `Uploading… ${progress?.pct ?? 0}%` : 'Add attachment'}</button>
-          ) : null}
-          {canWrite ? <input className="hidden" onChange={(event) => {
-            const file = event.target.files?.[0]
-            if (file) handleFile(file)
-            event.target.value = ''
-          }} ref={inputRef} type="file" /> : null}
         </div>
         {attachmentList}
-        {attachmentViewer}
+      </section> : null}
+      {attachmentViewer}
         <ConfirmDialog
           body={pendingDelete ? `“${pendingDelete.filename}” will be removed from this page.` : undefined}
           confirmLabel="Delete"
@@ -162,7 +158,7 @@ export const AttachmentsDrawer = ({
           pending={remove.isPending}
           title="Delete attachment?"
         />
-      </section>
+      </>
     ) : <Sheet onClose={onClose} open={open} side="right" size="sm" title="Attachments">
       <div
         className={[
