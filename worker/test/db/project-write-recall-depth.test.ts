@@ -11,15 +11,16 @@ import { retrieveRelevantMemories } from '../../src/run/execute/memory.js'
 import { runDatabaseTest } from './support.js'
 
 /**
- * F16 follow-up: project-write containment must not make recall come back
- * short.
+ * F16 follow-up: recall containment must not make recall come back short.
  *
- * The containment judges each recalled item's whole lineage after the search.
- * When the search asked for only the normal count, a requester whose best
- * matches all came from their private DM (or a private room) got nothing back,
- * although project knowledge sat just below the cut. These seed more private
- * hits than the normal count, all ranked above a few project-lineage ones, and
- * run the real recall against the real ranking functions.
+ * A contained run judges each recalled item's whole lineage after the search —
+ * against the project-write floor when it was lent a project write, otherwise
+ * against what its room already implies. When the search asked for only the
+ * normal count, a requester whose best matches all came from their private DM
+ * (or a private room) got nothing back, although material the destination may
+ * carry sat just below the cut. These seed more private hits than the normal
+ * count, all ranked above a few project-lineage ones, and run the real recall
+ * against the real ranking functions.
  */
 
 const MEMORY_LIMIT = 5
@@ -226,6 +227,7 @@ const deps = (prisma: PrismaClient, pool: Pool) => ({
 
 const runContext = (s: Seed, sink = createConsumedSourceSink()) => ({
   agent: { agentKind: 'shared', id: s.agentId, systemSlug: null },
+  boundAgentIds: [s.agentId],
   channel: {
     dmKey: null,
     id: s.boardRoomId,
@@ -342,15 +344,15 @@ runDatabaseTest('a run lent a project write still recalls the project memories b
   })
 })
 
-runDatabaseTest('a run without write tools recalls memories exactly as before', async (t) => {
+// A room run without write tools used to take the five DM-fed memories and
+// post a reply only the requester could read. Recall may not be what restricts
+// a reply in its own room, so it too searches deeper for what the room may read.
+runDatabaseTest('a room run without write tools recalls the room-readable memories below the DM hits', async (t) => {
   await withSeed(t, FEW_CLEAN, async (prisma, pool, s) => {
     const sink = createConsumedSourceSink()
     const memories = await recallMemories(prisma, pool, s, false, sink)
-    // The normal depth, in rank order: the five newest, all DM-fed.
-    assert.deepEqual(memories.map(({ id }) => id), s.dmThoughts.slice(0, MEMORY_LIMIT))
-    assert.deepEqual(sink.privateConversationSources(), [
-      { sourceAuthorUserId: s.requesterId, sourceChannelId: s.dmId },
-    ])
+    assert.deepEqual(memories.map(({ id }) => id), s.cleanThoughts)
+    assert.deepEqual(sink.privateConversationSources(), [], 'the DM never enters the basis')
   })
 })
 
@@ -416,17 +418,19 @@ runDatabaseTest('a run lent a project write still recalls public history below t
   })
 })
 
-runDatabaseTest('a run without write tools recalls history exactly as before', async (t) => {
+runDatabaseTest('a room run without write tools recalls public history below the private-room hits', async (t) => {
   await withSeed(t, FEW_CLEAN, async (prisma, pool, s) => {
+    const sink = createConsumedSourceSink()
     const depths: unknown[] = []
-    const history = await recallHistory(prisma, spyOnCandidateDepth(pool, depths), s, false)
-    // The normal depth, measured on the real query: each ranking arm's limit
+    const history = await recallHistory(prisma, spyOnCandidateDepth(pool, depths), s, false, sink)
+    // The deeper search, measured on the real query: each ranking arm's limit
     // is four times it.
-    assert.deepEqual(depths, [HISTORY_CANDIDATES * 4])
-    // It holds only private-room passages, so the public ones below it are
-    // not reached, as before.
-    assert.ok(history.messageIds.length > 0)
-    assert.ok(history.messageIds.every((id) => s.leadershipMessages.includes(id)))
+    assert.deepEqual(depths, [HISTORY_CANDIDATES * 3 * 4])
+    // The requester may read the private room, but its passages would have
+    // restricted the reply in this public one.
+    assert.deepEqual([...history.messageIds].sort(), [...s.publicMessages].sort())
+    assert.deepEqual(sink.list(), [])
+    assert.deepEqual(sink.privateConversationSources(), [])
   })
 })
 
@@ -448,14 +452,11 @@ runDatabaseTest('a run lent a project write recalls public history below the DM-
   })
 })
 
-runDatabaseTest('a run without write tools takes the DM-relayed history, DM and all', async (t) => {
+runDatabaseTest('a room run without write tools recalls none of the DM-relayed history either', async (t) => {
   await withSeed(t, DM_RELAYED, async (prisma, pool, s) => {
     const sink = createConsumedSourceSink()
     const history = await recallHistory(prisma, pool, s, false, sink)
-    assert.ok(history.messageIds.length > 0)
-    assert.ok(history.messageIds.every((id) => s.dmLineageMessages.includes(id)))
-    assert.deepEqual(sink.privateConversationSources(), [
-      { sourceAuthorUserId: s.requesterId, sourceChannelId: s.dmId },
-    ])
+    assert.deepEqual([...history.messageIds].sort(), [...s.publicMessages].sort())
+    assert.deepEqual(sink.privateConversationSources(), [], 'the DM never enters the basis')
   })
 })

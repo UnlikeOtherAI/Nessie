@@ -455,8 +455,10 @@ by a private conversation (`requiresProjectWriteRecallContainment`,
 `worker/src/run/execute/memory.ts`). Otherwise a memory of the requester's DM
 put that DM in the run's basis before its first action and the write gate then
 refused every ticket write. Its memory and history searches go deeper
-(`PROJECT_WRITE_RECALL_DEPTH`) and keep the normal count of what passes, so the
-narrowing does not leave the recall short. The rule and its trade-off are in
+(`CONTAINED_RECALL_DEPTH`) and keep the normal count of what passes, so the
+narrowing does not leave the recall short. Every other contained run judges its
+recall the same way against its own room rather than the project
+(`recallLineageGate`). The rule and its trade-off are in
 [disclosure-boundaries.md](disclosure-boundaries.md).
 
 Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Global agents — one blueprint, one row per organisation".

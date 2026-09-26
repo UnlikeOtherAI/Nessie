@@ -334,7 +334,8 @@ when one changes, the same turn updates it, not this section.
 - **Disclosure boundaries — what an agent read decides who may read its answer.**
   Every read that enters a run's context feeds the `ConsumedSourceSink` in the
   same change; an empty basis means unrestricted, so a forgotten read fails
-  open.
+  open. Context the platform assembles itself — recall, and the room history of
+  a run no person is live in — never restricts a reply in its own room.
   Authorized executor access has no additional private-conversation write veto.
   Read [`docs/standards/disclosure-boundaries.md`](docs/standards/disclosure-boundaries.md)
   before writing code here.

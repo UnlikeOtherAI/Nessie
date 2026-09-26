@@ -256,8 +256,13 @@ An agent can search its currently authorized conversations with different people
 and agents. Participation/bindings help select candidates; historical
 participation is not an irrevocable access grant. Shared-agent recall need not
 stay silently confined to its current channel once the end-to-end disclosure
-gates below are complete. Person-delegating system agents continue to act within
-the effective person's rights. Do not switch the existing containment floor off
+gates below are complete. Automatic recall still never restricts a reply in its
+own room: it crosses into another conversation only for material that room may
+already read, and a private conversation elsewhere is reached by a deliberate
+search that stamps the reply
+([disclosure boundaries](../standards/disclosure-boundaries.md) → "Assembled
+context never restricts a reply"). Person-delegating system agents continue to
+act within the effective person's rights. Do not switch the existing containment floor off
 globally as an implementation shortcut.
 
 Separate what the agent may consume from who may read the result. Every recalled
