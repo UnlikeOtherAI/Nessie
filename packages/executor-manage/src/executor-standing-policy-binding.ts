@@ -148,7 +148,7 @@ const bindAfterChecks = async (
         candidateHandle: candidate.handle,
         operationKeys: [...EXECUTOR_LOCAL_APPS_OPERATION_KEYS],
         runId: run.runId,
-        standing: { kickoffMessageId: run.job.messageId },
+        systemKickoff: { messageId: run.job.messageId },
       }, now)
       const ids = bound.map((binding) => binding.bindingId)
       // Under the executor lock the binder took: a fence that ended the policy
