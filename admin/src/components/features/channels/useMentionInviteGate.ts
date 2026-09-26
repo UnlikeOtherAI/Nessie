@@ -37,6 +37,21 @@ export type MentionInviteController = {
   onCancel: () => void
 }
 
+/**
+ * The gate of a composer whose @mentions can only name the conversation's own
+ * members — the New message page, where the entities are its recipients and
+ * the send makes each of them a member. It never asks, so it never holds a
+ * draft.
+ */
+export const NO_MENTION_INVITE: MentionInviteController = {
+  error: null,
+  onCancel: () => undefined,
+  onInviteAndSend: () => undefined,
+  onSendWithoutInviting: () => undefined,
+  pending: false,
+  prompt: null,
+}
+
 type Deliver = (text: string, agentMentions: AgentMention[]) => Promise<void>
 
 export const useMentionInviteGate = (input: {
