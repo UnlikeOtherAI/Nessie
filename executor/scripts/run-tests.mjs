@@ -23,13 +23,17 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const EXECUTOR = join(dirname(fileURLToPath(import.meta.url)), '..')
+// pnpm appends forwarded flags after the file globs; Node needs these before them.
+const arguments_ = process.argv.slice(2)
+const options = arguments_.filter((argument) => /^--test-(?:name-pattern|concurrency)=/u.test(argument))
+const requestedFiles = arguments_.filter((argument) => !options.includes(argument))
 
 const nodeTest = (node, files, env) => spawnSync(
-  node, ['--test', '--test-concurrency=4', '--test-force-exit', '--import', 'tsx', ...files],
+  node, ['--test', '--test-concurrency=4', ...options, '--test-force-exit', '--import', 'tsx', ...files],
   { cwd: EXECUTOR, env, stdio: 'inherit' },
 ).status ?? 1
 
-const suite = nodeTest(process.execPath, process.argv.slice(2), process.env)
+const suite = nodeTest(process.execPath, requestedFiles, process.env)
 if (process.platform !== 'win32') process.exit(suite)
 
 const release = join(EXECUTOR, 'native', 'target', 'release')

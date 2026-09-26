@@ -61,6 +61,11 @@ helper build finished.
 - Signed heartbeat HTTP and session routes have a durable focused Turbo suite:
   `DATABASE_URL=... pnpm exec turbo run test:executor-sessions --filter=@nessie/api`.
 
+The executor suite accepts Node test selection and concurrency through Turbo,
+for example `DATABASE_URL=... pnpm exec turbo run test --filter=@nessie/executor
+-- --test-name-pattern=renaming --test-concurrency=1`. This preserves dependency
+builds while allowing focused regressions and less load on a shared native host.
+
 ## Delivery boundary
 
 This is source, native build and test verification. It does not claim that new
