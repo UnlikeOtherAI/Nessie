@@ -117,6 +117,9 @@ export const KnowledgeWorkspace = ({
   const editorOpen = Boolean(editor) && canWrite
   const documentOpen = Boolean(current) && (stacked || !editorOpen)
   const browserVisible = stacked || !editorOpen
+  // On split layouts the Finder renders the document inline, so its nested
+  // stage is inactive. The dialog must render at the workspace level there.
+  const historyInDocumentStage = stacked && documentOpen
 
   // The space-pages list omits page bodies (they're large and the browser never
   // shows them). Fetch the full body on demand for whichever page actually
@@ -269,7 +272,7 @@ export const KnowledgeWorkspace = ({
         <div className="relative h-full min-h-0 w-full">{browser}</div>
       ) : null}
       <NestedStage
-        active={stacked && documentOpen}
+        active={historyInDocumentStage}
         id="knowledge:document"
         label={documentBackLabel}
         onBack={closeDocument}
@@ -278,7 +281,7 @@ export const KnowledgeWorkspace = ({
         {documentPane}
         {/* A dialog opened over a phone document belongs to that stage's
             overlay layer, so it stays visible while the route below is inert. */}
-        {historyDialog && documentOpen ? historyDialog : null}
+        {historyInDocumentStage ? historyDialog : null}
       </NestedStage>
       <NestedStage
         active={editorOpen}
@@ -293,7 +296,7 @@ export const KnowledgeWorkspace = ({
       >
         {editorPane}
       </NestedStage>
-      {!documentOpen ? historyDialog : null}
+      {!historyInDocumentStage ? historyDialog : null}
     </>
   )
 }
