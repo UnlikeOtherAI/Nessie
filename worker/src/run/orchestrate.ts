@@ -320,7 +320,8 @@ export const executeOrchestrateDecideJob = async (
   // work done and marked, or a reaction — and whether the message goes back to
   // an earlier one. Null means there is no judgement to act on, and the room
   // answers the way it always has, below.
-  let decisions = answeredCard ?? (triggerMessage && isOneOnOneAgentRoom(room, channelAgents)
+  const oneOnOne = triggerMessage !== null && isOneOnOneAgentRoom(room, channelAgents)
+  let decisions = answeredCard ?? (triggerMessage && oneOnOne
     ? await decideOneOnOneTurn(deps, {
       agent: channelAgents[0]!,
       channel,
@@ -329,6 +330,17 @@ export const executeOrchestrateDecideJob = async (
     })
     : null)
   const judgedOneOnOne = answeredCard === null && decisions !== null
+  // A typed answer claimed while it was being judged is owed its card's run
+  // whatever judgement won the pin: a concurrent delivery that lost the card
+  // claim may have pinned "only react" first.
+  if (judgedOneOnOne && topLevelTrigger && triggerMessage) {
+    decisions = await resolveCardResponseDecisions(deps.prisma, {
+      channelAgents,
+      messageId: triggerMessage.id,
+      role: triggerMessage.role,
+      rootMessageId: triggerMessage.rootMessageId,
+    }) ?? decisions
+  }
   decisions ??= resolveSystemDmDecisions(
     channel.systemChannelType,
     role,
@@ -355,6 +367,19 @@ export const executeOrchestrateDecideJob = async (
     role: triggerMessage?.role ?? role,
     thread: triggerInConversationThread ? triggerMessage.thread : null,
   })
+  // One person and one agent: every message is that agent's to answer, so a
+  // turn Jev could not judge (no evaluation client, a failed or slow
+  // evaluation) is answered anyway, never left to an engagement judgement
+  // that may choose silence. Placement follows the room's main-chat rule below.
+  if (!decisions && oneOnOne) {
+    const agent = channelAgents[0]!
+    decisions = [{
+      action: 'reply',
+      agentId: agent.id,
+      ...(agent.principalUserId ? { principalUserId: agent.principalUserId } : {}),
+      replyPlacement: 'thread',
+    }]
+  }
   if (!decisions || usePolicy) {
     const structuralDecisions = decisions
       ?? (agentMentions?.length ? resolveMentionedAgentDecisions(channelAgents, agentMentions) : null)

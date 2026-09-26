@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import type { ProviderToolCall } from '@nessie/runtime'
+import { judgePreparedOutcome, type ProviderToolCall, type RunDecisionEvaluator } from '@nessie/runtime'
 import {
   PreparedCardActionsSchema,
   PreparedCardExecutionSchema,
@@ -7,6 +7,7 @@ import {
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
 
+import type { AgenticLoopInput } from '../agentic-loop-types.js'
 import type { RunContext } from './types.js'
 
 /**
@@ -24,14 +25,20 @@ import type { RunContext } from './types.js'
 export type PreparedCardCall = { cardId: string; call: ProviderToolCall }
 
 /**
- * Stable per card, so a crash-resumed run re-entering the call is answered by
- * the tool-effect ledger instead of running it again. Hyphens dropped to stay
- * inside every provider's tool-call id alphabet and length.
+ * A prepared call's id: stable per card, so a crash-resumed run re-entering
+ * the call is answered by the tool-effect ledger instead of running it again,
+ * and marked, so the ledger claims it whatever the tool's category — a
+ * workspace tool a model calls is not claimed, but one the platform runs
+ * without the model reading anything must never run twice
+ * (`tool-effect-ledger.ts`). Hyphens dropped to stay inside every provider's
+ * tool-call id alphabet and length.
  */
-const preparedToolCallId = (cardId: string): string => `prepared_${cardId.replaceAll('-', '')}`
+export const PREPARED_TOOL_CALL_ID_PREFIX = 'prepared_'
+const preparedToolCallId = (cardId: string): string =>
+  `${PREPARED_TOOL_CALL_ID_PREFIX}${cardId.replaceAll('-', '')}`
 
 export const claimPreparedCardCall = async (
-  prisma: Pick<PrismaClient, 'agentCard'>,
+  prisma: Pick<PrismaClient, 'agentCard' | 'run'>,
   payload: Pick<RunExecuteJobPayload, 'batchMessageIds' | 'messageId'>,
   context: { agent: Pick<RunContext['agent'], 'id'>; run: Pick<RunContext['run'], 'id'> },
 ): Promise<PreparedCardCall | null> => {
@@ -52,11 +59,20 @@ export const claimPreparedCardCall = async (
   if (!action) return null
 
   // Claimed once. A restarted run or a second run on the same answer finds it
-  // taken and asks the model instead; only this very run, back after a crash
-  // before its first checkpoint, may pick its own claim up again.
+  // taken and asks the model instead. Two runs may pick a claim up again: this
+  // very run, back after a crash before its first checkpoint, and the run that
+  // continues the claiming run after a person approved the call, which runs
+  // the exact call they approved rather than asking the model to rebuild it.
   const execution = PreparedCardExecutionSchema.safeParse(card.preparedExecution)
-  const ours = execution.success && execution.data.runId === context.run.id && !execution.data.outcome
-  if (!ours) {
+  const open = execution.success && !execution.data.outcome
+  const ours = open && execution.data.runId === context.run.id
+  if (!ours && open && await continues(prisma, context.run.id, execution.data.runId)) {
+    const taken = await prisma.agentCard.updateMany({
+      data: { preparedExecution: { runId: context.run.id } },
+      where: { id: card.id, preparedExecution: { equals: execution.data } },
+    })
+    if (taken.count !== 1) return null
+  } else if (!ours) {
     if (card.preparedExecution !== null) return null
     const claimed = await prisma.agentCard.updateMany({
       data: { preparedExecution: { runId: context.run.id } },
@@ -70,16 +86,48 @@ export const claimPreparedCardCall = async (
   }
 }
 
+/** A run the platform resumed from `claimant`: an approval's continuation. */
+const continues = async (
+  prisma: Pick<PrismaClient, 'run'>, runId: string, claimant: string,
+): Promise<boolean> => {
+  const run = await prisma.run.findUnique({ where: { id: runId }, select: { continuationOfRunId: true } })
+  return run?.continuationOfRunId === claimant
+}
+
+/**
+ * What the agentic loop takes for a prepared call: the call to run first, and
+ * the check that it did its job (`judgePreparedOutcome`). A run without Jev
+ * (a personal subscription or a local model) cannot confirm, so it always
+ * hands the result to the model.
+ */
+export const preparedLoopInput = (
+  prepared: PreparedCardCall | null,
+  decide: RunDecisionEvaluator | null,
+): Pick<AgenticLoopInput, 'confirmPrepared' | 'preparedToolCalls'> => prepared
+  ? {
+      preparedToolCalls: [prepared.call],
+      confirmPrepared: async (calls, results) => decide !== null && judgePreparedOutcome(decide, calls.map(
+        (call, index) => ({
+          arguments: call.arguments,
+          result: (results.find((result) => result.toolCallId === call.toolCallId) ?? results[index])?.output ?? '',
+          tool: call.toolName,
+        }),
+      )),
+    }
+  : {}
+
 /**
  * Whether the call finished on its own, for the card's note in later runs.
  * Best-effort: the run's outcome is already decided, and a missing note only
- * reads as "started".
+ * reads as "started". A run that suspended (the call waits on an approval)
+ * records nothing: the claim stays open for the run that continues it.
  */
 export const recordPreparedCardOutcome = async (
   prisma: Pick<PrismaClient, 'agentCard'>,
   prepared: PreparedCardCall,
-  input: { preparedCompleted?: boolean; runId: string },
+  input: { pendingApproval?: unknown; pendingInput?: unknown; preparedCompleted?: boolean; runId: string },
 ): Promise<void> => {
+  if (input.pendingApproval || input.pendingInput) return
   const execution: PreparedCardExecution = {
     outcome: input.preparedCompleted ? 'succeeded' : 'handed_to_model',
     runId: input.runId,

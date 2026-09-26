@@ -7,6 +7,7 @@ import type {
   PrepareToolFn,
 } from '../tool-batch.js'
 import type { RecordedToolResult } from '../loop-resume.js'
+import { PREPARED_TOOL_CALL_ID_PREFIX } from './prepared-card-call.js'
 
 // The durable half of tool idempotency (horizontal scaling, invariant 4).
 //
@@ -469,7 +470,10 @@ export const createToolEffectLedger = (
   const claimable = (toolName: string, toolCallId: string): boolean =>
     typeof toolCallId === 'string'
     && toolCallId.trim().length > 0
-    && toolCallNeedsEffectRecord(scope.normalizeToolName(toolName), scope.isExternalDispatch)
+    && (toolCallNeedsEffectRecord(scope.normalizeToolName(toolName), scope.isExternalDispatch)
+      // A card button's prepared call runs with no model reading anything
+      // first, whatever its category, so it is always claimed once.
+      || toolCallId.startsWith(PREPARED_TOOL_CALL_ID_PREFIX))
 
   const { prepareTool } = seams
   return {

@@ -15,6 +15,7 @@ import {
   externalDispatchPredicate,
   TOOL_EFFECT_STATES,
 } from './tool-effect-ledger.js'
+import { PREPARED_TOOL_CALL_ID_PREFIX } from './prepared-card-call.js'
 
 // What the ledger does when the world does not cooperate: a dispatch that
 // throws instead of returning, a call that has to be run a second time, and a
@@ -685,4 +686,27 @@ test('a replayed correctable failure keeps its flag, so the breaker counts it th
   assert.equal(executions, 1, 'the claimed call is answered from its row, not run again')
   assert.equal(store.row(RUN_ID, 'call-1')?.state, TOOL_EFFECT_STATES.failed)
   assert.equal(replayed.correctable, true)
+})
+
+test('a card button’s prepared call is claimed whatever its category, so a crash never runs it twice', async () => {
+  const store = createEffectStore()
+  let dispatches = 0
+  // `dashboard_create` is a workspace tool: a model's call to it is not claimed.
+  const unclaimed = ledgerOver(store.prisma, new Set(), async () => ok('dashboard_create', 'created'))
+  await unclaimed.executeTool('dashboard_create', {}, 'call-model')
+  assert.equal(store.row(RUN_ID, 'call-model') ?? null, null)
+
+  const prepared = `${PREPARED_TOOL_CALL_ID_PREFIX}0123456789abcdef0123456789abcdef`
+  const first = ledgerOver(store.prisma, new Set(), async () => {
+    dispatches += 1
+    return ok('dashboard_create', 'dashboard D-1 created')
+  })
+  await first.executeTool('dashboard_create', {}, prepared)
+  const resumed = ledgerOver(store.prisma, new Set(), async () => {
+    dispatches += 1
+    return ok('dashboard_create', 'dashboard D-2 created')
+  })
+  const replayed = await resumed.executeTool('dashboard_create', {}, prepared)
+  assert.equal(dispatches, 1)
+  assert.equal(replayed.output, 'dashboard D-1 created')
 })

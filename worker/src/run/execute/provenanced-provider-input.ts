@@ -88,6 +88,14 @@ const coverageFor = (message: ProviderMessage): Coverage | undefined =>
   (message as CoveredProviderMessage)[componentCoverage]
 
 /**
+ * The adapter a message was admitted under, for a caller that must tell the
+ * person's own turns from the `user`-role turns the run itself adds (a tool's
+ * pictures, a loop instruction). Undefined for an unclassified message.
+ */
+export const providerInputAdapterOf = (message: ProviderMessage): ProviderInputSourceAdapter | undefined =>
+  coverageFor(message)?.adapter
+
+/**
  * A pure transformation (redaction or legacy-note normalization) may retain
  * coverage only when its exact input was already covered. It cannot turn an
  * unclassified component into an authorised one.

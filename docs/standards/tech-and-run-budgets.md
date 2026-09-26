@@ -226,7 +226,11 @@ summary and points here; **this file is the rule**.
     `worker/src/run/follow-up-review.ts`) sends the whole transcript to the
     utility model after every text answer. Jev is asked first, over a bounded
     digest (`completionDigest`, `packages/runtime/src/run-decisions.ts`):
-    the latest request, up to four turns before it, this turn's tool calls
+    the latest request — the newest turn the person wrote, told apart by its
+    provenance (`conversation` or `direct_prompt`), never a tool's pictures
+    or a loop instruction, which are `user` turns too; with none left, as in
+    a compacted or crash-resumed transcript, the full review runs — up to
+    four turns before it, this turn's tool calls
     with excerpted results — the oldest dropped first to stay under 18 KB,
     with the number dropped said — and the proposed answer; never the system
     prompt or the agent's documents. At 0.9 or more on `complete`

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { InferenceResult, InvocationRecord } from '@nessie/runtime'
 import { runAgenticLoop } from './agentic-loop.js'
+import { coverProviderInputComponent } from './execute/provenanced-provider-input.js'
 import { FOLLOW_UP_LIMIT_MESSAGE, reviewFollowUp } from './follow-up-review.js'
 import type { LoopResumeState } from './loop-resume.js'
 
@@ -170,6 +171,9 @@ test('the completion decision must be an actual boolean and a reason', async () 
   assert.equal(decision.needsFollowUp, true)
 })
 
+/** The person's own turn, admitted as stored conversation. */
+const asked = (content: string) => [coverProviderInputComponent({ role: 'user' as const, content }, 'conversation')]
+
 const jev = (choice: 'complete' | 'unfinished', probability: number) => {
   let asked = 0
   return {
@@ -188,7 +192,7 @@ test('a sure "complete" from Jev ends the turn without the generative review', a
   const decision = await reviewFollowUp(async () => {
     reviewed += 1
     return response('{"needsFollowUp":true,"reason":"unused"}')
-  }, [{ role: 'user', content: 'Kolik máme místa na disku?' }], 'Na disku zbývá 1 TB.', sink, gate.decide)
+  }, asked('Kolik máme místa na disku?'), 'Na disku zbývá 1 TB.', sink, gate.decide)
 
   assert.equal(decision.needsFollowUp, false)
   assert.equal(gate.asked(), 1)
@@ -201,10 +205,22 @@ for (const [choice, probability] of [['complete', 0.7], ['unfinished', 0.99]] as
     const gate = jev(choice, probability)
     const decision = await reviewFollowUp(
       async () => response('{"needsFollowUp":true,"reason":"The disk was never read."}'),
-      [{ role: 'user', content: 'Kolik máme místa na disku?' }], 'Mrknu na to.', [], gate.decide,
+      asked('Kolik máme místa na disku?'), 'Mrknu na to.', [], gate.decide,
     )
     assert.equal(gate.asked(), 1)
     assert.equal(decision.needsFollowUp, true)
     assert.equal(decision.reason, 'The disk was never read.')
   })
 }
+
+test('a tool\u2019s pictures are not the request, and with no request left the full review runs', async () => {
+  const gate = jev('complete', 0.99)
+  let reviewed = 0
+  const pictures = coverProviderInputComponent({ role: 'user' as const, content: '[screenshot]' }, 'tool_images')
+  await reviewFollowUp(async () => {
+    reviewed += 1
+    return response('{"needsFollowUp":false,"reason":"done"}')
+  }, [pictures], 'Hotovo.', [], gate.decide)
+  assert.equal(gate.asked(), 0)
+  assert.equal(reviewed, 1)
+})
