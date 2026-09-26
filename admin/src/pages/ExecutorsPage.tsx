@@ -160,9 +160,9 @@ const ComputersList = ({ scope }: { scope: 'all' | 'personal' }) => {
             {personal
               ? 'The computers you paired, and the ones other people share with you. Open one to '
                 + 'choose which agents may use it and who it is shared with.'
-              : 'Pair governed sandboxes and coding sessions. Executors are separate from connectors: '
-                + 'connectors provide remote services; executors run approved work on a paired machine '
-                + 'or guest runtime.'}
+              : 'Pair computers and their coding sessions. A computer is separate from a connector: '
+                + 'a connector reaches a remote service, while a computer runs approved work on '
+                + 'hardware you paired, or a temporary guest runtime.'}
           </p>
         }
         tabs={personal ? (
@@ -188,7 +188,7 @@ const ComputersList = ({ scope }: { scope: 'all' | 'personal' }) => {
         <ExecutorsTable
           emptyMessage={
             !personal
-              ? 'No executor is visible to you. Pair one, or ask its human administrator to assign you.'
+              ? 'No computer is visible to you. Pair one, or ask its human administrator to assign you.'
               : ownership === 'mine'
                 ? 'You have not paired a computer yet.'
                 : 'Nobody has shared a computer with you.'

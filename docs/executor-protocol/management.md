@@ -72,10 +72,10 @@ change it follows.
 The holder's surface is the composer whose messages would carry the lease, and
 no other: a chip — "Minis · local apps · until 21:40 · End" — inside the
 toolbar, so the composer at rest stays one line. In a conversation with the
-agent (`wholeThread`) that is the main composer, beside **Run on executor**;
-where its toolbar has no room the chip folds into a dot on Run on executor. A
+agent (`wholeThread`) that is the main composer, beside **Run on a computer**;
+where its toolbar has no room the chip folds into a dot on Run on a computer. A
 launch in an ordinary room carries only in its own reply thread, so its chip is
-in that reply panel's composer, which has no Run on executor and keeps the chip
+in that reply panel's composer, which has no Run on a computer and keeps the chip
 at every width, its label giving way first; the room's main composer shows
 nothing, since a top-level post would not carry it. The launcher dialog lists
 every one of the holder's leases in the thread with its End. The

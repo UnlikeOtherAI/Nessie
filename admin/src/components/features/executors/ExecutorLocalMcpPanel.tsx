@@ -72,17 +72,17 @@ const unavailableCopy = (status: ExecutorLocalMcpStatus): string => {
   const name = serverDisplayName(status.server)
   switch (status.reason) {
     case 'not_installed':
-      return `Install ${name} on this machine to use it.`
+      return `Install ${name} on this computer to use it.`
     case 'launch_failed':
-      return `${name} could not start. Check it on the machine.`
+      return `${name} could not start. Check it on the computer.`
     case 'handshake_failed':
-      return `${name} started but could not connect. Check it on the machine.`
+      return `${name} started but could not connect. Check it on the computer.`
     case 'unsupported_platform':
-      return `${name} cannot run on this machine’s platform.`
+      return `${name} cannot run on this computer’s platform.`
     case 'not_probed':
       return `${name} has not been checked yet.`
     default:
-      return `${name} is unavailable. Check it on the machine.`
+      return `${name} is unavailable. Check it on the computer.`
   }
 }
 
@@ -166,11 +166,11 @@ export const ExecutorLocalMcpPanel = ({
     <div className="grid gap-2 border-t border-[color:var(--sep)] pt-3">
       <SectionLabel size="sm">Local apps</SectionLabel>
       <p className="text-xs text-[color:var(--tx3)]">
-        Status when the machine last checked in; it may have changed since.
+        Status when the computer last checked in; it may have changed since.
       </p>
       {!localMcp ? (
         <p className="text-xs text-[color:var(--tx2)]">
-          The machine has not reported whether these apps are available yet.
+          The computer has not reported whether these apps are available yet.
         </p>
       ) : null}
       {statuses.map((status) => (
@@ -186,8 +186,8 @@ export const ExecutorLocalMcpPanel = ({
           </div>
           <p className="mt-1 text-[color:var(--tx2)]">
             {localMcp
-              ? 'This app is permitted, but the machine did not include it in its last update.'
-              : 'This app is permitted, but the machine has not reported its status yet.'}
+              ? 'This app is permitted, but the computer did not include it in its last update.'
+              : 'This app is permitted, but the computer has not reported its status yet.'}
           </p>
         </div>
       ))}

@@ -102,7 +102,7 @@ const PairingSession = ({
     } catch (cause) {
       setError(cause instanceof ApiClientError && cause.status === 429
         ? 'Too many attempts. Wait a few minutes, then try again.'
-        : 'That code could not be checked. Check the eight digits on your machine and try again.')
+        : 'That code could not be checked. Check the eight digits on your computer and try again.')
     }
   }
 
@@ -119,7 +119,7 @@ const PairingSession = ({
     } catch (cause) {
       setError(cause instanceof ApiClientError && cause.status === 429
         ? 'Too many attempts. Wait a few minutes, then try again.'
-        : 'Pairing could not be completed. Try again. If the code has expired, get a new one from your machine.')
+        : 'Pairing could not be completed. Try again. If the code has expired, get a new one from your computer.')
     }
   }
 
@@ -138,7 +138,7 @@ const PairingSession = ({
       dismissDisabled={busy}
       onClose={() => void close()}
       open
-      title={paired ? 'Machine paired' : executorId ? 'Confirm on your machine' : 'Add executor'}
+      title={paired ? 'Computer paired' : executorId ? 'Confirm on your computer' : 'Pair a computer'}
     >
       <div className="grid gap-4">
         {!preview ? (
@@ -188,9 +188,9 @@ const PairingSession = ({
               {paired
                 ? `${preview.machineName} is paired. You can now manage its access and allowed work.`
                 : rejected
-                  ? 'Pairing was declined on the machine. Start again when you are ready.'
+                  ? 'Pairing was declined on the computer. Start again when you are ready.'
                   : remaining === 0
-                    ? 'The code has expired. Start pairing again on your machine to get a new one.'
+                    ? 'The code has expired. Start pairing again on your computer to get a new one.'
                     : `Confirm the organisation and team in Nessie Executor on ${preview.machineName}.`}
             </p>
             <FormError>{status.isError ? 'Unable to check pairing. Check your connection, then try again.' : null}</FormError>
@@ -204,7 +204,7 @@ const PairingSession = ({
               ) : null}
               {paired ? (
                 <button className="admin-button admin-button-primary" onClick={() => onFinished(executorId)} type="button">
-                  Open executor
+                  Open computer
                 </button>
               ) : rejected || remaining === 0 ? (
                 <button className="admin-button admin-button-primary" onClick={restart} type="button">Enter a new code</button>

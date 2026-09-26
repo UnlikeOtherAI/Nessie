@@ -38,7 +38,7 @@ export const ExecutorSessionSharing = ({ executorId, sessionId, open, onClose }:
           </li>)}
         </ul> : <p className="text-sm text-[color:var(--tx2)]">Only you can view this session.</p>}
       </QueryState>
-      <p className="text-xs text-[color:var(--tx3)]">Viewers can find it in Executors → Sessions, or open this page’s link.</p>
+      <p className="text-xs text-[color:var(--tx3)]">Viewers can find it in Computers → Sessions, or open this page’s link.</p>
     </div>
   </Dialog>
 }

@@ -44,7 +44,7 @@ const cases = [
     scenario: 'not-installed',
     must: [
       'not installed',
-      'Install Kelpie on this machine to use it.',
+      'Install Kelpie on this computer to use it.',
     ],
     // The pairing affordance by its own words. A bare 'paired' also matches
     // the panel's standing "paired executors run only the reviewed local
@@ -55,27 +55,27 @@ const cases = [
     scenario: 'launch-failed',
     must: [
       'launch failed',
-      'Kelpie could not start. Check it on the machine.',
+      'Kelpie could not start. Check it on the computer.',
     ],
-    mustNot: ['not installed on this machine'],
+    mustNot: ['not installed on this computer'],
   },
   {
     scenario: 'handshake-failed',
     must: [
       'connection failed',
-      'Kelpie started but could not connect. Check it on the machine.',
+      'Kelpie started but could not connect. Check it on the computer.',
     ],
-    mustNot: ['not installed on this machine', 'could not start it'],
+    mustNot: ['not installed on this computer', 'could not start it'],
   },
   {
     scenario: 'unsupported-platform',
-    must: ['unsupported platform', 'Kelpie cannot run on this machine’s platform.'],
-    mustNot: ['not installed on this machine'],
+    must: ['unsupported platform', 'Kelpie cannot run on this computer’s platform.'],
+    mustNot: ['not installed on this computer'],
   },
   {
     scenario: 'not-probed',
     must: ['not checked', 'Kelpie has not been checked yet.'],
-    mustNot: ['not installed on this machine'],
+    mustNot: ['not installed on this computer'],
   },
   {
     scenario: 'no-browsers',
@@ -83,7 +83,7 @@ const cases = [
       'available',
       'No nearby browsers found. Open Kelpie on the device you want to use.',
     ],
-    mustNot: ['not installed on this machine', 'has not probed the network'],
+    mustNot: ['not installed on this computer', 'has not probed the network'],
   },
   {
     scenario: 'unprobed-inventory',
@@ -99,9 +99,9 @@ const cases = [
   {
     scenario: 'never-heard',
     must: [
-      'The machine has not reported whether these apps are available yet.',
+      'The computer has not reported whether these apps are available yet.',
       'never reported',
-      'This app is permitted, but the machine has not reported its status yet.',
+      'This app is permitted, but the computer has not reported its status yet.',
     ],
     // The availability pills by their own words. A bare 'available' also
     // matches the executor's scope line ("available only to entitled
@@ -112,7 +112,7 @@ const cases = [
     scenario: 'named-unreported',
     must: [
       'not in the last report',
-      'This app is permitted, but the machine did not include it in its last update.',
+      'This app is permitted, but the computer did not include it in its last update.',
     ],
     mustNot: ['has never reported local MCP status'],
   },
@@ -125,13 +125,13 @@ const cases = [
     scenario: 'policy-coding-sessions',
     must: [
       'Local apps (2):',
-      'Coding agents on this machine: Claude Code (accept edits, 3 pre-allowed commands, at most $5 a turn) '
+      'Coding agents on this computer: Claude Code (accept edits, 3 pre-allowed commands, at most $5 a turn) '
         + 'and Codex (sandbox workspace-write, no spending limit per turn) in nessie',
       'Each agent may keep up to 3 sessions open at once for the person it works for.',
       // Which pull-request commands it may run unasked decides whether a ticket reaches a merge there.
       'Claude Code must ask before gh pr checks and gh pr merge, so work here stops at an open pull request.',
       'Given the variables CLAUDE_CONFIG_DIR.',
-      'They work as this machine’s user, with its files and logins.',
+      'They work as this computer’s user, with its files and logins.',
       'sha256:1a2b3c4d5e6f',
     ],
     // A stated null budget is "no spending limit", never a missing clause or a number.
@@ -141,7 +141,7 @@ const cases = [
     scenario: 'policy-none-named',
     must: [
       'Local apps: none selected.',
-      'Choose an app on the machine before an agent can use its tools.',
+      'Choose an app on the computer before an agent can use its tools.',
     ],
     mustNot: ['Local apps (0)'],
   },

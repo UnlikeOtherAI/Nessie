@@ -347,7 +347,7 @@ Root app layout:
 ### 2.0f Executor conversation leases
 
 - Launching **local apps** (`mcp.tools` + `mcp.call`) from the composer's
-  **Run on executor** opens a conversation lease for the launching person,
+  **Run on a computer** opens a conversation lease for the launching person,
   agent and conversation. While it is live, that person's own later messages
   there — replies in the launch's reply thread, or the same agent conversation
   — bind each new run to the same executor afresh, with every check re-run.
@@ -364,7 +364,7 @@ Root app layout:
   `executor.run.carried` and — for a live lease that did not carry —
   `executor.run.carry_refused`.
 - The holder sees their lease as a chip ("Minis · local apps · until 21:40 ·
-  End") in the composer whose messages carry it: beside Run on executor in a
+  End") in the composer whose messages carry it: beside Run on a computer in a
   conversation with the agent, and in the launch's reply thread in a room.
   Nobody else in the room sees that it exists. The executor page's Activity
   tab lists the machine's live leases, with End, for the people who manage it.

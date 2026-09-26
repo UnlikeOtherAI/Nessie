@@ -123,11 +123,11 @@ export const ExecutorAgentsPanel = ({ executorId, scopeKind, token }: ExecutorAg
               columns={columns}
               empty={(
                 <p className="py-6 text-sm text-[color:var(--tx2)]">
-                  {query.trim() ? 'No agents match your search.' : 'No agents have access to this machine yet.'}
+                  {query.trim() ? 'No agents match your search.' : 'No agents have access to this computer yet.'}
                 </p>
               )}
               expandable={false}
-              label="Executor agents"
+              label="Computer agents"
               layout="fixed"
               rowKey={(agent) => agent.agentId}
               rows={roster.items}

@@ -209,7 +209,7 @@ for nobody else.
   messages would carry the lease, and of no other: a chip beside a composer
   that does not carry would promise reach the agent will not have. Inside a
   conversation with the agent the record says `wholeThread` and the chip sits
-  beside **Run on executor** in the main composer. A launch in an ordinary room
+  beside **Run on a computer** in the main composer. A launch in an ordinary room
   carries only in its own reply thread, so its chip is in that reply panel's
   composer and the room's composer shows nothing. Every other reader gets an
   empty list, so a shared room never learns that a lease or a private executor

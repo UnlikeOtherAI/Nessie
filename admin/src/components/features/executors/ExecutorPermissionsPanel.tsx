@@ -29,10 +29,10 @@ export const ExecutorPermissionsPanel = ({ executorId, teamId }: { executorId: s
         <label className="flex items-center gap-3 text-sm">
           <input type="checkbox" checked={data.everyone} disabled={update.isPending}
             onChange={(event) => void save({ kind: 'team', enabled: event.target.checked })} />
-          Everyone in this team can use this executor
+          Everyone in this team can use this computer
         </label>
         <p className="text-xs text-[color:var(--tx3)]">
-          Sharing with the team or a project also lets team administrators manage this executor.
+          Sharing with the team or a project also lets team administrators manage this computer.
         </p>
       </section>
       <section className="grid gap-3" aria-label="People with access">
@@ -70,7 +70,7 @@ export const ExecutorPermissionsPanel = ({ executorId, teamId }: { executorId: s
       </section>
       <section className="grid gap-3" aria-label="Projects with access">
         <h2 className="text-sm font-semibold">Projects</h2>
-        <p className="text-xs text-[color:var(--tx3)]">Project members can use the executor for that project's work.</p>
+        <p className="text-xs text-[color:var(--tx3)]">Project members can use the computer for that project's work.</p>
         <ul className="divide-y divide-[color:var(--sep)]">
           {data.projects.map((entry) => <li key={entry.projectId} className="flex items-center gap-3 py-3">
             <span className="min-w-0 flex-1 text-sm">{entry.name}</span>

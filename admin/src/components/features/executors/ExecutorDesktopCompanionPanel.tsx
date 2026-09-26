@@ -23,7 +23,7 @@ const failureMessage = (cause: unknown): string => {
   if (cause instanceof Error) return cause.message
   if (cause && typeof cause === 'object' && 'message' in cause
     && typeof cause.message === 'string') return cause.message
-  return 'Nessie Desktop could not complete that executor action.'
+  return 'Nessie Desktop could not complete that computer action.'
 }
 
 type CompanionAction = 'forget' | 'menuBar' | 'start' | 'stop'
@@ -237,23 +237,23 @@ export const ExecutorDesktopCompanionPanel = ({
             </p>
             {status.daemonStatus === 'awaiting_confirmation' ? (
               <p className="text-xs text-[color:var(--tx3)]">
-                Finish pairing in Nessie Executor on this machine before starting it.
+                Finish pairing in Nessie Executor on this computer before starting it.
               </p>
             ) : null}
             <div className="flex flex-wrap gap-2">
               {menuBar.supervising ? (
                 <span className="text-xs text-[color:var(--tx3)]">{MENU_BAR_SUPERVISING_COPY}</span>
               ) : status.daemonStatus === 'running' ? (
-                <button className="admin-button admin-button-secondary" disabled={busy !== null} onClick={() => void run('stop', () => stopExecutorWithCompanion(activeExecutorId))} type="button">{busy === 'stop' ? 'Stopping…' : 'Stop executor'}</button>
+                <button className="admin-button admin-button-secondary" disabled={busy !== null} onClick={() => void run('stop', () => stopExecutorWithCompanion(activeExecutorId))} type="button">{busy === 'stop' ? 'Stopping…' : 'Stop computer'}</button>
               ) : status.daemonStatus === 'stopping' ? (
-                <span className="text-xs text-[color:var(--tx3)]">Waiting for the executor to stop…</span>
+                <span className="text-xs text-[color:var(--tx3)]">Waiting for the computer to stop…</span>
               ) : (
-                <button className="admin-button admin-button-secondary" disabled={busy !== null} onClick={() => void run('start', () => startExecutorWithCompanion(activeExecutorId))} type="button">{busy === 'start' ? 'Starting…' : 'Start executor'}</button>
+                <button className="admin-button admin-button-secondary" disabled={busy !== null} onClick={() => void run('start', () => startExecutorWithCompanion(activeExecutorId))} type="button">{busy === 'start' ? 'Starting…' : 'Start computer'}</button>
               )}
             </div>
             <p className="text-xs text-[color:var(--tx3)]">
               Folder and command permissions are controlled only in the local Nessie Executor app or CLI.
-              Nessie manages who may use this executor.
+              Nessie manages who may use this computer.
             </p>
             <div className="grid gap-1 border-t border-[color:var(--sep)] pt-3">
               <button
@@ -265,14 +265,14 @@ export const ExecutorDesktopCompanionPanel = ({
                 {busy === 'forget' ? 'Forgetting…' : 'Forget pairing on this computer'}
               </button>
               <p className="text-xs text-[color:var(--tx3)]">
-                Removes the local machine key and folder selection and permanently deletes local
-                draft copies. The executor and its audit history remain in Nessie for its owner
+                Removes this computer's key and folder selection and permanently deletes local
+                draft copies. The computer and its audit history remain in Nessie for its owner
                 to revoke or retain.
               </p>
             </div>
           </div>
         ) : (
-          <p className="text-xs text-[color:var(--tx3)]">This executor is not paired with this Nessie Desktop device.</p>
+          <p className="text-xs text-[color:var(--tx3)]">This computer is not paired with this Nessie Desktop device.</p>
         )}
 
         {error ? <p className="text-xs text-[color:var(--danger-text)]">{error}</p> : null}

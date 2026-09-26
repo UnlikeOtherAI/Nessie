@@ -182,7 +182,7 @@ test('when the access view reads, the grant controls are on screen', async () =>
     isLoading: false,
     refetch: () => {},
   })
-  assert.match(text, /Everyone in this team can use this executor/)
+  assert.match(text, /Everyone in this team can use this computer/)
   assert.match(text, /Can useAdmin/)
   assert.match(text, /Projects/)
   assert.doesNotMatch(text, /Review changes|Review activation/)

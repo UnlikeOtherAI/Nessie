@@ -24,13 +24,13 @@ import '../../src/styles.css'
  * tests own, so here the holder and another member differ only in what
  * `GET /api/executor-leases` answers them.
  *
- * - `?view=composer` — the main composer, with Run on executor and whatever
+ * - `?view=composer` — the main composer, with Run on a computer and whatever
  *   lease indicator the launcher hook hands it, exactly as a conversation
  *   wires it.
  * - `?view=reply&root=<messageId>` — a reply panel's composer: no Run on
- *   executor, and the indicator scoped to that reply thread's root, exactly
+ *   a computer, and the indicator scoped to that reply thread's root, exactly
  *   as `ThreadReplyPanel` wires it.
- * - `?view=executor` — the machine's detail page on its Activity tab.
+ * - `?view=executor` — the computer's detail page on its Activity tab.
  */
 
 const THREAD_ID = '66666666-6666-4666-8666-666666666666'

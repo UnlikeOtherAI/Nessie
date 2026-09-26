@@ -26,7 +26,7 @@ const Fixture = () => {
               <h1>Computers</h1>
               {new URLSearchParams(location.search).has('pending') ? <ExecutorPairingPendingNotice /> : null}
               <button className="admin-button admin-button-primary" onClick={() => setOpen(true)} type="button">Pair a computer</button>
-              {finished ? <p>Executor opened</p> : null}
+              {finished ? <p>Computer opened</p> : null}
               <ExecutorPairDialog
                 initialAudience={new URLSearchParams(location.search).has('team') ? 'team' : 'personal'}
                 fixedProjectId={new URLSearchParams(location.search).has('project') ? projectId : undefined}
