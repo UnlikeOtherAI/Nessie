@@ -9,7 +9,7 @@ import {
   buildSpeakingStyleBlock,
   redactDetectedSecrets,
 } from '@nessie/schemas'
-import type { ConsumedSourceSink } from './disclosure-basis.js'
+import type { BasisScope, ConsumedSourceSink } from './disclosure-basis.js'
 import {
   describeAttachments,
   loadInlineImages,
@@ -334,6 +334,14 @@ export const loadConversation = async (
      * reply derived from the transcript inherits their restriction.
      */
     consumedSources: ConsumedSourceSink
+    /**
+     * Set for a run that reads its room as the room does (`readsRoomHistoryAsRoom`):
+     * what admitting a turn's lineage would add to the run's reply basis
+     * (`addedReplyRestriction`). A turn that would add anything is withheld
+     * like one the viewer cannot read, so the room's own history is never what
+     * restricts such a run's post.
+     */
+    addedRestriction?: (scopes: readonly BasisScope[]) => readonly BasisScope[]
   },
 ): Promise<StoredConversationMessage[]> => {
   const messages = await prisma.message.findMany({
@@ -373,8 +381,21 @@ export const loadConversation = async (
   // Disclosure predicate. A turn the viewer cannot satisfy becomes a fixed
   // server-authored placeholder rather than vanishing: a silent gap makes the
   // model invent continuity across a hole it cannot see.
-  const { visible: readable, withheld } = partitionByDisclosure(ordered, input.viewer)
-  const withheldIds = new Set(withheld.map((message) => message.id))
+  const partitioned = partitionByDisclosure(ordered, input.viewer)
+  // A run reading its room as the room does also withholds what it may read
+  // but the room may not. Every turn here is in the run's own channel, which
+  // its destination implies; a private source elsewhere is what would add.
+  const addsRestriction = (message: (typeof ordered)[number]): boolean =>
+    input.addedRestriction !== undefined && input.addedRestriction([
+      ...message.basisScopes,
+      ...message.disclosureSources.map((source) => ({ scopeId: source.sourceChannelId, scopeType: 'channel' })),
+    ]).length > 0
+  const restricting = new Set(partitioned.visible.filter(addsRestriction).map((message) => message.id))
+  const readable = partitioned.visible.filter((message) => !restricting.has(message.id))
+  const withheldIds = new Set([
+    ...partitioned.withheld.map((message) => message.id),
+    ...restricting,
+  ])
 
   // Transitive inheritance. A reply built from the transcript rather than from
   // retrieval would otherwise compute an empty basis, so "summarise that" would
