@@ -6,6 +6,7 @@ import { isAdminActor, type AuthorizedActionContext } from '@nessie/schemas'
 import { listAccessibleProjectIds } from '@nessie/team-admin'
 
 import { sendApiError } from '../src/lib/api.js'
+import { registerAccessCheckRoutes } from '../src/routes/access-check.js'
 import { registerAccountRoutes } from '../src/routes/accounts.js'
 import type { RouteDeps } from '../src/routes/types.js'
 
@@ -31,6 +32,7 @@ export type AccountsHarness = {
     agentOthers: string
     browserOrganisation: string
     browserTeam: string
+    channel: string
     comms: string
     commsOthers: string
     foreignTeam: string
@@ -69,6 +71,17 @@ export const createAccountsHarness = async (prisma: PrismaClient): Promise<Accou
   const project = await prisma.project.create({ data: { name: `accounts-${suffix}`, organizationId: organization.id } })
   const team = await prisma.team.create({ data: { name: `Support ${suffix.slice(0, 6)}`, projectId: project.id } })
   await prisma.teamMember.create({ data: { teamId: team.id, userId: users.member } })
+  // A public conversation nobody has put an agent in.
+  const channel = await prisma.channel.create({
+    data: {
+      label: 'general',
+      slug: `general-${suffix.slice(0, 8)}`,
+      organizationId: organization.id,
+      projectId: project.id,
+      teamId: team.id,
+      visibility: 'public',
+    },
+  })
 
   const foreignOrganization = await prisma.organization.create({ data: { name: `accounts-foreign-${suffix}` } })
   const foreignProject = await prisma.project.create({
@@ -241,6 +254,7 @@ export const createAccountsHarness = async (prisma: PrismaClient): Promise<Accou
 
   const app = Fastify()
   registerAccountRoutes(app, deps)
+  registerAccessCheckRoutes(app, deps)
   await app.ready()
 
   return {
@@ -257,6 +271,7 @@ export const createAccountsHarness = async (prisma: PrismaClient): Promise<Accou
       agentShared: agentShared.id,
       browserOrganisation: browserOrganisation.id,
       browserTeam: browserTeam.id,
+      channel: channel.id,
       comms: comms.id,
       commsOthers: commsOthers.id,
       foreignTeam: foreignTeam.id,
