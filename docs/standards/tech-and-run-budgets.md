@@ -243,6 +243,19 @@ summary and points here; **this file is the rule**.
     tool auto-review, the send boundary and disclosure sharing — stay
     generative: a confident classifier mistake there is a disclosure, not a
     wasted call.
+  - **Memory capture's extraction gate.** Every captured thought — each person's
+    message, a run's consolidated memories, a remembered note — paid for two
+    generative JSON extractions: metadata (people, topics, kind, action items,
+    dates) and decision reasoning. Where the deployment reaches Ledger,
+    `captureThought` (`packages/memory/src/capture.ts`) first asks Jev
+    (`gateExtraction`, `packages/memory/src/extraction-gate.ts`), beside the
+    embedding, over the same first 4,000 characters: is there anything worth
+    indexing, what kind of note it is, and does it explain a decision. A sure
+    "nothing to index" (0.8, `EXTRACTION_GATE_MINIMUM_PROBABILITY`) stores
+    empty metadata of Jev's kind (a note when unsure) without generating it; a
+    sure "no reasoning" skips the reasoning extraction. Anything unsure, and any
+    failure, extracts exactly as before. The API's and the worker's capture
+    configs carry the same Ledger decision client as the orchestrator.
 
   - MCP tool descriptors are name-sorted with exposed names allocated in a
     fixed order, so the tool array is byte-identical across iterations and the

@@ -381,6 +381,7 @@ subscribe(
         captureConfig: {
           modelClient,
           pool,
+          ...(decisionClient ? { decisionClient } : {}),
         },
         ledgerIdentity,
         prisma,

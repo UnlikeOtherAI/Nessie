@@ -20,6 +20,12 @@ export {
 } from './builtin-project-operator-tools.js'
 export * from './db.js'
 export * from './decision-model.js'
+export {
+  choice as decisionChoice,
+  confidentChoice,
+  evaluatedChoices,
+  excerpt as decisionExcerpt,
+} from './decision-questions.js'
 export * from './channel-decisions.js'
 export * from './one-on-one-decisions.js'
 export * from './engagement-decisions.js'
