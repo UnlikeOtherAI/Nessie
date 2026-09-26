@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { AppProvider } from './providers/AppProvider'
+import { initializeLocalization } from './i18n/i18n'
 import { installBuildFreshnessCheck } from './lib/build-freshness'
 import { disableWebviewZoom } from './lib/disable-zoom'
 import { installReloadShortcut } from './lib/reload-shortcut'
@@ -26,6 +27,8 @@ if ('serviceWorker' in navigator) {
 // a fresh push starts at 0 (docs/navigation/overview.md §12). The browser's own
 // restoration would fight that on every history step.
 if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual'
+
+await initializeLocalization()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

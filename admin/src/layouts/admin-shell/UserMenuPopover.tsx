@@ -10,6 +10,9 @@ import { DebugTokenButton } from '../../components/shared/DebugTokenButton'
 import { useFocusMode } from '../../providers/FocusModeProvider'
 import { PresenceControl } from './user-menu/PresenceControl'
 import { StatusSection } from './user-menu/StatusSection'
+import { LANGUAGES } from '../../i18n/languages'
+import { useLocalization } from '../../providers/LocalizationProvider'
+import { useTranslation } from 'react-i18next'
 
 export type UserMenuPopoverPlacement = 'rail' | 'topbar'
 
@@ -48,12 +51,14 @@ export const UserMenuPopover = ({
   placement = 'rail',
 }: UserMenuPopoverProps) => {
   const { focusModeEnabled } = useFocusMode()
+  const { language, setLanguage } = useLocalization()
+  const { t } = useTranslation('accountMenu')
 
   return (
     <Popover
       anchorRef={anchorRef}
       className={panelClassName}
-      label="Account menu"
+      label={t('accountMenu')}
       onClose={onClose}
       open={open}
       placement={placement === 'topbar' ? 'bottom-end' : 'right'}
@@ -93,8 +98,26 @@ export const UserMenuPopover = ({
 
       <div className="my-1 h-px bg-[color:var(--sep)]" />
 
+      <label className="flex items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-sm text-[color:var(--tx)]">
+        <span>{t('language')}</span>
+        <select
+          aria-label={t('language')}
+          className="max-w-[150px] rounded-md border border-[color:var(--sep)] bg-[color:var(--panel)] px-2 py-1 text-xs text-[color:var(--tx)]"
+          onChange={(event) => setLanguage(event.target.value as typeof language)}
+          value={language}
+        >
+          {LANGUAGES.map((option) => (
+            <option key={option.code} value={option.code}>
+              {option.emoji} {option.nativeName}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="my-1 h-px bg-[color:var(--sep)]" />
+
       <Link className={rowClassName} onClick={onClose} to="/feedback">
-        <span>Feedback</span>
+        <span>{t('feedback')}</span>
         <FontAwesomeIcon
           className="h-3.5 w-3.5 text-[color:var(--tx3)]"
           icon={faCircleQuestion}
@@ -105,7 +128,7 @@ export const UserMenuPopover = ({
       <div className="my-1 h-px bg-[color:var(--sep)]" />
 
       <Link className={rowClassName} onClick={onClose} to="/settings/account">
-        <span>Account settings</span>
+        <span>{t('accountSettings')}</span>
         <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--tx3)]" icon={faGear} />
       </Link>
       <button
@@ -116,7 +139,7 @@ export const UserMenuPopover = ({
         }}
         type="button"
       >
-        <span>Log out</span>
+        <span>{t('logOut')}</span>
         <FontAwesomeIcon
           className="h-3.5 w-3.5 text-[color:var(--tx3)]"
           icon={faArrowRightFromBracket}
