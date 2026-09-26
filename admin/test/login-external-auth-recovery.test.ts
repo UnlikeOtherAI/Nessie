@@ -2,6 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { JSDOM } from 'jsdom'
+import { initializeLocalization } from '../src/i18n/i18n'
+import { catalogs } from '../src/i18n/catalogs'
+
+await initializeLocalization()
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   pretendToBeVisual: true,
@@ -447,11 +451,13 @@ test('a failed provider discovery explains the failure and lets the person retry
     })
     await settle(act)
 
-    assert.match(container.textContent ?? '', /Couldn't load sign-in options/)
+    assert.ok((container.textContent ?? '').includes(
+      catalogs['en-GB'].auth.login.loadOptionsFailed,
+    ))
     assert.doesNotMatch(container.textContent ?? '', /Loading providers/)
     const failedRequestCount = providerRequests
     const retry = Array.from(container.querySelectorAll('button')).find(
-      (element) => element.textContent === 'Retry loading sign-in options',
+      (element) => element.textContent === catalogs['en-GB'].auth.login.retryOptions,
     )
     assert.ok(retry)
 

@@ -2,7 +2,11 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { faLock } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { AppDownloads, SignInShowcase, SignInSurface } from '@nessie/sign-in-surface'
+import { useTranslation } from 'react-i18next'
+import {
+  AppDownloads, SignInShowcase, SignInSurface, SIGN_IN_SHOWCASE_SLIDES,
+  type AppDownloadsCopy, type ShowcaseSlide,
+} from '@nessie/sign-in-surface'
 import { useRedirect } from '../navigation/redirect'
 import { Input } from '../components/shared/FormControls'
 import { LoginSessionImportButton } from '../components/shared/LoginSessionImportButton'
@@ -31,6 +35,7 @@ export const SSO_LAUNCH_PARAM = 'launch'
 export const SSO_LAUNCH_VALUE = 'sso'
 
 export const LoginPage = () => {
+  const { t } = useTranslation('auth')
   const navigate = useNavigate()
   const location = useLocation()
   const redirect = useRedirect()
@@ -132,7 +137,7 @@ export const LoginPage = () => {
     void beginSsoSignIn(automaticProvider.providerId)
       .catch((submitError) => {
         clearPendingExternalAuth()
-        setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
+        setError(submitError instanceof Error ? submitError.message : t('login.signInFailed'))
         setIsSubmitting(false)
       })
   }, [
@@ -144,6 +149,7 @@ export const LoginPage = () => {
     navigate,
     sessionImportOpen,
     sessionState,
+    t,
   ])
 
   if (sessionState === 'authenticated') {
@@ -163,7 +169,7 @@ export const LoginPage = () => {
       await login({ email, password })
       void navigate('/channels', { replace: true })
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Login failed')
+      setError(submitError instanceof Error ? submitError.message : t('login.loginFailed'))
     } finally {
       setIsSubmitting(false)
     }
@@ -177,7 +183,7 @@ export const LoginPage = () => {
       await devLogin()
       void navigate('/channels', { replace: true })
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Dev login failed')
+      setError(submitError instanceof Error ? submitError.message : t('login.devLoginFailed'))
     } finally {
       setIsSubmitting(false)
     }
@@ -190,7 +196,7 @@ export const LoginPage = () => {
     try {
       await beginSsoSignIn(providerId)
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
+      setError(submitError instanceof Error ? submitError.message : t('login.signInFailed'))
     } finally {
       // The native shell resolves after it has posted the launch request to
       // ASWebAuthenticationSession. The callback exchange happens later, so
@@ -205,10 +211,72 @@ export const LoginPage = () => {
     setIsSubmitting(false)
   }
 
+  const downloadCopy: AppDownloadsCopy = {
+    heading: t('downloads.heading'),
+    androidDetail: t('downloads.androidDetail'),
+    comingSoon: t('downloads.comingSoon'),
+    iphoneAndIpad: t('downloads.iphoneAndIpad'),
+    appleSilicon: t('downloads.appleSilicon'),
+    intel: t('downloads.intel'),
+    windowsDetail: t('downloads.windowsDetail'),
+    macM1AndLater: t('downloads.macM1AndLater'),
+    intelProcessors: t('downloads.intelProcessors'),
+    executorLabel: t('downloads.executorLabel'),
+    executorNote: t('downloads.executorNote'),
+    releases: t('downloads.releases'),
+  }
+
+  const sourceSlides = SIGN_IN_SHOWCASE_SLIDES
+  const showcaseSlides: ShowcaseSlide[] = [
+    {
+      ...sourceSlides[0]!,
+      title: t('showcase.draft.title'),
+      body: t('showcase.draft.body'),
+      members: t('showcase.draft.members'),
+      messages: [
+        { ...sourceSlides[0]!.messages[0]!, text: t('showcase.draft.first') },
+        {
+          ...sourceSlides[0]!.messages[1]!, text: t('showcase.draft.second'),
+          action: t('showcase.draft.action'),
+        },
+        { ...sourceSlides[0]!.messages[2]!, text: t('showcase.draft.third') },
+      ],
+    },
+    {
+      ...sourceSlides[1]!,
+      title: t('showcase.handoffs.title'),
+      body: t('showcase.handoffs.body'),
+      members: t('showcase.handoffs.members'),
+      messages: [
+        { ...sourceSlides[1]!.messages[0]!, text: t('showcase.handoffs.first') },
+        {
+          ...sourceSlides[1]!.messages[1]!, text: t('showcase.handoffs.second'),
+          action: t('showcase.handoffs.action'),
+        },
+        { ...sourceSlides[1]!.messages[2]!, text: t('showcase.handoffs.third') },
+      ],
+    },
+    {
+      ...sourceSlides[2]!,
+      title: t('showcase.followUps.title'),
+      body: t('showcase.followUps.body'),
+      members: t('showcase.followUps.members'),
+      messages: [
+        {
+          ...sourceSlides[2]!.messages[0]!, text: t('showcase.followUps.first'),
+          action: t('showcase.followUps.action'), time: t('showcase.followUps.time'),
+        },
+        { ...sourceSlides[2]!.messages[1]!, text: t('showcase.followUps.second') },
+        { ...sourceSlides[2]!.messages[2]!, text: t('showcase.followUps.third') },
+      ],
+    },
+  ]
+
   return (
     <>
       <SignInSurface
-        after={showDownloads ? <AppDownloads /> : null}
+        after={showDownloads ? <AppDownloads copy={downloadCopy} /> : null}
+        badge={t('surface.badge')}
         // Clear the floating session-import control in the mobile WebView so it
         // never covers the last row of the column.
         columnStyle={showMobileSessionImport ? {
@@ -227,7 +295,14 @@ export const LoginPage = () => {
           />
         )}
         productName="Nessie"
-        showcase={<SignInShowcase />}
+        showcase={<SignInShowcase
+          agentLabel={t('showcase.agent')}
+          slides={showcaseSlides}
+          slidesLabel={t('showcase.slidesLabel')}
+        />}
+        signInLabel={t('surface.signInRegion')}
+        title={t('surface.title')}
+        lede={t('surface.lede')}
       >
         {ssoProviders.length > 0 ? (
           ssoProviders.map((provider) => (
@@ -239,13 +314,13 @@ export const LoginPage = () => {
               type="button"
             >
               <FontAwesomeIcon aria-hidden="true" className="signin-cta-icon" icon={faLock} />
-              {isSubmitting ? 'Signing in...' : provider.label}
+              {isSubmitting ? t('login.signingIn') : provider.label}
             </button>
           ))
         ) : providersError ? (
           <div className="grid gap-3" role="alert">
             <p className="signin-alert">
-              Couldn&apos;t load sign-in options. Check your connection and try again.
+              {t('login.loadOptionsFailed')}
             </p>
             <button
               className="signin-cta signin-cta-secondary"
@@ -253,21 +328,21 @@ export const LoginPage = () => {
               onClick={() => void refetchProviders()}
               type="button"
             >
-              Retry loading sign-in options
+              {t('login.retryOptions')}
             </button>
           </div>
         ) : (
           <p className="signin-note">
             {providersPending
-              ? 'Loading sign-in options...'
-              : 'No sign-in providers are configured.'}
+              ? t('login.loadingOptions')
+              : t('login.noProviders')}
           </p>
         )}
         {error ? <p className="signin-alert" role="alert">{error}</p> : null}
         {isSubmitting ? (
           <p className="signin-note">
             <button className="signin-link" onClick={cancelProviderSignIn} type="button">
-              Cancel sign-in
+              {t('login.cancelSignIn')}
             </button>
           </p>
         ) : null}
@@ -275,11 +350,10 @@ export const LoginPage = () => {
         {showWindowsSessionImport ? (
           <div className="signin-section">
             <p className="signin-note">
-              Already signed in to Nessie on Windows? Copy Session debug there,
-              then bring that session into this Linux app.
+              {t('login.windowsSessionNote')}
             </p>
             <LoginSessionImportButton
-              label="Use Windows session"
+              label={t('login.useWindowsSession')}
               onOpenChange={setSessionImportOpen}
               variant="inline"
             />
@@ -288,9 +362,9 @@ export const LoginPage = () => {
 
         {localModeEnabled ? (
           <form className="signin-section" onSubmit={handleSubmit}>
-            <p className="signin-section-title">Local development</p>
+            <p className="signin-section-title">{t('login.localDevelopment')}</p>
             <label className="signin-field">
-              <span>Email</span>
+              <span>{t('login.email')}</span>
               <Input
                 autoComplete="username"
                 onChange={(event) => setEmail(event.target.value)}
@@ -300,7 +374,7 @@ export const LoginPage = () => {
               />
             </label>
             <label className="signin-field">
-              <span>Password</span>
+              <span>{t('login.password')}</span>
               <Input
                 autoComplete="current-password"
                 onChange={(event) => setPassword(event.target.value)}
@@ -310,7 +384,7 @@ export const LoginPage = () => {
               />
             </label>
             <button className="signin-cta signin-cta-primary" disabled={isSubmitting} type="submit">
-              {isSubmitting ? 'Signing in...' : 'Sign in'}
+              {isSubmitting ? t('login.signingIn') : t('login.signIn')}
             </button>
             <button
               className="signin-cta signin-cta-secondary"
@@ -318,7 +392,7 @@ export const LoginPage = () => {
               onClick={() => void handleDevLogin()}
               type="button"
             >
-              {isSubmitting ? 'Signing in...' : 'Dev login (skip password)'}
+              {isSubmitting ? t('login.signingIn') : t('login.devLogin')}
             </button>
           </form>
         ) : null}

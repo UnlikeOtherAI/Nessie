@@ -3,6 +3,7 @@ export type { SignInSurfaceProps } from './SignInSurface'
 export { SignInShowcase, SIGN_IN_SHOWCASE_SLIDES } from './SignInShowcase'
 export type { ShowcaseSlide, ShowcaseMessage } from './SignInShowcase'
 export { AppDownloads } from './AppDownloads'
+export type { AppDownloadsCopy } from './AppDownloads'
 export {
   APP_DOWNLOADS,
   EXECUTOR_DOWNLOADS,

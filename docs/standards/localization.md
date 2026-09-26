@@ -1,7 +1,7 @@
 # Localization
 
 The admin uses one `i18next` instance, initialized in
-`admin/src/i18n/i18n.ts` and exposed through `LocalizationProvider`. The
+`admin/src/i18n/i18n.ts` and exposed through `LocalizationProvider`.
 For a UOA session, the account-level choice is UOA's ecosystem-wide
 `global.locale` setting. Nessie reads and writes it through the server using
 the verified UOA domain hash and the fresh access token produced during the
@@ -67,3 +67,6 @@ without creating conflicts in unrelated features. CI verifies that every
 registered catalog has the same key paths for all supported languages.
 The `common` namespace contains controls reused across features, such as
 dialogs, pickers, pagination and attachment previews.
+The admin passes localized copy to the shared `@nessie/sign-in-surface`
+components, including their download links and illustrative showcase. The
+public website may continue to use the package's British English defaults.
