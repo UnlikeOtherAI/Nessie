@@ -80,7 +80,8 @@ export const useThreadMessages = (threadId?: string) => {
 
   const query = useInfiniteQuery({
     ...threadMessagesInfiniteQueryOptions(apiClient, threadId ?? ''),
-    placeholderData: keepPreviousData,
+    // Reuse this thread's cache; never paint another conversation's messages.
+    placeholderData: undefined,
     enabled: Boolean(threadId),
   })
   const messages = useMemo(() => flattenThreadMessagePages(query.data), [query.data])
@@ -101,7 +102,8 @@ export const useThreadReplies = (threadId?: string, rootMessageId?: string) => {
       threadId ?? '',
       rootMessageId,
     ),
-    placeholderData: keepPreviousData,
+    // A reply panel must belong to its own root while the network catches up.
+    placeholderData: undefined,
     enabled: Boolean(threadId) && Boolean(rootMessageId),
   })
   const messages = useMemo(() => flattenThreadMessagePages(query.data), [query.data])

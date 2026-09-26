@@ -202,6 +202,17 @@ Consequences for page code:
 
 ## 3. Motion — **built** (step 2)
 
+Edge Back uses Ionic Core's public `createGesture` API on iOS and Android.
+Recognition and pointer lifetimes are Ionic's; eligibility, release thresholds,
+Back and screen poses remain this framework's. Finger tracking writes the two
+visible layer transforms and scrim once per frame without React state updates.
+The resting current layer keeps an identity transform so fixed descendants
+retain their containing block when motion starts or stops. A swipe's animation
+holds its final pose until React has committed the route or stage Back.
+The single layout disables horizontal browser overscroll navigation on the
+document, so browser history cannot race the stack's interactive Back.
+See the [framework and license review](mobile-navigation-review.md).
+
 One spec, `admin/src/navigation/motion.ts`:
 
 - `NAV_MOTION`: 300 ms, `cubic-bezier(0.22, 1, 0.36, 1)` (control points

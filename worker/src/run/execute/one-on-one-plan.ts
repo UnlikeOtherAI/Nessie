@@ -1,6 +1,6 @@
 import { ChannelDecisionSnapshotSchema, ONE_ON_ONE_DECISION_FINGERPRINT } from '@nessie/schemas'
 
-import { isContentlessAfterReacting } from './working-marker.js'
+import { isWordless } from './working-marker.js'
 
 /**
  * What Jev decided for one reply in a one-on-one room
@@ -49,17 +49,16 @@ export const readOneOnOnePlan = (
 
 /**
  * Work Jev judged needs no written reply, finished with nothing worth reading:
- * the platform marks the message done. The same structural test a reaction
- * answer passes (`isContentlessAfterReacting`) with the plan standing in for
- * the `react` call — and never when the agent already reacted itself, because
- * then its own reaction is the mark.
+ * the platform marks the message done. The same text test a reaction answer
+ * and quietly concluded policy work pass (`isWordless`), with the plan
+ * standing in for the `react` call — and never when the agent already reacted
+ * itself, because then its own reaction is the mark.
  */
 export const isMarkedDone = (
   plan: OneOnOneReplyPlan | undefined,
   reacted: boolean,
   responseText: string,
-): boolean =>
-  plan?.acknowledgeWhenDone === true && !reacted && isContentlessAfterReacting(true, responseText)
+): boolean => plan?.acknowledgeWhenDone === true && !reacted && isWordless(responseText)
 
 /**
  * The earlier message whose reply thread the answer belongs in, when the plan

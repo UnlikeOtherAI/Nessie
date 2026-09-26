@@ -15,6 +15,10 @@ framework; do not go around it.
 
 ## Table of Contents
 
+The [mobile navigation review](mobile-navigation-review.md) records the Ionic
+gesture-engine choice, framework alternatives, licensing and the shared iOS /
+Android transition corrections.
+
 Section numbers are stable: a reference to "§7" in a comment or a lint message
 means section 7, wherever it now lives.
 

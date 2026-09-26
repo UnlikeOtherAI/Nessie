@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { isStackTransitioning } from '../src/navigation/transition-state'
+import { onScreenTransition } from '../src/navigation/screen-bar'
 import {
   mountPhoneNavigationViewport as mount,
   type PhoneNavigationViewportHarness as Harness,
@@ -166,7 +167,8 @@ test('a commit keeps the route on the detail through the settle, then updates it
 
   flick(harness, [[6, 300], [120, 302], [260, 303], [330, 304]])
 
-  await harness.flush(20)
+  // Assert before yielding: a loaded runner may resume a 20ms timer after
+  // the 120ms animation has legitimately finished.
   assert.equal(harness.locationLabel(), '/channels/channel_a', 'still detail during settle')
   assert.equal(
     harness.layer('current')?.dataset.phoneNavigationRoute,
@@ -323,6 +325,57 @@ test('the shared transition signal is raised while a push or a settle runs and c
   harness.touch('touchend', 120, 302)
   assert.equal(isStackTransitioning(), true, 'a released swipe settles under the signal')
   await harness.flush(SETTLE_FALLBACK_MS)
+  assert.equal(isStackTransitioning(), false)
+  await harness.unmount()
+})
+
+test('finger tracking does not render the retained React tree and blocks redirects until release', async () => {
+  let renders = 0
+  const harness = await mount('/channels', { onRender: () => { renders += 1 } })
+  await harness.goTo('/channels/channel_a')
+  await harness.flush(450)
+  harness.touch('touchstart', 6, 300)
+  harness.touch('touchmove', 40, 300)
+  const before = renders
+  harness.touch('touchmove', 80, 301)
+  harness.touch('touchmove', 120, 302)
+  harness.touch('touchmove', 150, 302)
+  assert.equal(renders, before, 'compositor poses do not reconcile retained screens')
+  assert.equal(isStackTransitioning(), true, 'a held swipe defers navigation redirects')
+  harness.touch('touchcancel', 150, 302)
+  await harness.flush(500)
+  assert.equal(isStackTransitioning(), false)
+  await harness.unmount()
+})
+
+test('a cancelled swipe never flashes the previous native header', async () => {
+  const harness = await mount('/channels')
+  await harness.goTo('/channels/channel_a')
+  await harness.flush(450)
+  const transitions: unknown[] = []
+  const unsubscribe = onScreenTransition((value) => transitions.push(value))
+  try {
+    drag(harness, [[6, 300], [80, 302], [110, 302]])
+    await harness.flush(500)
+    assert.equal(harness.locationLabel(), '/channels/channel_a')
+    assert.deepEqual(transitions, [], 'the native bar stayed on the current screen throughout')
+  } finally {
+    unsubscribe()
+    await harness.unmount()
+  }
+})
+
+test('navigation during a held swipe retires its transforms and cannot commit a stale Back', async () => {
+  const harness = await mount('/channels')
+  await harness.goTo('/channels/channel_a')
+  await harness.flush(450)
+  harness.touch('touchstart', 6, 300)
+  harness.touch('touchmove', 240, 300)
+  await harness.goTo('/channels/channel_a/info')
+  harness.touch('touchend', 280, 301)
+  await harness.flush(700)
+  assert.equal(harness.locationLabel(), '/channels/channel_a/info')
+  assert.equal(harness.layer('current')?.style.transform, '')
   assert.equal(isStackTransitioning(), false)
   await harness.unmount()
 })

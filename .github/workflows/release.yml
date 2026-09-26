@@ -12,6 +12,7 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   preflight:
@@ -364,7 +365,7 @@ jobs:
     with:
       source_ref: ${{ github.ref }}
       enable_direct_updater: true
-      require_signed_release: false
+      require_signed_release: true
       run_hyperv_conformance: false
     secrets: inherit
 

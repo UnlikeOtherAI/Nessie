@@ -35,6 +35,8 @@ import { useResolveReactorName } from './useResolveReactorName'
 import { useCollapsedFeedDates } from './useCollapsedFeedDates'
 import { FeedConversationContext } from './feed-conversation'
 import { buildFeedMessageRefs, FeedMessageRefsContext } from './feed-message-refs'
+import { Skeleton } from '../../primitives/Skeleton'
+import { QueryState } from '../../shared/QueryState'
 import { TicketWorkEventRow, ticketWorkEventOf } from '../ticket-work/TicketWorkEventRow'
 
 // Stable identity so a feed without a document facade never re-runs the
@@ -42,6 +44,7 @@ import { TicketWorkEventRow, ticketWorkEventOf } from '../ticket-work/TicketWork
 const EMPTY_DOCUMENT_SESSIONS: DocumentStreamEntry[] = []
 
 export type MessageHistoryStatus = {
+  initialQuery?: { isLoading: boolean; isError: boolean; refetch: () => unknown }
   hasOlder: boolean
   isLoadingOlder: boolean
   olderLoadFailed: boolean
@@ -308,7 +311,16 @@ export const ChannelMessageFeed = ({
           {feedItems.length === 0 &&
           pendingMessages.length === 0 &&
           optimisticMessages.length === 0 ? (
-            emptyState ?? (
+            historyStatus?.initialQuery?.isLoading ? <Skeleton variant="feed" />
+            : historyStatus?.initialQuery?.isError ? (
+              <QueryState
+                errorLabel="Could not load messages."
+                loadingLabel="Loading messages…"
+                query={historyStatus.initialQuery}
+              >
+                {() => null}
+              </QueryState>
+            ) : emptyState ?? (
               <div className="p-5">
                 <div className="admin-card p-4 text-sm text-[color:var(--tx3)]">
                   No messages yet. Send the first message to start this thread.

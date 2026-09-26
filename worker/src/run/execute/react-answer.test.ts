@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { isContentlessAfterReacting } from './working-marker.js'
+import { isContentlessAfterReacting, isWordless } from './working-marker.js'
 
 /**
  * A run that answers with a reaction must not also post its leftover text.
@@ -28,4 +28,13 @@ test('a reaction plus real words is still a message worth posting', () => {
 test('without a reaction nothing is suppressed, whatever the text', () => {
   assert.equal(isContentlessAfterReacting(false, '👍'), false)
   assert.equal(isContentlessAfterReacting(false, ''), false)
+})
+
+test('wordless means no letter and no digit in any script, and nothing more', () => {
+  for (const text of ['', '   ', '✅', ' ✅ ', '👍🎉', '—', '...', '✅.']) {
+    assert.equal(isWordless(text), true, JSON.stringify(text))
+  }
+  for (const text of ['ok', 'hotovo', '收到', 'готово', '✅ zapsáno', '42', '✅ 3 rows']) {
+    assert.equal(isWordless(text), false, JSON.stringify(text))
+  }
 })

@@ -221,8 +221,9 @@ export const prepareWindDownHandover = async (
 /**
  * Enqueue the continuation run planned by `prepareRunStop`. Called AFTER the
  * stopping run has been terminalized, so the (agent, thread) single-run
- * invariant holds; a busy slot means a follow-up run already exists and will
- * pick up the same checkpoint through the ordinary auto-load.
+ * invariant holds; a busy slot makes the continuation wait for it
+ * (`startAutoContinuation`), because the run holding it resumes no checkpoint
+ * it was not handed.
  */
 export const applyRunStopContinuation = async (
   deps: ExecutionDependencies,
@@ -235,9 +236,9 @@ export const applyRunStopContinuation = async (
     const runId = await enqueueAutoContinuation(deps, payload, context, {
       checkpointId: plan.checkpointId,
     })
-    if (runId) {
-      console.log(`[worker] run ${context.run.id} auto-continued as ${runId}`)
-    }
+    console.log(runId
+      ? `[worker] run ${context.run.id} auto-continued as ${runId}`
+      : `[worker] run ${context.run.id} auto-continuation is waiting for its thread`)
   } catch (error) {
     console.error('[worker] failed to enqueue auto-continuation for run', context.run.id, error)
   }

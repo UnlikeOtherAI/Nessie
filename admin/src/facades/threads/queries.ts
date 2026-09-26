@@ -60,6 +60,8 @@ export const threadMessagesInfiniteQueryOptions = (
   ThreadMessageQueryKey,
   string | undefined
 >({
+  staleTime: 30_000,
+  refetchOnWindowFocus: true,
   getNextPageParam: (lastPage) =>
     lastPage.meta?.hasMore ? lastPage.meta.nextCursor ?? undefined : undefined,
   initialPageParam: undefined as string | undefined,

@@ -66,6 +66,20 @@ export const TaskRecordSchema = z.object({
 })
 export type TaskRecord = z.infer<typeof TaskRecordSchema>
 
+/** A board read's server-resolved placement, shared with browser snapshot validation. */
+export const BoardTaskRecordSchema = TaskRecordSchema.extend({
+  columnId: z.string().uuid().nullable(),
+  position: z.number().int().nullable(),
+})
+export type BoardTaskRecord = z.infer<typeof BoardTaskRecordSchema>
+
+export const BoardTasksResponseSchema = z.object({
+  tasks: BoardTaskRecordSchema.array(),
+  /** True when only the most recently updated cards fit the read limit. */
+  truncated: z.boolean(),
+})
+export type BoardTasksResponse = z.infer<typeof BoardTasksResponseSchema>
+
 /**
  * An entitled task plus the board placement the server resolved for it.
  *

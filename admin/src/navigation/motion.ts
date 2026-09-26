@@ -146,6 +146,28 @@ export const stackPoses = (direction: StackDirection, progress: number): StackPo
   }
 }
 
+// Live gesture poses belong to the same motion driver as the release. Ionic
+// calls this once per animation frame; React never owns these inline styles.
+export const holdStackProgress = (
+  top: HTMLElement,
+  bottom: HTMLElement,
+  progress: number,
+): (() => void) => {
+  const dim = bottom.querySelector<HTMLElement>(DIM_SELECTOR)
+  top.style.transform = topAt(progress)
+  top.style.boxShadow = 'var(--nav-shadow)'
+  top.style.willChange = 'transform'
+  bottom.style.transform = bottomAt(progress)
+  if (dim) dim.style.opacity = dimAt(progress)
+  return () => {
+    top.style.removeProperty('transform')
+    top.style.removeProperty('box-shadow')
+    top.style.removeProperty('will-change')
+    bottom.style.removeProperty('transform')
+    dim?.style.removeProperty('opacity')
+  }
+}
+
 // Remaining travel decides the duration, so a tap-driven push (progress 1,
 // forward) takes the full duration and a swipe released near its end settles
 // quickly — but never faster than minSettleMs. Reduced motion is 0 ms through

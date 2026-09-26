@@ -9,6 +9,9 @@ import { useProjects } from '../../facades/projects/hooks'
 import { useMoveTask } from '../../facades/tasks/hooks'
 import { useClearProjectAttention } from '../../facades/alerts/clear-project-attention'
 import { EmptyState } from '../../components/shared/EmptyState'
+import { QueryState } from '../../components/shared/QueryState'
+import { Skeleton } from '../../components/primitives/Skeleton'
+import { Notice } from '../../components/primitives/Notice'
 import { BoardStartWorkDialog } from '../../components/features/ticket-work/BoardStartWorkDialog'
 import { useBoardTicketWork } from '../../facades/ticket-work/hooks'
 import { useBoardChrome } from './useBoardChrome'
@@ -30,10 +33,11 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
   // Agents' ticket work on this board: badges, card dots and the column menu.
   const { data: ticketWork } = useBoardTicketWork(projectId, board?.id)
   const [startWorkColumn, setStartWorkColumn] = useState<BoardColumnView | null>(null)
-  useClearProjectAttention(projectId, 'task_assigned', tasksQuery.isSuccess)
+  useClearProjectAttention(projectId, 'task_assigned', tasksQuery.isSuccess && !tasksQuery.isStale)
 
   const isScrum = board?.style === 'scrum'
-  const { data: iterations = [] } = useIterations(isScrum ? projectId : undefined)
+  const iterationsQuery = useIterations(isScrum ? projectId : undefined)
+  const iterations = iterationsQuery.isPlaceholderData ? [] : iterationsQuery.data ?? []
   const activeIteration = iterations.find((iteration) => iteration.status === 'active')
 
   const projectNameById = useMemo(
@@ -48,6 +52,14 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
   }
 
   if (!board) return null
+  if (tasksQuery.isLoading || (isScrum && (iterationsQuery.isLoading || iterationsQuery.isPlaceholderData))) {
+    return <Skeleton variant="board" />
+  }
+  if (isScrum && iterationsQuery.isError && !iterationsQuery.data) {
+    return <QueryState errorLabel="Could not load sprints." loadingLabel="Loading sprints…" query={iterationsQuery}>
+      {() => null}
+    </QueryState>
+  }
 
   // A scrum board is a window on the active sprint; without one there is
   // nothing for it to show, and the remedy is planning a sprint.
@@ -70,6 +82,12 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
     // so the board reads as tracks running off the screen rather than panels
     // floating above a dead band. Top and sides keep their gutter.
     <div className="flex h-full min-h-0 flex-col gap-3 px-4 pt-4">
+      {tasksQuery.isError && tasksQuery.data ? (
+        <Notice role="alert" tone="warning">
+          Could not refresh this board. Showing the last loaded cards.{' '}
+          <button className="underline" onClick={() => void tasksQuery.refetch()} type="button">Retry</button>
+        </Notice>
+      ) : null}
       {isScrum && activeIteration ? (
         <div className="flex items-center gap-2 text-xs text-[color:var(--tx3)]">
           <span className="font-semibold uppercase tracking-[0.16em]">
@@ -82,12 +100,10 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
         </div>
       ) : null}
       <div className="min-h-0 flex-1">
-        {/* Not QueryState: the recovery here is "Please refresh.", not a Retry
-            button, and there is no loading or empty state to share. */}
-        {tasksQuery.isError ? (
-          <div className="py-10 text-center text-sm text-[color:var(--danger-text)]">
-            Failed to load tasks. Please refresh.
-          </div>
+        {tasksQuery.isError && !tasksQuery.data ? (
+          <QueryState errorLabel="Could not load tasks." loadingLabel="Loading tasks…" query={tasksQuery}>
+            {() => null}
+          </QueryState>
         ) : visibleTasks.length === 0 && tasks.length > 0 ? (
           // Empty columns under a filter would otherwise read as "nobody is
           // working on anything"; the board is not empty, this view is.

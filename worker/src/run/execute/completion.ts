@@ -33,6 +33,8 @@ export const completeRunExecution = async (
     reactionWasTheAnswer?: boolean
     /** One-on-one work finished with nothing worth reading: mark the message done. */
     markedDone?: boolean
+    /** Configured policy work answered with a bare mark: nothing to report. */
+    concludedQuietly?: boolean
     toolCallsUsed: number
   },
 ): Promise<void> => {
@@ -89,13 +91,15 @@ export const completeRunExecution = async (
           messageId: fold.messageId,
           restricted: fold.restricted,
         }
-      } else if (input.responseText.trim().length === 0) {
+      } else if (input.concludedQuietly || input.responseText.trim().length === 0) {
         // Nothing was said, so nothing is posted. An agent that answers with a
         // card has already put its whole turn in the conversation, and an empty
         // bubble behind it is the second message this exists to remove. The
         // test is emptiness and nothing else — a bare "👍" is a real message
         // and is only ever suppressed by the reaction branch above, which knows
-        // the run actually reacted.
+        // the run actually reacted — except for configured policy work, which
+        // is told to answer with a bare mark when it has nothing to report
+        // (`concludesQuietly`).
         delivery = { kind: 'silent' }
       } else {
         const delegatedOwnerId =

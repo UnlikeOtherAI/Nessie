@@ -40,8 +40,17 @@ placement. Custom questions are independent: a message can receive a reaction
 and also start documentation work. Custom work for the same agent is combined
 into one background run, separate from any conversational reply. The reply
 uses the posting person's authority; the configured task uses policy authority
-and remains subject to automation budgets. A background-only run
-is prompted to conclude silently unless it has a useful result or needs help.
+and remains subject to automation budgets. A background-only run that has
+nothing to report ends quietly: it is told to answer with just ✅
+(`POLICY_WORK_QUIET_MARK`), and a run acting under the policy's authority
+(`actionContext.purpose === 'channel.policy'`) whose answer has no letter or
+digit in it posts nothing (`concludesQuietly`,
+`worker/src/run/execute/channel-policy-admission.ts`). A result someone needs,
+a failure or a required action is written in words and posted as usual. It is
+a mark rather than silence because an empty answer is what a failed provider
+looks like — the agent loop asks again — and rather than a tool because the
+old `conclude_silently` tool made providers return empty completions and was
+removed ([rolling-watch-status.md](rolling-watch-status.md)).
 Instructions never grant a tool or bypass its existing approval rules.
 
 Each choice must meet the policy's minimum selected-option probability.
