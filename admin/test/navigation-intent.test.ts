@@ -39,8 +39,8 @@ test('the registry declares the intents the app links with', () => {
   assert.deepEqual(
     [...consumedNames].sort(),
     [
-      'acceptCall', 'code', 'connect', 'create', 'incomingCall', 'messageId', 'pageId', 'scopeProjectId',
-      'spaceId', 'uoa_billing',
+      'acceptCall', 'code', 'connect', 'connected', 'create', 'error', 'incomingCall', 'messageId', 'pageId',
+      'provider', 'scopeProjectId', 'spaceId', 'uoa_billing',
     ],
   )
   assert.deepEqual([...hashNames].sort(), ['confirmationToken'])
@@ -53,12 +53,17 @@ test('the registry declares the intents the app links with', () => {
   }
 })
 
-// The same spelling, a different parameter: the identity provider's OAuth
-// `code` on the sign-in routes, which sit outside the stack and belong to the
-// OAuth protocol rather than to any screen's intent. Security's `?code=` is
-// the pairing link's, and is read through the hooks like every other intent.
-const PROTOCOL_READERS: ReadonlyArray<readonly [path: string, name: string]> = [
+// The same spelling, a different parameter. The identity provider's OAuth
+// `code` and `error` on the sign-in routes sit outside the stack and belong to
+// the OAuth protocol rather than to any screen's intent; Security's `?code=` is
+// the pairing link's, and Connected accounts' `?error=` its own OAuth return's,
+// both read through the hooks like every other intent. AI models' `?provider=`
+// is that page's provider filter — state on its own row — not the provider a
+// Connected accounts OAuth return names.
+const SAME_SPELLING_READERS: ReadonlyArray<readonly [path: string, name: string]> = [
   ['lib/external-auth-callback.ts', 'code'],
+  ['lib/external-auth-callback.ts', 'error'],
+  ['components/features/inference-models/ModelAvailabilitySettings.tsx', 'provider'],
 ]
 
 test('a consumed name is read only through the intent hooks', () => {
@@ -66,7 +71,7 @@ test('a consumed name is read only through the intent hooks', () => {
   for (const { path, text } of sources) {
     if (path === 'navigation/intent.ts') continue
     for (const name of consumedNames) {
-      if (PROTOCOL_READERS.some(([reader, param]) => reader === path && param === name)) continue
+      if (SAME_SPELLING_READERS.some(([reader, param]) => reader === path && param === name)) continue
       const reader = new RegExp(`\\.(?:get|getAll|has)\\((['"])${name}\\1\\)`)
       if (reader.test(text)) offenders.push(`${path}: reads ?${name} directly`)
     }

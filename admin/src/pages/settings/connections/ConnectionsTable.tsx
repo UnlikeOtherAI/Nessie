@@ -46,9 +46,9 @@ const HeaderRow = () => (
 const formatSync = (iso: string | null): string =>
   iso ? new Date(iso).toLocaleString() : 'Never'
 
-// The zebra-striped account table, shared by the Email and Slack tabs. Opening
-// a row lands on that connection's own screen, which owns its permissions,
-// resources and the two destructive controls.
+// The zebra-striped account table, shared by the Mail and calendar and Chat
+// tabs. Opening a row lands on that connection's own screen, which owns its
+// permissions, resources and the two destructive controls.
 export const ConnectionsTable = ({
   connections,
   emptyMessage,

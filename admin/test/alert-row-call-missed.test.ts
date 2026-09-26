@@ -111,6 +111,6 @@ test('local inference health opens the exact owner-only recovery host', () => {
 
   assert.match(html, /Your local Ollama connection needs attention/)
   assert.deepEqual(getAlertLink(alert), {
-    to: '/settings/accounts?tab=inference#local-inference-host-55555555-5555-4555-8555-555555555555',
+    to: '/settings/accounts?tab=ai#local-inference-host-55555555-5555-4555-8555-555555555555',
   })
 })
