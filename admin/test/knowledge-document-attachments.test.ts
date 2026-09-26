@@ -20,17 +20,15 @@ test('document and file details expose attachments inline with list and grid lay
   assert.match(attachments, /Delete \$\{attachment\.filename\}/)
 })
 
-test('document sections use matching headings and the Attachments action focuses its destination', () => {
+test('document sections use matching headings and the Attachments tab shows its panel', () => {
   const attachments = source('../src/components/features/knowledge/AttachmentsDrawer.tsx')
   const comments = source('../src/components/features/knowledge/comments/CommentsSection.tsx')
-  const documentPane = source('../src/components/features/knowledge/KnowledgeDocumentPane.tsx')
+  const preview = source('../src/components/features/knowledge/PagePreview.tsx')
 
   assert.match(attachments, /<SectionLabel as="h2"[^>]*size="2xs">\s*Attachments/)
   assert.match(comments, /<SectionLabel as="h2"[^>]*size="2xs">Comments/)
-  assert.match(attachments, /id="knowledge-page-attachments"[\s\S]*?tabIndex=\{-1\}/)
-  assert.match(documentPane, /section\?\.focus\(\{ preventScroll: true \}\)/)
-  assert.match(documentPane, /section\?\.scrollIntoView\(\{ behavior: 'smooth', block: 'start' \}\)/)
-  assert.match(documentPane, /paneRef\.current\?\.querySelector/)
+  assert.match(preview, /id="knowledge-document-tabpanel-attachments" role="tabpanel"/)
+  assert.match(preview, /activeTab === 'attachments'/)
 })
 
 test('document terminology is consistent across creation and document actions', () => {

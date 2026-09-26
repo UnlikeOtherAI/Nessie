@@ -1,17 +1,21 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   faClockRotateLeft,
+  faComment,
   faDownload,
   faEllipsis,
+  faEye,
   faPaperclip,
   faPen,
   faTable,
   faUpload,
 } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { useTabParam } from '../../../navigation/useTabParam'
 import { downloadAuthedPath, useAuthedObjectUrlFromPath } from '../../../lib/uploads'
-import { versionDownloadPath } from '../../../facades/knowledge/file-hooks'
+import { usePageAttachments, versionDownloadPath } from '../../../facades/knowledge/file-hooks'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { EmptyState } from '../../shared/EmptyState'
 import { RetryableTextFilePreview } from '../../shared/TextFilePreview'
@@ -28,6 +32,15 @@ import { MarkdownFileEditorDialog } from './MarkdownFileEditorDialog'
 import { ZipContents } from './ZipContents'
 import { AttachmentsDrawer } from './AttachmentsDrawer'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
+import { TabBar, type TabBarItem } from '../../primitives/TabBar'
+
+type FileTab = 'preview' | 'attachments' | 'comments'
+const FILE_TABS: ReadonlyArray<TabBarItem<FileTab>> = [
+  { icon: <FontAwesomeIcon icon={faEye} />, label: 'Preview', value: 'preview' },
+  { icon: <FontAwesomeIcon icon={faPaperclip} />, label: 'Attachments', value: 'attachments' },
+  { icon: <FontAwesomeIcon icon={faComment} />, label: 'Comments', value: 'comments' },
+]
+const FILE_TAB_VALUES: readonly FileTab[] = ['preview', 'attachments', 'comments']
 import { taskSetCreatePath, taskSetSourceFormat } from '../../../navigation/task-sets'
 
 // Which filenames can become a workbook is `file-icons.ts`'s answer, because
@@ -50,7 +63,6 @@ type FileNodeViewerProps = {
   onOpenAsSpreadsheet?: () => void
   onSaveMarkdown?: (markdown: string, baseVersionId: string) => Promise<void>
   onUploadVersion: () => void
-  onToggleAttachments: () => void
 }
 
 export const FileNodeViewer = ({
@@ -61,7 +73,6 @@ export const FileNodeViewer = ({
   onOpenHistory,
   onSaveMarkdown,
   onUploadVersion,
-  onToggleAttachments,
 }: FileNodeViewerProps) => {
   const navigate = useNavigate()
   const { token } = useAuthSession()
@@ -77,6 +88,11 @@ export const FileNodeViewer = ({
   const markdownPreview = previewKind === 'text'
     && (Boolean(version?.sourceContentHash) || isMarkdownFilename(page.title))
   const [markdownEditorOpen, setMarkdownEditorOpen] = useState(false)
+  const [activeTab, setActiveTab] = useTabParam('detail', FILE_TAB_VALUES, 'preview')
+  const { data: attachments = [] } = usePageAttachments(page.id)
+  const tabs = useMemo(() => FILE_TABS.map((tab) => tab.value === 'attachments'
+    ? { ...tab, count: attachments.length || undefined }
+    : tab), [attachments.length])
   const [markdownEditorBaseVersionId, setMarkdownEditorBaseVersionId] = useState<string | null>(null)
   // Pin the PDF preview blob's MIME to application/pdf so a file with an
   // attacker-controlled content-type (e.g. text/html bytes named "x.pdf") can
@@ -101,15 +117,6 @@ export const FileNodeViewer = ({
     previewMime,
   )
   const headerActions: PageHeaderAction[] = [
-    {
-      compact: true,
-      icon: faPaperclip,
-      id: 'attachments',
-      label: 'Attachments',
-      onSelect: onToggleAttachments,
-      priority: 60,
-      title: 'Show attachments',
-    },
     {
       compact: true,
       icon: faClockRotateLeft,
@@ -188,10 +195,14 @@ export const FileNodeViewer = ({
   return (
     <KnowledgePane
       actions={headerActions}
+      below={(
+        <TabBar ariaLabel="File sections" idPrefix="knowledge-file" items={tabs} onChange={setActiveTab} value={activeTab} />
+      )}
       onBack={onBack}
       title={page.title}
     >
-      <div className="mx-auto my-8 w-full max-w-4xl px-4">
+      {activeTab === 'preview' ? (
+        <div aria-labelledby="knowledge-file-tab-preview" id="knowledge-file-tabpanel-preview" role="tabpanel" className="mx-auto my-8 w-full max-w-4xl px-4">
         {version ? (
           <p className="mb-4 text-xs text-[color:var(--tx3)]">Version {version.versionNumber}</p>
         ) : null}
@@ -291,6 +302,9 @@ export const FileNodeViewer = ({
           )}
         </div>
 
+        </div>
+      ) : activeTab === 'attachments' ? (
+        <div aria-labelledby="knowledge-file-tab-attachments" id="knowledge-file-tabpanel-attachments" role="tabpanel" className="mx-auto my-8 w-full max-w-4xl px-4">
         <AttachmentsDrawer
           canWrite={canWrite}
           inline
@@ -298,9 +312,12 @@ export const FileNodeViewer = ({
           open
           pageId={page.id}
         />
-
+        </div>
+      ) : (
+        <div aria-labelledby="knowledge-file-tab-comments" id="knowledge-file-tabpanel-comments" role="tabpanel" className="mx-auto my-8 w-full max-w-4xl px-4">
         <CommentsSection canResolve={canWrite} pageId={page.id} />
-      </div>
+        </div>
+      )}
       {markdownEditorOpen && markdownEditorBaseVersionId && onSaveMarkdown ? (
         <MarkdownFileEditorDialog
           baseVersionId={markdownEditorBaseVersionId}

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { getCookie } from '../../../lib/storage'
 import { useTabParam } from '../../../navigation/useTabParam'
 import { useUploadFileVersion } from '../../../facades/knowledge/file-hooks'
@@ -60,7 +60,6 @@ export const KnowledgeDocumentPane = ({
   const [versionDialogOpen, setVersionDialogOpen] = useState(false)
   const [versionProgress, setVersionProgress] = useState<UploadProgress | null>(null)
   const [versionError, setVersionError] = useState<string | null>(null)
-  const paneRef = useRef<HTMLDivElement>(null)
   // Tree keeps the hierarchy beside the detail, so an extra Back button in
   // the detail header would duplicate the navigation already on screen.
   const [storedView] = useState(() => migrateStoredFinderView(getCookie(FINDER_VIEW_COOKIE)))
@@ -70,14 +69,8 @@ export const KnowledgeDocumentPane = ({
   const convertToSpreadsheet = useConvertToSpreadsheet(selectedSpaceId)
   const fileVersionUpload = useUploadFileVersion(page.id, selectedSpaceId)
 
-  const showAttachments = () => {
-    const section = paneRef.current?.querySelector<HTMLElement>('#knowledge-page-attachments')
-    section?.focus({ preventScroll: true })
-    section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
   return (
-    <div className="relative h-full w-full" ref={paneRef}>
+    <div className="relative h-full w-full">
       {page.kind === 'spreadsheet' ? (
         <Suspense
           fallback={
@@ -106,7 +99,6 @@ export const KnowledgeDocumentPane = ({
               file: new File([markdown], page.title, { type: 'text/markdown' }),
             })
           }}
-          onToggleAttachments={showAttachments}
           onUploadVersion={() => setVersionDialogOpen(true)}
           page={page}
         />
@@ -126,7 +118,6 @@ export const KnowledgeDocumentPane = ({
             if (index >= 0) openPagePath(breadcrumbPages.slice(0, index + 1).map((item) => item.id))
           }}
           onPublish={() => publishPage(page.id)}
-          onToggleAttachments={showAttachments}
           page={fullPage ?? page}
           publishPending={publishPending}
           spaceName={spaceName}
