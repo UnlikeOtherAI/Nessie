@@ -11,9 +11,9 @@ import { client, ids } from './transport'
 import '../../src/styles.css'
 
 const scenario = new URLSearchParams(location.search).get('scenario') ?? 'create'
-const entry = scenario === 'create' ? '/agents/task-sets/new'
+const entry = scenario === 'create' ? '/admin/automations/batch-jobs/new'
   : scenario === 'source' ? taskSetCreatePath({ pageId: ids.page, versionId: ids.version, format: 'xlsx' })
-    : scenario === 'list' ? '/agents/task-sets' : taskSetPath(ids.set)
+    : scenario === 'list' ? '/admin/automations?tab=batch-jobs' : taskSetPath(ids.set)
 const query = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
 
 createRoot(document.getElementById('root')!).render(
@@ -23,9 +23,9 @@ createRoot(document.getElementById('root')!).render(
         <LocalBackProvider>
           <main className="h-dvh bg-[var(--bg)] text-[color:var(--tx)]">
             <Routes>
-              <Route element={<TaskSetsPage />} path="/agents/task-sets" />
-              <Route element={<TaskSetCreatePage />} path="/agents/task-sets/new" />
-              <Route element={<TaskSetDetailPage />} path="/agents/task-sets/:taskSetId" />
+              <Route element={<TaskSetsPage />} path="/admin/automations" />
+              <Route element={<TaskSetCreatePage />} path="/admin/automations/batch-jobs/new" />
+              <Route element={<TaskSetDetailPage />} path="/admin/automations/batch-jobs/:taskSetId" />
             </Routes>
           </main>
         </LocalBackProvider>

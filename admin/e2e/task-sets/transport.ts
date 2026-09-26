@@ -19,7 +19,7 @@ const processors: TaskSetProcessorOption[] = [{
 }, {
   id: 'setup', label: 'Local model needs consent', provider: 'local/ollama', model: 'unbound',
   source: 'local', resourceLabel: null, available: false, reason: 'Requires exact model consent.',
-  setupUrl: '/agents/executors',
+  setupUrl: '/admin/computers',
 }, {
   id: 'hosted', label: 'Hosted research model', provider: 'openai', model: 'research',
   source: 'ledger', resourceLabel: null, available: true, reason: null, setupUrl: null,

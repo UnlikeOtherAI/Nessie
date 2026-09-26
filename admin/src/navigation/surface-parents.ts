@@ -3,38 +3,47 @@ import type { SurfaceParent } from './page-types'
 export const toChannels = (): SurfaceParent => ({ label: 'Back to Channels', pathname: '/channels' })
 export const toProjects = (): SurfaceParent => ({ label: 'Back to Projects', pathname: '/projects' })
 export const toKnowledge = (): SurfaceParent => ({ label: 'Back to Knowledge', pathname: '/knowledge-base' })
-export const toAdmin = (): SurfaceParent => ({ label: 'Back to Admin', pathname: '/settings' })
-export const toApps = (): SurfaceParent => ({ label: 'Apps', pathname: '/apps' })
-export const toAgents = (): SurfaceParent => ({ label: 'Back to Agents', pathname: '/agents' })
-export const toExecutors = (): SurfaceParent => ({
-  label: 'Back to Executors',
-  pathname: '/agents/executors',
+
+// ── Admin (the rail's section) ─────────────────────────────────────────────
+export const toAdmin = (): SurfaceParent => ({ label: 'Back to Admin', pathname: '/admin' })
+export const toAgents = (): SurfaceParent => ({ label: 'Back to Agents', pathname: '/admin/agents' })
+export const toApps = (): SurfaceParent => ({ label: 'Apps', pathname: '/admin/apps' })
+export const toComputers = (): SurfaceParent => ({
+  label: 'Back to Computers',
+  pathname: '/admin/computers',
 })
-export const toTools = (): SurfaceParent => ({
-  label: 'Back to Tools',
-  pathname: '/agents/tools',
+export const toComputerSessions = (): SurfaceParent => ({
+  label: 'Sessions',
+  pathname: '/admin/computers/sessions',
 })
-export const toTriggers = (): SurfaceParent => ({
-  label: 'Back to Triggers',
-  pathname: '/agents/triggers',
+export const toAutomations = (): SurfaceParent => ({
+  label: 'Back to Automations',
+  pathname: '/admin/automations',
 })
-export const toWorkflows = (): SurfaceParent => ({
-  label: 'Back to Workflows',
-  pathname: '/agents/workflows',
+export const toTeams = (): SurfaceParent => ({ label: 'Back to Teams', pathname: '/admin/teams' })
+export const toOrganizationSecurity = (): SurfaceParent => ({
+  label: 'Back to Security',
+  pathname: '/admin/security',
 })
-export const toConnections = (): SurfaceParent => ({
+export const toToolRegistry = (): SurfaceParent => ({
+  label: 'Back to Tool registry',
+  pathname: '/admin/advanced/tools',
+})
+
+// ── Your settings (the avatar menu's pages) ────────────────────────────────
+export const toSettings = (): SurfaceParent => ({
+  label: 'Back to Your settings',
+  pathname: '/settings',
+})
+export const toConnectedAccounts = (): SurfaceParent => ({
   label: 'Back to Connected accounts',
-  pathname: '/settings/connections',
+  pathname: '/settings/accounts',
 })
-export const toPairedAgents = (): SurfaceParent => ({
-  label: 'Back to Paired agents',
-  pathname: '/settings/paired-agents',
+export const toSettingsSecurity = (): SurfaceParent => ({
+  label: 'Back to Security',
+  pathname: '/settings/security',
 })
-export const toOrganizationPairedAgents = (): SurfaceParent => ({
-  label: 'Back to Paired agents',
-  pathname: '/settings/organization/paired-agents',
-})
-export const toStatuses = (): SurfaceParent => ({
-  label: 'Back to Statuses',
-  pathname: '/settings/statuses',
+export const toStatus = (): SurfaceParent => ({
+  label: 'Back to Status',
+  pathname: '/settings/status',
 })

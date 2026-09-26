@@ -24,7 +24,7 @@ import { stubResizeObserver } from './support/resize-observer-stub'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   pretendToBeVisual: true,
-  url: 'http://localhost:5455/settings/members',
+  url: 'http://localhost:5455/admin/people',
 })
 stubResizeObserver(dom.window as unknown as Window & typeof globalThis)
 
@@ -137,7 +137,7 @@ const mount = async (element: ReturnType<typeof h>, post: Post) => {
     root.render(h(QueryClientProvider, { client: queryClient },
       h(AuthSessionProvider, null,
         h(ApiClientProvider, { client: client as unknown as Parameters<typeof ApiClientProvider>[0]['client'] },
-          h(MemoryRouter, { initialEntries: ['/settings/members'] },
+          h(MemoryRouter, { initialEntries: ['/admin/people'] },
             h(ToastProvider, null, element))))))
   })
   await settle()

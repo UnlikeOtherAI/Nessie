@@ -88,7 +88,7 @@ requires. The dedicated starting-state renderer used for this verification is
 separate and passed.
 
 A live pairing to `https://api.nessie.works` still requires the normal
-authenticated Executors surface and human fingerprint confirmation. It has not
+authenticated Admin › Computers surface and human fingerprint confirmation. It has not
 yet been performed and is not implied by the native, installer, pipe, or
 renderer evidence above.
 
@@ -111,8 +111,8 @@ Checked on 2026-09-07 from the `test/executor-test-environment` worktree.
 - The installed Nessie Desktop app is unsigned version 0.1.0.
 - No standalone Nessie Executor MSI, Windows service, tray process, or
   `nessie-executor` command is installed.
-- The authenticated local Executors page renders an empty list and its Pair
-  executor form. It initially showed a Vite cold-load skeleton and recovered on
+- The authenticated local Admin › Computers page renders an empty list and its Pair a
+  computer form. It initially showed a Vite cold-load skeleton and recovered on
   reload; no API error was established.
 - A private executor was created through that authenticated local form without
   an agent assignment. Its source pairing must target `http://127.0.0.1:5454`.

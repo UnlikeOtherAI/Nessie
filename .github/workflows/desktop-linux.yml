@@ -31,6 +31,7 @@ jobs:
           sudo apt-get install --yes \
             libwebkit2gtk-4.1-dev \
             build-essential \
+            musl-tools \
             curl \
             wget \
             file \
@@ -96,7 +97,13 @@ jobs:
         run: pnpm --dir desktop run tauri:build:linux
 
       - name: Build the standalone executor package
-        run: node executor/packaging/linux/build-deb.mjs
+        run: |
+          sh executor/packaging/linux/install-nfpm.sh "$RUNNER_TEMP/executor-tools"
+          export PATH="$RUNNER_TEMP/executor-tools:$PATH"
+          rustup target add x86_64-unknown-linux-musl
+          cargo build --release --target x86_64-unknown-linux-musl --manifest-path executor/native/Cargo.toml
+          export NESSIE_EXECUTOR_NATIVE_HELPER_PATH=executor/native/target/x86_64-unknown-linux-musl/release/nessie-executor-native
+          node executor/packaging/linux/build-deb.mjs
 
       - name: Collect artifacts and checksums
         run: |
@@ -108,13 +115,7 @@ jobs:
           sha256sum ./*.deb ./*.AppImage > SHA256SUMS
           cat SHA256SUMS
 
-      # Repository signing of the apt metadata is out of scope here: the release
-      # key's custody is not yet written down. When it is, the step signs the
-      # `Release` file with the private key held in the `NESSIE_APT_SIGNING_KEY`
-      # secret (and its passphrase in `NESSIE_APT_SIGNING_KEY_PASSPHRASE`) before
-      # the artifacts are published.
-      # - name: Sign apt repository metadata
-      #   run: scripts/sign-apt-release.sh
+      # Production CLI repository signing belongs to executor-cli.yml.
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -276,6 +277,9 @@ jobs:
       - name: The packaged hypervisor and guest payload run on this host
         run: |
           set -euo pipefail
+          sh executor/packaging/linux/install-nfpm.sh "$RUNNER_TEMP/executor-tools"
+          export PATH="$RUNNER_TEMP/executor-tools:$PATH"
+          cargo build --release --manifest-path executor/native/Cargo.toml
           node executor/packaging/linux/build-deb.mjs
           sudo apt-get install --yes ./dist/nessie-executor_*.deb
           # Root ownership is the Linux trust root: only an administrator can

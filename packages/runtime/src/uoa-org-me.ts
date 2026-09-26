@@ -32,8 +32,11 @@ const readsFor = (deps: Omit<UoaOrgRequestDeps, 'subjectAssertion'>): InFlightRe
  * credential epoch that start while one is already in flight share that read:
  * its answer (or refusal, or outage) is what each of them would have received.
  * Nothing outlives the read — a caller that arrives after it settles asks UOA
- * again — so revocation stays exactly as fresh as it was, and a changed epoch
- * is a different key.
+ * again, and a changed epoch is a different key. A caller that joins a read
+ * already in flight receives the answer UOA gave when that read began, which
+ * can be up to one UOA round trip older than its own arrival (bounded by the
+ * request timeout in `uoa-org-request.ts`): revocation freshness degrades by
+ * at most that window, never more.
  */
 export const readUoaOrgMe = (
   settings: UoaDelegatedIdentitySettings,

@@ -6,7 +6,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
  * "Instance super-admin access required" — one sentence, one derivation,
  * mirroring `OwnerGate.tsx`'s shape one tier up.
  *
- * `/ops` reads deployment-wide worker, queue and dead-job state that has no
+ * System health (`/admin/advanced/health`) reads deployment-wide worker, queue and dead-job state that has no
  * tenant column, so it is gated on the named instance-wide role rather than
  * on being an owner of some organisation. Before this, `OpsHealthPage` asked
  * that question inline (`me?.user.superAdmin ?? false`) with its own bespoke

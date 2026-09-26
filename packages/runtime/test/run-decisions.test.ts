@@ -6,7 +6,10 @@ import {
   COMPLETION_MINIMUM_PROBABILITY,
   completionDigest,
   judgeAnswerComplete,
+  judgePreparedOutcome,
   judgeWatchDisposition,
+  PREPARED_OUTCOME_MINIMUM_PROBABILITY,
+  type PersonTurnPredicate,
   type RunDecisionEvaluator,
 } from '../src/run-decisions.js'
 
@@ -44,8 +47,11 @@ const transcript: ProviderMessage[] = [
   { role: 'system', content: 'loop instruction' },
 ]
 
+/** Every `user` turn in these transcripts is the person's own, unless a test says otherwise. */
+const byPerson: PersonTurnPredicate = () => true
+
 test('the completion digest carries the request, its lead-in, the work and the answer — not the system prompt', () => {
-  const digest = completionDigest(transcript, 'Hotovo, obě zaúčtované.')
+  const digest = completionDigest(transcript, 'Hotovo, obě zaúčtované.', byPerson)!
 
   assert.equal(digest.latest_request, 'jo, obě, díky')
   assert.deepEqual(digest.conversation_before_it, [
@@ -69,7 +75,7 @@ test('a long turn keeps its latest work inside Jev\'s input limit and says how m
     })
     long.push({ role: 'tool', toolCallId: `c${index}`, content: 'y'.repeat(2_000) })
   }
-  const digest = completionDigest(long, 'Hotovo.')
+  const digest = completionDigest(long, 'Hotovo.', byPerson)!
   const steps = digest.work_this_turn as Array<{ arguments: string }>
 
   assert.ok(Buffer.byteLength(JSON.stringify(digest), 'utf8') <= 18_000)
@@ -80,16 +86,16 @@ test('a long turn keeps its latest work inside Jev\'s input limit and says how m
 
 test('only a sure "complete" skips the generative review', async () => {
   const sure = answering({ completion: ['complete', COMPLETION_MINIMUM_PROBABILITY] })
-  assert.equal(await judgeAnswerComplete(sure.evaluate, transcript, 'Hotovo.'), true)
+  assert.equal(await judgeAnswerComplete(sure.evaluate, transcript, 'Hotovo.', byPerson), true)
   assert.deepEqual(Object.keys(sure.seen[0]!.questions.completion!.criteria), ['complete', 'unfinished'])
 
   const unsure = answering({ completion: ['complete', 0.85] })
-  assert.equal(await judgeAnswerComplete(unsure.evaluate, transcript, 'Hotovo.'), null)
+  assert.equal(await judgeAnswerComplete(unsure.evaluate, transcript, 'Hotovo.', byPerson), null)
   // Even a sure "unfinished" goes to the generative review: its reason is what the run is told.
   const unfinished = answering({ completion: ['unfinished', 0.99] })
-  assert.equal(await judgeAnswerComplete(unfinished.evaluate, transcript, 'Hned to udělám.'), null)
+  assert.equal(await judgeAnswerComplete(unfinished.evaluate, transcript, 'Hned to udělám.', byPerson), null)
   const failing: RunDecisionEvaluator = async () => { throw new Error('timeout') }
-  assert.equal(await judgeAnswerComplete(failing, transcript, 'Hotovo.'), null)
+  assert.equal(await judgeAnswerComplete(failing, transcript, 'Hotovo.', byPerson), null)
 })
 
 test('a watch disposition is Jev\'s only when it is sure', async () => {
@@ -103,4 +109,31 @@ test('a watch disposition is Jev\'s only when it is sure', async () => {
   assert.equal(await judgeWatchDisposition(unsure.evaluate, 'asi ok?'), null)
   const failing: RunDecisionEvaluator = async () => { throw new Error('timeout') }
   assert.equal(await judgeWatchDisposition(failing, 'cokoli'), null)
+})
+
+test('a tool’s pictures are never taken for the request', () => {
+  const pictures: ProviderMessage = { role: 'user', content: '[screenshot of the dashboard]' }
+  const withPictures: ProviderMessage[] = [...transcript, pictures]
+  const notPictures: PersonTurnPredicate = (message) => message !== pictures
+  const digest = completionDigest(withPictures, 'Hotovo.', notPictures)!
+
+  assert.equal(digest.latest_request, 'jo, obě, díky')
+  assert.equal((digest.work_this_turn as unknown[]).length, 2)
+  // With no turn the person wrote left, there is nothing faithful to judge against.
+  assert.equal(completionDigest(withPictures, 'Hotovo.', () => false), null)
+})
+
+test('a prepared call counts as done only when Jev is sure its result shows it', async () => {
+  const call = { arguments: { day: 'friday' }, result: '{"booked":true}', tool: 'room_book' }
+  const done = answering({ call_1: ['done', PREPARED_OUTCOME_MINIMUM_PROBABILITY] })
+  assert.equal(await judgePreparedOutcome(done.evaluate, [call]), true)
+  assert.deepEqual(Object.keys(done.seen[0]!.questions.call_1!.criteria), ['done', 'not_done'])
+
+  // A refusal returned as ordinary output is exactly what this catches.
+  const refused = answering({ call_1: ['not_done', 0.97] })
+  assert.equal(await judgePreparedOutcome(refused.evaluate, [{ ...call, result: 'You cannot modify this project.' }]), false)
+  assert.equal(await judgePreparedOutcome(answering({ call_1: ['done', 0.8] }).evaluate, [call]), false)
+  const failing: RunDecisionEvaluator = async () => { throw new Error('timeout') }
+  assert.equal(await judgePreparedOutcome(failing, [call]), false)
+  assert.equal(await judgePreparedOutcome(done.evaluate, []), false)
 })

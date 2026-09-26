@@ -31,7 +31,8 @@ test('the rail item carries aria-current through the shared helper', () => {
 test('every section-sidebar row file wires sidebarAriaCurrent alongside its active class', () => {
   const files = [
     '../src/layouts/admin-shell/SidebarNav.tsx',
-    '../src/layouts/admin-shell/AdminSidebarNav.tsx',
+    // The Admin groups and the Your settings list draw one row between them.
+    '../src/layouts/admin-shell/SidebarNavLink.tsx',
     // Knowledge has no secondary sidebar any more: the Documents Finder's own
     // root column is the section's first column, and its rows are
     // `role="option"` with `aria-selected` rather than sidebar rows with an

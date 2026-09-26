@@ -159,7 +159,7 @@ export const AgentEmailSection = ({
         )}
         <Link
           className="mt-1 inline-flex text-sm text-[color:var(--lnk)] hover:underline"
-          to={`/agents/${agentId}/mailbox`}
+          to={`/admin/agents/${agentId}/mailbox`}
         >
           Open mailbox
         </Link>

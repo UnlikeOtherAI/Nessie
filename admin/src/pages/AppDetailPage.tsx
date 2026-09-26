@@ -19,7 +19,7 @@ import { useConsumedIntent } from '../navigation/intent'
 import { useTabParam } from '../navigation/useTabParam'
 
 /**
- * One app, as a full page at `/apps/:slug`.
+ * One app, as a full page at `/admin/apps/:slug`.
  *
  * A page rather than a drawer, for the reason the agent detail page settled on
  * the same shape: a connected app is a durable object with durable substates
@@ -63,9 +63,9 @@ export const AppDetailPage = () => {
   // Apps owns this detail's immediate parent, and every layout resolves Back
   // through the shell's one ledger-aware action (docs/navigation/overview.md
   // §4) — the labelled Apps doorway, an edge swipe and Android hardware Back
-  // included. Navigating to a bare `/apps` instead, as the wide layouts used
+  // included. Navigating to a bare `/admin/apps` instead, as the wide layouts used
   // to, threw away the state the catalogue keeps in its URL: someone who
-  // switched to All, opened a card and pressed Back landed on a `/apps` with
+  // switched to All, opened a card and pressed Back landed on a `/admin/apps` with
   // no `?filter=`, which the page then answered with the remembered view. A
   // pop returns to the exact entry the person left. Outside the shell (a page
   // rendered in isolation) the declared parent is all there is.
@@ -74,7 +74,7 @@ export const AppDetailPage = () => {
       phoneNavigation.performBack()
       return
     }
-    void navigate('/apps')
+    void navigate('/admin/apps')
   }
 
   // One header for every state of this screen — loading, not found, and the
@@ -116,7 +116,7 @@ export const AppDetailPage = () => {
     <div className="flex h-full min-w-0 flex-col overflow-x-hidden">
       {header}
       {/*
-        Full-bleed to match /apps and the agents detail page. The reading
+        Full-bleed to match /admin/apps and the agent page. The reading
         measure that a centred column was providing belongs on the prose
         itself — AppDetailHero caps its description — not on the whole page,
         which also has to hold a capability table and an accounts list that

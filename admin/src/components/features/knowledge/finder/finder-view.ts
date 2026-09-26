@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SetURLSearchParams } from 'react-router-dom'
 import { faColumns, faList, faSitemap, type IconDefinition } from '@fortawesome/free-solid-svg-icons'
+import { Columns3, List, ListTree, type LucideIcon } from 'lucide-react'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import { getCookie, getStoredJson, setStoredJson } from '../../../../lib/storage'
 import type { ColumnResizeConfig } from '../../../shared/column-browser/ColumnBrowserColumn'
@@ -44,24 +45,28 @@ export const migrateStoredFinderView = (stored: string | null | undefined): Find
 
 export const finderViewOptions: Array<{
   icon: IconDefinition
+  outlineIcon: LucideIcon
   label: string
   title: string
   value: FinderView
 }> = [
   {
     icon: faSitemap,
+    outlineIcon: ListTree,
     label: 'Tree',
     title: 'Browse all folders in one guided tree',
     value: 'tree',
   },
   {
     icon: faColumns,
+    outlineIcon: Columns3,
     label: 'Columns',
     title: 'Browse folders in sliding columns',
     value: 'columns',
   },
   {
     icon: faList,
+    outlineIcon: List,
     label: 'List',
     title: 'One folder at a time, with size, date and kind',
     value: 'list',

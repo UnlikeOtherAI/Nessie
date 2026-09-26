@@ -44,7 +44,7 @@ try {
     await page.screenshot({ path: resolve(output, 'inventory-' + width + '.png'), fullPage: true })
     if (width === 390) await row.tap()
     else { await row.focus(); await page.keyboard.press('Enter') }
-    await page.waitForURL('**/agents/executors/' + executorId)
+    await page.waitForURL('**/admin/computers/' + executorId)
     assert.equal(attentionRequests, 0)
     assert.deepEqual(errors, [])
     await context.close()

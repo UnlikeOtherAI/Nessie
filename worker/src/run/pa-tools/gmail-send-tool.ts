@@ -67,7 +67,7 @@ export const runGmailDraftSendTool = async (
     throw new Error(
         'I need approval before sending that. Open the draft in Mail and use '
         + 'its Send button, or let me send on your behalf from '
-        + '/settings/connections.',
+        + '/settings/accounts.',
     )
   }
   const encryptionSecret = context.atRestEncryptionKeyRing

@@ -1,7 +1,6 @@
 import type { DemonstrationRecord } from '../../../facades/demonstrations/hooks'
 import type { WorkflowTemplateRecord } from '../../../lib/api-client'
 import type { PagedList } from '../../../facades/pagination/usePagedList'
-import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 import { Pill } from '../../primitives/Pill'
 import { Skeleton } from '../../primitives/Skeleton'
 import { ColumnBrowserColumn } from '../../shared/column-browser/ColumnBrowserColumn'
@@ -38,9 +37,7 @@ type WorkflowsListColumnProps = {
   demonstrations: DemonstrationRecord[]
   failedRunsCount: number
   filteredTemplates: WorkflowTemplateRecord[]
-  isWorkflowAdmin: boolean
   onImported: (template: WorkflowTemplateRecord) => void
-  onNewWorkflow: () => void
   onSelectTemplate: (template: WorkflowTemplateRecord) => void
   onShowDemonstrationDrafts: () => void
   onShowFailedRuns: () => void
@@ -52,17 +49,16 @@ type WorkflowsListColumnProps = {
 }
 
 /**
- * The route's own screen: the workflow templates list, with the two
+ * The Workflows tab's first column: the workflow templates list, with the two
  * cross-template drill-down doorways ("What failed?", "Demonstration
- * drafts") and the search field that narrows it.
+ * drafts") and the search field that narrows it. Automations owns the screen's
+ * header and its New workflow action, so this column is a section of it.
  */
 export const WorkflowsListColumn = ({
   demonstrations,
   failedRunsCount,
   filteredTemplates,
-  isWorkflowAdmin,
   onImported,
-  onNewWorkflow,
   onSelectTemplate,
   onShowDemonstrationDrafts,
   onShowFailedRuns,
@@ -72,23 +68,9 @@ export const WorkflowsListColumn = ({
   sortedTemplatesCount,
   templatesList,
 }: WorkflowsListColumnProps) => {
-  const actions: PageHeaderAction[] | undefined = isWorkflowAdmin
-    ? [
-      {
-        id: 'new-workflow',
-        label: 'New workflow',
-        onSelect: onNewWorkflow,
-        primary: true,
-        priority: 100,
-      },
-    ]
-    : undefined
-
   return (
     <ColumnBrowserColumn
-      actions={actions}
       key="workflows"
-      screen
       title={`Workflows (${templatesList.total ?? sortedTemplatesCount})`}
     >
       <button

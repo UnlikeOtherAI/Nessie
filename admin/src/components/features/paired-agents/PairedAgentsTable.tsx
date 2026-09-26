@@ -45,7 +45,7 @@ const TableFrame = ({ children }: { children: React.ReactNode }) => (
   <ExpandableTable
     className="overflow-hidden rounded-xl border border-[color:var(--sep)]"
     expandable={false}
-    label="Paired agents table"
+    label="Programs table"
   >
     <table className="admin-table w-full border-collapse">{children}</table>
   </ExpandableTable>
@@ -70,7 +70,7 @@ export const PairedAgentsTable = ({
   const header = (
     <thead>
       <tr className="border-b border-[color:var(--sep)]">
-        <th className={`${headerClass} pl-4`} scope="col">Agent</th>
+        <th className={`${headerClass} pl-4`} scope="col">Program</th>
         <th className={headerClass} scope="col">Status</th>
         {showOwner ? (
           <th className={`${headerClass} hidden md:table-cell`} scope="col">Works as</th>

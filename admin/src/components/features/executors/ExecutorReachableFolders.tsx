@@ -34,7 +34,7 @@ export const ExecutorReachableFolders = ({
     return (
       <p className="mt-1 text-[color:var(--tx2)]">
         <span className="font-medium text-[color:var(--tx)]">Folders:</span>{' '}
-        one folder; its name was not provided by this older machine setup.
+        one folder; its name was not provided by this older computer setup.
       </p>
     )
   }
@@ -49,7 +49,7 @@ export const ExecutorReachableFolders = ({
       {refusesGuestSessions
         ? (
           <span className="text-[color:var(--warning-text)]">
-            {' '}— running programs or coding requires selecting a single folder on the machine.
+            {' '}— running programs or coding requires selecting a single folder on the computer.
           </span>
         )
         : null}

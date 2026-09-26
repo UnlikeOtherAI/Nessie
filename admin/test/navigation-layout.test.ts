@@ -59,9 +59,9 @@ test('on split, a root shares the stack floor with its details and in-parent nes
   // A nested screen with its own page still pushes inside the column. A status
   // joined them when it became its own route component: it used to be drawn by
   // the list page in a second column, which is what `splitInline` is for.
-  assert.equal(surfaceScreen('/settings/statuses/s1', 'split')?.depth, 2)
-  assert.equal(surfaceScreen('/agents/a1', 'split')?.depth, 2)
-  assert.equal(surfaceScreen('/apps/slack', 'split')?.depth, 2)
+  assert.equal(surfaceScreen('/settings/status/s1', 'split')?.depth, 2)
+  assert.equal(surfaceScreen('/admin/agents/a1', 'split')?.depth, 2)
+  assert.equal(surfaceScreen('/admin/apps/slack', 'split')?.depth, 2)
 })
 
 test('on split, root → detail swaps in place and detail → nested pushes inside the column', () => {
@@ -71,12 +71,12 @@ test('on split, root → detail swaps in place and detail → nested pushes insi
   assert.equal(getPhoneNavigationDirection('/channels', '/channels/c1', 'split'), null)
   assert.equal(getPhoneNavigationDirection('/channels/c1', '/channels/c1/info', 'split'), null)
 
-  const agents = createPhoneNavigationStack('/agents', 'agents', 'split')
-  const agent = advancePhoneNavigationStack(agents, '/agents/a1', 'a1', 'split')
+  const agents = createPhoneNavigationStack('/admin/agents', 'agents', 'split')
+  const agent = advancePhoneNavigationStack(agents, '/admin/agents/a1', 'a1', 'split')
   assert.equal(agent.entries.length, 2)
   assert.equal(agent.currentIndex, 1)
-  assert.equal(getPhoneNavigationDirection('/agents', '/agents/a1', 'split'), 'forward')
-  assert.equal(getPhoneNavigationDirection('/agents/a1', '/agents', 'split'), 'back')
+  assert.equal(getPhoneNavigationDirection('/admin/agents', '/admin/agents/a1', 'split'), 'forward')
+  assert.equal(getPhoneNavigationDirection('/admin/agents/a1', '/admin/agents', 'split'), 'back')
   // The same routes on a phone keep their declared shape.
   assert.equal(getPhoneNavigationDirection('/channels', '/channels/c1'), 'forward')
 })
@@ -90,7 +90,7 @@ test('the shell mounts the split stack in its detail column with no edge swipe',
 
 test('a cold start seeds the parent chain beneath the landed route, nearest first', () => {
   assert.deepEqual(surfaceSeedChain('/channels/c1/info/members'), ['/channels/c1/info', '/channels/c1', '/channels'])
-  assert.deepEqual(surfaceSeedChain('/agents/a1'), ['/agents', '/settings'])
+  assert.deepEqual(surfaceSeedChain('/admin/agents/a1'), ['/admin/agents', '/admin'])
   // A dashboard is `parent: 'origin'` — reached from the project's Overview as
   // well as its Dashboards list — so a cold start seeds only its section root
   // and the ledger supplies the real predecessor. It used to be a Knowledge
@@ -100,11 +100,13 @@ test('a cold start seeds the parent chain beneath the landed route, nearest firs
   assert.deepEqual(surfaceSeedChain('/channels'), [], 'a root seeds nothing')
   // An origin screen's real predecessor is unknowable on a cold link: it
   // seeds only its section root.
-  assert.deepEqual(surfaceSeedChain('/alerts'), ['/settings'])
-  assert.deepEqual(surfaceSeedChain('/ops/usage'), ['/settings'])
+  assert.deepEqual(surfaceSeedChain('/alerts'), ['/admin'])
+  // A Your settings page is the same: its root is the Your settings list.
+  assert.deepEqual(surfaceSeedChain('/settings/profile'), ['/settings'])
+  assert.deepEqual(surfaceSeedChain('/admin/usage'), ['/admin'])
   // On split a root shares the floor with its details, so only strictly
   // shallower screens are seeded.
-  assert.deepEqual(surfaceSeedChain('/agents/a1', 'split'), ['/agents'])
+  assert.deepEqual(surfaceSeedChain('/admin/agents/a1', 'split'), ['/admin/agents'])
   assert.deepEqual(surfaceSeedChain('/channels/c1', 'split'), [])
   assert.deepEqual(surfaceSeedChain('/channels/c1/info', 'split'), [])
 })

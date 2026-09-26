@@ -22,7 +22,7 @@ import { ChannelPersonalAssistantPresences } from './ChannelPersonalAssistantPre
  * on a DM was the shared-tab mistake this split undoes.
  *
  * Identity and tools are the same `AgentIdentityBlock` and
- * `AgentAvailableTools` that `/agents/:id` renders — the tools card therefore
+ * `AgentAvailableTools` that `/admin/agents/:id` renders — the tools card therefore
  * carries the editor's switches and everyone else's read-only resolution
  * without a second implementation of either. Editing is a link to that page,
  * not a second designer.
@@ -61,7 +61,7 @@ export const ChannelAgentPanel = ({
           <div className="flex flex-shrink-0 items-center gap-2">
             <button
               className="admin-button admin-button-secondary"
-              onClick={() => void navigate(`/agents/${agent.id}`)}
+              onClick={() => void navigate(`/admin/agents/${agent.id}`)}
               type="button"
             >
               Open agent
@@ -70,7 +70,7 @@ export const ChannelAgentPanel = ({
               <button
                 className="admin-button admin-button-primary"
                 data-testid="channel-agent-edit"
-                onClick={() => void navigate(`/agents/${agent.id}?agentTab=edit`)}
+                onClick={() => void navigate(`/admin/agents/${agent.id}?agentTab=edit`)}
                 type="button"
               >
                 Edit agent

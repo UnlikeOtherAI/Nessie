@@ -51,7 +51,7 @@ export const formatChannelMarkdownLink = (channel: { id: string; label: string }
   `[#${markdownLinkText(channel.label)}](${buildChannelLink(channel.id)})`
 
 export const formatAgentMarkdownLink = (agent: { id: string; name: string }): string =>
-  `[${markdownLinkText(agent.name)}](/agents/${agent.id})`
+  `[${markdownLinkText(agent.name)}](/admin/agents/${agent.id})`
 
 export const formatProjectMarkdownLink = (project: { id: string; name: string }): string =>
   `[${markdownLinkText(project.name)}](/projects/${project.id})`
@@ -65,7 +65,7 @@ export const formatBoardMarkdownLink = (board: { id: string; name: string; proje
 // agent_trigger_update and agent_trigger_delete take, as an agent link's is
 // the agentId.
 export const formatTriggerMarkdownLink = (trigger: { id: string; name: string }): string =>
-  `[${markdownLinkText(trigger.name)}](/agents/triggers/${trigger.id})`
+  `[${markdownLinkText(trigger.name)}](/admin/automations/triggers/${trigger.id})`
 
 // A reply-thread deep link is always anchored to the ROOT of its thread
 // (`Message.rootMessageId ?? Message.id` — the same resolution the worker

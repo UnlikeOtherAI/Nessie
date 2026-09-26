@@ -25,6 +25,8 @@ export type DeploymentModelsTableProps = {
   pendingPair: string | null
   /** The last test result, keyed `provider/model`, rendered in its own row. */
   testResults: Record<string, { latencyMs: number; message: string; ok: boolean }>
+  /** Present when Test is not this viewer's: the button stays, disabled, saying who can. */
+  testUnavailableReason?: string
   testingPair: string | null
   togglePending: boolean
 }
@@ -71,6 +73,7 @@ export const DeploymentModelsTable = ({
   onToggle,
   pendingPair,
   testResults,
+  testUnavailableReason,
   testingPair,
   togglePending,
 }: DeploymentModelsTableProps) => {
@@ -141,8 +144,9 @@ export const DeploymentModelsTable = ({
               <td className="w-24 px-3 py-2.5 align-middle">
                 <button
                   className="admin-button admin-button-secondary admin-button-compact"
-                  disabled={testingPair !== null}
+                  disabled={testingPair !== null || Boolean(testUnavailableReason)}
                   onClick={() => onTest(model)}
+                  title={testUnavailableReason}
                   type="button"
                 >
                   {testingPair === id ? 'Testing…' : 'Test'}

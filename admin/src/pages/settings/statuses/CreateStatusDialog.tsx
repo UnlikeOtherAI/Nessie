@@ -43,7 +43,7 @@ export const CreateStatusDialog = ({ onClose, open }: CreateStatusDialogProps) =
         label: label.trim(),
       })
       close()
-      void navigate(`/settings/statuses/${created.id}`)
+      void navigate(`/settings/status/${created.id}`)
     } catch (cause) {
       const { fieldErrors, formError } = toFormErrors(cause)
       setError(fieldErrors.label ?? formError ?? 'Failed to create status.')

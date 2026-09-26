@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 
 /**
- * The research-brief suite's `/apps/deep-water` walks beyond the happy cancel:
+ * The research-brief suite's `/admin/apps/deep-water` walks beyond the happy cancel:
  * an owner's cancel DeepWater accepted and then could not carry out, the same
  * for an owner who may not read the research, and a readiness verdict the
  * admin could not read.

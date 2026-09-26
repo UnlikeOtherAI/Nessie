@@ -40,7 +40,7 @@ export const AgentOwnerCell = ({
 
   if (!owner) {
     return (
-      <span className="text-xs text-[color:var(--tx3)]">Team-owned</span>
+      <span className="text-xs text-[color:var(--tx3)]">Managed by the team</span>
     )
   }
 

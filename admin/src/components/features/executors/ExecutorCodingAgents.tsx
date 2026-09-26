@@ -26,7 +26,7 @@ const CLAUDE_MODE_LABEL: Record<string, string> = {
   acceptEdits: 'accept edits',
   auto: 'auto mode',
   bypassPermissions: 'bypasses permissions',
-  default: 'its own settings on the machine',
+  default: 'its own settings on the computer',
   dontAsk: 'denies what is not pre-allowed',
   manual: 'manual approval',
   plan: 'plan mode',
@@ -36,7 +36,7 @@ const CLAUDE_MODE_LABEL: Record<string, string> = {
 const CODEX_MODE_LABEL: Record<string, string> = {
   approveForMe: 'approves its own requests',
   bypassApprovalsAndSandbox: 'no approvals and no sandbox',
-  default: 'its own settings on the machine',
+  default: 'its own settings on the computer',
   fullAuto: 'full auto',
 }
 
@@ -107,7 +107,7 @@ export const ExecutorCodingAgents = ({ codingSessions }: ExecutorCodingAgentsPro
   return (
     <div className="mt-1 grid gap-0.5 text-[color:var(--tx2)]">
       <p>
-        <span className="font-medium text-[color:var(--tx)]">Coding agents on this machine:</span>{' '}
+        <span className="font-medium text-[color:var(--tx)]">Coding agents on this computer:</span>{' '}
         {describeExecutorCodingAgents(codingSessions)}
       </p>
       {quota ? <p>{quota}</p> : null}
@@ -116,7 +116,7 @@ export const ExecutorCodingAgents = ({ codingSessions }: ExecutorCodingAgentsPro
         <p>Given the variables {listed(codingSessions.environmentNames)}.</p>
       ) : null}
       <p className="text-[color:var(--tx3)]">
-        They work as this machine’s user, with its files and logins. Configuration{' '}
+        They work as this computer’s user, with its files and logins. Configuration{' '}
         <span className="font-mono" title={codingSessions.configDigest}>
           {codingSessions.configDigest.slice(0, 'sha256:'.length + 12)}…
         </span>

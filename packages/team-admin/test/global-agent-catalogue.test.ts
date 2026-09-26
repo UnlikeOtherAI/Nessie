@@ -244,7 +244,7 @@ test('no plan linked names the providers and the settings surface, never this ch
   assert.match(rendered, /This person has linked no plan of their own/)
   // Generated from the adapters a person can link, not remembered.
   assert.match(rendered, /Kimi for Coding/)
-  assert.match(rendered, /Settings → Connected accounts \(\/settings\/connections\)/)
+  assert.match(rendered, /Your settings › Connected accounts › AI plans \(\/settings\/accounts\?tab=ai\)/)
   assert.match(rendered, /never into this chat/)
 })
 
@@ -398,7 +398,7 @@ test('an unreadable executor list says so rather than claiming there are none', 
 test('a deployment with no reachable executor sends the person to pairing', () => {
   const rendered = block({ executors: [] })
   assert.match(rendered, /no executor you can reach/)
-  assert.match(rendered, /\/agents\/executors/)
+  assert.match(rendered, /\/admin\/computers/)
   // "None" is a fact, not a failed read.
   assert.doesNotMatch(rendered, /could not be read just now. Say/)
 })
@@ -530,7 +530,7 @@ test('a face that holds no tools states the rule without naming one', () => {
   for (const writeSurface of ['designer_form', 'read_only'] as const) {
     const rendered = block({ executors: [executor()], writeSurface })
     assert.match(rendered, /whole-suite and never a per-operation pick/)
-    assert.match(rendered, /confirmation happens on the Executors page or its chat card/)
+    assert.match(rendered, /confirmation happens on the Computers page or its chat card/)
     // The restricted section may still name the tool with its reason — that is
     // the catalogue doing its job. What must not appear is an instruction to
     // call it.

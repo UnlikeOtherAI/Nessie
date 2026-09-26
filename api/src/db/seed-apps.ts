@@ -291,7 +291,7 @@ export const seedAppStoreListings = async (
     await prisma.mcpCatalogEntry.update({
       where: { id: entry.id },
       data: {
-        // `slug` is the immutable public identity behind `/apps/:slug`: a link
+        // `slug` is the immutable public identity behind `/admin/apps/:slug`: a link
         // already in somebody's hands has to keep resolving, so the seed fills
         // it only where the row has none. The store migration backfilled it
         // from `name` for everything that predates it; rows created afterwards

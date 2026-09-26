@@ -161,6 +161,10 @@ WebViews whose embedded PDF viewer can show an empty `<iframe>`. The viewer
 draws one page at a time and offers page controls and the existing Download
 action. The fetched blob MIME remains pinned to `application/pdf`; uploaded
 bytes are passed as data to PDF.js and never run as page scripts.
+The fingerprinted PDF.js worker is an `.mjs` asset. The production admin
+nginx configuration must serve it as `text/javascript`: its default
+`application/octet-stream` response, paired with `nosniff`, prevented Safari
+from starting the worker and made every PDF show the generic preview error.
 
 Signed URLs stay out of scope. Auth is bearer-only, so `<img src>` cannot carry
 credentials and the blob/object-URL approach stands. With immutable cache headers

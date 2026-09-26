@@ -1,9 +1,12 @@
 import { Suspense, type ComponentType, type ReactElement } from 'react'
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, useLocation } from 'react-router-dom'
+import { resolveRootLandingPath } from './facades/billing/checkout-return'
+import { consumeDesktopPendingPath } from './lib/desktop'
+import { readNativePendingPushPath } from './lib/native-shell'
+import { usePhoneLayout } from './navigation/mobile-shell'
 import { AdminShellLayout } from './layouts/AdminShellLayout'
 import { RootLayout } from './layouts/RootLayout'
 import { RedirectRoute } from './navigation/RedirectRoute'
-import { AgentAccessRedirect, RootRouteRedirect, SettingsRootRoute } from './router-redirects'
 import { Skeleton, type SkeletonVariant } from './components/primitives/Skeleton'
 import { BootstrapPage } from './pages/BootstrapPage'
 import { ChannelsPage } from './pages/ChannelsPage'
@@ -16,14 +19,17 @@ import {
   AgentMailboxPage,
   AgentsPage,
   AlertsPage,
-  NewsPage,
   AnnouncementsPage,
   AppDetailPage,
+  AppearancePage,
   AppsPage,
-  AuditLogPage,
+  AutomationsPage,
+  BillingPage,
   BoardSettingsPage,
   ChannelConversationComposePage,
   ChannelProjectOverviewPage,
+  CompanyConnectionsPage,
+  ComputersPage,
   ConnectedMailPage,
   ConnectionDetailPage,
   ConnectionsPage,
@@ -31,18 +37,20 @@ import {
   ExecutorDetailPage,
   ExecutorSessionPage,
   ExecutorSessionsPage,
-  ExecutorsPage,
   FeedbackPage,
+  KeysPage,
   KnowledgeBasePage,
+  ModelsPage,
+  NewsPage,
+  NotificationsPage,
   OperationalTelemetryPage,
   OpsHealthPage,
-  OrganizationModelsPage,
+  OrganizationPage,
   OrganizationPairedAgentDetailPage,
-  OrganizationPairedAgentsPage,
-  OrganizationSecretsPage,
-  OrganizationSettingsPage,
+  OrganizationSecurityPage,
   PairedAgentDetailPage,
-  PairedAgentsPage,
+  PeoplePage,
+  PersonalUsagePage,
   PolicyPage,
   ProjectBoardsPage,
   ProjectDashboardPage,
@@ -52,26 +60,22 @@ import {
   PushCredentialsPage,
   SearchPage,
   SecretsPage,
-  SettingsMembersPage,
+  SecurityPage,
+  SessionDebugPage,
+  SettingsProfilePage,
   StatusDetailPage,
   StatusesPage,
-  TeamMembersPage,
-  TeamModelsPage,
-  TeamSecretsPage,
-  TeamSettingsPage,
+  TaskSetCreatePage,
+  TaskSetDetailPage,
+  TeamPage,
+  TeamsPage,
   ThreadsPage,
-  TokenUsagePage,
   ToolDetailPage,
   ToolsPage,
   TriggerDetailPage,
-  TriggersPage,
   UnreadMessagesPage,
-  UserSettingsPage,
   WorkflowDesignerPage,
-  WorkflowsPage,
-  TaskSetsPage,
-  TaskSetCreatePage,
-  TaskSetDetailPage,
+  YourComputersPage,
 } from './router-lazy-pages'
 
 // Every route below is imported eagerly except the seven eager names above:
@@ -105,6 +109,27 @@ const lazyElement = (Component: ComponentType, variant: SkeletonVariant): ReactE
 )
 
 
+const RootRouteRedirect = () => {
+  const { search } = useLocation()
+  // The native shell injects a tapped notification route before this SPA
+  // starts. Resolve it here, rather than first redirecting to /channels and
+  // replacing the notification destination with the default conversation.
+  return (
+    <RedirectRoute
+      to={resolveRootLandingPath(search, readNativePendingPushPath() ?? consumeDesktopPendingPath())}
+    />
+  )
+}
+
+// `/admin` and `/settings` are list roots (docs/navigation/overview.md §1): on
+// a phone the section's list is the page, which the shell draws in place of
+// this route's element; a wider layout pins that list beside the detail
+// column, so the route forwards to the list's first page.
+const ContextualListRoute = ({ to }: { to: string }) => {
+  const phoneLayout = usePhoneLayout()
+  return phoneLayout ? null : <RedirectRoute to={to} />
+}
+
 export const router = createBrowserRouter([
   {
     element: <RootLayout />,
@@ -124,47 +149,6 @@ export const router = createBrowserRouter([
   {
     path: '/login/completing',
     element: <ExternalAuthCompletionPage />,
-  },
-  {
-    path: '/workflows',
-    element: <RedirectRoute to="/agents/workflows" />,
-  },
-  {
-    path: '/chats',
-    element: <RedirectRoute to="/channels" />,
-  },
-  {
-    // Tool management consolidated onto the canonical /agents/tools registry;
-    // these redirects keep old bookmarks and the mobile WebView shell working.
-    path: '/workflows/tools',
-    element: <RedirectRoute to="/agents/tools" />,
-  },
-  {
-    path: '/settings/tools',
-    element: <RedirectRoute to="/agents/tools" />,
-  },
-  {
-    // /settings/agents folded into the Agents browser (/agents) + designer.
-    path: '/settings/agents',
-    element: <RedirectRoute to="/agents" />,
-  },
-  {
-    // Profile, Security, Notifications and Appearance are now tabs of one
-    // account settings screen; these keep existing bookmarks working.
-    path: '/settings/profile',
-    element: <RedirectRoute to="/settings/account?tab=profile" />,
-  },
-  {
-    path: '/settings/security',
-    element: <RedirectRoute to="/settings/account?tab=security" />,
-  },
-  {
-    path: '/settings/notifications',
-    element: <RedirectRoute to="/settings/account?tab=notifications" />,
-  },
-  {
-    path: '/settings/appearance',
-    element: <RedirectRoute to="/settings/account?tab=appearance" />,
   },
   {
     // A document in a window of its own: the desktop shell's double-tap
@@ -225,21 +209,54 @@ export const router = createBrowserRouter([
           { path: ':channelId' },
         ],
       },
-      { path: '/projects', element: lazyElement(ProjectsIndexPage, 'list') },
-      { path: '/projects/directory', element: lazyElement(ProjectDirectoryPage, 'list') },
-      { path: '/projects/:projectId', element: lazyElement(ProjectView, 'board') },
-      { path: '/projects/:projectId/board', element: lazyElement(ProjectView, 'board') },
-      { path: '/projects/:projectId/boards', element: lazyElement(ProjectBoardsPage, 'list') },
+      {
+        path: '/projects',
+        element: lazyElement(ProjectsIndexPage, 'list'),
+      },
+      {
+        path: '/projects/directory',
+        element: lazyElement(ProjectDirectoryPage, 'list'),
+      },
+      {
+        path: '/projects/:projectId',
+        element: lazyElement(ProjectView, 'board'),
+      },
+      {
+        path: '/projects/:projectId/board',
+        element: lazyElement(ProjectView, 'board'),
+      },
+      {
+        path: '/projects/:projectId/boards',
+        element: lazyElement(ProjectBoardsPage, 'list'),
+      },
       {
         path: '/projects/:projectId/boards/:boardId/settings',
         element: lazyElement(BoardSettingsPage, 'detail'),
       },
-      { path: '/projects/:projectId/backlog', element: lazyElement(ProjectView, 'board') },
-      { path: '/projects/:projectId/insights', element: lazyElement(ProjectView, 'board') },
-      { path: '/projects/:projectId/docs', element: lazyElement(ProjectView, 'board') },
-      { path: '/projects/:projectId/executors', element: lazyElement(ProjectView, 'board') },
-      { path: '/projects/:projectId/settings', element: lazyElement(ProjectView, 'board') },
-      { path: '/projects/:projectId/dashboards', element: lazyElement(ProjectView, 'board') },
+      {
+        path: '/projects/:projectId/backlog',
+        element: lazyElement(ProjectView, 'board'),
+      },
+      {
+        path: '/projects/:projectId/insights',
+        element: lazyElement(ProjectView, 'board'),
+      },
+      {
+        path: '/projects/:projectId/docs',
+        element: lazyElement(ProjectView, 'board'),
+      },
+      {
+        path: '/projects/:projectId/executors',
+        element: lazyElement(ProjectView, 'board'),
+      },
+      {
+        path: '/projects/:projectId/settings',
+        element: lazyElement(ProjectView, 'board'),
+      },
+      {
+        path: '/projects/:projectId/dashboards',
+        element: lazyElement(ProjectView, 'board'),
+      },
       {
         // One dashboard, full screen — its own page rather than a project tab,
         // because it is what the Overview's live tiles open into and it takes
@@ -248,92 +265,32 @@ export const router = createBrowserRouter([
         element: lazyElement(ProjectDashboardPage, 'board'),
       },
       {
-        path: '/agents',
-        element: lazyElement(AgentsPage, 'list'),
-      },
-      {
-        // /work folded into the project Kanban menu; redirect kept for the
-        // shipped mobile WebView shell, which may deep-link the old path.
-        path: '/work',
-        element: <RedirectRoute to="/projects" />,
-      },
-      { path: '/knowledge-base', element: lazyElement(KnowledgeBasePage, 'list') },
-      { path: '/knowledge-base/latest', element: lazyElement(KnowledgeBasePage, 'list') },
-      { path: '/knowledge-base/shared-with-me', element: lazyElement(KnowledgeBasePage, 'list') },
-      { path: '/knowledge-base/agents', element: lazyElement(KnowledgeBasePage, 'list') },
-      { path: '/knowledge-base/agents/:agentId', element: lazyElement(KnowledgeBasePage, 'list') },
-      { path: '/knowledge-base/spaces/:spaceId', element: lazyElement(KnowledgeBasePage, 'list') },
-      {
-        path: '/knowledge-base/views/:productView',
+        path: '/knowledge-base',
         element: lazyElement(KnowledgeBasePage, 'list'),
       },
       {
-        path: '/agents/designer',
-        element: lazyElement(AgentDesignerPage, 'detail'),
+        path: '/knowledge-base/latest',
+        element: lazyElement(KnowledgeBasePage, 'list'),
       },
       {
-        path: '/agents/designer/:agentId',
-        element: lazyElement(AgentDesignerPage, 'detail'),
+        path: '/knowledge-base/shared-with-me',
+        element: lazyElement(KnowledgeBasePage, 'list'),
       },
       {
-        path: '/agents/workflow-designer',
-        element: lazyElement(WorkflowDesignerPage, 'detail'),
+        path: '/knowledge-base/agents',
+        element: lazyElement(KnowledgeBasePage, 'list'),
       },
       {
-        path: '/agents/workflow-designer/:workflowTemplateId',
-        element: lazyElement(WorkflowDesignerPage, 'detail'),
+        path: '/knowledge-base/agents/:agentId',
+        element: lazyElement(KnowledgeBasePage, 'list'),
       },
       {
-        path: '/agents/triggers',
-        element: lazyElement(TriggersPage, 'list'),
+        path: '/knowledge-base/spaces/:spaceId',
+        element: lazyElement(KnowledgeBasePage, 'list'),
       },
       {
-        path: '/agents/triggers/:triggerId',
-        element: lazyElement(TriggerDetailPage, 'detail'),
-      },
-      {
-        path: '/agents/workflows',
-        element: lazyElement(WorkflowsPage, 'list'),
-      },
-      {
-        path: '/agents/task-sets',
-        element: lazyElement(TaskSetsPage, 'list'),
-      },
-      {
-        path: '/agents/task-sets/new',
-        element: lazyElement(TaskSetCreatePage, 'detail'),
-      },
-      {
-        path: '/agents/task-sets/:taskSetId',
-        element: lazyElement(TaskSetDetailPage, 'detail'),
-      },
-      {
-        path: '/agents/tools',
-        element: lazyElement(ToolsPage, 'list'),
-      },
-      {
-        path: '/agents/tools/:toolId',
-        element: lazyElement(ToolDetailPage, 'detail'),
-      },
-      {
-        path: '/agents/executors',
-        element: lazyElement(ExecutorsPage, 'list'),
-      },
-      {
-        path: '/agents/executors/:executorId',
-        element: lazyElement(ExecutorDetailPage, 'detail'),
-      },
-      {
-        path: '/agents/executors/:executorId/sessions/:sessionId',
-        element: lazyElement(ExecutorSessionPage, 'detail'),
-      },
-      {
-        path: '/agents/executor-sessions',
-        element: lazyElement(ExecutorSessionsPage, 'detail'),
-      },
-      {
-        path: '/agents/:agentId/mailbox',
-        element: lazyElement(AgentMailboxPage, 'feed'),
+        path: '/knowledge-base/views/:productView',
+        element: lazyElement(KnowledgeBasePage, 'list'),
       },
       { path: '/mail', element: lazyElement(ConnectedMailPage, 'feed') },
       { path: '/mail/:source/:accountId', element: lazyElement(ConnectedMailPage, 'feed') },
@@ -342,140 +299,95 @@ export const router = createBrowserRouter([
         element: lazyElement(ConnectedMailPage, 'feed'),
       },
       { path: '/mail/:source/:accountId/compose', element: lazyElement(ConnectedMailPage, 'feed') },
+
+      // ── Admin: the rail's section ─────────────────────────────────────────
+      { path: '/admin', element: <ContextualListRoute to="/admin/agents" /> },
+      // Agents — everyone's first group: agents, apps, computers, automations.
+      { path: '/admin/agents', element: lazyElement(AgentsPage, 'list') },
+      { path: '/admin/agents/designer', element: lazyElement(AgentDesignerPage, 'detail') },
+      { path: '/admin/agents/designer/:agentId', element: lazyElement(AgentDesignerPage, 'detail') },
+      { path: '/admin/agents/:agentId', element: lazyElement(AgentDetailPage, 'detail') },
+      { path: '/admin/agents/:agentId/mailbox', element: lazyElement(AgentMailboxPage, 'feed') },
+      { path: '/admin/apps', element: lazyElement(AppsPage, 'board') },
+      { path: '/admin/apps/:slug', element: lazyElement(AppDetailPage, 'detail') },
+      { path: '/admin/computers', element: lazyElement(ComputersPage, 'list') },
+      { path: '/admin/computers/sessions', element: lazyElement(ExecutorSessionsPage, 'detail') },
+      { path: '/admin/computers/:executorId', element: lazyElement(ExecutorDetailPage, 'detail') },
       {
-        // Dynamic agent id last: static siblings above outrank it in the
-        // router's ranking, so `/agents/triggers` etc. still resolve to their
-        // own pages while a real agent id lands on the detail page.
-        path: '/agents/:agentId',
-        element: lazyElement(AgentDetailPage, 'detail'),
+        path: '/admin/computers/:executorId/sessions/:sessionId',
+        element: lazyElement(ExecutorSessionPage, 'detail'),
+      },
+      { path: '/admin/automations', element: lazyElement(AutomationsPage, 'list') },
+      {
+        path: '/admin/automations/triggers/:triggerId',
+        element: lazyElement(TriggerDetailPage, 'detail'),
       },
       {
-        path: '/apps',
-        element: lazyElement(AppsPage, 'board'),
+        path: '/admin/automations/batch-jobs/new',
+        element: lazyElement(TaskSetCreatePage, 'detail'),
       },
       {
-        path: '/apps/:slug',
-        element: lazyElement(AppDetailPage, 'detail'),
+        path: '/admin/automations/batch-jobs/:taskSetId',
+        element: lazyElement(TaskSetDetailPage, 'detail'),
       },
       {
-        path: '/settings',
-        element: <SettingsRootRoute />,
+        path: '/admin/automations/workflows/designer',
+        element: lazyElement(WorkflowDesignerPage, 'detail'),
       },
       {
-        path: '/settings/account',
-        element: lazyElement(UserSettingsPage, 'detail'),
+        path: '/admin/automations/workflows/designer/:workflowTemplateId',
+        element: lazyElement(WorkflowDesignerPage, 'detail'),
       },
+      // Organisation — the organisation's administration.
+      { path: '/admin/people', element: lazyElement(PeoplePage, 'list') },
+      { path: '/admin/teams', element: lazyElement(TeamsPage, 'list') },
+      { path: '/admin/teams/:teamId', element: lazyElement(TeamPage, 'detail') },
+      { path: '/admin/organisation', element: lazyElement(OrganizationPage, 'detail') },
+      { path: '/admin/models', element: lazyElement(ModelsPage, 'list') },
+      { path: '/admin/connections', element: lazyElement(CompanyConnectionsPage, 'detail') },
+      { path: '/admin/keys', element: lazyElement(KeysPage, 'list') },
+      { path: '/admin/usage', element: lazyElement(OperationalTelemetryPage, 'detail') },
+      { path: '/admin/billing', element: lazyElement(BillingPage, 'detail') },
+      { path: '/admin/security', element: lazyElement(OrganizationSecurityPage, 'list') },
       {
-        path: '/settings/secrets',
-        element: lazyElement(SecretsPage, 'list'),
-      },
-      {
-        path: '/settings/organization',
-        element: lazyElement(OrganizationSettingsPage, 'detail'),
-      },
-      {
-        path: '/settings/team',
-        element: lazyElement(TeamSettingsPage, 'detail'),
-      },
-      {
-        path: '/settings/team/members',
-        element: lazyElement(TeamMembersPage, 'list'),
-      },
-      {
-        path: '/settings/team/models',
-        element: lazyElement(TeamModelsPage, 'list'),
-      },
-      {
-        path: '/settings/team/secrets',
-        element: lazyElement(TeamSecretsPage, 'list'),
-      },
-      {
-        path: '/settings/organization/models',
-        element: lazyElement(OrganizationModelsPage, 'list'),
-      },
-      {
-        path: '/settings/organization/paired-agents',
-        element: lazyElement(OrganizationPairedAgentsPage, 'list'),
-      },
-      {
-        path: '/settings/organization/paired-agents/:credentialId',
+        path: '/admin/security/programs/:credentialId',
         element: lazyElement(OrganizationPairedAgentDetailPage, 'detail'),
       },
+      // Advanced — folded shut, for owners and instance operators.
+      { path: '/admin/advanced/tools', element: lazyElement(ToolsPage, 'list') },
+      { path: '/admin/advanced/tools/:toolId', element: lazyElement(ToolDetailPage, 'detail') },
+      { path: '/admin/advanced/access-rules', element: lazyElement(PolicyPage, 'detail') },
+      { path: '/admin/advanced/announcements', element: lazyElement(AnnouncementsPage, 'detail') },
+      { path: '/admin/advanced/health', element: lazyElement(OpsHealthPage, 'detail') },
+      { path: '/admin/advanced/push', element: lazyElement(PushCredentialsPage, 'list') },
+      { path: '/admin/advanced/debug', element: lazyElement(SessionDebugPage, 'detail') },
+
+      // ── Your settings: the avatar menu's pages ────────────────────────────
+      { path: '/settings', element: <ContextualListRoute to="/settings/profile" /> },
+      { path: '/settings/profile', element: lazyElement(SettingsProfilePage, 'detail') },
+      { path: '/settings/notifications', element: lazyElement(NotificationsPage, 'detail') },
+      { path: '/settings/appearance', element: lazyElement(AppearancePage, 'detail') },
+      { path: '/settings/status', element: lazyElement(StatusesPage, 'list') },
+      { path: '/settings/status/:statusId', element: lazyElement(StatusDetailPage, 'detail') },
+      { path: '/settings/accounts', element: lazyElement(ConnectionsPage, 'list') },
       {
-        path: '/settings/organization/secrets',
-        element: lazyElement(OrganizationSecretsPage, 'list'),
-      },
-      {
-        path: '/settings/statuses',
-        element: lazyElement(StatusesPage, 'list'),
-      },
-      {
-        path: '/settings/statuses/:statusId',
-        element: lazyElement(StatusDetailPage, 'detail'),
-      },
-      {
-        path: '/settings/connections',
-        element: lazyElement(ConnectionsPage, 'list'),
-      },
-      {
-        path: '/settings/connections/:connectionId',
+        path: '/settings/accounts/:connectionId',
         element: lazyElement(ConnectionDetailPage, 'detail'),
       },
+      { path: '/settings/computers', element: lazyElement(YourComputersPage, 'list') },
+      { path: '/settings/keys', element: lazyElement(SecretsPage, 'list') },
+      { path: '/settings/usage', element: lazyElement(PersonalUsagePage, 'detail') },
+      { path: '/settings/security', element: lazyElement(SecurityPage, 'detail') },
       {
-        path: '/settings/paired-agents',
-        element: lazyElement(PairedAgentsPage, 'list'),
-      },
-      {
-        path: '/settings/paired-agents/:credentialId',
+        path: '/settings/security/programs/:credentialId',
         element: lazyElement(PairedAgentDetailPage, 'detail'),
       },
-      {
-        // The old path. An agent that printed a verification URI before this
-        // rename is still holding it, and a person following one deserves the
-        // page rather than a 404 — the code in the query survives the redirect.
-        path: '/settings/agent-access',
-        element: <AgentAccessRedirect />,
-      },
-      {
-        path: '/settings/members',
-        element: lazyElement(SettingsMembersPage, 'list'),
-      },
-      {
-        path: '/settings/push',
-        element: lazyElement(PushCredentialsPage, 'list'),
-      },
-      {
-        path: '/audit',
-        element: lazyElement(AuditLogPage, 'list'),
-      },
+
       {
         path: '/alerts',
         element: lazyElement(AlertsPage, 'list'),
       },
-      {
-        path: '/news',
-        element: lazyElement(NewsPage, 'list'),
-      },
-      {
-        path: '/settings/announcements',
-        element: lazyElement(AnnouncementsPage, 'detail'),
-      },
-      {
-        path: '/tokens',
-        element: lazyElement(TokenUsagePage, 'detail'),
-      },
-      {
-        path: '/policy',
-        element: lazyElement(PolicyPage, 'detail'),
-      },
-      {
-        path: '/ops',
-        element: lazyElement(OpsHealthPage, 'detail'),
-      },
-      {
-        path: '/ops/usage',
-        element: lazyElement(OperationalTelemetryPage, 'detail'),
-      },
+      { path: '/news', element: lazyElement(NewsPage, 'list') },
       {
         path: '/search',
         element: lazyElement(SearchPage, 'list'),

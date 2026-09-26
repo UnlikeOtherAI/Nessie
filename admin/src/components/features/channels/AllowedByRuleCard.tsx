@@ -74,7 +74,7 @@ export const AllowedByRuleCard = ({
         )}{' '}
         <Link
           className="font-semibold text-[color:var(--accent)]"
-          to="/settings/connections"
+          to="/settings/accounts"
         >
           Change this
         </Link>

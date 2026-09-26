@@ -1,8 +1,8 @@
 # Executor management reads and agent access
 
 The executor detail surface owns **Agents**, **Sessions**, **Permissions** and
-**Activity**. Its doorways are the inventory, account menu and project Executors
-tab. [Executor sharing](../standards/executor-sharing.md) is authoritative for
+**Activity**. Its doorways are the computers lists (Admin › Computers and Your
+settings › Your computers) and a project's Computers tab. [Executor sharing](../standards/executor-sharing.md) is authoritative for
 direct agent assignment, people/project/team sharing and immediate signed
 capability reports. There is no permission-review badge or queue.
 
@@ -72,10 +72,10 @@ change it follows.
 The holder's surface is the composer whose messages would carry the lease, and
 no other: a chip — "Minis · local apps · until 21:40 · End" — inside the
 toolbar, so the composer at rest stays one line. In a conversation with the
-agent (`wholeThread`) that is the main composer, beside **Run on executor**;
-where its toolbar has no room the chip folds into a dot on Run on executor. A
+agent (`wholeThread`) that is the main composer, beside **Run on a computer**;
+where its toolbar has no room the chip folds into a dot on Run on a computer. A
 launch in an ordinary room carries only in its own reply thread, so its chip is
-in that reply panel's composer, which has no Run on executor and keeps the chip
+in that reply panel's composer, which has no Run on a computer and keeps the chip
 at every width, its label giving way first; the room's main composer shows
 nothing, since a top-level post would not carry it. The launcher dialog lists
 every one of the holder's leases in the thread with its End. The
@@ -136,8 +136,9 @@ out-of-order presence frames are harmless: the UI compares `updatedAt`, and
 in-flight older REST reads cannot overwrite newer presence. The browser does
 not poll the inventory to maintain status.
 
-Verification: `admin`'s `test:e2e:executor-menu` exercises the live socket,
-reconnection, both submenu directions, status combinations, navigation and
-empty actions. It is part of the requested Browser Suites workflow alongside
-executor pairing. Database tests cover private-assignment and membership
-boundaries; API fan-out tests cover revocation on both live lanes.
+Verification: no browser suite walks the live socket on the computers lists
+yet. The account menu's suite, `test:e2e:executor-menu`, was removed together
+with the menu's Executors rows and is not a command to run; a replacement
+belongs with the Computers surfaces. Database tests cover private-assignment
+and membership boundaries; API fan-out tests cover revocation on both live
+lanes.

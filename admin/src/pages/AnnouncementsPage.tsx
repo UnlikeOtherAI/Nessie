@@ -227,7 +227,7 @@ export const AnnouncementsPage = () => {
 
   return (
     <SuperAdminGate>
-      <SettingsPanel eyebrow="Platform" tabs={tabs} title="Announcements">
+      <SettingsPanel eyebrow="Advanced" tabs={tabs} title="Announcements">
         {query.isPending ? <p>Loading announcements…</p>
           : query.isError ? <p role="alert">Announcements could not be loaded.</p>
             : tab === 'strip' ? (

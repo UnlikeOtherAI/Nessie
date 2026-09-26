@@ -12,6 +12,6 @@ test('designer SSE replaces a Ledger credit refusal with the shared billing guid
 
   assert.equal(
     userMessageForDesignerError(refusal),
-    'Your team has no AI credits remaining. Ask a billing manager to add credits or update billing in Credits & billing (/tokens), then try again.',
+    'Your team has no AI credits remaining. Ask a billing manager to add credits or update billing in Credits and billing (/admin/billing), then try again.',
   )
 })

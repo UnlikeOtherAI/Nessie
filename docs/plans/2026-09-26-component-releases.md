@@ -1,7 +1,9 @@
 # Component releases — one release per thing a person installs
 
 **Status:** proposed. The Windows half of the edge channel shipped with Windows
-signing on 2026-09-26 (`windows-edge.yml`); the stable half is not built yet.
+signing on 2026-09-26 (`windows-edge.yml`). CLI candidates and immutable
+`executor-v*` publication are implemented in [package distribution](../releasing-executor-packages.md);
+the broader per-component stable pointers remain proposed.
 **Date:** 2026-09-26
 **Owner:** Desktop
 **Operating guide:** [releasing](../releasing.md)

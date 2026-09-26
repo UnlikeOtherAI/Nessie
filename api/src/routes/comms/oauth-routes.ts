@@ -107,7 +107,7 @@ export const registerCommsOAuthRoutes = (
     params: Record<string, string>,
   ): FastifyReply => {
     const query = new URLSearchParams(params).toString()
-    reply.redirect(`${adminBaseUrl()}/settings/connections?${query}`)
+    reply.redirect(`${adminBaseUrl()}/settings/accounts?${query}`)
     return reply
   }
 

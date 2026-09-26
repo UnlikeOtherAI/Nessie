@@ -1,7 +1,7 @@
 # Instance announcements and News
 
-The platform super-admin manages both publication types at **Platform →
-Announcements** (`/settings/announcements`). The page has **Strip** and
+The platform super-admin manages both publication types at **Admin → Advanced →
+Announcements** (`/admin/advanced/announcements`). The page has **Strip** and
 **News** tabs. This is instance-wide content: it is shown to every signed-in
 account regardless of its organisation or selected team. The API checks the
 existing, out-of-band `User.superAdmin` platform entitlement on every write;
@@ -44,7 +44,7 @@ removes it from the feed; republishing gives it a new publication number. There 
 news message. The account-keyed query never reuses a previous account's
 notification state during a sign-in switch. The `notifications_muted` toggle on the News reader suppresses
 the small in-app toast and avatar dot, while retaining the menu counter. The
-reader's polling query checks for new publications every 30 seconds and also
+toast opens News when tapped. The reader's polling query checks for new publications every 30 seconds and also
 refreshes on focus.
 
 ## Routes and storage

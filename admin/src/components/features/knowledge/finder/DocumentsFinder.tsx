@@ -299,7 +299,7 @@ export const DocumentsFinder = ({
   // toolbar action: "Open" belongs on the column that *is* the agent's
   // documents folder (finder-toolbar-actions.ts).
   const agentOpenAction = buildAgentOpenAction({
-    onOpenAgent: (agentId) => void navigate(`/agents/${agentId}`),
+    onOpenAgent: (agentId) => void navigate(`/admin/agents/${agentId}`),
     ownerAgentId: knowledge.selectedSpace?.ownerAgentId,
     scopeAgentId: scope.kind === 'agent' ? scope.agentId : undefined,
   })

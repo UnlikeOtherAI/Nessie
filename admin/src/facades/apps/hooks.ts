@@ -10,7 +10,7 @@ import { useApiClient } from '../../providers/ApiClientProvider'
 
 /**
  * Domain facade for the member-facing app catalogue (`GET /api/apps`), backing
- * `/apps` and `/apps/:slug`.
+ * `/admin/apps` and `/admin/apps/:slug`.
  *
  * It deliberately does not overlap the `mcp-catalog` facade. That one speaks
  * the owner's governance vocabulary (status, visibility, lock, review queue)

@@ -556,6 +556,24 @@ jobs:
             }
           }
 
+      - name: Prepare WinGet manifests from the signed executor
+        if: steps.signing.outputs.signed == 'true' && startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          WINDOWS_SIGNER_EKU: ${{ vars.WINDOWS_SIGNER_EKU }}
+          WINDOWS_SIGNER_SUBJECT: ${{ vars.WINDOWS_SIGNER_SUBJECT }}
+        run: |
+          $package = Get-ChildItem artifacts -Filter 'NessieExecutor_*_x64.msi' | Select-Object -First 1
+          $staging = Join-Path $env:RUNNER_TEMP 'winget-executor'
+          New-Item -ItemType Directory -Path $staging -Force | Out-Null
+          Copy-Item -LiteralPath $package.FullName -Destination (Join-Path $staging 'Nessie-Executor-Windows.msi')
+          node executor/packaging/cli/generate-app-manifests.mjs winget $env:GITHUB_REF_NAME `
+            (Join-Path $staging 'Nessie-Executor-Windows.msi') artifacts/winget
+          if ($LASTEXITCODE -ne 0) { throw 'WinGet manifest generation failed.' }
+          $version = (Get-Content artifacts/build-info.json | ConvertFrom-Json).executorVersion
+          winget validate --manifest "artifacts/winget/manifests/u/UnlikeOtherAI/NessieExecutor/$version"
+          if ($LASTEXITCODE -ne 0) { throw 'WinGet manifest validation failed.' }
+
       - name: Checksums
         shell: pwsh
         run: |

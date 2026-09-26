@@ -248,10 +248,10 @@ but is not an invoice input and must never be rated locally. UOA queries
 Ledger's strict raw contract for the signed billing period, product,
 organization, and team, then produces the canonical statement below. That
 statement is Nessie's only customer service/team/user usage and billing view.
-The owner-only `/ops/usage` page is the sole admin surface for Nessie's local
+The owner-only `/admin/usage` page is the sole admin surface for Nessie's local
 token summaries, model-pricing overrides, estimates, projections, connector
-telemetry, file usage, and budgets. The customer `/tokens` route is labelled
-Credits & Billing and contains only UOA-authored credit, add-on, statement, and
+telemetry, file usage, and budgets. The customer `/admin/billing` route is labelled
+Credits and billing and contains only UOA-authored credit, add-on, statement, and
 action view models. Local operational calculations are never rendered beside
 the customer balance or statement.
 
@@ -384,7 +384,7 @@ provider's `402` remains a provider-account billing failure. An interactive
 agent run follows ordinary failed-run terminalization and posts:
 
 > Your team has no AI credits remaining. Ask a billing manager to add credits
-> or update billing in Credits & billing (`/tokens`), then try again.
+> or update billing in Credits and billing (`/admin/billing`), then try again.
 
 The model-judged channel engagement router normally fails open to no action
 when its own model call fails. It rethrows only this typed credit refusal, so
@@ -398,7 +398,7 @@ are exhausted.
 UOA pins Stripe Checkout returns to Nessie's root route with exactly one
 `uoa_billing=checkout_complete` or `uoa_billing=checkout_cancelled` query
 parameter. The root route preserves the complete query while redirecting those
-two values to `/tokens`. The Credits & Billing page shows a neutral return notice
+two values to `/admin/billing`. The Credits and billing page shows a neutral return notice
 and explicitly refetches the canonical UOA statement, credits, and recurring
 add-ons; those projections, rather than the query value, remain the authority
 for any confirmed change. Missing, duplicate, or unknown `uoa_billing` values

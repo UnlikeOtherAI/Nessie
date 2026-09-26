@@ -19,7 +19,7 @@ import { currentStorageUsageBytes } from './ledger.js'
  *
  * Deliberately separate from the gate in `budget.ts`. The gate answers one
  * question under a lock and must stay small enough to read in one sitting;
- * this is CRUD over the same rows, behind the ops surfaces (`/ops/usage`,
+ * this is CRUD over the same rows, behind the ops surfaces (`/admin/usage`,
  * `api/src/contracts/ops-budget.ts`). The numbers here are RECORDED spend only
  * — in-flight admission reservations are never added, so nobody is ever shown
  * an estimate as money spent.

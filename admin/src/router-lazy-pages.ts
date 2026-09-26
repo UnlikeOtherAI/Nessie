@@ -31,8 +31,11 @@ export const AgentDetailPage = lazy(() =>
   import('./pages/AgentDetailPage').then((m) => ({ default: m.AgentDetailPage })),
 )
 export const AgentsPage = lazy(() => import('./pages/AgentsPage').then((m) => ({ default: m.AgentsPage })))
-export const ExecutorsPage = lazy(() =>
-  import('./pages/ExecutorsPage').then((m) => ({ default: m.ExecutorsPage })),
+export const ComputersPage = lazy(() =>
+  import('./pages/ExecutorsPage').then((m) => ({ default: m.ComputersPage })),
+)
+export const YourComputersPage = lazy(() =>
+  import('./pages/ExecutorsPage').then((m) => ({ default: m.YourComputersPage })),
 )
 export const ExecutorSessionPage = lazy(() =>
   import('./pages/ExecutorSessionPage').then((m) => ({ default: m.ExecutorSessionPage })),
@@ -43,7 +46,6 @@ export const ExecutorSessionsPage = lazy(() =>
 export const ExecutorDetailPage = lazy(() =>
   import('./pages/ExecutorDetailPage').then((m) => ({ default: m.ExecutorDetailPage })),
 )
-export const AuditLogPage = lazy(() => import('./pages/AuditLogPage').then((m) => ({ default: m.AuditLogPage })))
 export const ChannelProjectOverviewPage = lazy(() =>
   import('./pages/channels/ChannelProjectOverviewPage').then((m) => ({
     default: m.ChannelProjectOverviewPage,
@@ -88,96 +90,99 @@ export const ProjectBoardsPage = lazy(() =>
 export const BoardSettingsPage = lazy(() =>
   import('./pages/project/BoardSettingsPage').then((m) => ({ default: m.BoardSettingsPage })),
 )
-export const PairedAgentDetailPage = lazy(() =>
-  import('./pages/settings/PairedAgentDetailPage').then((m) => ({ default: m.PairedAgentDetailPage })),
-)
-export const OrganizationPairedAgentDetailPage = lazy(() =>
-  import('./pages/settings/PairedAgentDetailPage').then(
-    (m) => ({ default: m.OrganizationPairedAgentDetailPage }),
-  ),
-)
-export const PairedAgentsPage = lazy(() =>
-  import('./pages/settings/PairedAgentsPage').then((m) => ({ default: m.PairedAgentsPage })),
-)
-export const OrganizationModelsPage = lazy(() =>
-  import('./pages/settings/OrganizationModelsPage').then(
-    (m) => ({ default: m.OrganizationModelsPage }),
-  ),
-)
-export const OrganizationPairedAgentsPage = lazy(() =>
-  import('./pages/settings/OrganizationPairedAgentsPage').then(
-    (m) => ({ default: m.OrganizationPairedAgentsPage }),
-  ),
-)
-export const ConnectionDetailPage = lazy(() =>
-  import('./pages/settings/ConnectionDetailPage').then((m) => ({ default: m.ConnectionDetailPage })),
-)
-export const ConnectionsPage = lazy(() =>
-  import('./pages/settings/ConnectionsPage').then((m) => ({ default: m.ConnectionsPage })),
-)
-export const OrganizationSettingsPage = lazy(() =>
-  import('./pages/settings/OrganizationSettingsPage').then((m) => ({
-    default: m.OrganizationSettingsPage,
-  })),
-)
-export const PushCredentialsPage = lazy(() =>
-  import('./pages/settings/PushCredentialsPage').then((m) => ({ default: m.PushCredentialsPage })),
-)
-export const OrganizationSecretsPage = lazy(() =>
-  import('./pages/settings/OrganizationSecretsPage').then((m) => ({
-    default: m.OrganizationSecretsPage,
-  })),
-)
-export const SecretsPage = lazy(() =>
-  import('./pages/settings/SecretsPage').then((m) => ({ default: m.SecretsPage })),
-)
-export const TeamSecretsPage = lazy(() =>
-  import('./pages/settings/TeamSecretsPage').then((m) => ({ default: m.TeamSecretsPage })),
-)
-export const SettingsMembersPage = lazy(() =>
-  import('./pages/settings/SettingsMembersPage').then((m) => ({ default: m.SettingsMembersPage })),
-)
-export const TeamMembersPage = lazy(() =>
-  import('./pages/settings/TeamMembersPage').then((m) => ({ default: m.TeamMembersPage })),
-)
-export const TeamSettingsPage = lazy(() =>
-  import('./pages/settings/TeamSettingsPage').then((m) => ({ default: m.TeamSettingsPage })),
-)
-export const TeamModelsPage = lazy(() =>
-  import('./pages/settings/team/TeamModelsPage').then((m) => ({ default: m.TeamModelsPage })),
-)
-export const UserSettingsPage = lazy(() =>
-  import('./pages/settings/UserSettingsPage').then((m) => ({ default: m.UserSettingsPage })),
-)
-export const StatusDetailPage = lazy(() =>
-  import('./pages/settings/StatusDetailPage').then((m) => ({ default: m.StatusDetailPage })),
-)
-export const StatusesPage = lazy(() =>
-  import('./pages/settings/StatusesPage').then((m) => ({ default: m.StatusesPage })),
-)
 export const ToolsPage = lazy(() => import('./pages/ToolsPage').then((m) => ({ default: m.ToolsPage })))
 export const ToolDetailPage = lazy(() =>
   import('./pages/ToolDetailPage').then((m) => ({ default: m.ToolDetailPage })),
 )
-export const TokenUsagePage = lazy(() =>
-  import('./pages/TokenUsagePage').then((m) => ({ default: m.TokenUsagePage })),
+export const BillingPage = lazy(() =>
+  import('./pages/TokenUsagePage').then((m) => ({ default: m.BillingPage })),
 )
-export const TriggersPage = lazy(() => import('./pages/TriggersPage').then((m) => ({ default: m.TriggersPage })))
+export const PersonalUsagePage = lazy(() =>
+  import('./pages/TokenUsagePage').then((m) => ({ default: m.PersonalUsagePage })),
+)
 export const TriggerDetailPage = lazy(() =>
   import('./pages/TriggerDetailPage').then((m) => ({ default: m.TriggerDetailPage })),
 )
 export const WorkflowDesignerPage = lazy(() =>
   import('./pages/WorkflowDesignerPage').then((m) => ({ default: m.WorkflowDesignerPage })),
 )
-export const WorkflowsPage = lazy(() =>
-  import('./pages/WorkflowsPage').then((m) => ({ default: m.WorkflowsPage })),
-)
-export const TaskSetsPage = lazy(() =>
-  import('./pages/TaskSetsPage').then((m) => ({ default: m.TaskSetsPage })),
-)
 export const TaskSetCreatePage = lazy(() =>
   import('./pages/TaskSetCreatePage').then((m) => ({ default: m.TaskSetCreatePage })),
 )
 export const TaskSetDetailPage = lazy(() =>
   import('./pages/TaskSetDetailPage').then((m) => ({ default: m.TaskSetDetailPage })),
+)
+
+// ── Admin › Organisation and Advanced ───────────────────────────────────────
+export const AutomationsPage = lazy(() =>
+  import('./pages/admin/AutomationsPage').then((m) => ({ default: m.AutomationsPage })),
+)
+export const PeoplePage = lazy(() =>
+  import('./pages/admin/PeoplePage').then((m) => ({ default: m.PeoplePage })),
+)
+export const TeamsPage = lazy(() =>
+  import('./pages/admin/TeamsPage').then((m) => ({ default: m.TeamsPage })),
+)
+export const TeamPage = lazy(() =>
+  import('./pages/admin/TeamPage').then((m) => ({ default: m.TeamPage })),
+)
+export const OrganizationPage = lazy(() =>
+  import('./pages/admin/OrganizationPage').then((m) => ({ default: m.OrganizationPage })),
+)
+export const ModelsPage = lazy(() =>
+  import('./pages/admin/ModelsPage').then((m) => ({ default: m.ModelsPage })),
+)
+export const CompanyConnectionsPage = lazy(() =>
+  import('./pages/admin/CompanyConnectionsPage').then((m) => ({ default: m.CompanyConnectionsPage })),
+)
+export const KeysPage = lazy(() =>
+  import('./pages/admin/KeysPage').then((m) => ({ default: m.KeysPage })),
+)
+export const OrganizationSecurityPage = lazy(() =>
+  import('./pages/admin/OrganizationSecurityPage').then((m) => ({
+    default: m.OrganizationSecurityPage,
+  })),
+)
+export const OrganizationPairedAgentDetailPage = lazy(() =>
+  import('./pages/settings/PairedAgentDetailPage').then(
+    (m) => ({ default: m.OrganizationPairedAgentDetailPage }),
+  ),
+)
+export const PushCredentialsPage = lazy(() =>
+  import('./pages/settings/PushCredentialsPage').then((m) => ({ default: m.PushCredentialsPage })),
+)
+export const SessionDebugPage = lazy(() =>
+  import('./pages/admin/SessionDebugPage').then((m) => ({ default: m.SessionDebugPage })),
+)
+
+// ── Your settings ───────────────────────────────────────────────────────────
+export const SettingsProfilePage = lazy(() =>
+  import('./pages/settings/SettingsProfilePage').then((m) => ({ default: m.SettingsProfilePage })),
+)
+export const NotificationsPage = lazy(() =>
+  import('./pages/settings/NotificationsPage').then((m) => ({ default: m.NotificationsPage })),
+)
+export const AppearancePage = lazy(() =>
+  import('./pages/settings/AppearancePage').then((m) => ({ default: m.AppearancePage })),
+)
+export const StatusesPage = lazy(() =>
+  import('./pages/settings/StatusesPage').then((m) => ({ default: m.StatusesPage })),
+)
+export const StatusDetailPage = lazy(() =>
+  import('./pages/settings/StatusDetailPage').then((m) => ({ default: m.StatusDetailPage })),
+)
+export const ConnectionsPage = lazy(() =>
+  import('./pages/settings/ConnectionsPage').then((m) => ({ default: m.ConnectionsPage })),
+)
+export const ConnectionDetailPage = lazy(() =>
+  import('./pages/settings/ConnectionDetailPage').then((m) => ({ default: m.ConnectionDetailPage })),
+)
+export const SecretsPage = lazy(() =>
+  import('./pages/settings/SecretsPage').then((m) => ({ default: m.SecretsPage })),
+)
+export const SecurityPage = lazy(() =>
+  import('./pages/settings/SecurityPage').then((m) => ({ default: m.SecurityPage })),
+)
+export const PairedAgentDetailPage = lazy(() =>
+  import('./pages/settings/PairedAgentDetailPage').then((m) => ({ default: m.PairedAgentDetailPage })),
 )

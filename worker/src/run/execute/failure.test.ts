@@ -128,7 +128,7 @@ test('an interactive run tells the person waiting that Ledger credits are exhaus
     {
       agentId: ID.agent,
       content:
-        'Your team has no AI credits remaining. Ask a billing manager to add credits or update billing in Credits & billing (/tokens), then try again.',
+        'Your team has no AI credits remaining. Ask a billing manager to add credits or update billing in Credits and billing (/admin/billing), then try again.',
       role: 'assistant',
       threadId: ID.thread,
     },

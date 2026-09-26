@@ -194,8 +194,8 @@ test('the native phone home chrome delegates team, history, account, and Channel
   assert.match(account, /__nessieToggleAccountMenu/)
   assert.match(account, /__nessieToggleFocusMode/)
   assert.match(accountPopover, /to="\/feedback"/)
-  assert.match(accountPopover, /<span>Feedback<\/span>/)
-  assert.match(accountPopover, /<DebugTokenButton variant="menu" \/>/)
+  assert.match(accountPopover, /<span>Send feedback<\/span>/)
+  assert.match(accountPopover, /to="\/settings"/)
   assert.doesNotMatch(account, /showFeedbackLink/)
   assert.match(account, /type: 'nessie:account'/)
   assert.match(account, /userPresence: selfPresence\?\.state \?\? 'offline'/)
@@ -303,24 +303,29 @@ test('the native phone home chrome delegates team, history, account, and Channel
   assert.match(nativeTeamAvatar, /onError=\{\(\) => setFailedRasterUrl\(source\.uri\)\}/)
 })
 
-test('the account popover places Feedback and Debug between status and account actions', () => {
+test('the account menu is Availability, Status, Your settings, Send feedback, Sign out', () => {
   const popover = readSource('../src/layouts/admin-shell/UserMenuPopover.tsx')
   const trigger = readSource('../src/layouts/admin-shell/UserMenuTrigger.tsx')
 
   assert.doesNotMatch(popover, /MeAuth|providerLabel|account\)\}/)
   assert.doesNotMatch(trigger, /auth=\{me\.auth\}/)
+  const availability = popover.indexOf('<PresenceControl />')
   const status = popover.indexOf('<StatusSection onClose={onClose} />')
+  const settings = popover.indexOf('to="/settings"')
   const feedback = popover.indexOf('to="/feedback"')
-  const debug = popover.indexOf('<DebugTokenButton variant="menu" />')
-  const accountSettings = popover.indexOf('to="/settings/account"')
+  const signOut = popover.indexOf('<span>Sign out</span>')
 
-  assert.ok(status < feedback)
-  assert.ok(feedback < debug)
-  assert.ok(debug < accountSettings)
+  assert.ok(availability >= 0 && availability < status)
+  assert.ok(status < settings)
+  assert.ok(settings < feedback)
+  assert.ok(feedback < signOut)
   assert.match(
-    popover.slice(debug, accountSettings),
+    popover.slice(feedback, signOut),
     /<div className="my-1 h-px bg-\[color:var\(--sep\)\]" \/>/,
   )
+  // The computers a person paired are Your settings › Your computers, and the
+  // session debug is Admin › Advanced; neither is a menu row any more.
+  assert.doesNotMatch(popover, /ExecutorSection|DebugTokenButton/)
 })
 
 test('the native Admin actions retain the cache-busting full refresh', () => {

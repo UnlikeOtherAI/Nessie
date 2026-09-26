@@ -50,6 +50,15 @@ export type SetDeploymentModelsEnabledResult = {
   updatedCount: number
 }
 
+/**
+ * One page of the organisation's catalogue, or of a team's narrowing of it.
+ *
+ * No pagination `scope` is passed for a team: the AI models page names its
+ * scope in `?scope=team:<id>` and clears the cursor whenever that changes, so
+ * a cursor can never be read against another team's list — and a pagination
+ * scope, written unprefixed, would land on that same `?scope=` and overwrite
+ * the page's own.
+ */
 export const useDeploymentModelCatalog = (
   enabled: boolean,
   filters: DeploymentModelCatalogFilters = {},
@@ -64,7 +73,6 @@ export const useDeploymentModelCatalog = (
     queryKey: teamId
       ? inferenceModelKeys.teamCatalog(teamId)
       : inferenceModelKeys.catalog,
-    ...(teamId ? { scope: teamId } : {}),
   })
 
 export const useSetDeploymentModelEnabled = (teamId?: string) => {

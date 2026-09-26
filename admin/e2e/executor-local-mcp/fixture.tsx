@@ -276,7 +276,7 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false 
 // the sharing panel, which without a team says only "Select a team to manage
 // sharing." So the entry is the executor's own page on that tab, as a person's
 // address bar would carry it, and the runner pins that Sessions is selected.
-const INITIAL_ENTRY = `/agents/executors/${EXECUTOR_ID}?tab=sessions`
+const INITIAL_ENTRY = `/admin/computers/${EXECUTOR_ID}?tab=sessions`
 
 const scenarioName = new URLSearchParams(window.location.search).get('scenario') ?? 'available'
 const grantingWholeSuite = scenarioName === 'whole-suite-grant'

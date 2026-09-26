@@ -69,7 +69,7 @@ const renderPanels = (accessView: ExecutorAccessViewResponse): string =>
   renderToStaticMarkup(
     createElement(
       MemoryRouter,
-      { initialEntries: ['/agents/executors?tab=permissions'] },
+      { initialEntries: ['/admin/computers?tab=permissions'] },
       createElement(
         QueryClientProvider,
         { client: new QueryClient() },

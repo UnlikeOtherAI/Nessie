@@ -74,7 +74,7 @@ export const TOOL_CATEGORIES = [
   {
     description: 'Running work later, or on a repeating schedule.',
     id: 'scheduling',
-    label: 'Schedules & triggers',
+    label: 'Schedules and triggers',
   },
   {
     description: 'Keeping and advancing a tracked checklist.',

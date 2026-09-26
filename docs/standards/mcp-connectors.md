@@ -58,7 +58,7 @@ The live API server (`api/`) exposes a **REST MCP connector-management surface**
 
 The management core lives in the shared **`@nessie/mcp-manage`** package (catalog, instances, probe, tool projection, credentials, OAuth, encrypted secret store, SSRF wrapper) so the API routes and the worker's personal-assistant tools share one implementation — the sharing, scope, credential-ref, locking, and context-safe-toolset rules are in `AGENTS.md` (the MCP connector management bullet). On top of it:
 
-- **Library + discovery**: `GET /api/mcp/library` (curated remotes + live registry search, HTTP/SSE only), `POST /api/mcp/discover`, `POST /api/mcp/library/import`; people add a custom app from `/apps`.
+- **Library + discovery**: `GET /api/mcp/library` (curated remotes + live registry search, HTTP/SSE only), `POST /api/mcp/discover`, `POST /api/mcp/library/import`; people add a custom app from `/admin/apps`.
 - **Personal-assistant connector tools** (PA-only builtins): `connector_list`, `connector_library_search`, `connector_discover`, `connector_install`, `connector_authorize`, `connector_test`, `connector_set_secret`, `connector_uninstall` — full conversational setup from just a service name or URL, with secrets stored encrypted (`POST /api/mcp/instances/:id/secret` is the UI equivalent).
 - **Dynamic OAuth** (MCP authorization spec): `{ method: "oauth2" }` with no static client triggers metadata discovery (RFC 9728/8414), Dynamic Client Registration (RFC 7591, one public client per org × issuer in `mcp_oauth_clients`), authorization-code + PKCE S256 + RFC 8707 `resource`, pg-backed one-shot state (`mcp_oauth_states`), per-user token placement, and automatic refresh at probe/dispatch. Notion/Linear/Sentry/Atlassian/Asana are curated OAuth entries — users just sign in. Set `NESSIE_API_PUBLIC_URL` in prod so the worker can mint callback URLs.
 - **Scoped sharing**: scope rules per above; shared-scope installs keep the `pending_review` tool gate (user-scope auto-activate). See [docs/external-tool-integration.md](../external-tool-integration.md) §2.
@@ -119,9 +119,9 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
 
 Customer tariffs, statements, credits, top-ups, subscriptions, adjustments,
 and Stripe lifecycle stay in UOA; Nessie renders UOA-authored display models
-only and stores no commercial state. `/tokens` is the customer Credits &
-Billing surface; Nessie's owner-only local token/pricing/estimate/projection/
-connector/file/budget telemetry is isolated at `/ops/usage`, and the two never
+only and stores no commercial state. `/admin/billing` is the customer Credits
+and billing surface; Nessie's owner-only local token/pricing/estimate/projection/
+connector/file/budget telemetry is isolated at `/admin/usage`, and the two never
 render together. The full contract — `UOA_BILLING_APP_KEY_NESSIE` + the
 45-second actor assertion, the vendored
 `@unlikeotherai/billing-statement-protocol` package with its SHA-256 lint

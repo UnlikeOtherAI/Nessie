@@ -5224,7 +5224,7 @@ model McpCatalogEntry {
   //
   // `name` is mutable and only unique among *public* entries, so it cannot
   // address an app in a URL. `slug` is the immutable public identity behind
-  // `/apps/:slug`: set once at creation, never rewritten by registry sync, and
+  // `/admin/apps/:slug`: set once at creation, never rewritten by registry sync, and
   // globally unique when present so a deep link survives every rename.
   slug              String?                  @unique
   /// Curated overrides. Registry sync writes `upstream`, never these — that
@@ -9511,7 +9511,7 @@ model CloudBrowserSession {
   id             String  @id @default(uuid()) @db.Uuid
   organizationId String  @map("organization_id") @db.Uuid
   /// Mandatory: the reaper cannot stop a remote session without knowing which
-  /// API key owns it, and `/ops/usage` attributes hours by connection scope.
+  /// API key owns it, and `/admin/usage` attributes hours by connection scope.
   connectionId   String  @map("connection_id") @db.Uuid
   /// NULL for a session a person resumed from the conversation rather than a
   /// run opened. Such a session has no terminal transition to free it, so it

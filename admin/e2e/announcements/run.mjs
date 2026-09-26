@@ -76,7 +76,7 @@ try {
   const readerContext = await openViewportContext(browser, { name: 'desktop', token: member.token })
   const phoneContext = await openViewportContext(browser, { name: 'phone', token: seed.token })
   try {
-    const operator = await visit(operatorContext, '/settings/announcements')
+    const operator = await visit(operatorContext, '/admin/advanced/announcements')
     const { page } = operator
     try {
       await page.getByRole('heading', { name: 'Announcements' }).waitFor()

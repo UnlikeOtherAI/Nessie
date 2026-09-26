@@ -70,7 +70,7 @@ test('task-set result chunks reconstruct a large result through the real authori
     const output = await runTaskSetTool('task_set_item_read', context, { taskSetId: setId, itemId, offset })
     const page = JSON.parse(output.outputPreview) as { text: string; page: { nextOffset: number | null }; url: string }
     assert.ok(output.outputPreview.length < 32000)
-    assert.equal(page.url, `/agents/task-sets/${setId}?item=${itemId}`)
+    assert.equal(page.url, `/admin/automations/batch-jobs/${setId}?item=${itemId}`)
     reconstructed += page.text
     offset = page.page.nextOffset
   } while (offset !== null)

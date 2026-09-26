@@ -154,7 +154,7 @@ const main = async () => {
     browser = await chromium.launch({ headless: true })
     const page = await browser.newPage()
     await page.addInitScript((value) => localStorage.setItem('nessie.admin.token', value), token)
-    await page.goto(`${adminUrl}/agents/${agent.id}?agentTab=documents`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`${adminUrl}/admin/agents/${agent.id}?agentTab=documents`, { waitUntil: 'domcontentloaded' })
     await page.getByText('Documents can have narrower access than this agent. Don’t store secrets here.').waitFor()
     await page.getByText(controlTitle, { exact: true }).waitFor()
     assert.equal(await page.getByText(secretTitle, { exact: true }).count(), 0, 'the Agent Documents workspace never renders the restricted title')
