@@ -7,10 +7,27 @@ import type {
 } from '@nessie/schemas'
 import { buildPage, decodeKeysetCursor, resolvePageLimit, type PaginationDirection } from '@nessie/schemas'
 
+import { defaultPolicyRuleKind } from './policy-defaults.js'
+
 // Policy rule CRUD: authoring and reading `PolicyRule`/`PolicyBinding` rows.
 // Evaluation (`checkPolicy`, `checkPolicyBatch`, `getEffectivePolicy`) lives in
 // `policy.ts`; default-policy seeding lives in `policy-seed.ts` and calls back
 // into `createPolicyRule` here.
+
+/** A rule write refused for a reason the owner can act on. */
+export class PolicyRuleError extends Error {
+  constructor(
+    readonly code: 'POLICY_RULE_NOT_FOUND' | 'POLICY_RULE_PROTECTED',
+    readonly httpStatus: 404 | 409,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'PolicyRuleError'
+  }
+}
+
+const PROTECTED_RULE_MESSAGE =
+  'This rule is one every organisation starts with, and nothing would bring it back. It cannot be deleted.'
 
 export const actionToPrisma = (action: string) => {
   if (action === 'export') return 'export_action'
@@ -142,6 +159,16 @@ export const deletePolicyRule = async (
   ruleId: string,
   organizationId: string,
 ) => {
+  const rule = await prisma.policyRule.findFirst({
+    where: { id: ruleId, organizationId },
+    select: { seedKey: true },
+  })
+  if (!rule) {
+    throw new PolicyRuleError('POLICY_RULE_NOT_FOUND', 404, 'Access rule not found')
+  }
+  if (defaultPolicyRuleKind(rule.seedKey) === 'protected') {
+    throw new PolicyRuleError('POLICY_RULE_PROTECTED', 409, PROTECTED_RULE_MESSAGE)
+  }
   await prisma.policyRule.delete({
     where: { id: ruleId, organizationId },
   })
@@ -176,6 +203,16 @@ export const removePolicyBinding = async (
 ): Promise<boolean> => {
   // Only delete a binding whose parent rule belongs to the caller's org, so a
   // foreign bindingId cannot be used to mutate another tenant's policy.
+  const binding = await prisma.policyBinding.findFirst({
+    where: { id: bindingId, policyRule: { is: { organizationId } } },
+    select: { policyRule: { select: { seedKey: true } } },
+  })
+  if (!binding) return false
+  // A rule with no binding applies to nobody, so removing a protected
+  // default's binding is deleting that default by another route.
+  if (defaultPolicyRuleKind(binding.policyRule.seedKey) === 'protected') {
+    throw new PolicyRuleError('POLICY_RULE_PROTECTED', 409, PROTECTED_RULE_MESSAGE)
+  }
   const { count } = await prisma.policyBinding.deleteMany({
     where: { id: bindingId, policyRule: { is: { organizationId } } },
   })
@@ -195,9 +232,13 @@ const mapPolicyRule = (rule: {
   createdBy: string
   createdAt: Date
   updatedAt: Date
+  seedKey: string | null
   bindings: Array<{ id: string; actorType: string; actorId: string }>
 }) => ({
   id: rule.id,
+  // Whether this is a default every organisation starts with: `restored` comes
+  // back with the next reconcile if deleted, `protected` cannot be deleted.
+  defaultRule: defaultPolicyRuleKind(rule.seedKey),
   organizationId: rule.organizationId,
   scope: rule.scope,
   scopeId: rule.scopeId,

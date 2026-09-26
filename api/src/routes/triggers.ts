@@ -545,32 +545,6 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
   })
 
-  app.get('/api/triggers/upcoming', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) {
-      return reply
-    }
-
-    if (!requireOwner(actorContext, reply)) {
-      return reply
-    }
-
-    const rawLimit = (request.query as { limit?: string }).limit
-    const parsedLimit = rawLimit === undefined ? 50 : Number.parseInt(rawLimit, 10)
-    if (Number.isNaN(parsedLimit)) {
-      sendApiError(reply, 400, 'INVALID_LIMIT', 'limit must be an integer')
-      return reply
-    }
-
-    const triggers = await listScheduledTriggers(prisma, {
-      dueBefore: new Date(),
-      organizationId: actorContext.tenant.organizationId,
-      limit: Math.min(Math.max(parsedLimit, 1), 200),
-      userId: actorContext.actor.actorId,
-    })
-    return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
-  })
-
   // Inbound intake (public webhook + authenticated event publish) is split into
   // its own module to keep this file under the 500-line cap. Registered last to
   // preserve the original route ordering.

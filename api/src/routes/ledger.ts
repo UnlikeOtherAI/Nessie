@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import {
   deleteBudget,
@@ -7,6 +7,12 @@ import {
   setBudgetConfig,
 } from '@nessie/runtime'
 import {
+  LocalUsageBySchema,
+  LocalUsagePeriodSchema,
+  LocalUsageResponseSchema,
+} from '@nessie/schemas'
+import { LedgerAgentModelCatalogError } from '@nessie/team-admin'
+import {
   BudgetScopeIdSchema,
   BudgetScopeTypeSchema,
   BudgetStatusResponseSchema,
@@ -14,6 +20,14 @@ import {
   SetPricingProfileBodySchema,
 } from '../contracts/ops-budget.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { withBudgetScopeNames } from '../services/budget-scope-names.js'
+import { getLocalUsage } from '../services/local-usage.js'
+import {
+  ensureModelServicePricing,
+  syncModelServicePricing,
+  type ModelServicePricingDeps,
+} from '../services/model-service-pricing.js'
+import { PricingProfileError } from '../services/pricing-profiles.js'
 import {
   createPricingProfile,
   deletePricingProfile,
@@ -30,14 +44,68 @@ import {
 } from '../services/run-timing-summary.js'
 import type { RouteDeps } from './types.js'
 
+/**
+ * The owner's local usage, estimates, prices and budgets — Admin › Usage and
+ * limits, Advanced › Telemetry and Advanced › Model pricing. Every route is
+ * owner-only, and none of it is the billing service's credits, which have
+ * their own page and never render beside these figures.
+ */
 export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext, requireOwner } = deps
+  // Read when a route needs the model service, not at registration: the
+  // routes that never reach it need no model configuration.
+  const pricingDeps = (): ModelServicePricingDeps => ({
+    config: deps.config.model,
+    ledgerIdentity: deps.ledgerIdentity,
+    ...(process.env.LEDGER_PUBLIC_URL ? { ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL } : {}),
+    prisma,
+  })
+
+  const sendPricingError = (reply: FastifyReply, error: unknown): boolean => {
+    if (error instanceof PricingProfileError) {
+      sendApiError(reply, error.httpStatus, error.code, error.message)
+      return true
+    }
+    if (error instanceof LedgerAgentModelCatalogError) {
+      sendApiError(reply, 503, error.code, error.message)
+      return true
+    }
+    return false
+  }
+
+  // Usage and limits: what each team, agent or person used this week, month
+  // or year, named, with another person's private agents folded into one row.
+  // The published prices are refreshed first when an estimate would otherwise
+  // be missing, so the page never shows $0.00 for work that cost money.
+  app.get('/api/ledger/usage', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const query = request.query as { by?: string; period?: string }
+    const by = LocalUsageBySchema.safeParse(query.by ?? 'team')
+    const period = LocalUsagePeriodSchema.safeParse(query.period ?? 'month')
+    if (!by.success || !period.success) {
+      sendApiError(reply, 400, 'INVALID_INPUT', 'by must be team, agent or person; period week, month or year')
+      return reply
+    }
+
+    await ensureModelServicePricing(pricingDeps(), actorContext)
+    const usage = await getLocalUsage(prisma, {
+      by: by.data,
+      organizationId: actorContext.tenant.organizationId,
+      period: period.data,
+      viewerUserId: actorContext.actor.actorId,
+    })
+    return createApiResponse(LocalUsageResponseSchema.parse(usage))
+  })
 
   app.get('/api/ledger/tokens/summary', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
 
+    await ensureModelServicePricing(pricingDeps(), actorContext)
     const query = request.query as Record<string, string | undefined>
     const summary = await getTokenUsageSummary(prisma, actorContext.tenant.organizationId, {
       projectId: query['projectId'],
@@ -140,8 +208,24 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
 
+    await ensureModelServicePricing(pricingDeps(), actorContext)
     const profiles = await listPricingProfiles(prisma, actorContext.tenant.organizationId)
     return createApiResponse(profiles)
+  })
+
+  // Model pricing's "Update from the model service": read the published prices
+  // now, as the owner, and value past usage that still has no estimate.
+  app.post('/api/ledger/tokens/pricing/sync', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    try {
+      return createApiResponse(await syncModelServicePricing(pricingDeps(), actorContext))
+    } catch (error) {
+      if (sendPricingError(reply, error)) return reply
+      throw error
+    }
   })
 
   app.post('/api/ledger/tokens/pricing', async (request, reply) => {
@@ -152,25 +236,29 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     const body = parseInput(SetPricingProfileBodySchema, request.body, reply)
     if (!body) return reply
 
-    const profile = await createPricingProfile(
-      prisma,
-      actorContext.tenant.organizationId,
-      {
-        provider: body.provider,
-        modelPattern: body.modelPattern,
-        currency: body.currency ?? undefined,
-        source: body.source ?? 'manual',
-        inputPerMillion: body.inputPerMillion ?? undefined,
-        outputPerMillion: body.outputPerMillion ?? undefined,
-        cachedInputPerMillion: body.cachedInputPerMillion ?? undefined,
-        cachedOutputPerMillion: body.cachedOutputPerMillion ?? undefined,
-        cacheReadPerMillion: body.cacheReadPerMillion ?? undefined,
-        cacheWritePerMillion: body.cacheWritePerMillion ?? undefined,
-      },
-      actorContext,
-    )
-
-    return reply.code(201).send(createApiResponse(profile))
+    try {
+      const profile = await createPricingProfile(
+        prisma,
+        actorContext.tenant.organizationId,
+        {
+          provider: body.provider,
+          modelPattern: body.modelPattern,
+          currency: body.currency ?? undefined,
+          source: body.source ?? 'manual',
+          inputPerMillion: body.inputPerMillion ?? undefined,
+          outputPerMillion: body.outputPerMillion ?? undefined,
+          cachedInputPerMillion: body.cachedInputPerMillion ?? undefined,
+          cachedOutputPerMillion: body.cachedOutputPerMillion ?? undefined,
+          cacheReadPerMillion: body.cacheReadPerMillion ?? undefined,
+          cacheWritePerMillion: body.cacheWritePerMillion ?? undefined,
+        },
+        actorContext,
+      )
+      return reply.code(201).send(createApiResponse(profile))
+    } catch (error) {
+      if (sendPricingError(reply, error)) return reply
+      throw error
+    }
   })
 
   app.delete('/api/ledger/tokens/pricing/:profileId', async (request, reply) => {
@@ -179,7 +267,12 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     if (!requireOwner(actorContext, reply)) return reply
 
     const { profileId } = request.params as { profileId: string }
-    await deletePricingProfile(prisma, profileId, actorContext.tenant.organizationId, actorContext)
+    try {
+      await deletePricingProfile(prisma, profileId, actorContext.tenant.organizationId, actorContext)
+    } catch (error) {
+      if (sendPricingError(reply, error)) return reply
+      throw error
+    }
     return reply.code(204).send()
   })
 
@@ -222,8 +315,10 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
 
-    const statuses = await listBudgetStatuses(prisma, actorContext.tenant.organizationId)
-    return createApiResponse(BudgetStatusResponseSchema.array().parse(statuses))
+    const organizationId = actorContext.tenant.organizationId
+    const statuses = await listBudgetStatuses(prisma, organizationId)
+    const named = await withBudgetScopeNames(prisma, organizationId, statuses)
+    return createApiResponse(BudgetStatusResponseSchema.array().parse(named))
   })
 
   app.put('/api/ledger/budget', async (request, reply) => {
@@ -234,16 +329,15 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     const body = parseInput(SetBudgetBodySchema, request.body, reply)
     if (!body) return reply
 
-    if (!(await budgetScopeBelongsToOrg(actorContext.tenant.organizationId, body.scopeType, body.scopeId))) {
+    const organizationId = actorContext.tenant.organizationId
+    if (!(await budgetScopeBelongsToOrg(organizationId, body.scopeType, body.scopeId))) {
       sendApiError(reply, 400, 'INVALID_SCOPE', 'Budget scope does not belong to this organization')
       return reply
     }
 
-    const status = await setBudgetConfig(prisma, {
-      organizationId: actorContext.tenant.organizationId,
-      ...body,
-    })
-    return createApiResponse(BudgetStatusResponseSchema.parse(status))
+    const status = await setBudgetConfig(prisma, { organizationId, ...body })
+    const [named] = await withBudgetScopeNames(prisma, organizationId, [status])
+    return createApiResponse(BudgetStatusResponseSchema.parse(named))
   })
 
   app.delete('/api/ledger/budget', async (request, reply) => {

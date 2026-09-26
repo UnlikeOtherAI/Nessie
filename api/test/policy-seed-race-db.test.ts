@@ -7,10 +7,8 @@ import test from 'node:test'
 import { PrismaClient } from '@prisma/client'
 
 import { runReconcile } from '../src/db/reconcile-cli.js'
-import {
-  NEW_ORGANIZATION_DEFAULT_POLICIES,
-  seedDefaultPolicies,
-} from '../src/services/policy-seed.js'
+import { NEW_ORGANIZATION_DEFAULT_POLICIES } from '../src/services/policy-defaults.js'
+import { seedDefaultPolicies } from '../src/services/policy-seed.js'
 
 /**
  * Default policy seeding used to be a count-then-create with no lock and no

@@ -4,6 +4,35 @@ import type { AuthorizedActionContext, PricingSource } from '@nessie/schemas'
 
 import { emitAuditEvent } from './audit.js'
 
+/**
+ * An owner's price and the model service's published price are two writers of
+ * one table, and a partial unique index allows one active row per
+ * (organisation, provider, model pattern). Both take this lock first, so an
+ * owner saving a price while the published prices are refreshed never races
+ * into that index.
+ */
+export const lockModelPricing = (
+  tx: Pick<PrismaClient, '$queryRaw'>,
+  organizationId: string,
+): Prisma.PrismaPromise<unknown> => tx.$queryRaw(Prisma.sql`
+  SELECT 1
+  FROM (
+    SELECT pg_advisory_xact_lock(hashtextextended(${`model-pricing:${organizationId}`}, 0))
+  ) AS acquired
+`)
+
+/** A pricing write refused for a reason the owner can act on. */
+export class PricingProfileError extends Error {
+  constructor(
+    readonly code: 'PRICING_PROFILE_NOT_FOUND' | 'PRICING_PROFILE_PUBLISHED' | 'PRICING_SOURCE_RESERVED',
+    readonly httpStatus: 400 | 404 | 409,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'PricingProfileError'
+  }
+}
+
 export const listPricingProfiles = async (
   prisma: PrismaClient,
   organizationId: string,
@@ -36,9 +65,22 @@ export const createPricingProfile = async (
   },
   actorContext: AuthorizedActionContext,
 ) => {
+  // The model service's prices are written by `syncModelServicePricing` alone;
+  // an owner's row marked as one would rank below every other owner price and
+  // be replaced by the next refresh.
+  if (input.source === 'provider-default') {
+    throw new PricingProfileError(
+      'PRICING_SOURCE_RESERVED',
+      400,
+      'Published prices come from the model service. Save your own price instead.',
+    )
+  }
   // At most one active profile per provider/model pattern. Re-pricing closes
-  // the previous row and creates a fresh effective period atomically.
+  // the previous row and creates a fresh effective period atomically. An
+  // owner's price for a model the model service also prices replaces that
+  // published row; the refresh leaves the model alone while the owner's stands.
   const profile = await prisma.$transaction(async (tx) => {
+    await lockModelPricing(tx, organizationId)
     await tx.modelPricingProfile.updateMany({
       where: {
         organizationId,
@@ -86,6 +128,22 @@ export const deletePricingProfile = async (
   organizationId: string,
   actorContext: AuthorizedActionContext,
 ) => {
+  const profile = await prisma.modelPricingProfile.findFirst({
+    where: { effectiveTo: null, id: profileId, organizationId },
+    select: { source: true },
+  })
+  if (!profile) {
+    throw new PricingProfileError('PRICING_PROFILE_NOT_FOUND', 404, 'That price no longer exists.')
+  }
+  // Deleting a published price would only bring it back with the next refresh;
+  // what an owner means is "use my price", which is saving one.
+  if (profile.source === 'provider_default') {
+    throw new PricingProfileError(
+      'PRICING_PROFILE_PUBLISHED',
+      409,
+      'This price is published by the model service. Save your own price for the model to replace it.',
+    )
+  }
   await prisma.modelPricingProfile.update({
     where: { id: profileId, organizationId },
     data: { effectiveTo: new Date() },

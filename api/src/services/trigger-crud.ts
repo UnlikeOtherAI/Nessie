@@ -97,7 +97,6 @@ export const listWorkflowInstallationTriggers = async (
 export const listScheduledTriggers = async (
   prisma: PrismaClient,
   input: {
-    dueBefore?: Date
     limit: number
     organizationId: string
     userId: string
@@ -123,17 +122,7 @@ export const listScheduledTriggers = async (
       type: {
         in: ['scheduled', 'interval'],
       },
-      ...(input.dueBefore
-        ? {
-            nextRunAt: {
-              lte: input.dueBefore,
-            },
-          }
-        : {
-            nextRunAt: {
-              not: null,
-            },
-          }),
+      nextRunAt: { not: null },
     },
     orderBy: [{ nextRunAt: 'asc' }, { createdAt: 'asc' }],
     take: input.limit,

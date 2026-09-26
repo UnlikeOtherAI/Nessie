@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import {
   AddPolicyBindingBodySchema,
@@ -14,6 +14,7 @@ import {
   createPolicyRule,
   deletePolicyRule,
   listPolicyRules,
+  PolicyRuleError,
   removePolicyBinding,
   updatePolicyRule,
 } from '../services/policy-rules.js'
@@ -21,6 +22,14 @@ import type { RouteDeps } from './types.js'
 
 export const registerPolicyRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext, requireOwner } = deps
+
+  const sendPolicyRuleError = (reply: FastifyReply, error: unknown): boolean => {
+    if (error instanceof PolicyRuleError) {
+      sendApiError(reply, error.httpStatus, error.code, error.message)
+      return true
+    }
+    return false
+  }
 
   app.get('/api/policy/effective', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -128,7 +137,12 @@ export const registerPolicyRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     if (!requireOwner(actorContext, reply)) return reply
 
     const { ruleId } = request.params as { ruleId: string }
-    await deletePolicyRule(prisma, ruleId, actorContext.tenant.organizationId)
+    try {
+      await deletePolicyRule(prisma, ruleId, actorContext.tenant.organizationId)
+    } catch (error) {
+      if (sendPolicyRuleError(reply, error)) return reply
+      throw error
+    }
 
     await emitAuditEvent(prisma, {
       actorContext,
@@ -180,7 +194,13 @@ export const registerPolicyRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     if (!requireOwner(actorContext, reply)) return reply
 
     const { ruleId, bindingId } = request.params as { ruleId: string; bindingId: string }
-    const removed = await removePolicyBinding(prisma, bindingId, actorContext.tenant.organizationId)
+    let removed: boolean
+    try {
+      removed = await removePolicyBinding(prisma, bindingId, actorContext.tenant.organizationId)
+    } catch (error) {
+      if (sendPolicyRuleError(reply, error)) return reply
+      throw error
+    }
     if (!removed) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Policy binding not found')
       return reply

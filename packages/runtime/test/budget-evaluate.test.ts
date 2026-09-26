@@ -2,7 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 
-import { checkBudget, evaluateBudget, type BudgetMode } from '../src/budget.js'
+import {
+  budgetScopeCandidates,
+  checkBudget,
+  evaluateBudget,
+  type BudgetMode,
+} from '../src/budget.js'
 
 // A Prisma Decimal is a `{ toNumber(): number }` at runtime; the budget module
 // normalizes it. Mirror that so cost comparisons are exercised correctly.
@@ -97,6 +102,76 @@ test('unlimited budget produces no alert snapshot', async () => {
 test('no governing budget: allow, no alert', async () => {
   const prisma = makePrisma([budget({ mode: 'off' })], { spentUsd: 500, spentTokens: 0 })
   const evaluation = await evaluateBudget(prisma, scope, { isHuman: false })
+  assert.equal(evaluation.decision.action, 'allow')
+  assert.equal(evaluation.alert, null)
+})
+
+// The one hierarchy is organisation → team → project (docs/standards/team-model.md),
+// so the most specific budget is the project's. The resolver used to try the
+// team first, which is the inverted foreign key's order and not the model's —
+// and the admin's copy described a third order.
+test('budget scopes are tried project first, then team, then organisation', () => {
+  assert.deepEqual(
+    budgetScopeCandidates({ organizationId: 'org-1', projectId: 'project-1', teamId: 'team-1' }),
+    [
+      { scopeType: 'project', scopeId: 'project-1' },
+      { scopeType: 'team', scopeId: 'team-1' },
+      { scopeType: 'organization', scopeId: 'org-1' },
+    ],
+  )
+  assert.deepEqual(
+    budgetScopeCandidates({ organizationId: 'org-1', projectId: null, teamId: 'team-1' }),
+    [
+      { scopeType: 'team', scopeId: 'team-1' },
+      { scopeType: 'organization', scopeId: 'org-1' },
+    ],
+  )
+})
+
+const nestedScope = { organizationId: 'org-1', projectId: 'project-1', teamId: 'team-1' }
+
+test('a project budget governs over its team budget', async () => {
+  // The team would block; the project only warns. The project is narrower, so
+  // its budget is the one that applies and the run is allowed.
+  const prisma = makePrisma(
+    [
+      budget({ scopeType: 'team', scopeId: 'team-1', mode: 'enforce' }),
+      budget({ scopeType: 'project', scopeId: 'project-1', mode: 'warn' }),
+    ],
+    { spentUsd: 120, spentTokens: 0 },
+  )
+  const evaluation = await evaluateBudget(prisma, nestedScope, { isHuman: false })
+  assert.equal(evaluation.decision.action, 'allow')
+  assert.equal(evaluation.alert?.scopeType, 'project')
+})
+
+test('a project set to Inherit falls through to its team budget', async () => {
+  const prisma = makePrisma(
+    [
+      budget({ scopeType: 'project', scopeId: 'project-1', mode: 'off' }),
+      budget({ scopeType: 'team', scopeId: 'team-1', mode: 'enforce' }),
+      budget({ scopeType: 'organization', scopeId: 'org-1', mode: 'warn' }),
+    ],
+    { spentUsd: 120, spentTokens: 0 },
+  )
+  const evaluation = await evaluateBudget(prisma, nestedScope, { isHuman: false })
+  assert.equal(evaluation.decision.action, 'block')
+  assert.equal(evaluation.alert?.scopeType, 'team')
+})
+
+test('an Unlimited team is exempt from the organisation cap above it', async () => {
+  const prisma = makePrisma(
+    [
+      budget({ scopeType: 'team', scopeId: 'team-1', mode: 'unlimited' }),
+      budget({ scopeType: 'organization', scopeId: 'org-1', mode: 'enforce' }),
+    ],
+    { spentUsd: 500, spentTokens: 0 },
+  )
+  const evaluation = await evaluateBudget(
+    prisma,
+    { organizationId: 'org-1', projectId: null, teamId: 'team-1' },
+    { isHuman: false },
+  )
   assert.equal(evaluation.decision.action, 'allow')
   assert.equal(evaluation.alert, null)
 })

@@ -121,6 +121,9 @@ export const BudgetScopeIdSchema = z.string().uuid()
 export const BudgetStatusResponseSchema = z.object({
   scopeType: BudgetScopeTypeSchema,
   scopeId: z.string(),
+  // The organisation's, team's or project's name, read on the server; null
+  // when the scope no longer exists in this organisation.
+  scopeName: z.string().nullable(),
   mode: BudgetModeSchema,
   period: BudgetPeriodSchema,
   costLimitUsd: z.number().nonnegative().nullable(),

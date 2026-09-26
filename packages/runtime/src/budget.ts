@@ -13,9 +13,14 @@ import {
 // Spend is attributed to a scope the same way the ledger records it — by the run's
 // actorContext.tenant (organizationId / projectId / teamId).
 //
-// Resolution is MOST-SPECIFIC-FIRST: for a run, the governing budget is the team
-// budget if one is configured (mode != off), else the project budget, else the org
-// budget. An "off" budget means "no budget here — inherit the parent". The modes:
+// Resolution is MOST-SPECIFIC-FIRST over the one hierarchy the product has
+// (organisation → team → project, docs/standards/team-model.md): for a run, the
+// governing budget is the project budget if one is configured (mode != off),
+// else the team budget, else the org budget. A project lives in exactly one
+// team, so it is the narrower scope; the old team-before-project order came from
+// the inverted `Team.projectId` foreign key, and the admin's copy said the
+// opposite of what the gate did. An "off" budget means "no budget here — inherit
+// the parent" (the admin calls it Inherit). The modes:
 //   off       — not configured here; resolution falls through to the parent scope.
 //   warn      — governs here; never blocks; surfaces usage % + ok/warn/over level.
 //   enforce   — governs here; throttles non-interactive (automation) runs once over
@@ -149,7 +154,12 @@ export const toBudgetRow = (raw: RawBudgetRow): BudgetRow => ({
   degradeProvider: raw.degradeProvider,
 })
 
-const periodStartUtc = (period: BudgetPeriod, now: Date): Date => {
+/**
+ * Where the current budget period began, in UTC: Monday for a week, the 1st for
+ * a month, 1 January for a year. Exported so every view of "this period" — the
+ * gate, the alert dedupe and the owner's usage page — reads one clock.
+ */
+export const budgetPeriodStart = (period: BudgetPeriod, now: Date): Date => {
   const year = now.getUTCFullYear()
   const month = now.getUTCMonth()
   const date = now.getUTCDate()
@@ -191,7 +201,7 @@ export const getPeriodUsage = async (
     _sum: { estimatedCostAmount: true, totalTokens: true },
     where: {
       ...scopeUsageWhere(row),
-      occurredAt: { gte: periodStartUtc(row.period, new Date()) },
+      occurredAt: { gte: budgetPeriodStart(row.period, new Date()) },
     },
   })
   return {
@@ -215,7 +225,7 @@ const getAdmissionUsage = async (
   const reserved = await sumOpenReservations(
     prisma,
     row,
-    periodStartUtc(row.period, new Date()),
+    budgetPeriodStart(row.period, new Date()),
   )
   return {
     spentUsd: recorded.spentUsd + reserved.reservedUsd,
@@ -246,15 +256,27 @@ export const maxPercent = (row: BudgetRow, spentUsd: number, spentTokens: number
   return parts.length === 0 ? null : Math.round(Math.max(...parts))
 }
 
+/**
+ * The scopes a run's budget is looked for in, most specific first: its project,
+ * then its team, then its organisation. Exported so the order is pinned by a
+ * test rather than restated in one.
+ */
+export const budgetScopeCandidates = (
+  scope: BudgetScope,
+): Array<{ scopeType: BudgetScopeType; scopeId: string }> => {
+  const candidates: Array<{ scopeType: BudgetScopeType; scopeId: string }> = []
+  if (scope.projectId) candidates.push({ scopeType: 'project', scopeId: scope.projectId })
+  if (scope.teamId) candidates.push({ scopeType: 'team', scopeId: scope.teamId })
+  candidates.push({ scopeType: 'organization', scopeId: scope.organizationId })
+  return candidates
+}
+
 // The governing budget for a run: most-specific scope whose mode is not 'off'.
 const resolveBudget = async (
   prisma: PrismaClient,
   scope: BudgetScope,
 ): Promise<BudgetRow | null> => {
-  const candidates: Array<{ scopeType: BudgetScopeType; scopeId: string }> = []
-  if (scope.teamId) candidates.push({ scopeType: 'team', scopeId: scope.teamId })
-  if (scope.projectId) candidates.push({ scopeType: 'project', scopeId: scope.projectId })
-  candidates.push({ scopeType: 'organization', scopeId: scope.organizationId })
+  const candidates = budgetScopeCandidates(scope)
 
   const rows = (
     await prisma.budget.findMany({
@@ -290,7 +312,7 @@ const buildAlertSnapshot = (
     scopeId: row.scopeId,
     mode: row.mode,
     period: row.period,
-    periodStart: periodStartUtc(row.period, new Date()),
+    periodStart: budgetPeriodStart(row.period, new Date()),
     spentUsd: usage.spentUsd,
     costLimitUsd: row.costLimitUsd,
     spentTokens: usage.spentTokens,

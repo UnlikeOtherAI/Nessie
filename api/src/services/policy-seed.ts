@@ -1,7 +1,12 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import type { PolicyAction, PolicyEffect, PolicyResourceType } from '@nessie/schemas'
+import type { PolicyAction } from '@nessie/schemas'
 
 import { actionToPrisma } from './policy-rules.js'
+import {
+  type DefaultPolicyRule,
+  NEW_ORGANIZATION_DEFAULT_POLICIES,
+  SELF_HEALING_DEFAULT_POLICIES,
+} from './policy-defaults.js'
 
 // Default-policy seeding: run at bootstrap (`db/seed.ts`), for a freshly
 // materialized organisation on the login path (`team-context.ts`,
@@ -10,77 +15,8 @@ import { actionToPrisma } from './policy-rules.js'
 // path (docs/standards/horizontal-scaling/overview.md §5). Idempotent and race-free:
 // each rule carries a stable `seedKey` constrained by a partial unique index,
 // so N concurrent callers for one organisation converge on one default set.
-// Evaluation lives in `policy.ts`; rule CRUD lives in `policy-rules.ts`.
-
-/**
- * One default rule, identified by a stable `seedKey`. The key — not the rule's
- * semantic columns — is what the partial unique index
- * `policy_rules_organization_id_seed_key_key` constrains, because a person may
- * legitimately author two rules that differ only in `conditions` or `priority`
- * and a semantic unique index would refuse the second one.
- */
-export type DefaultPolicyRule = {
-  /** The role the rule binds to; `*` is every role. */
-  actorId: string
-  action: PolicyAction
-  effect: PolicyEffect
-  priority: number
-  resourceType: PolicyResourceType
-  seedKey: string
-}
-
-const defaultRule = (
-  resourceType: PolicyResourceType,
-  action: PolicyAction,
-  effect: PolicyEffect,
-  actorId: string,
-  priority: number,
-): DefaultPolicyRule => ({
-  actorId,
-  action,
-  effect,
-  priority,
-  resourceType,
-  seedKey: `default:${resourceType}:${action}:${effect}:${actorId}`,
-})
-
-/**
- * Re-asserted for every organisation on every reconcile. The knowledge rules
- * were added after the original default set and the agent-bind pair after that,
- * so an organisation provisioned by an older release is missing them and denies
- * knowledge actions and every agent bind by default until they are backfilled.
- * Fine-grained per-space knowledge privacy is enforced in the knowledge
- * provider, not here.
- */
-export const SELF_HEALING_DEFAULT_POLICIES: readonly DefaultPolicyRule[] = [
-  defaultRule('knowledge_space', 'view', 'allow', '*', 100),
-  defaultRule('knowledge_space', 'create', 'allow', '*', 100),
-  defaultRule('knowledge_space', 'edit', 'allow', '*', 100),
-  defaultRule('knowledge_page', 'view', 'allow', '*', 100),
-  defaultRule('knowledge_page', 'create', 'allow', '*', 100),
-  defaultRule('knowledge_page', 'edit', 'allow', '*', 100),
-  defaultRule('knowledge_page', 'read', 'allow', '*', 100),
-  defaultRule('knowledge_page', 'search', 'allow', '*', 100),
-  defaultRule('knowledge_page', 'approve', 'allow', 'owner', 10),
-  defaultRule('agent', 'bind', 'deny', 'member', 50),
-  defaultRule('agent', 'bind', 'allow', 'owner', 10),
-]
-
-/**
- * Written once, when an organisation has no policy rules at all. The extra
- * rules here are deliberately NOT re-asserted afterwards: an owner who deleted
- * "every role may view channels" meant it, and resurrecting it on each deploy
- * would silently widen access.
- */
-export const NEW_ORGANIZATION_DEFAULT_POLICIES: readonly DefaultPolicyRule[] = [
-  ...SELF_HEALING_DEFAULT_POLICIES,
-  defaultRule('channel', 'view', 'allow', '*', 100),
-  defaultRule('admin', 'admin', 'deny', 'member', 50),
-  defaultRule('admin', 'admin', 'allow', 'owner', 10),
-  defaultRule('agent', 'view', 'allow', '*', 100),
-  defaultRule('agent', 'invoke', 'allow', '*', 100),
-  defaultRule('tool', 'view', 'allow', '*', 100),
-]
+// Evaluation lives in `policy.ts`; rule CRUD lives in `policy-rules.ts`; the
+// default rules themselves are `policy-defaults.ts`.
 
 /**
  * Enough of Prisma for the seed: the two delegates it writes, and raw SQL for

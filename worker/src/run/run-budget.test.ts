@@ -108,10 +108,31 @@ test('delegate and continuation counts read their env with sane defaults', () =>
 
 const decimal = (value: number) => ({ toNumber: () => value })
 
-const pricingPrisma = (row: unknown): PrismaClient =>
-  ({ modelPricingProfile: { findFirst: async () => row } }) as unknown as PrismaClient
-
 const MODEL = { model: 'deepseek-v4-flash', organizationId: 'org-1', provider: 'deepseek' }
+
+// One active `model_pricing_profiles` row as `findActivePricingProfile` selects
+// it; a case names only the rates it is about.
+const pricingRow = (row: Record<string, unknown>) => ({
+  cacheReadPerMillion: null,
+  cacheWritePerMillion: null,
+  cachedInputPerMillion: null,
+  cachedOutputPerMillion: null,
+  currency: 'USD',
+  effectiveFrom: new Date('2026-09-01T00:00:00Z'),
+  id: 'profile-1',
+  inputPerMillion: null,
+  modelPattern: MODEL.model,
+  outputPerMillion: null,
+  source: 'manual',
+  ...row,
+})
+
+const pricingPrisma = (...rows: Array<Record<string, unknown> | null>): PrismaClient =>
+  ({
+    modelPricingProfile: {
+      findMany: async () => rows.flatMap((row) => (row ? [pricingRow(row)] : [])),
+    },
+  }) as unknown as PrismaClient
 
 test('the env weight is the fallback, and junk values fall back to the default', () => {
   assert.equal(resolveCacheReadWeightFromEnv({}), DEFAULT_CACHE_READ_WEIGHT)
@@ -135,6 +156,31 @@ test('the org pricing rows win over the env fallback', async () => {
   assert.ok(Math.abs(weight - 0.1) < 1e-9)
 })
 
+test('an owner price wins over the model service price, as it does for the ledger', async () => {
+  // The model service publishes an exact price (ratio 0.5); the owner set a
+  // provider-wide one (ratio 0.1). The owner's applies, whatever its pattern.
+  const weight = await resolveCacheReadWeight(
+    pricingPrisma(
+      {
+        cacheReadPerMillion: decimal(0.5),
+        id: 'published',
+        inputPerMillion: decimal(1),
+        source: 'provider_default',
+      },
+      {
+        cacheReadPerMillion: decimal(0.1),
+        id: 'owner',
+        inputPerMillion: decimal(1),
+        modelPattern: '*',
+        source: 'manual',
+      },
+    ),
+    MODEL,
+    {},
+  )
+  assert.ok(Math.abs(weight - 0.1) < 1e-9)
+})
+
 test('a cache rate dearer than input clamps to 1 rather than inflating the meter', async () => {
   const weight = await resolveCacheReadWeight(
     pricingPrisma({ cacheReadPerMillion: decimal(5), inputPerMillion: decimal(1) }),
@@ -153,7 +199,7 @@ test('incomplete, missing or unreadable pricing degrades to the env default', as
     pricingPrisma({ cacheReadPerMillion: decimal(0.028), inputPerMillion: decimal(0) }),
     ({
       modelPricingProfile: {
-        findFirst: async () => {
+        findMany: async () => {
           throw new Error('db is down')
         },
       },
@@ -167,7 +213,7 @@ test('incomplete, missing or unreadable pricing degrades to the env default', as
 test('an agent without a resolved provider/model never queries pricing', async () => {
   const prisma = {
     modelPricingProfile: {
-      findFirst: async () => {
+      findMany: async () => {
         throw new Error('should not be queried')
       },
     },

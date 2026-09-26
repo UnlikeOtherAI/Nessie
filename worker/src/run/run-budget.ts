@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
+import { findActivePricingProfile } from '@nessie/runtime'
 import { AgentRunLimitsSchema, TICKET_WORK_PURPOSE, type AgentRunLimits } from '@nessie/schemas'
 import { DEFAULT_CACHE_READ_WEIGHT, type BudgetLimits } from './loop-budget.js'
 
@@ -172,9 +173,10 @@ export const resolveCacheReadWeightFromEnv = (env: Env = process.env): number =>
 }
 
 // Best-effort by construction: budget metering must never fail a run, so any
-// lookup error (or missing/zero rates) degrades to the env default. Mirrors the
-// active-profile selection `@nessie/runtime` ledger pricing uses — exact
-// `modelPattern` wins over the `*` catch-all, expired profiles are excluded.
+// lookup error (or missing/zero rates) degrades to the env default. The price
+// is the one the ledger estimates this model's usage at
+// (`findActivePricingProfile`): an owner's own price over the model service's
+// published one, an exact model over the `*` catch-all, expired rows excluded.
 export const resolveCacheReadWeight = async (
   prisma: PrismaClient,
   input: { model: string | null; organizationId: string; provider: string | null },
@@ -183,18 +185,14 @@ export const resolveCacheReadWeight = async (
   const fallback = resolveCacheReadWeightFromEnv(env)
   if (!input.model || !input.provider) return fallback
   try {
-    const row = await prisma.modelPricingProfile.findFirst({
-      where: {
-        AND: [{ OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] }],
-        organizationId: input.organizationId,
-        OR: [{ modelPattern: input.model }, { modelPattern: '*' }],
-        provider: input.provider,
-      },
-      orderBy: { modelPattern: 'desc' },
-      select: { cacheReadPerMillion: true, inputPerMillion: true },
-    })
-    const cacheRead = row?.cacheReadPerMillion?.toNumber()
-    const fresh = row?.inputPerMillion?.toNumber()
+    const pricing = await findActivePricingProfile(
+      prisma,
+      input.organizationId,
+      input.provider,
+      input.model,
+    )
+    const cacheRead = pricing?.cacheReadPerMillion
+    const fresh = pricing?.inputPerMillion
     if (typeof cacheRead === 'number' && typeof fresh === 'number' && fresh > 0) {
       return clampWeight(cacheRead / fresh)
     }

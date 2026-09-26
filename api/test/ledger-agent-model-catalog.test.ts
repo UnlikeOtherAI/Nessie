@@ -7,6 +7,7 @@ import {
   ledgerAgentModelCatalogRequestHeaders,
   LedgerAgentModelCatalogError,
   listLedgerAgentModels,
+  listLedgerModelServicePrices,
 } from '@nessie/team-admin'
 
 const catalogConfig = {
@@ -180,6 +181,43 @@ test('lists only token-authorized chat-completions models from Ledger', async ()
       provider: 'openai',
       providerDisplayName: 'OpenAI',
     },
+  ])
+})
+
+// The prices Ledger publishes in the same listing become the default estimate
+// (docs/token-ledger-spec.md §4). Only what a token ledger can multiply is
+// kept: per-token US dollar rates on a direct service model. Anything else —
+// a request-priced model, another currency, no rate at all, a malformed block —
+// stays unknown, because a price nobody published must not turn into $0.
+test('reads the per-token US dollar prices Ledger publishes for direct service models', async () => {
+  const pricing = (overrides: Record<string, unknown> = {}) => ({
+    basis: 'per 1M tokens',
+    cached_input_price: 0.025,
+    currency: 'USD',
+    input_price: 0.25,
+    output_price: 2,
+    pricing_mode: 'fixed',
+    unit: 'tokens',
+    ...overrides,
+  })
+  const prices = await listLedgerModelServicePrices({
+    config: catalogConfig,
+    ledgerPublicUrl,
+    fetchImpl: async () => response({ data: [
+      { id: 'gpt-5-mini', kind: 'service', service: { id: 'openai', name: 'OpenAI' }, endpoints: ['chat/completions'], pricing: pricing() },
+      { id: 'mistral-embed', kind: 'service', service: { id: 'mistral', name: 'Mistral' }, endpoints: ['embeddings'], pricing: pricing({ cached_input_price: null, output_price: null, input_price: 0.1 }) },
+      { id: 'image-model', kind: 'service', service: { id: 'openai', name: 'OpenAI' }, pricing: pricing({ unit: 'images' }) },
+      { id: 'euro-model', kind: 'service', service: { id: 'mistral', name: 'Mistral' }, pricing: pricing({ currency: 'EUR' }) },
+      { id: 'unpriced', kind: 'service', service: { id: 'openai', name: 'OpenAI' }, pricing: pricing({ input_price: null, output_price: null }) },
+      { id: 'malformed', kind: 'service', service: { id: 'openai', name: 'OpenAI' }, pricing: pricing({ input_price: 'cheap' }) },
+      { id: 'team-fusion', kind: 'fusion', pricing: null },
+      { id: 'no-pricing', kind: 'service', service: { id: 'openai', name: 'OpenAI' } },
+    ] }),
+  })
+
+  assert.deepEqual(prices, [
+    { cachedInputPerMillion: 0.025, inputPerMillion: 0.25, model: 'gpt-5-mini', outputPerMillion: 2, provider: 'openai' },
+    { cachedInputPerMillion: null, inputPerMillion: 0.1, model: 'mistral-embed', outputPerMillion: null, provider: 'mistral' },
   ])
 })
 

@@ -28,8 +28,33 @@ const LedgerModelListSchema = z.object({
     // Capability metadata is advisory. Keep a malformed provider value from
     // invalidating otherwise usable model selection; the cap reader validates it.
     max_output_tokens: z.unknown().optional(),
+    // The rates Ledger publishes for the model. Advisory for the same reason:
+    // `listLedgerModelServicePrices` validates it and skips what it cannot read.
+    pricing: z.unknown().optional(),
   })),
 })
+
+/**
+ * The part of a listing's `pricing` a local estimate can use. Token prices are
+ * per million tokens (Ledger's own `basis` for the `tokens` unit); a model
+ * priced per request, image or second has nothing a token ledger can multiply.
+ */
+const LedgerModelPricingSchema = z.object({
+  cached_input_price: z.number().finite().nonnegative().nullable().optional(),
+  currency: z.string(),
+  input_price: z.number().finite().nonnegative().nullable().optional(),
+  output_price: z.number().finite().nonnegative().nullable().optional(),
+  unit: z.string(),
+})
+
+/** One model's published token price, in US dollars per million tokens. */
+export type LedgerModelServicePrice = {
+  provider: string
+  model: string
+  inputPerMillion: number | null
+  outputPerMillion: number | null
+  cachedInputPerMillion: number | null
+}
 
 export const LEDGER_AGENT_MODEL_CATALOG_ERROR_CODES = {
   INVALID_RESPONSE: 'LEDGER_MODEL_CATALOG_INVALID_RESPONSE',
@@ -234,6 +259,40 @@ export const findLedgerModelOutputTokenCap = async (
     && value <= MAX_OUTPUT_TOKENS
     ? value
     : undefined
+}
+
+/**
+ * The token prices Ledger publishes for the models this deployment's key may
+ * call, keyed the way the token ledger records usage: the service id as
+ * `provider` (the worker writes `providerConfig.providerKey`, the same id) and
+ * the model id. Every direct service model is included — an embedding model's
+ * usage is recorded too — but only a US dollar per-token price with at least
+ * one rate: budgets are in US dollars, and a price nobody published must stay
+ * unknown rather than become $0.
+ */
+export const listLedgerModelServicePrices = async (
+  input: ListLedgerAgentModelsOptions,
+): Promise<LedgerModelServicePrice[]> => {
+  const catalog = await loadLedgerModelCatalog(input)
+  const prices = new Map<string, LedgerModelServicePrice>()
+  for (const entry of catalog.data) {
+    const provider = trimmed(entry.service?.id)
+    const model = trimmed(entry.id)
+    const pricing = LedgerModelPricingSchema.safeParse(entry.pricing)
+    if (entry.kind !== 'service' || !provider || !model || !pricing.success) continue
+    if (pricing.data.unit !== 'tokens' || pricing.data.currency.toUpperCase() !== 'USD') continue
+    const inputPerMillion = pricing.data.input_price ?? null
+    const outputPerMillion = pricing.data.output_price ?? null
+    if (inputPerMillion === null && outputPerMillion === null) continue
+    prices.set(optionKey({ model, provider }), {
+      cachedInputPerMillion: pricing.data.cached_input_price ?? null,
+      inputPerMillion,
+      model,
+      outputPerMillion,
+      provider,
+    })
+  }
+  return [...prices.values()]
 }
 
 /**
