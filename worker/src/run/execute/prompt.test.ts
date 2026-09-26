@@ -112,6 +112,14 @@ test('an agent with card_post receives the compact secret-form instruction', () 
   assert.match(system, /vault_secret/)
 })
 
+// Where the setup prompt sent people before the admin moved: a personal
+// account's page, the organisation's page and the tool list.
+const RETIRED_SETUP_ADDRESSES = [
+  /\/settings\/account\?tab=agents/,
+  /\/settings\/organization\?tab=agents/,
+  /\/agents\/tools/,
+]
+
 test('every agent can describe Browserbase setup, but only card_post can collect its masked key', () => {
   const noCard = systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null, {
     hasCardTool: false,
@@ -123,6 +131,9 @@ test('every agent can describe Browserbase setup, but only card_post can collect
   assert.match(noCard, /\/settings\/accounts\?tab=browsers/)
   assert.match(noCard, /\/admin\/connections/)
   assert.match(noCard, /\/admin\/advanced\/tools/)
+  // The retired addresses resolve to nothing, so one printed beside the
+  // current address would still send a person to a dead page.
+  for (const retired of RETIRED_SETUP_ADDRESSES) assert.doesNotMatch(noCard, retired)
   assert.match(noCard, /cannot collect a Browserbase API key in this conversation/)
   assert.doesNotMatch(noCard, /destination\.kind` `browserbase_connection/)
   assert.doesNotMatch(noCard, /You can post an interactive card/)
@@ -137,6 +148,7 @@ test('every agent can describe Browserbase setup, but only card_post can collect
   assert.match(withCard, /Only `browser_login_request` can request temporary personal browser access/)
   assert.match(withCard, /exact selected HTTPS origins for one task/)
   assert.match(withCard, /A `card_post` card or chat text cannot grant browser access/)
+  for (const retired of RETIRED_SETUP_ADDRESSES) assert.doesNotMatch(withCard, retired)
 })
 
 test('a run holding the grant verb is not told, in its main prompt, that an owner must grant', () => {

@@ -22,7 +22,36 @@ test('a missing login-request tool cannot be replaced by a generic card', () => 
 
   assert.match(prompt, /`browser_login_request` is not in your toolset/)
   assert.match(prompt, /enable `browser_login_request` at Admin › Advanced › Tool registry/)
+  assert.match(prompt, /\(`\/admin\/advanced\/tools`\)/)
+  assert.doesNotMatch(prompt, /\/agents\/tools/)
   assert.match(prompt, /Do not substitute card_post, prose, or a fabricated permission card/)
+})
+
+// Where the prompt sent people before the admin moved: a personal account's
+// page, the organisation's page and the tool list. They resolve to nothing, so
+// one printed beside the current address would still send a person nowhere.
+const RETIRED_SETUP_ADDRESSES = [
+  /\/settings\/account\?tab=agents/,
+  /\/settings\/organization\?tab=agents/,
+  /\/agents\/tools/,
+]
+
+test('every variant names the current setup pages and none of the retired addresses', () => {
+  const variants = [
+    { hasCardTool: false },
+    { hasCardTool: true },
+    { hasBrowserLoginRequestTool: true, hasCardTool: true },
+    { canGrantBrowserTools: true, hasCardTool: true },
+    { canGrantBrowserTools: true, hasCardTool: true, ownToolsetFixed: true },
+    { hasCardTool: true, ownToolsetFixed: true },
+  ]
+  for (const facts of variants) {
+    const prompt = buildBrowserbaseSetupPrompt(facts)
+    const label = JSON.stringify(facts)
+    assert.match(prompt, /Your settings › Connected accounts › Browsers \(`\/settings\/accounts\?tab=browsers`\)/, label)
+    assert.match(prompt, /Admin › Company connections \(`\/admin\/connections`\)/, label)
+    for (const retired of RETIRED_SETUP_ADDRESSES) assert.doesNotMatch(prompt, retired, label)
+  }
 })
 
 test('service keys use the personal secret form before reveal', () => {

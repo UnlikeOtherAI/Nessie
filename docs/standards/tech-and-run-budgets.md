@@ -423,8 +423,8 @@ summary and points here; **this file is the rule**.
   executor call's TTL plus margin (130 s for `mcp.call`) or a model or other
   tool's own timeout. Stop never adds a line to the composer.
   `pnpm --filter @nessie/admin test:e2e:run-stop` pins the button, the pending
-  state and the request. The standalone Agents → Activity page and its
-  `RunLifecyclePanel` were removed,
+  state and the request. The organisation-wide activity page and its
+  `RunLifecyclePanel` no longer exist,
   so the org-wide active-run list and the restart control have no admin surface
   (the `GET /api/runs/active` and `POST /api/runs/:id/restart` endpoints remain,
   API-only).
