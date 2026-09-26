@@ -304,7 +304,9 @@ components:
   organisation scope on a local install.
 - `/admin/teams`: a list from `useTeams` (name, picture, member count when the
   roster read allows, Open); `/admin/teams/:teamId` with `TabBar` General ·
-  Overrides · AI models · Keys built from the existing team pages' content;
+  Overrides · AI models · Keys built from the existing team pages' content
+  (T2 has since folded AI models and Keys into the scoped pages, leaving
+  General and Overrides);
   the call-provider select from `CallProviderSettingsPanel` for this team on
   General; the team's People is a link to `/admin/people?scope=team:<id>`.
 - `/admin/advanced/debug`: a page rendering the session-debug dialog's content.
@@ -365,7 +367,9 @@ As built:
   need. Keys: the owner at every scope; anybody else is refused with a
   doorway to Saved keys. Company connections: owner or admin at every scope;
   a shared cloud browser account (company or team) is the owner's to connect,
-  and its panel now says so to an admin while keeping the lock and home page.
+  so an admin sees its form and Disconnect greyed and saying so (`InertGate`,
+  the `ScopedSettingGate` treatment extended as R9 asks) while setting the
+  lock and home page, at the organisation's scope as well as a team's.
   The team catalogue's pagination no longer writes its own `?scope=`, which
   collided with the switch, and the page's provider filter is
   `?modelProvider=`, because T3 made `?provider=` Connected accounts'

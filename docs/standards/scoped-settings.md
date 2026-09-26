@@ -27,7 +27,10 @@ uses for the rest: `AGENTS.md` carries the one-line invariant and points here;
   from — greys it, makes the subtree genuinely `inert` through a ref rather
   than `pointer-events-none` alone (which still lets a keyboard user tab into a
   control they cannot operate), and says which level decided. Offering an edit
-  the server will refuse is the failure this replaces.
+  the server will refuse is the failure this replaces. The same treatment for
+  a control that is another role's rather than another level's — the
+  owner-only cloud browser account shown to an admin — is `InertGate`, which
+  `ScopedSettingGate` is built on, so there is one greyed-and-says-who look.
 - **A setting with levels is one page with a scope switch; a team's page only
   summarises it.** The Organisation pages whose data exists at the
   organisation and at each team — AI models, Company connections, Keys and

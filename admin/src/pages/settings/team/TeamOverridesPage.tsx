@@ -44,7 +44,8 @@ const doorway = (options: readonly AdminScopeOption[], path: string, team: TeamR
 /**
  * One setting as it stands for this team. The value and the chips sit under
  * the name rather than beside it, so on a phone they wrap instead of cutting
- * the sentence short or squeezing the name to a few letters.
+ * the sentence short or squeezing the name to a few letters. A doorway the
+ * viewer may not use is present, greyed and inert, and its value says who can.
  */
 const Setting = ({ chips = [], target, title, value }: {
   chips?: readonly InheritanceChip[]
@@ -52,7 +53,10 @@ const Setting = ({ chips = [], target, title, value }: {
   title: string
   value: string
 }) => (
-  <Row {...('href' in target ? { href: target.href } : {})} title={title}>
+  <Row
+    {...('href' in target ? { href: target.href } : { className: 'opacity-60', disabled: true })}
+    title={title}
+  >
     <span className="mt-0.5 block text-xs text-[color:var(--tx3)]">{value}</span>
     {chips.length > 0 ? (
       <span className="mt-1.5 flex flex-wrap gap-1">

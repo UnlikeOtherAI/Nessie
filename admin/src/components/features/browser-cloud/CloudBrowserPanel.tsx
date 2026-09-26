@@ -18,7 +18,9 @@ import {
   useScopedSettings,
   useWriteScopedSetting,
 } from '../../../facades/settings/hooks'
-import { ScopedSettingGate, ScopedSettingLock } from '../settings/ScopedSettingGate'
+import { InertGate, ScopedSettingLock, scopedSettingLockReason } from '../settings/ScopedSettingGate'
+
+const OWNER_ONLY = 'Only the organisation owner connects, replaces or disconnects this account.'
 
 type CloudBrowserPanelProps = {
   scope: CloudBrowserScope
@@ -74,8 +76,8 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
   // A shared account — the company's or a team's — is the owner's to connect,
   // replace and disconnect (the connection routes are `requireOwner`), while
   // the lock and the home page are any owner's or admin's scoped settings. So
-  // an admin keeps those two and is told who holds the account itself, rather
-  // than being offered a key field the server will refuse.
+  // an admin keeps those two, and sees the account's controls greyed with who
+  // holds them rather than a key field the server will refuse.
   const isOwner = useIsOwner()
   const mayConnect = scope === 'user' || isOwner
   // Both browser keys in one request: they are drawn a few centimetres apart
@@ -163,21 +165,17 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
         ) : null}
       </div>
 
-      <ScopedSettingGate setting={setting}>
-        {mayConnect ? (
-          <CloudBrowserConnectionForm
-            blurb={copy.blurb}
-            connected={connected}
-            reconnect={Boolean(connection) && !connected}
-            scope={scope}
-            teamId={teamId}
-          />
-        ) : (
-          <p className="mt-4 text-sm text-[color:var(--tx2)]">
-            Only the organisation owner connects, replaces or disconnects this account.
-          </p>
-        )}
-      </ScopedSettingGate>
+      {/* One gate, two reasons: a level above locked the account, or the
+          account is the owner's. Either way the form stays, greyed, saying who. */}
+      <InertGate reason={scopedSettingLockReason(setting) ?? (mayConnect ? null : OWNER_ONLY)}>
+        <CloudBrowserConnectionForm
+          blurb={copy.blurb}
+          connected={connected}
+          reconnect={Boolean(connection) && !connected}
+          scope={scope}
+          teamId={teamId}
+        />
+      </InertGate>
 
       {setting?.canEdit && scope !== 'user' ? (
         <div className="mt-4 border-t border-[color:var(--sep)] pt-3">
@@ -192,12 +190,13 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
 
       <BrowserHomepageField scope={scope} setting={homepageSetting} teamId={teamId} />
 
-      {connection && !disconnected && mayConnect ? (
+      {connection && !disconnected ? (
         <div className="mt-4 border-t border-[color:var(--sep)] pt-3">
           <button
             className="admin-button admin-button-danger admin-button-compact"
-            disabled={disconnect.isPending}
+            disabled={!mayConnect || disconnect.isPending}
             onClick={() => setConfirming(true)}
+            title={mayConnect ? undefined : OWNER_ONLY}
             type="button"
           >
             Disconnect

@@ -17,6 +17,7 @@ import {
   type ScopeViewer,
 } from '../src/pages/admin/scope-entitlements.js'
 import { teamInheritanceChips } from '../src/components/features/settings/setting-inheritance.js'
+import { scopedSettingLockReason } from '../src/components/features/settings/ScopedSettingGate.js'
 import { connectedMailSettingsPath } from '../src/facades/mail/settings-path.js'
 import type { ResolvedSetting } from '../src/facades/settings/hooks.js'
 
@@ -185,5 +186,20 @@ test('a team’s inheritance reads as chips: who set it, and who locked it', () 
   assert.deepEqual(
     teamInheritanceChips(setting({ lockedAtScope: 'organization' })).map((chip) => chip.label),
     ['Locked by organisation'],
+  )
+})
+
+test('a gated control says which level decided, and an editable one says nothing', () => {
+  // The sentence `ScopedSettingGate` shows, now one reason `InertGate` can
+  // also carry for a control that is another role's — the owner-only account.
+  assert.equal(scopedSettingLockReason(undefined), null)
+  assert.equal(scopedSettingLockReason(setting({ canEdit: true })), null)
+  assert.equal(
+    scopedSettingLockReason(setting({ canEdit: false, lockedAtScope: 'organization' })),
+    'This has been set at the organisation level and cannot be changed here.',
+  )
+  assert.equal(
+    scopedSettingLockReason(setting({ canEdit: false })),
+    'This cannot be changed here.',
   )
 })

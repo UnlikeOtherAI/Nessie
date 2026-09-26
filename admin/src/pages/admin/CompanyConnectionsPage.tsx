@@ -5,7 +5,6 @@ import { CloudBrowserPanel } from '../../components/features/browser-cloud/Cloud
 import { MailboxConnectionsPanel } from '../../components/features/mailbox-connections/MailboxConnectionsPanel'
 import { AdminScopeNotice } from '../../components/features/settings/AdminScopeNotice'
 import { useAdminScope } from '../../components/features/settings/useAdminScope'
-import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { SettingsPanel, type SettingsTabHostProps } from '../../components/shared/SettingsPanel'
 import { useIsOrganizationAdmin, useIsOwner } from '../../facades/auth/hooks'
 import { useTeams } from '../../facades/projects/hooks'
@@ -13,22 +12,13 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { connectionScopeOptions } from './scope-entitlements'
 
 /**
- * The organisation's own side: its cloud browser account, which is the
- * owner's, and the apps it has locked. Anybody else is told whose the account
- * is rather than handed a panel whose every control the server refuses.
+ * The organisation's own side: its cloud browser account and the apps it has
+ * locked. The account itself is the owner's to connect, which the panel shows
+ * an admin greyed and saying so; its lock and home page are theirs to set.
  */
-const OrganisationConnections = ({ isOwner }: { isOwner: boolean }) => (
+const OrganisationConnections = () => (
   <div className="grid gap-6">
-    {isOwner ? (
-      <CloudBrowserPanel scope="organization" />
-    ) : (
-      <section aria-label="Cloud browsers" className="grid gap-1">
-        <SectionLabel as="h2">Cloud browsers</SectionLabel>
-        <p className="text-sm text-[color:var(--tx2)]">
-          The company’s cloud browser account is connected by the organisation owner.
-        </p>
-      </section>
-    )}
+    <CloudBrowserPanel scope="organization" />
     <LockedAppsList />
   </div>
 )
@@ -85,7 +75,7 @@ export const CompanyConnectionsPage = () => {
           <CloudBrowserPanel scope="team" teamId={scope.teamId} />
         </div>
       ) : (
-        <OrganisationConnections isOwner={isOwner} />
+        <OrganisationConnections />
       )}
     </SettingsPanel>
   )
