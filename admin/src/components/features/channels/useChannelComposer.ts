@@ -8,6 +8,7 @@ import {
   type SendMessageThreadExtras,
 } from '../../../facades/messages/hooks'
 import { useBindAgent } from '../../../facades/agents/hooks'
+import { useIsOwner } from '../../../facades/auth/hooks'
 import type { ChannelRecord, ThreadMessageRecord } from '../../../lib/api-client'
 import type { OptimisticMessage } from './channel-feed'
 import { useDraft } from '../../../navigation/useDraft'
@@ -22,7 +23,11 @@ import {
 import { useComposerAttachments, type ComposerAttachments } from './useComposerAttachments'
 import type { SecretRecord } from '../../../facades/secrets/hooks'
 import { useMentionInviteGate, type MentionInviteController } from './useMentionInviteGate'
-import { useSecretCapture, type SecretCapture } from './useSecretCapture'
+import {
+  secretCaptureProjectId,
+  useSecretCapture,
+  type SecretCapture,
+} from './useSecretCapture'
 
 interface UseChannelComposerParams {
   activeChannel: ChannelRecord | null
@@ -107,12 +112,13 @@ export const useChannelComposer = ({
   const [invitingAgentId, setInvitingAgentId] = useState<string | null>(null)
   const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({})
   const [sendError, setSendError] = useState<string | null>(null)
+  const viewerIsOwner = useIsOwner()
   const {
     capture: secretCapture,
     dismiss: dismissSecretCapture,
     intercept: interceptSecret,
     release: releaseSecret,
-  } = useSecretCapture({ projectId: activeChannel?.projectId ?? null })
+  } = useSecretCapture({ projectId: secretCaptureProjectId(activeChannel, { viewerIsOwner }) })
   const mentionRef = useRef<MentionInputHandle>(null)
   // One idempotency key per unsent draft. It is minted at the first attempt and
   // retained while that attempt is unresolved, so a double-submit or a client
