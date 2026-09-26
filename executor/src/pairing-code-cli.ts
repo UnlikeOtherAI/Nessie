@@ -7,7 +7,9 @@ import {
 } from './pairing-code.js'
 import { workspaceFoldersFromInput } from './workspace-folder-arguments.js'
 import { acquireDefaultPairingLease, defaultPairingDirectory, promoteDefaultPairing } from './pairing-code-directory.js'
-import { createExecutorServiceEnvironment, enableExecutorService } from './service-linux.js'
+import { createExecutorServiceEnvironment } from './service-environment.js'
+import { enableExecutorService } from './service-linux.js'
+import { createMacServiceEnvironment, enableMacExecutorService } from './service-macos.js'
 import { WorkspaceCleanupRequiredError } from './workspace-retirement.js'
 
 const value = (args: string[], flag: string): string | undefined => {
@@ -60,7 +62,7 @@ export const runPairingCodeCli = async (
   if (!['login', 'pairing-start', 'pairing-status', 'pairing-confirm', 'pairing-cancel', 'pair'].includes(command)) return false
   if (command === 'pair' && args.includes('--enrollment')) return false
   if (pairingUsesWindowsTray(args, platform)) {
-    process.stdout.write('Open Nessie Executor in the Windows tray and choose Pair with Nessie.\n')
+    process.stdout.write('Open Nessie Executor in the Windows tray and choose Add team.\n')
     return true
   }
   const explicitDirectory = value(args, '--state-dir')
@@ -120,13 +122,19 @@ export const runPairingCodeCli = async (
     }
     if (!explicitDirectory && view.status === 'paired' && view.executorId) {
       await promoteDefaultPairing(directory, view.executorId)
-      if (!json && process.stdin.isTTY && platform === 'linux'
+      if (!json && process.stdin.isTTY && (platform === 'linux' || platform === 'darwin')
         && ['login', 'pair', 'pairing-start'].includes(command)) {
-        const environment = createExecutorServiceEnvironment()
-        await enableExecutorService({ executorId: view.executorId, assumeYes: true }, {
-          ...environment, write: () => undefined,
-        })
-        process.stdout.write('Nessie Executor is running and will start automatically with this computer.\n')
+        if (platform === 'darwin') {
+          await enableMacExecutorService({ executorId: view.executorId }, {
+            ...createMacServiceEnvironment(), write: () => undefined,
+          })
+          process.stdout.write('Nessie Executor is running and will start when you log in.\n')
+        } else {
+          await enableExecutorService({ executorId: view.executorId, assumeYes: true }, {
+            ...createExecutorServiceEnvironment(), write: () => undefined,
+          })
+          process.stdout.write('Nessie Executor is running and will start automatically with this computer.\n')
+        }
       }
     }
     if (json) process.stdout.write(`${JSON.stringify(view)}\n`)

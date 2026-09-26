@@ -53,8 +53,8 @@ describes the same pairing in its terminal form.
 
 ## Installing it
 
-The download is `Nessie-Executor-macOS-Apple-Silicon.dmg` or
-`Nessie-Executor-macOS-Intel.dmg` from the GitHub release. **Open it, drag the
+The download is `Nessie-Executor-macOS-Apple-Silicon.dmg`
+from the GitHub release. **Open it, drag the
 app onto the Applications folder beside it, and launch it.** There is no
 right-click-Open, no `xattr -d`, no Gatekeeper bypass and no security-settings
 detour: the image is signed with the Nessie `Developer ID Application`
@@ -62,8 +62,8 @@ certificate, notarized by Apple, and has its notarization ticket stapled to both
 the image and the app inside it. If macOS ever refuses one of these downloads,
 that is a defect in the release, not a step for the person installing it.
 
-Two DMGs exist because the app carries its own pinned Node, and that binary is
-the build host's own. An Apple Silicon Mac wants the Apple Silicon image.
+The standalone executor app requires an Apple Silicon Mac and carries its own
+pinned Node runtime.
 
 The mounted volume holds exactly two things: the app, and a symlink to
 `/Applications` to drop it on. There is no scripted Finder window with a
@@ -99,8 +99,8 @@ clicking it puts the icon in the status bar.
 
 The DMG above is still the right download for two Macs: one that runs only the
 executor and has no reason to have the chat app on it, and one running the
-published direct-download Desktop DMG, which is ad-hoc signed and therefore
-offers no executor controls at all.
+signed direct-download Desktop DMG, which uses the separate menu bar app
+for its local console. Install it with `brew install --cask unlikeotherai/tap/nessie-executor-app`.
 
 Both copies share one bundle identifier, one state directory and one daemon
 lease, so **there is only ever one icon.** Whichever copy is launched second
@@ -305,13 +305,10 @@ the bundle targets — or the packaged runtime will pin a different one.
 
 ### In CI
 
-`.github/workflows/release.yml` → **macOS Executor menu bar** builds both
-architectures on a tag, in the same workflow as every other direct download, so
-it inherits the tag immutability, the "this tag is main's tip" preflight, and
-the `direct-download-release` environment. It deliberately does **not** inherit
-the neighbouring **macOS** job's stance: that DMG is ad-hoc signed on purpose
-and asserts that Gatekeeper rejects it, while this one asserts the opposite and
-must be installable with no bypass at all.
+`.github/workflows/release.yml` → **macOS Executor menu bar** builds the Apple
+Silicon installer on a tag. It shares the protected Developer ID credential
+setup and inside-out signer with the desktop DMG. Both must pass Gatekeeper;
+Homebrew casks are generated only from those verified installers.
 
 The job requires every credential by name before it builds, imports the
 `Developer ID` certificate into a temporary keychain, and after the build

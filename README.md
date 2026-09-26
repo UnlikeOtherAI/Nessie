@@ -78,6 +78,31 @@ reload. Those ports are fixed — other tooling in the repo assumes them.
 Executors let agents work on your own computers. Pairing connects a machine;
 reviewing its capabilities and granting an agent access are separate steps.
 
+### Install the executor
+
+| Platform | Install |
+| --- | --- |
+| macOS 15+, Apple Silicon CLI | `brew install unlikeotherai/tap/nessie-executor` |
+| Mac desktop app | `brew install --cask unlikeotherai/tap/nessie` |
+| Mac executor app | `brew install --cask unlikeotherai/tap/nessie-executor-app` |
+| Debian / Ubuntu x86_64 | Add the signed APT repository, then `sudo apt-get install nessie-executor` |
+| Fedora / Rocky / AlmaLinux x86_64 | Add the signed RPM repository, then `sudo dnf install nessie-executor` |
+| Windows executor | `winget install --exact --id UnlikeOtherAI.NessieExecutor` |
+
+[Install instructions and repository setup](docs/running-the-apps/executor-cli.md)
+are also on the [website](https://nessie.works/docs/executor-setup).
+
+```sh
+nessie-executor login --api nessie --workspace "/path/to/work"
+nessie-executor teams
+```
+
+Paste the eight-digit code into **Agents → Executors → Add executor** in
+Nessie, then confirm the team on the computer. Repeat to pair more teams.
+Each team has separate folder and command permissions stored only on the
+computer. Nessie manages who may use the executor; it cannot change those
+local permissions. The desktop executor's **Add team** uses the same code flow.
+
 - [Pairing, permissions, disconnecting and recovery](docs/executor-pairing.md)
 - [macOS menu bar executor](docs/running-the-apps/executor-menu-bar-macos.md#pairing-and-unpairing)
 - [Windows executor and user-session Desktop](docs/running-the-apps/windows-desktop.md#pairing-and-unpairing)

@@ -13,6 +13,7 @@ App Store delivery.
 
 ## Table of Contents
 
+- [executor-cli.md](executor-cli.md) — Homebrew, APT, RPM and WinGet installation, code pairing and per-team startup.
 - This file: physical-device delivery, prerequisites, the Mac desktop shell, desktop notifications, Mac TestFlight, status and caveats.
 - [mobile.md](mobile.md) — the mobile WebView shell, device builds, push, iOS TestFlight, Android.
 - [windows-desktop.md](windows-desktop.md) — the Windows desktop app, signed release, the Nessie Executor service and tray.
@@ -199,17 +200,12 @@ ditto desktop/src-tauri/target/release/bundle/macos/Nessie.app /Applications/Nes
 open -na /Applications/Nessie.app
 ```
 
-On first open, right-click the app and choose **Open** if macOS Gatekeeper asks.
-A signed and notarized macOS release needs the operator's Apple Developer ID
-certificate; `desktop/src-tauri/tauri.conf.json` keeps `signingIdentity` set to
-`null` until that certificate is available. An ad-hoc signature is sufficient
-for the ordinary desktop shell, but executor controls stay unavailable. Configure
-a real Developer ID signing identity and pass its team id as
-`NESSIE_DESKTOP_SIGNING_TEAM_ID` before `tauri:build:executor` to pair a production
-executor. The companion compiles that team id into the release and verifies the
-final application has a matching Developer ID signature, including the packaged
-executor runtime. Do not replace the app with an ad-hoc-signed copy after this
-step: its executor controls will intentionally remain unavailable.
+Distributable Mac apps require Developer ID signing and notarization. Set the
+configured identity and `NESSIE_DESKTOP_SIGNING_TEAM_ID` before building; the
+companion pins that team and checks the installed application's signature.
+The signed direct-download build uses `desktop/scripts/build-signed-macos.mjs`.
+Never replace it with an ad-hoc build or bypass Gatekeeper. Homebrew installs
+and release configuration are in [package distribution](../releasing-executor-packages.md).
 
 Every platform pins its own publisher this way, because a runtime hash manifest
 alone is a self-attestation: whoever can rewrite the binary can rewrite the
