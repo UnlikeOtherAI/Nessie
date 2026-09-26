@@ -47,9 +47,9 @@ export const LocalOllamaSection = () => {
   return (
     <section className="grid gap-4">
       <div>
-        <SectionLabel as="h2">Local Ollama</SectionLabel>
+        <SectionLabel as="h2">AI on your computer</SectionLabel>
         <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
-          Run your own agents on a model installed on your own computer. Nessie Desktop or a paired executor
+          Run your own agents on a model installed on your own computer. Nessie Desktop or a paired computer
           discovers Ollama there after you give that computer permission; this browser never scans your device.
         </p>
       </div>
@@ -71,7 +71,7 @@ export const LocalOllamaSection = () => {
           </button>
         ) : null}
         <Link className="text-sm text-[color:var(--lnk)] hover:underline" to="/admin/computers">
-          Open paired executors
+          Open paired computers
         </Link>
       </div>
       {actionError ? <p className="text-sm text-[color:var(--danger-text)]" role="alert">{actionError}</p> : null}
@@ -79,7 +79,7 @@ export const LocalOllamaSection = () => {
         empty={(
           <p className="text-sm text-[color:var(--tx2)]">
             No local computer is connected yet. On this computer, prepare Nessie Desktop; on another computer,
-            {' '}<Link className="underline" to="/admin/computers">open its paired executor</Link>. Once it reports a
+            {' '}<Link className="underline" to="/admin/computers">open its paired computer</Link>. Once it reports a
             local model, select it from an <Link className="underline" to="/admin/agents">agent’s Model section</Link>.
           </p>
         )}

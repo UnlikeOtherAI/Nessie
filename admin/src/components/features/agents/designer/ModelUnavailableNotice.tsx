@@ -29,7 +29,7 @@ export const ModelUnavailableNotice = ({ model }: { model: string }) => {
         <>
           {' '}
           <Link className="underline" to="/admin/models">
-            Organization models →
+            AI models →
           </Link>
         </>
       ) : null}

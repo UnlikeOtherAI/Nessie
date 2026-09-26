@@ -207,7 +207,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
             }}
             value={scopeType}
           >
-            <option value="organization">Organization</option>
+            <option value="organization">Organisation</option>
             <option value="project">Project</option>
             <option value="team">Team</option>
           </select>

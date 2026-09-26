@@ -110,7 +110,7 @@ export const SecurityPage = () => {
     <SettingsPanel eyebrow="Your settings" title="Security">
       <div className="grid w-full gap-8">
         <Section
-          description="Devices currently signed in to your account. Revoking a session signs that device out."
+          description="Devices currently signed in to your account. Signing one out ends its session."
           title="Active sessions"
         >
           <ActiveSessionsTable isLoading={isLoading} sessions={sessions} />

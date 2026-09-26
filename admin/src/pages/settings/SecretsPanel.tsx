@@ -50,7 +50,7 @@ type SecretsPanelCopy = {
  */
 const COPY: Record<SecretPageScope, SecretsPanelCopy> = {
   organization: {
-    cascade: 'A team or a person can save their own secret with the same key and theirs wins — '
+    cascade: 'A team or a person can save their own key under the same name and theirs wins — '
       + 'unless this one is locked, in which case theirs is refused and this one applies everywhere.',
     eyebrow: 'Organisation',
     intro: 'The company\'s credentials. Every team and every person inherits these unless they '
@@ -58,17 +58,17 @@ const COPY: Record<SecretPageScope, SecretsPanelCopy> = {
     title: 'Keys',
   },
   personal: {
-    cascade: 'Your own secret beats your project\'s, which beats your team\'s, which beats the '
+    cascade: 'Your own key beats your project\'s, which beats your team\'s, which beats the '
       + 'organisation\'s. A key locked at a level above cannot be overridden, and is greyed out here.',
     eyebrow: 'Your settings',
-    intro: 'Everything that reaches you: your own secrets, plus what your team and organisation set.',
+    intro: 'Everything that reaches you: your own keys, plus what your team and organisation set.',
     title: 'Saved keys',
   },
   team: {
-    cascade: 'A team secret beats the organisation\'s, and a person\'s own beats both — unless a '
+    cascade: 'A team key beats the organisation\'s, and a person\'s own beats both — unless a '
       + 'key is locked, which pins it for everybody below and greys it out there.',
     eyebrow: 'Organisation',
-    intro: 'What this team\'s work runs on: the team\'s own secrets, plus what the organisation set.',
+    intro: 'What this team\'s work runs on: the team\'s own keys, plus what the organisation set.',
     title: 'Keys',
   },
 }
@@ -117,7 +117,7 @@ export const secretsPageWindow = (
   const end = Math.min(start + pageSize, total)
   return {
     end,
-    label: total === 0 ? 'No secrets' : `${start + 1}–${end} of ${total}`,
+    label: total === 0 ? 'No keys' : `${start + 1}–${end} of ${total}`,
     page,
     pageCount,
     start,
@@ -193,10 +193,10 @@ export const SecretsPanel = ({ host, scope, teamId: namedTeamId }: SecretsPanelP
     setFeedback(null)
     try {
       await revokeSecret.mutateAsync(reference)
-      setFeedback({ kind: 'success', message: 'Secret revoked.' })
+      setFeedback({ kind: 'success', message: 'Key revoked.' })
       setPendingRevoke(null)
     } catch (caught) {
-      setFeedback({ kind: 'error', message: caught instanceof Error ? caught.message : 'Could not revoke secret.' })
+      setFeedback({ kind: 'error', message: caught instanceof Error ? caught.message : 'Could not revoke key.' })
     }
   }
 
@@ -207,7 +207,7 @@ export const SecretsPanel = ({ host, scope, teamId: namedTeamId }: SecretsPanelP
   }))
   const statusStrip = (
     <TabBar
-      ariaLabel="Secret status"
+      ariaLabel="Key status"
       idPrefix={`secrets-${scope}`}
       items={tabItems}
       onChange={setTab}
@@ -220,7 +220,7 @@ export const SecretsPanel = ({ host, scope, teamId: namedTeamId }: SecretsPanelP
       actions={canCreate ? [
         {
           id: 'new-secret',
-          label: 'New secret',
+          label: 'Add a key',
           onSelect: () => {
             setFeedback(null)
             setCreateOpen(true)
@@ -252,7 +252,7 @@ export const SecretsPanel = ({ host, scope, teamId: namedTeamId }: SecretsPanelP
         <div className="grid gap-1">
           <p className="text-sm text-[color:var(--tx2)]">{copy.intro}</p>
           <p className="text-sm text-[color:var(--tx3)]">
-            Values go straight to the vault and are never displayed here. Copy a secret key or
+            Values go straight to the vault and are never displayed here. Copy a key or
             reference when you need to bind it elsewhere.
           </p>
           <p className="text-sm text-[color:var(--tx3)]">{copy.cascade}</p>
@@ -302,8 +302,8 @@ export const SecretsPanel = ({ host, scope, teamId: namedTeamId }: SecretsPanelP
         />
       ) : null}
       <ConfirmDialog
-        body="Anything still using this secret reference will stop working."
-        confirmLabel="Revoke secret"
+        body="Anything still using this key’s reference will stop working."
+        confirmLabel="Revoke key"
         destructive
         onCancel={() => setPendingRevoke(null)}
         onConfirm={() => {
@@ -311,7 +311,7 @@ export const SecretsPanel = ({ host, scope, teamId: namedTeamId }: SecretsPanelP
         }}
         open={pendingRevoke != null}
         pending={revokeSecret.isPending}
-        title="Revoke this secret?"
+        title="Revoke this key?"
       />
     </SettingsPanel>
   )

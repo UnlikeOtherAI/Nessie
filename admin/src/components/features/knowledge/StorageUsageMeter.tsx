@@ -17,7 +17,7 @@ export const StorageUsageMeter = () => {
   return (
     <span
       className="flex items-center gap-2 text-[11px] text-[color:var(--tx3)]"
-      title="Organization storage used"
+      title="Organisation storage used"
     >
       <FontAwesomeIcon className="h-3 w-3" icon={faDatabase} />
       <span className={near ? 'text-[color:var(--danger-text)]' : undefined}>

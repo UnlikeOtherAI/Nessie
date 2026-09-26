@@ -89,6 +89,13 @@ const lockCopy: Partial<Record<SecretScopeType, string>> = {
   team: 'People in this team cannot save their own; they still see this one, greyed out.',
 }
 
+/** The lock's own label, naming the scope it holds the line at. */
+const lockLabel: Partial<Record<SecretScopeType, string>> = {
+  organization: 'Prevent overrides below this organisation',
+  project: 'Prevent overrides below this project',
+  team: 'Prevent overrides below this team',
+}
+
 /**
  * The settings entry point for a new vault secret, used at every level of the
  * secrets panel. The mutation remains owned by the secrets facade at the page
@@ -154,7 +161,7 @@ export const CreateSecretDialog = ({
       resetForm()
       onSaved()
     } catch (caught) {
-      setFormError(toFormErrors(caught).formError ?? 'Could not save secret.')
+      setFormError(toFormErrors(caught).formError ?? 'Could not save key.')
     }
   }
 
@@ -165,21 +172,21 @@ export const CreateSecretDialog = ({
    * finds first — which is the close cross, since it precedes the form in the
    * DOM. The dialog carried this before the form moved to `FormField`; it was
    * dropped because the field no longer had a fixed id to target, and a person
-   * opening "New secret" then had to tab out of Close to start typing.
+   * opening "Add a key" then had to tab out of Close to start typing.
    */
   const nameRef = useRef<HTMLInputElement>(null)
 
   return (
     <Dialog
-      description="Secret values go straight to the vault and are never stored in Nessie, chat, or agent context."
+      description="Key values go straight to the vault and are never stored in Nessie, chat, or agent context."
       dismissDisabled={pending}
       initialFocusRef={nameRef}
       onClose={handleClose}
       open={open}
-      title="New secret"
+      title="Add a key"
     >
       <form className="grid gap-4" onSubmit={(event) => void handleSubmit(event)}>
-        <FormField help="Use uppercase letters, numbers, and underscores." label="Secret key">
+        <FormField help="Use uppercase letters, numbers, and underscores." label="Key">
           <Input
             autoComplete="off"
             onChange={(event) => setName(event.target.value.toUpperCase())}
@@ -213,8 +220,8 @@ export const CreateSecretDialog = ({
           // Where Project would have been: this one is theirs alone, and a
           // project's is someone else's to save, so they know whom to ask.
           <p className="text-sm text-[color:var(--tx3)]">
-            Saved as your own secret. Only an organisation owner can save
-            a {withheld.map((scope) => SECRET_SCOPE_LABEL[scope].toLowerCase()).join(' or ')} secret.
+            Saved as your own key. Only an organisation owner can save
+            a {withheld.map((scope) => SECRET_SCOPE_LABEL[scope].toLowerCase()).join(' or ')} key.
           </p>
         ) : null}
 
@@ -237,11 +244,11 @@ export const CreateSecretDialog = ({
           <div className="flex items-start gap-3">
             <Switch
               checked={locked}
-              label="Use this everywhere"
+              label={lockLabel[scopeType] ?? 'Prevent overrides below'}
               onChange={setLocked}
             />
             <div className="grid gap-0.5 text-sm">
-              <span className="text-[color:var(--tx2)]">Use this everywhere</span>
+              <span className="text-[color:var(--tx2)]">{lockLabel[scopeType] ?? 'Prevent overrides below'}</span>
               <span className="text-[color:var(--tx3)]">{lockCopy[scopeType]}</span>
             </div>
           </div>

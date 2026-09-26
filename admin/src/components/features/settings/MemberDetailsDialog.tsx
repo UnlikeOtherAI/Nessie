@@ -226,7 +226,7 @@ export const MemberDetailsDialog = ({
             <LocalInferenceEnablement scope="user" userId={member.userId} />
           ) : (
             <Notice tone="neutral">
-              You can set their own Local Ollama policy after they first sign in to Nessie. Until
+              You can allow AI on their own computer after they first sign in to Nessie. Until
               then, any team policy applies.
             </Notice>
           )

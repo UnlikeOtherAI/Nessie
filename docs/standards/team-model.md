@@ -110,7 +110,7 @@ first.
 
 **The admin does not fully obey this yet.** Roughly two dozen strings still say
 "team" — the budget scope picker offers "Team" and "Team" as *sibling*
-scopes, agent ownership says "Team-owned", `CreateSpaceDialog` says "Everyone on
+scopes, `CreateSpaceDialog` says "Everyone on
 your team". Those are the copy equivalent of `Team.projectId`: known, wrong, and
 scheduled with the vocabulary pass in the plan below. Do not add more; do not
 take an existing one as licence.

@@ -50,15 +50,29 @@ test('an OAuth return names a tab only through a provider this admin knows', () 
   assert.equal(tabForProvider('toString'), null)
 })
 
-test('the return’s notice copy', () => {
+test('the return’s notice copy names the service, never a capability or a protocol', () => {
+  // A calendar-only "Connect Calendar or Meet" doorway also returns
+  // `?connected=google` and grants no mail, so the notice must not claim
+  // "Email connected." — it names the service instead.
   assert.equal(landingMessage('slack', null), 'Slack connected.')
-  assert.equal(landingMessage('google', null), 'Email connected.')
+  assert.equal(landingMessage('google', null), 'Google connected.')
+  assert.equal(landingMessage('microsoft', null), 'Microsoft connected.')
   assert.equal(
     landingMessage(null, 'state_invalid'),
     'That connection link has expired. Start again to continue.',
   )
   assert.equal(landingMessage(null, 'unknown_provider'), 'Connection was not completed. Try again.')
   assert.equal(landingMessage(null, null), null)
+  // Slack shares this same OAuth return with Google and Microsoft, so a
+  // refusal must not say "email provider" for a chat account.
+  assert.equal(
+    landingMessage(null, 'reauthorization_required', 'slack'),
+    'Slack needs you to sign in again.',
+  )
+  assert.equal(
+    landingMessage(null, 'connect_failed', 'microsoft'),
+    'Microsoft could not complete the connection. Try again.',
+  )
 })
 
 type Landed = {
@@ -141,6 +155,13 @@ test('Slack’s return lands on Chat with its notice, and leaves no entry behind
   assert.deepEqual(landed.notice, { message: 'Slack connected.', tab: 'chat' })
   // The strip and the tab both replaced the landing entry: Back leaves.
   assert.equal(landed.afterBack, '/before')
+})
+
+test('a Google return lands on Mail and calendar naming Google, even from a calendar-only connect', async () => {
+  const landed = await landOn('/settings/accounts?connected=google')
+  assert.equal(landed.search, '')
+  assert.equal(landed.tab, 'mail')
+  assert.deepEqual(landed.notice, { message: 'Google connected.', tab: 'mail' })
 })
 
 test('a Google refusal lands on Mail and calendar, the bare address', async () => {

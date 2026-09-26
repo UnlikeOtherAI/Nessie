@@ -79,6 +79,7 @@ export const ScopedSettingLock = ({
 }) => {
   if (scope === 'user') return null
   const below = scope === 'organization' ? 'Teams and people' : 'People'
+  const scopeName = scope === 'organization' ? 'this organisation' : 'this team'
   return (
     <label className="flex items-start gap-2 text-sm text-[color:var(--tx2)]">
       <input
@@ -89,7 +90,7 @@ export const ScopedSettingLock = ({
         type="checkbox"
       />
       <span>
-        Use this everywhere.{' '}
+        Prevent overrides below {scopeName}.{' '}
         <span className="text-[color:var(--tx3)]">
           {below} below cannot choose their own; the control is greyed out for them with an
           explanation.

@@ -216,7 +216,7 @@ const evaluate = async (browser, viewport) => {
   const browserMessages = []
   page.on('pageerror', (error) => errors.push(error.message))
   page.on('console', (message) => { if (message.type() === 'error') browserMessages.push(message.text()) })
-  const table = page.getByRole('table', { name: 'Executor agents' })
+  const table = page.getByRole('table', { name: 'Computer agents' })
   const search = page.getByRole('searchbox', { name: 'Search agents', exact: true })
   const review = page.getByRole('dialog').filter({ has: page.getByRole('button', { name: 'Cancel change' }) })
   const addDialog = page.getByRole('dialog').filter({ has: page.getByRole('searchbox', { name: 'Search agents to add' }) })

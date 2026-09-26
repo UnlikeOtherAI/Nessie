@@ -249,7 +249,7 @@ export const LocalOrganizationRoster = ({ host }: { host?: SettingsTabHostProps 
                 <UnassignedAgents
                   agents={localTree.tree.teamOwned}
                   emptyLabel="None"
-                  title="Team-owned agents"
+                  title="Agents managed by the team"
                   token={token}
                 />
               ) : null}

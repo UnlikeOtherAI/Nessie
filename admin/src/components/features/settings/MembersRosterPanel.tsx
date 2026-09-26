@@ -43,7 +43,7 @@ const ROSTER_TABS = [
 ] as const
 
 const AUTOMATIC_TAB = {
-  label: 'Automatic logins', value: 'automatic', compactLabel: 'Access',
+  label: 'Automatic team access', value: 'automatic', compactLabel: 'Access',
 } as const
 
 const dateLabel = (value: string | undefined) => {
@@ -99,7 +99,7 @@ export const MembersRosterPanel = ({
   })
 
   // The roster read also carries UOA's live verdict on what this person may do,
-  // which is what decides whether the Automatic logins tab exists at all — so
+  // which is what decides whether the Automatic team access tab exists at all — so
   // it runs on that tab too, cheaply. What must NOT happen is the rules panel
   // being gated on it: `current` is null there, so no `QueryState` wraps the
   // panel and no pagination footer sits under it.

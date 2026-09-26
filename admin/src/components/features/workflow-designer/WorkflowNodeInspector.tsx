@@ -212,7 +212,7 @@ const NodeConfigFields = ({
 
   // W13: the canvas trigger node is an entry marker only. Cron, timezone
   // and interval config typed here NEVER became a real schedule — the
-  // Triggers page is the one trigger authoring surface, so the inspector
+  // Schedules and triggers page is the one trigger authoring surface, so the inspector
   // points there instead of collecting config it would silently drop.
   const triggerType = readString(config, 'type') || node.sourceId
   const triggerLabel =

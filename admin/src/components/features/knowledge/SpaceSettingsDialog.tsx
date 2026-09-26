@@ -43,7 +43,7 @@ const VISIBILITY_OPTIONS: {
   { description: 'Everyone in a channel you pick', label: 'Channel', value: 'channel' },
   { description: 'Everyone on your team', label: 'Team', value: 'team' },
   { description: 'Everyone on the project', label: 'Project', value: 'project' },
-  { description: 'Everyone in the organization', label: 'Organization', value: 'organization' },
+  { description: 'Everyone in the organisation', label: 'Organisation', value: 'organization' },
 ]
 
 // The API supplies the access-administration entitlement independently of the

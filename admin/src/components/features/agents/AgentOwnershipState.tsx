@@ -41,7 +41,7 @@ export const agentOwnershipLabel = (agent: AgentRecord, viewer: AgentEditViewer)
     ? isViewerOwner
       ? 'Owned by you'
       : `Owned by ${ownerName}`
-    : 'Team-owned'
+    : 'Managed by the team'
 }
 
 export const AgentOwnershipState = ({ agent }: AgentOwnershipStateProps) => {

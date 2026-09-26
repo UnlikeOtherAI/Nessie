@@ -48,8 +48,8 @@ export const ExecutorDetailContent = ({ token, teamId }: { token: string | null;
   if (!executor) return (
     <div className="flex h-full min-h-0 flex-col">
       <ScreenHeader backLabel="Back to Computers" onBack={backToList} title="Computer" />
-      <QueryState className="flex flex-1 items-center justify-center" emptyLabel="This executor could not be found, or it is no longer visible to you."
-        errorLabel="Executors could not be loaded." isEmpty loadingLabel="Loading executor…" query={executorsQuery}>{() => null}</QueryState>
+      <QueryState className="flex flex-1 items-center justify-center" emptyLabel="This computer could not be found, or it is no longer visible to you."
+        errorLabel="Computers could not be loaded." isEmpty loadingLabel="Loading computer…" query={executorsQuery}>{() => null}</QueryState>
     </div>
   )
   const menu: PageHeaderMenuItem[] = []
@@ -59,21 +59,21 @@ export const ExecutorDetailContent = ({ token, teamId }: { token: string | null;
   }
   if (access?.canManage) {
     if (executor.status === 'paused') {
-      menu.push({ id: 'resume', label: 'Resume executor', disabled: prepare.isPending, onSelect: () => void lifecycle('resume') })
+      menu.push({ id: 'resume', label: 'Resume computer', disabled: prepare.isPending, onSelect: () => void lifecycle('resume') })
     } else if (['online', 'offline', 'error'].includes(executor.status)) {
-      menu.push({ id: 'pause', label: 'Pause executor', disabled: prepare.isPending, onSelect: () => void lifecycle('pause') })
+      menu.push({ id: 'pause', label: 'Pause computer', disabled: prepare.isPending, onSelect: () => void lifecycle('pause') })
     }
     if (!['revoked', 'pending_pairing'].includes(executor.status)) {
-      menu.push({ id: 'disconnect', label: 'Disconnect executor', disabled: prepare.isPending, onSelect: () => void lifecycle('revoke') })
+      menu.push({ id: 'disconnect', label: 'Disconnect computer', disabled: prepare.isPending, onSelect: () => void lifecycle('revoke') })
     }
     // Any state, pending pairing and already disconnected included: it is the
     // only way a machine leaves this list.
-    menu.push({ id: 'delete', label: 'Delete executor', disabled: prepare.isPending, onSelect: () => void lifecycle('remove') })
+    menu.push({ id: 'delete', label: 'Delete computer', disabled: prepare.isPending, onSelect: () => void lifecycle('remove') })
   }
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ScreenHeader backLabel="Back to Computers" eyebrow="Computers" onBack={backToList} title={executor.label}
-        actions={menu.length ? [{ id: 'machine', kind: 'menu', label: 'Machine', priority: 20, items: menu }] : []}
+        actions={menu.length ? [{ id: 'machine', kind: 'menu', label: 'Computer', priority: 20, items: menu }] : []}
         subtitle={<div className="flex flex-wrap items-center gap-2 text-sm text-[color:var(--tx3)]">
           <Pill height="control" tone={executorStatusTone(executor.status)} uppercase={false}>{EXECUTOR_STATUS_LABELS[executor.status]}</Pill>
           <span>{executorScopeSummary(executor)}</span>
@@ -91,7 +91,7 @@ export const ExecutorDetailContent = ({ token, teamId }: { token: string | null;
       </div>
       {panel === 'models' ? <Dialog onClose={() => setPanel(null)} open title="Local models">
         <LocalInferenceHostStatus confirmInDialog
-          empty={<p>No local model connection on this machine.</p>} executorId={executor.id} />
+          empty={<p>No local model connection on this computer.</p>} executorId={executor.id} />
       </Dialog> : null}
       {panel === 'device' ? <Dialog onClose={() => setPanel(null)} open size="lg" title="On this computer">
         <ExecutorDesktopCompanionPanel executorId={executor.id} />

@@ -39,7 +39,7 @@ type BulkAction = 'disable' | 'enable'
  * offering it and every agent write path refuses a move onto it. Agents already
  * pinned to it keep running, which is why each row states the affected count.
  *
- * Personal model subscriptions are deliberately out of scope — an organisation
+ * Your AI plans are deliberately out of scope — an organisation
  * owner has no standing to enable, disable or spend a person's own consumer
  * plan (docs/standards/personal-model-subscriptions.md).
  */
