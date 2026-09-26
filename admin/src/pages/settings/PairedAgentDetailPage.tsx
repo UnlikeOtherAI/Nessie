@@ -55,9 +55,9 @@ const PairedAgentDetailBody = ({ scope }: PairedAgentDetailPageProps) => {
         <QueryState
           className="py-12"
           emptyLabel="This credential could not be found. It may already have been removed."
-          errorLabel="Could not load paired agents."
+          errorLabel="Could not load programs."
           isEmpty
-          loadingLabel="Loading paired agent…"
+          loadingLabel="Loading program…"
           query={credentialsQuery}
         >
           {() => null}

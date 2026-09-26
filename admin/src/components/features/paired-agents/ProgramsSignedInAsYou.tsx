@@ -81,7 +81,7 @@ export const ProgramsSignedInAsYou = () => {
         </button>
       )}
       description={
-        'Claude Code, Codex and other MCP clients, working in Nessie as you. A paired agent '
+        'Claude Code, Codex and other programs, working in Nessie as you. A program '
         + 'reaches exactly what you reach and never more, and it cannot publish a document on '
         + 'its own — that comes back to you as an approval. Everything you lend here you can '
         + 'take back here.'

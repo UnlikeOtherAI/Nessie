@@ -117,8 +117,8 @@ const OrganizationPairedAgentsBody = ({ host }: { host?: SettingsTabHostProps })
       }
       subtitle={
         <p className="max-w-3xl text-sm text-[color:var(--tx3)]">
-          Pairing lets a member connect an outside agent — Claude Code, Codex, any MCP client —
-          to their own account, which the agent then works as for ninety days.{' '}
+          Pairing lets a member connect an outside program — Claude Code, Codex, and others —
+          to their own account, which the program then works as for ninety days.{' '}
           {allowed
             ? 'Members may pair outside agents today.'
             : 'Nobody can complete a new pairing. Credentials already issued keep working until '
@@ -132,7 +132,7 @@ const OrganizationPairedAgentsBody = ({ host }: { host?: SettingsTabHostProps })
 
         <PairedAgentsTable
           credentials={pageRows}
-          emptyMessage="Nothing paired. No member of this organisation has paired an outside agent."
+          emptyMessage="Nothing paired. No member of this organisation has paired an outside program."
           isLoading={credentials.isPending}
           onOpen={(credentialId) =>
             void navigate(`/admin/security/programs/${credentialId}`)}

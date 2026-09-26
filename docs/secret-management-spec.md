@@ -205,7 +205,7 @@ One component at every level (`admin/src/pages/settings/SecretsPanel.tsx`),
 on two pages — a person's own, and the organisation's with a scope switch
 between the organisation and each team:
 
-| Page | Route | Shows | "New secret" writes |
+| Page | Route | Shows | "Add a key" writes |
 | --- | --- | --- | --- |
 | Your settings → Saved keys | `/settings/keys` | organisation + team + project + own | personal, or a project |
 | Admin → Keys, a team's scope | `/admin/keys?scope=team:<id>` | organisation + that team | that team |

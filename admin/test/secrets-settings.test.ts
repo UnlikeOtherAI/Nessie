@@ -100,13 +100,13 @@ test('secret metadata is a semantic table with clear copy controls', () => {
   // rule an inline `min-width` outranks, which left the table narrower than the
   // frame drawn around it.
   assert.match(html, /<table class="admin-table w-full border-collapse" style="min-width:max\(46rem, 100%\)">/)
-  assert.match(html, /<caption class="sr-only">Secrets table<\/caption>/)
-  assert.match(html, /<th[^>]*scope="col"[^>]*><span[^>]*>Secret key<\/span><\/th>/)
+  assert.match(html, /<caption class="sr-only">Keys table<\/caption>/)
+  assert.match(html, /<th[^>]*scope="col"[^>]*><span[^>]*>Key<\/span><\/th>/)
   assert.match(html, /<th[^>]*scope="col"[^>]*><span[^>]*>Reference<\/span><\/th>/)
   assert.match(html, /STRIPE_API_KEY/)
   assert.match(html, /secret_123/)
-  assert.match(html, /aria-label="Copy secret key"/)
-  assert.match(html, /aria-label="Copy secret reference"/)
+  assert.match(html, /aria-label="Copy key"/)
+  assert.match(html, /aria-label="Copy reference"/)
   assert.match(html, /type="button"[^>]*>Revoke<\/button>/)
 })
 
@@ -132,7 +132,7 @@ test('the loading table keeps its shape with skeleton rows; the empty state brea
   // EmptyState card replaces the frame entirely.
   assert.doesNotMatch(empty, /<table/)
   assert.match(empty, /border-dashed/)
-  assert.match(empty, /No secrets reach you yet/)
+  assert.match(empty, /No keys reach you yet/)
 })
 
 test('the two tabs split live secrets from dead ones, and each drops the column the other needs', () => {
@@ -144,15 +144,15 @@ test('the two tabs split live secrets from dead ones, and each drops the column 
   assert.doesNotMatch(active, /secret_dead/)
   // The tab is the status, so the Active tab does not repeat it in a column.
   assert.doesNotMatch(active, /<span[^>]*>Status<\/span>/)
-  assert.match(active, /<span[^>]*>Precedence<\/span>/)
+  assert.match(active, /<span[^>]*>Where it comes from<\/span>/)
 
   assert.match(dead, /secret_dead/)
   assert.doesNotMatch(dead, /secret_123/)
   // Revoked and expired are different facts and this tab holds both, so it
-  // keeps a Status column — and drops Precedence and Revoke, which are
+  // keeps a Status column — and drops Where it comes from and Revoke, which are
   // meaningless for a secret that no longer resolves.
   assert.match(dead, /<span[^>]*>Status<\/span>/)
-  assert.doesNotMatch(dead, /<span[^>]*>Precedence<\/span>/)
+  assert.doesNotMatch(dead, /<span[^>]*>Where it comes from<\/span>/)
   assert.doesNotMatch(dead, />Revoke<\/button>/)
 })
 
@@ -228,7 +228,7 @@ test('a page of secrets names its range and never runs off the end of the list',
   // An empty tab still draws its footer, so it still needs a page and a count.
   assert.deepEqual(secretsPageWindow(0, 0, 25), {
     end: 0,
-    label: 'No secrets',
+    label: 'No keys',
     page: 0,
     pageCount: 1,
     start: 0,
@@ -350,7 +350,7 @@ test('copying a secret reference announces useful feedback', async () => {
       root.render(tableElement())
     })
     const copyReference = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Copy secret reference"]',
+      'button[aria-label="Copy reference"]',
     )
     assert.ok(copyReference)
 
@@ -358,7 +358,7 @@ test('copying a secret reference announces useful feedback', async () => {
 
     assert.deepEqual(copied, ['secret_123'])
     assert.equal(copyReference.textContent, 'Copied')
-    assert.match(container.textContent ?? '', /Secret reference copied to clipboard\./)
+    assert.match(container.textContent ?? '', /Reference copied to clipboard\./)
   } finally {
     await act(async () => root.unmount())
     container.remove()
@@ -378,7 +378,7 @@ test('an Admin table stays in its own surface', async () => {
     await act(async () => {
       root.render(tableElement())
     })
-    assert.equal(container.querySelector('button[aria-label="Expand Secrets table"]'), null)
+    assert.equal(container.querySelector('button[aria-label="Expand Keys table"]'), null)
     assert.equal(dom.window.document.querySelector('[role="dialog"]'), null)
   } finally {
     await act(async () => root.unmount())
@@ -437,7 +437,7 @@ const SecretDialogHarness = ({ onCreate, pageScope = 'personal' }: DialogHarness
   return h(
     React.Fragment,
     null,
-    h('button', { onClick: () => setOpen(true), type: 'button' }, 'New secret'),
+    h('button', { onClick: () => setOpen(true), type: 'button' }, 'Add a key'),
     h(CreateSecretDialog, {
       onClose: () => setOpen(false),
       onCreate,
@@ -460,7 +460,7 @@ const openDialog = async (
     root.render(h(SecretDialogHarness, props))
   })
   const opener = [...container.querySelectorAll('button')].find(
-    (button) => button.textContent === 'New secret',
+    (button) => button.textContent === 'Add a key',
   )
   assert.ok(opener)
   await act(async () => opener.click())
@@ -509,7 +509,7 @@ test('the lock switch exists exactly where something sits below', async () => {
   dom.window.document.body.appendChild(container)
   const root = createRoot(container)
   const lockSwitch = () =>
-    dom.window.document.querySelector('[role="switch"][aria-label="Use this everywhere"]')
+    dom.window.document.querySelector('[role="switch"][aria-label="Prevent overrides below this team"]')
 
   try {
     // Personal is the bottom of the chain: a lock there would pin nobody, and
