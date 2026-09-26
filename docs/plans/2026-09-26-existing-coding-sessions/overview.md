@@ -119,7 +119,7 @@ approval or new grant.
 
 ## Tools and doorways
 
-The home is the existing **Agents → Executors → Sessions** surface. The agent's
+The home is the existing **Admin → Computers → Sessions** surface. The agent's
 result links open the same session detail. The detail identifies externally
 owned sessions and describes the native capabilities. It has no Share or Close
 action for them. Instructions are sent through the agent already authorized to
