@@ -16,20 +16,28 @@ foreach ($name in @(
 }
 
 $resolvedFile = (Resolve-Path -LiteralPath $FilePath).Path
-$clientToolsRoot = Join-Path ${env:ProgramFiles(x86)} 'Microsoft\ArtifactSigningClientTools'
-$dlib = Get-ChildItem -LiteralPath $clientToolsRoot -Filter 'Azure.CodeSigning.Dlib.dll' `
-  -File -Recurse |
+$clientToolsRoots = @(
+  (Join-Path ${env:ProgramFiles(x86)} 'Microsoft\ArtifactSigningClientTools'),
+  (Join-Path $env:ProgramFiles 'Microsoft\ArtifactSigningClientTools'),
+  (Join-Path $env:LOCALAPPDATA 'Microsoft\MicrosoftArtifactSigningClientTools'),
+  (Join-Path $env:LOCALAPPDATA 'Microsoft\MicrosoftTrustedSigningClientTools'),
+  (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages')
+) | Where-Object { Test-Path -LiteralPath $_ }
+$dlib = @(
+  foreach ($root in $clientToolsRoots) {
+    Get-ChildItem -LiteralPath $root -Filter 'Azure.CodeSigning.Dlib.dll' `
+      -File -Recurse -ErrorAction SilentlyContinue
+  }
+) |
   Sort-Object @{ Expression = { $_.FullName -match '[\\/]x64[\\/]' }; Descending = $true }, `
     FullName -Descending |
   Select-Object -First 1
 if (-not $dlib) {
-  throw "Azure.CodeSigning.Dlib.dll was not found below $clientToolsRoot."
+  throw "Azure.CodeSigning.Dlib.dll was not found below: $($clientToolsRoots -join ', ')."
 }
 
-$signToolRoots = @(
-  $clientToolsRoot,
-  (Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin')
-)
+$signToolRoots = @($clientToolsRoots)
+$signToolRoots += Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
 $signTool = @(
   foreach ($root in $signToolRoots) {
     if (Test-Path -LiteralPath $root) {
