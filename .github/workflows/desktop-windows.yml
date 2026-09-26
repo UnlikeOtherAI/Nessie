@@ -528,8 +528,14 @@ jobs:
             ForEach-Object {
             $signature = Get-AuthenticodeSignature $_.FullName
             $subject = $signature.SignerCertificate.Subject
+            # The OIDs straight from the certificate's EKU extension. PowerShell's
+            # `EnhancedKeyUsageList` is a display wrapper whose items carry the
+            # OID as a string `ObjectId` and have no `Value`, so reading `.Value`
+            # there yields blanks and fails every file.
             $ekus = @(
-              $signature.SignerCertificate.EnhancedKeyUsageList |
+              $signature.SignerCertificate.Extensions |
+                Where-Object { $_ -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension] } |
+                ForEach-Object { $_.EnhancedKeyUsages } |
                 ForEach-Object { $_.Value }
             )
             Write-Host "$($_.Name): $($signature.Status) $subject $($ekus -join ',')"

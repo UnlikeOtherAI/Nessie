@@ -197,10 +197,18 @@ test("the release gives Tauri an argument-safe Artifact Signing command", () => 
   );
 });
 
+// PowerShell's EnhancedKeyUsageList items carry the OID as a string ObjectId
+// and have no Value, so both `$_.Value` and `$_.ObjectId.Value` read blanks and
+// fail every correctly signed file. The OID collection is the certificate's own
+// EKU extension, whose Oid items do have Value.
 test("the release reads EKU values from the Oid collection", () => {
   const signatureVerification = stepBlock(releaseWorkflow, "Verify signatures");
-  assert.match(signatureVerification, /ForEach-Object \{ \$_\.Value \}/);
-  assert.doesNotMatch(signatureVerification, /\$_\.ObjectId\.Value/);
+  assert.match(signatureVerification, /X509EnhancedKeyUsageExtension/);
+  assert.match(
+    signatureVerification,
+    /ForEach-Object \{ \$_\.EnhancedKeyUsages \} \|\n\s+ForEach-Object \{ \$_\.Value \}/,
+  );
+  assert.doesNotMatch(signatureVerification, /EnhancedKeyUsageList \|/);
 });
 
 test(
