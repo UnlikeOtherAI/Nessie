@@ -104,7 +104,7 @@ test('a public room the viewer has not joined offers Join instead of a composer'
   assert.equal(browsing.shouldJoin, true)
 })
 
-test('a member of the room, and the assistant home, both post', () => {
+test('a member of the room and the assistant DM are both authorized to post', () => {
   assert.equal(
     channelRoomControls({ activeChannel: room(), isPersonalAssistantConversation: false }).canPost,
     true,
@@ -135,7 +135,7 @@ test('the conversation surface renders the composer behind canPost', () => {
   // ticket's board, too (docs/standards/ticket-work.md → "The work thread").
   assert.match(
     surface,
-    /visibleActiveTab === 'messages' && roomControls\.canPost && !workThread\?\.readOnly \? \(\s*<ChannelComposer/,
+    /visibleActiveTab === 'messages' && !sessionHome && roomControls\.canPost && !workThread\?\.readOnly \? \(\s*<ChannelComposer/,
   )
   // …and the refusal is drawn in its place, so a person is told why rather
   // than shown a room with no way to type in it.
