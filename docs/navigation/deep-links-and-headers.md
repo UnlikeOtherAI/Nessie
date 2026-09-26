@@ -47,7 +47,8 @@ registry row lists what its route reads beyond the path under `intent`
 
 - **`consume`** — a one-shot instruction in the search string (`messageId`,
   `incomingCall`, `acceptCall`, `spaceId`, `pageId`, `connect`, `create`,
-  `scopeProjectId`, `uoa_billing`) and **`hash`** — the same in the fragment
+  `scopeProjectId`, `uoa_billing`, the pairing link's `code`, and Connected
+  accounts' OAuth return `connected`, `error` and `provider`) and **`hash`** — the same in the fragment
   (`#trigger-<id>`, `#confirmationToken=`). A screen reads these only through
   `navigation/intent.ts`: `useConsumedIntent(name)` / `useConsumedIntents(names)`
   / `useConsumedHashIntent(name, parse)` capture the value into component state
@@ -65,7 +66,12 @@ registry row lists what its route reads beyond the path under `intent`
   strips — and the executors page's four `window.history.replaceState` writes,
   which had been changing the address behind the router. A confirmation token
   the page mints itself now lives in state only, so it never enters history or
-  a shared address.
+  a shared address. An instruction that also decides a tab — Connected
+  accounts' OAuth return, whose notice belongs on its provider's tab
+  (`pages/settings/connections/useConnectionLanding.ts`) — selects that tab
+  through `useTabParam` only once the strip has left the address, never in the
+  same commit: each write starts from the search string the router held when
+  it was issued, so the second would put back what the first removed.
 - **`state`** — linkable params that describe what the screen shows (`tab`,
   `view`, `filter`, `scope`, `status`, `search`, `query`, `mode`, `parentId`,
   `executorId`, `accessChange`, `promotion`, `research`, …). They stay in the

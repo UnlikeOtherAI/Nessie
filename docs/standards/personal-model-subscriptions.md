@@ -149,9 +149,10 @@ Facts not restated there:
   backend may not serve.
 - Package `@nessie/model-subscriptions` (adapters, vault store, coordinator);
   routes `/api/model-subscriptions*`; surfaces are the "Personal model
-  subscriptions" section on `/settings/accounts` and the **Your
-  subscriptions** group in the Agent Designer model picker, which also carries
-  the "Link a personal subscription…" doorway when none is linked.
+  subscriptions" section on Connected accounts' AI plans tab
+  (`/settings/accounts?tab=ai`) and the **Your subscriptions** group in the
+  Agent Designer model picker, which also carries the "Link a personal
+  subscription…" doorway to that tab when none is linked.
 - Vault configuration is `NESSIE_SUBSCRIPTION_VAULT_API_URL` /
   `_TOKEN` / `_PROJECT_ID` (+ optional `_ENVIRONMENT`). Unset ⇒ the settings
   section says the feature is unavailable and linking is refused, unless the
