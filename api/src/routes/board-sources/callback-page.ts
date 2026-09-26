@@ -18,7 +18,7 @@ export const callbackPage = (ok: boolean, detail: string): string => `<!doctype 
         window.location.origin,
       )
     } catch (error) { /* opener gone: the redirect below is the fallback */ }
-    if (!window.opener) window.location.replace('/settings/accounts')
+    if (!window.opener) window.location.replace('/settings/accounts?tab=tickets')
   }
   // Trello answers with the token in the fragment rather than a code, so it is
   // read here and submitted once. Every other provider is already finished by

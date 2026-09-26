@@ -40,7 +40,7 @@ Two scopes, and the difference matters:
 
 | | **Your mailbox** | **A team's shared mailbox** |
 |---|---|---|
-| Where | `/settings/accounts` → *Email* | `/admin/connections` → *Shared mailboxes* |
+| Where | `/settings/accounts` → *Mail and calendar* | `/admin/connections` → *Shared mailboxes* |
 | Who can connect it | Anybody | An owner or an admin |
 | Which runs reach it | Only ones acting **as you** — you asking directly, or a schedule you set up under your own account | Any run by an agent you gave access to |
 | Who can manage it | You. Not your org owner, not an admin | An owner or an admin |

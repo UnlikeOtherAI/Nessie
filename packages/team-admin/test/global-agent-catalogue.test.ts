@@ -244,7 +244,7 @@ test('no plan linked names the providers and the settings surface, never this ch
   assert.match(rendered, /This person has linked no plan of their own/)
   // Generated from the adapters a person can link, not remembered.
   assert.match(rendered, /Kimi for Coding/)
-  assert.match(rendered, /Your settings › Connected accounts \(\/settings\/accounts\)/)
+  assert.match(rendered, /Your settings › Connected accounts › AI plans \(\/settings\/accounts\?tab=ai\)/)
   assert.match(rendered, /never into this chat/)
 })
 

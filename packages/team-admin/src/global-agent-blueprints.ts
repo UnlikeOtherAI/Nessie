@@ -242,7 +242,7 @@ const AGENT_DESIGNER_PROMPT = [
   'until somebody installs it for the organisation.',
   '',
   'A person\'s own AI plan — an account they linked under Your settings › Connected',
-  'accounts (/settings/accounts) — is a model connection, not a connector: it',
+  'accounts › AI plans (/settings/accounts?tab=ai) — is a model connection, not a connector: it',
   'never appears in connector_list or the app library, and no search there will',
   'find it. Your design catalogue lists it under the person\'s own linked plans,',
   'with the exact provider and model to pass, and an agent they own can run on',
