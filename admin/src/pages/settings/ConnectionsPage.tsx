@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 
 import {
   useCommsConnections,
@@ -21,128 +21,71 @@ import { createListPageStore } from '../../components/shared/list-page-state'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { TabBar } from '../../components/primitives/TabBar'
 import { useTabParam } from '../../navigation/useTabParam'
+import {
+  CONNECTION_TABS,
+  CONNECTION_TAB_META,
+  DEFAULT_CONNECTION_TAB,
+  PROVIDER_TAB,
+} from './connections/connection-tabs'
 import { ConnectionsTable } from './connections/ConnectionsTable'
 import { GoogleWorkspaceConnectDialog } from './connections/GoogleWorkspaceConnectDialog'
 import { ModelSubscriptionSection } from './connections/ModelSubscriptionSection'
 import { LocalOllamaSection } from './connections/LocalOllamaSection'
 import { ProjectToolConnections } from './connections/ProjectToolConnections'
 import { SendAuthorizationSection } from './connections/SendAuthorizationSection'
+import { useConnectionLanding } from './connections/useConnectionLanding'
 
 const accountsListStore = createListPageStore()
 
-const callbackErrorCopy: Record<string, string> = {
-  access_denied: 'Connection was not completed.',
-  account_mismatch: 'The account you chose does not match the connection you started.',
-  connect_failed: 'Your email provider could not complete the connection. Try again.',
-  connector_unavailable: 'This email provider is not available in this deployment.',
-  invalid_callback: 'Connection was not completed. Try again.',
-  provider_access_blocked: 'Your organisation does not currently allow this app to access email.',
-  reauthorization_required: 'Your email provider needs you to sign in again.',
-  state_invalid: 'That connection link has expired. Start again to continue.',
-}
-
-const callbackMessage = (connected: string | null, error: string | null): string | null => {
-  if (connected) return connected === 'slack' ? 'Slack connected.' : 'Email connected.'
-  return error ? callbackErrorCopy[error] ?? 'Connection was not completed. Try again.' : null
-}
-
 /**
- * Connected accounts — one screen, six lanes.
+ * Connected accounts — one screen, five tabs grouped by what an account is for
+ * (`connections/connection-tabs.ts`).
  *
  * It was five stacked sections separated by hairlines, so the model provider a
  * person came to change sat four scroll-lengths below a Slack panel they were
- * not looking for. The sections are tabs in the one header now, in the order
- * they are actually used: the mailboxes first, the inference provider second.
+ * not looking for. The sections are tabs in the one header now, mail first.
  *
- * Slack remains its own communications lane. Email is one user-facing surface:
- * Google/Microsoft use native sync while generic IMAP mail stays live and is
- * never imported, so one email doorway must not promise either behaviour for
- * every provider.
+ * Mail and calendar is one surface for every mail account and a Google
+ * account's calendar. Google and Microsoft sync natively while other mail
+ * stays live and is never imported, so the one email doorway must not promise
+ * either behaviour for every provider; Calendar or Meet connects without mail,
+ * and the account it makes is listed in the same table as the mail accounts,
+ * where its page shows every capability it holds. Chat is Slack, its own
+ * communications lane.
  *
  * Browsers is the cloud browser your agents borrow for the runs you start, and
  * the sign-ins you gave them there. Your sign-ins list stands on its own: it is
  * keyed by what you did, not by whether you still have an account of your own
  * connected.
+ *
+ * AI plans holds the subscriptions the agents you own run on, and the local
+ * models on your own computer, present whether or not a computer is paired.
  */
-const CONNECTION_TABS = ['email', 'inference', 'slack', 'calendar', 'tools', 'browsers'] as const
-type ConnectionTab = (typeof CONNECTION_TABS)[number]
-
-const TAB_META: Record<ConnectionTab, { description: string; label: string }> = {
-  browsers: {
-    description:
-      'The cloud browser your agents use for the runs you start, and the sites you signed them '
-      + 'into.',
-    label: 'Browsers',
-  },
-  calendar: {
-    description:
-      'Connect Calendar or Meet without granting Gmail access. Choose each permission before '
-      + 'Google asks you to sign in.',
-    label: 'Calendar & Meet',
-  },
-  email: {
-    description:
-      'Gmail and Microsoft sign in securely through their native APIs. Other providers connect '
-      + 'live with secure IMAP and SMTP settings; native labels and folders can be limited after '
-      + 'connecting.',
-    label: 'Email',
-  },
-  inference: {
-    description:
-      'Which model provider answers for you, and the subscription it bills against.',
-    label: 'AI inference provider',
-  },
-  slack: {
-    description: 'Connect Slack separately from your email accounts.',
-    label: 'Slack',
-  },
-  tools: {
-    description: 'Accounts a project’s tools sign in with, shared by the work in that project.',
-    label: 'Project tools',
-  },
-}
-
 export const ConnectionsPage = () => {
   const navigate = useNavigate()
   const { me } = useAuthSession()
   const connections = useCommsConnections()
   const start = useStartCommsConnection()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [callbackNotice, setCallbackNotice] = useState<string | null>(null)
   const [googleWorkspaceOpen, setGoogleWorkspaceOpen] = useState(false)
-  const [tab, setTab] = useTabParam('tab', CONNECTION_TABS, 'email')
+  const [tab, setTab] = useTabParam('tab', CONNECTION_TABS, DEFAULT_CONNECTION_TAB)
+  const { notice, showNotice } = useConnectionLanding(tab, setTab)
 
-  const connected = searchParams.get('connected')
-  const callbackError = searchParams.get('error')
   const rows = connections.data?.connections ?? []
-  const slackConnections = rows.filter((connection) => connection.provider === 'slack')
-  const emailConnections = rows.filter((connection) => connection.provider !== 'slack')
-
-  useEffect(() => {
-    const message = callbackMessage(connected, callbackError)
-    if (!message) return
-    setCallbackNotice(message)
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current)
-      next.delete('connected')
-      next.delete('error')
-      next.delete('provider')
-      return next
-    }, { replace: true })
-  }, [callbackError, connected, setSearchParams])
+  const chatConnections = rows.filter((connection) => PROVIDER_TAB[connection.provider] === 'chat')
+  const mailConnections = rows.filter((connection) => PROVIDER_TAB[connection.provider] === 'mail')
 
   const connectSlack = async () => {
     try {
       const result = await start.mutateAsync('slack')
       window.location.assign(result.authorizeUrl)
     } catch {
-      setCallbackNotice('Slack could not start the connection. Try again.')
+      showNotice({ message: 'Slack could not start the connection. Try again.', tab: 'chat' })
     }
   }
 
-  // Only the two account lanes are lists, so only they page.
-  const accountRows = tab === 'slack' ? slackConnections : emailConnections
-  const paged = tab === 'slack' || tab === 'email'
+  // Only the two synced-account lanes are lists, so only they page.
+  const accountRows = tab === 'chat' ? chatConnections : mailConnections
+  const paged = tab === 'chat' || tab === 'mail'
 
   const [initialState] = useState(accountsListStore.load)
   const [pageSize, setPageSize] = useState(initialState.pageSize)
@@ -158,9 +101,11 @@ export const ConnectionsPage = () => {
     accountsListStore.save({ page, pageSize })
   }, [page, pageSize])
 
-  // Each lane brings its own way in, so the header's action is the one that
-  // belongs to what is on screen rather than a row of five connect buttons.
-  const actions: PageHeaderAction[] = tab === 'slack'
+  // Each lane brings its own way in, so the header's actions are the ones that
+  // belong to what is on screen rather than a row of every connect button.
+  // Mail and calendar has two ways in — a mailbox, or Calendar or Meet without
+  // mail — and neither outranks the other, so neither is the filled one.
+  const actions: PageHeaderAction[] = tab === 'chat'
     ? [{
       disabled: start.isPending,
       id: 'connect-slack',
@@ -169,24 +114,24 @@ export const ConnectionsPage = () => {
       primary: true,
       priority: 100,
     }]
-    : tab === 'calendar'
-      ? [{
-        id: 'connect-google-workspace',
-        label: 'Connect Calendar or Meet',
-        onSelect: () => setGoogleWorkspaceOpen(true),
-        primary: true,
-        priority: 100,
-      }]
-      : tab === 'email'
-        ? [{
+    : tab === 'mail'
+      ? [
+        {
           id: 'connect-mailbox',
           kind: 'custom',
           label: 'Connect mailbox',
           pinned: true,
           priority: 100,
           render: () => <MailboxConnectionForm scope="user" />,
-        }]
-        : []
+        },
+        {
+          id: 'connect-google-workspace',
+          label: 'Connect Calendar or Meet',
+          onSelect: () => setGoogleWorkspaceOpen(true),
+          priority: 90,
+        },
+      ]
+      : []
 
   const openConnection = (connectionId: string) =>
     void navigate(`/settings/accounts/${connectionId}`)
@@ -215,12 +160,14 @@ export const ConnectionsPage = () => {
         />
       ) : null}
       subtitle={
-        <p className="max-w-3xl text-sm text-[color:var(--tx3)]">{TAB_META[tab].description}</p>
+        <p className="max-w-3xl text-sm text-[color:var(--tx3)]">
+          {CONNECTION_TAB_META[tab].description}
+        </p>
       }
       tabs={
         <TabBar
           ariaLabel="Connected account sections"
-          items={CONNECTION_TABS.map((value) => ({ label: TAB_META[value].label, value }))}
+          items={CONNECTION_TABS.map((value) => ({ label: CONNECTION_TAB_META[value].label, value }))}
           onChange={(next) => {
             setTab(next)
             setRequestedPage(0)
@@ -231,11 +178,11 @@ export const ConnectionsPage = () => {
       title="Connected accounts"
     >
       <div className="flex flex-col gap-4">
-        {callbackNotice ? (
-          <p aria-live="polite" className="text-sm text-[color:var(--tx2)]">{callbackNotice}</p>
+        {notice && (notice.tab === null || notice.tab === tab) ? (
+          <p aria-live="polite" className="text-sm text-[color:var(--tx2)]">{notice.message}</p>
         ) : null}
 
-        {tab === 'email' ? (
+        {tab === 'mail' ? (
           <>
             <QueryState
               errorLabel="Could not load synced email accounts."
@@ -245,20 +192,22 @@ export const ConnectionsPage = () => {
               {() => (
                 <ConnectionsTable
                   connections={pageRows}
-                  emptyMessage="No email account connected yet."
+                  emptyMessage="No mail or calendar account connected yet."
                   isLoading={false}
                   onOpen={openConnection}
                 />
               )}
             </QueryState>
-            {emailConnections.length > 0 ? <SendAuthorizationSection /> : null}
+            <p className="max-w-3xl text-sm text-[color:var(--tx2)]">
+              Calendar and Meet are granted per permission. Connecting one does not give Nessie
+              access to your mail.
+            </p>
+            {mailConnections.length > 0 ? <SendAuthorizationSection /> : null}
             <MailboxConnectionsPanel embedded scope="user" showConnectAction={false} />
           </>
         ) : null}
 
-        {tab === 'inference' ? <><ModelSubscriptionSection /><LocalOllamaSection /></> : null}
-
-        {tab === 'slack' ? (
+        {tab === 'chat' ? (
           <QueryState
             errorLabel="Could not load your Slack connections."
             loadingLabel="Loading Slack connections…"
@@ -275,14 +224,7 @@ export const ConnectionsPage = () => {
           </QueryState>
         ) : null}
 
-        {tab === 'calendar' ? (
-          <p className="max-w-3xl text-sm text-[color:var(--tx2)]">
-            Calendar and Meet are granted per permission. Connecting one does not give Nessie
-            access to your mail.
-          </p>
-        ) : null}
-
-        {tab === 'tools' ? <ProjectToolConnections /> : null}
+        {tab === 'tickets' ? <ProjectToolConnections /> : null}
 
         {/* The session's team is passed down so a lock set by the team — not
             only one set by the organisation — greys the control and says so. */}
@@ -292,6 +234,8 @@ export const ConnectionsPage = () => {
             <MyBrowserLoginsPanel />
           </>
         ) : null}
+
+        {tab === 'ai' ? <><ModelSubscriptionSection /><LocalOllamaSection /></> : null}
 
         <GoogleWorkspaceConnectDialog
           onClose={() => setGoogleWorkspaceOpen(false)}

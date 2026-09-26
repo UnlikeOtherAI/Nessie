@@ -27,11 +27,17 @@ export const createSettingsSurfaces = (settingsRoot: string): Surface[] => [
   },
   {
     depth: 1,
-    // `tab` is Connected accounts' strip, `filter` Your computers' Mine ·
-    // Shared with me, `status` Saved keys' Active · Revoked. `code` is
-    // Security's: a program's own verification link carries it, and it opens
-    // the pairing dialog on the decision before leaving the address.
-    intent: { consume: ['code'], state: ['tab', 'filter', 'status'] },
+    // `tab` is Connected accounts' strip (`mail` · `chat` · `tickets` ·
+    // `browsers` · `ai`), `filter` Your computers' Mine · Shared with me,
+    // `status` Saved keys' Active · Revoked. `code` is Security's: a program's
+    // own verification link carries it, and it opens the pairing dialog on the
+    // decision before leaving the address. `connected`, `error` and `provider`
+    // are Connected accounts' OAuth return: its notice, on the tab the provider
+    // belongs to.
+    intent: {
+      consume: ['code', 'connected', 'error', 'provider'],
+      state: ['tab', 'filter', 'status'],
+    },
     parent: 'origin',
     parentOf: toSettings,
     pattern: /^\/settings\/(?:profile|notifications|appearance|status|accounts|computers|keys|usage|security)$/,
@@ -53,7 +59,8 @@ export const createSettingsSurfaces = (settingsRoot: string): Surface[] => [
     type: 'nested',
   },
   {
-    // One connected account, pushed from Connected accounts.
+    // One connected account, pushed from its tab of Connected accounts; a
+    // warm Back pops to that tab, and a cold link falls back to the page.
     depth: 2,
     identityOf: (match) => `connection:${match[1]}`,
     keyScope: () => 'connection',
