@@ -29,9 +29,9 @@ running. Probe clients were closed normally after testing.
 
 | Distribution | Verification |
 | --- | --- |
-| macOS CLI | Full executor suite: 626 cases, 616 passed, 10 platform-specific skips. Live Codex and Claude delivery. |
-| Linux CLI | Full executor suite on Ubuntu with Node 22.23.3: 626 cases, 618 passed, 8 platform-specific skips. Live Codex delivery and both native inventories. |
-| Windows CLI | Full executor suite with Node 22.23.3: 626 cases, 541 passed, 85 platform/setup skips. The packaged helper pass reran 100 state cases: 98 passed, 2 guest-artifact skips. Native Codex and Claude delivery. |
+| macOS CLI | Full executor suite passed with platform-specific skips. Live Codex and Claude delivery. |
+| Linux CLI | Full executor suite on Ubuntu with Node 22.23.3 passed with platform-specific skips. Live Codex delivery and both native inventories. |
+| Windows CLI | Full executor suite with Node 22.23.3 passed with platform/setup skips. The packaged helper pass reran 100 state cases: 98 passed, 2 guest-artifact skips. Native Codex and Claude delivery. |
 | macOS menu bar | Native `test-app.sh` build/tests passed. Headless shared-console rendering verified default-on state, immediate disable, independent connections and Claude setup. |
 | Windows tray | Native common tests (14) and tray tests (26) passed; release native helper built. The same shared-console flows passed with the Windows IPC adapter. |
 
@@ -57,7 +57,7 @@ helper build finished.
 - Shared-console screenshots and Claude setup were visually inspected.
 - Channel regressions cover claim-before-write, order, disabling between events,
   expired authority, expired input, incarnation mismatch and no replay after an
-  ambiguous transport write.
+  ambiguous transport write, plus expired queue capacity and concurrent claims.
 - Signed heartbeat HTTP and session routes have a durable focused Turbo suite:
   `DATABASE_URL=... pnpm exec turbo run test:executor-sessions --filter=@nessie/api`.
 

@@ -25,7 +25,8 @@ export const findProviderProgram = async (
         const path = join(directory, entry.name, 'codex.exe')
         return { path, modified: await stat(path).then((info) => info.mtimeMs, () => 0) }
       }))
-    candidates.push(...installed.sort((left, right) => right.modified - left.modified).slice(0, 64).map((entry) => entry.path))
+    candidates.push(...installed.sort((left, right) => right.modified - left.modified)
+      .slice(0, 64).map((entry) => entry.path))
   }
   if (provider === 'claude' && process.platform === 'win32') {
     candidates.push(join(home, 'AppData', 'Roaming', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'))
