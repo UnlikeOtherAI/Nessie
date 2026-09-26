@@ -411,5 +411,91 @@
     "revoke": "Revoke",
     "revokeSessionTitle": "Revoke this session?",
     "revokeFailed": "Failed to revoke session."
+  },
+  "secrets": {
+    "saveFailed": "Could not save this secret.",
+    "dialogDescription": "Store a value in the secret vault. The value is never shown again after saving.",
+    "newSecret": "New secret",
+    "keyHelp": "Uppercase letters, numbers and underscores. Used by integrations to look up the value.",
+    "keyPlaceholder": "API_KEY",
+    "secretKey": "Secret key",
+    "value": "Value",
+    "chooseProject": "Choose a project…",
+    "lockCopy": "Overrides every {{scope}} value below it.",
+    "scopes": {
+      "personal": "Personal",
+      "project": "Project",
+      "team": "Team",
+      "organization": "Organisation"
+    },
+    "tabs": {
+      "active": "Active",
+      "revoked": "Revoked"
+    },
+    "intro": {
+      "personal": "Secrets available to you.",
+      "team": "Secrets available to this team.",
+      "organization": "Secrets available across this organisation."
+    },
+    "cascade": {
+      "personal": "Higher-level secrets can override these values.",
+      "team": "Organisation secrets apply here too; team values can override them.",
+      "organization": "These values are inherited by teams and people unless overridden."
+    },
+    "revoked": "Secret revoked.",
+    "revokeFailed": "Could not revoke this secret.",
+    "noSecrets": "No secrets",
+    "pageRange": "{{start}}–{{end}} of {{count}}",
+    "metadataNotice": "Values are shown only once, when they are created. This table contains metadata only.",
+    "status": "Status",
+    "saved": "Secret saved.",
+    "saveSecurely": "Save secret",
+    "title": "Secret",
+    "reference": "Reference",
+    "secretReference": "Secret reference",
+    "scope": "Scope",
+    "precedence": "Precedence",
+    "actions": "Actions",
+    "revoking": "Revoking…",
+    "revoke": "Revoke",
+    "table": "Secrets table",
+    "revokeTitle": "Revoke this secret?",
+    "revokeConfirmation": "“{{name}}” will stop working anywhere it is bound.",
+    "statuses_active": "Active",
+    "statuses_expired": "Expired",
+    "statuses_revoked": "Revoked",
+    "effective": "Effective",
+    "locked": "Locked",
+    "lockedBy": "Locked by {{scope}}",
+    "overriddenBy": "Overridden by {{scope}}",
+    "copy": "Copy",
+    "copied": "Copied",
+    "retry": "Try again",
+    "copyCopied": "{{label}} copied",
+    "copyFailed": "Could not copy {{label}}",
+    "copiedMessage": "{{label}} copied to clipboard.",
+    "useEverywhere": "Use everywhere",
+    "withheldScope": "Saved as your own secret. Only an organisation owner can save a {{scopes}} secret.",
+    "statuses": {
+      "active": "Active",
+      "expired": "Expired",
+      "revoked": "Revoked"
+    },
+    "empty": {
+      "organization": {
+        "active": "No organisation secrets yet. Use “New secret” to add one everybody inherits.",
+        "revoked": "No organisation secret has been revoked."
+      },
+      "personal": {
+        "active": "No secrets reach you yet. Use “New secret” to save one of your own.",
+        "revoked": "Nothing here has been revoked."
+      },
+      "team": {
+        "active": "No secrets reach this team yet. Use “New secret” to add one.",
+        "revoked": "No secret in this team has been revoked."
+      }
+    },
+    "copyLabel": "Copy {{label}}",
+    "project": "Project"
   }
 }

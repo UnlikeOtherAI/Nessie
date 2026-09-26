@@ -411,5 +411,91 @@
     "revoke": "Zrušit",
     "revokeSessionTitle": "Zrušit tuto relaci?",
     "revokeFailed": "Relaci se nepodařilo zrušit."
+  },
+  "secrets": {
+    "saveFailed": "Tajemství se nepodařilo uložit.",
+    "dialogDescription": "Uložte hodnotu do trezoru tajemství. Po uložení se už znovu nezobrazí.",
+    "newSecret": "Nové tajemství",
+    "keyHelp": "Velká písmena, číslice a podtržítka. Integrace podle něj vyhledají hodnotu.",
+    "keyPlaceholder": "API_KEY",
+    "secretKey": "Klíč tajemství",
+    "value": "Hodnota",
+    "chooseProject": "Vyberte projekt…",
+    "lockCopy": "Přepíše všechny hodnoty v nižších rozsazích {{scope}}.",
+    "scopes": {
+      "personal": "Osobní",
+      "project": "Projekt",
+      "team": "Tým",
+      "organization": "Organizace"
+    },
+    "tabs": {
+      "active": "Aktivní",
+      "revoked": "Odebrané"
+    },
+    "intro": {
+      "personal": "Tajemství dostupná vám.",
+      "team": "Tajemství dostupná tomuto týmu.",
+      "organization": "Tajemství dostupná v celé organizaci."
+    },
+    "cascade": {
+      "personal": "Hodnoty mohou přepsat tajemství z vyšších úrovní.",
+      "team": "Platí zde i organizační tajemství; týmové hodnoty je mohou přepsat.",
+      "organization": "Tyto hodnoty dědí týmy a lidé, pokud nejsou přepsány."
+    },
+    "revoked": "Tajemství odebráno.",
+    "revokeFailed": "Tajemství se nepodařilo odebrat.",
+    "noSecrets": "Žádná tajemství",
+    "pageRange": "{{start}}–{{end}} z {{count}}",
+    "metadataNotice": "Hodnoty se zobrazí pouze při vytvoření. Tato tabulka obsahuje jen metadata.",
+    "status": "Stav",
+    "saved": "Tajemství uloženo.",
+    "saveSecurely": "Bezpečně uložit",
+    "title": "Tajemství",
+    "reference": "Reference",
+    "secretReference": "Reference tajemství",
+    "scope": "Rozsah",
+    "precedence": "Priorita",
+    "actions": "Akce",
+    "revoking": "Odebírání…",
+    "revoke": "Odebrat",
+    "table": "Tabulka tajemství",
+    "revokeTitle": "Odebrat toto tajemství?",
+    "revokeConfirmation": "Tajemství „{{name}}“ přestane fungovat všude, kde se používá.",
+    "statuses_active": "Aktivní",
+    "statuses_expired": "Expirované",
+    "statuses_revoked": "Odebrané",
+    "effective": "Používá se",
+    "locked": "Uzamčeno",
+    "lockedBy": "Uzamčeno v rozsahu: {{scope}}",
+    "overriddenBy": "Přepsáno rozsahem: {{scope}}",
+    "copy": "Kopírovat",
+    "copied": "Zkopírováno",
+    "retry": "Zkusit znovu",
+    "copyCopied": "{{label}} copied",
+    "copyFailed": "Could not copy {{label}}",
+    "copiedMessage": "{{label}} copied to clipboard.",
+    "useEverywhere": "Použít všude",
+    "withheldScope": "Uloženo jako vaše vlastní tajemství. Jen vlastník organizace může uložit tajemství pro rozsah {{scopes}}.",
+    "statuses": {
+      "active": "Aktivní",
+      "expired": "Expirované",
+      "revoked": "Odebrané"
+    },
+    "empty": {
+      "organization": {
+        "active": "Zatím tu nejsou žádná organizační tajemství. Přidejte nové a budou dostupná všem.",
+        "revoked": "Žádné organizační tajemství nebylo odebráno."
+      },
+      "personal": {
+        "active": "Zatím k vám nedosahují žádná tajemství. Uložte si vlastní.",
+        "revoked": "Zatím tu nebylo nic odebráno."
+      },
+      "team": {
+        "active": "K tomuto týmu zatím nedosahují žádná tajemství. Přidejte nové.",
+        "revoked": "Žádné tajemství v tomto týmu nebylo odebráno."
+      }
+    },
+    "copyLabel": "Copy {{label}}",
+    "project": "Projekt"
   }
 }

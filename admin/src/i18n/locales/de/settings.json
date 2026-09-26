@@ -411,5 +411,91 @@
     "revoke": "Widerrufen",
     "revokeSessionTitle": "Diese Sitzung widerrufen?",
     "revokeFailed": "Sitzung konnte nicht widerrufen werden."
+  },
+  "secrets": {
+    "saveFailed": "Das Geheimnis konnte nicht gespeichert werden.",
+    "dialogDescription": "Speichern Sie einen Wert im Geheimnistresor. Nach dem Speichern wird er nicht erneut angezeigt.",
+    "newSecret": "Neues Geheimnis",
+    "keyHelp": "Großbuchstaben, Zahlen und Unterstriche. Integrationen verwenden den Schlüssel zum Abrufen des Werts.",
+    "keyPlaceholder": "API_KEY",
+    "secretKey": "Geheimnisschlüssel",
+    "value": "Wert",
+    "chooseProject": "Projekt auswählen…",
+    "lockCopy": "Überschreibt alle darunterliegenden Werte im Bereich {{scope}}.",
+    "scopes": {
+      "personal": "Persönlich",
+      "project": "Projekt",
+      "team": "Team",
+      "organization": "Organisation"
+    },
+    "tabs": {
+      "active": "Aktiv",
+      "revoked": "Widerrufen"
+    },
+    "intro": {
+      "personal": "Geheimnisse, die Ihnen zur Verfügung stehen.",
+      "team": "Geheimnisse, die diesem Team zur Verfügung stehen.",
+      "organization": "Geheimnisse, die in dieser Organisation verfügbar sind."
+    },
+    "cascade": {
+      "personal": "Geheimnisse höherer Ebenen können diese Werte überschreiben.",
+      "team": "Auch Organisationsgeheimnisse gelten hier; Teamwerte können sie überschreiben.",
+      "organization": "Teams und Personen übernehmen diese Werte, sofern sie nicht überschrieben werden."
+    },
+    "revoked": "Geheimnis widerrufen.",
+    "revokeFailed": "Das Geheimnis konnte nicht widerrufen werden.",
+    "noSecrets": "Keine Geheimnisse",
+    "pageRange": "{{start}}–{{end}} von {{count}}",
+    "metadataNotice": "Werte werden nur beim Erstellen angezeigt. Diese Tabelle enthält ausschließlich Metadaten.",
+    "status": "Status",
+    "saved": "Geheimnis gespeichert.",
+    "saveSecurely": "Sicher speichern",
+    "title": "Geheimnis",
+    "reference": "Referenz",
+    "secretReference": "Geheimnisreferenz",
+    "scope": "Bereich",
+    "precedence": "Vorrang",
+    "actions": "Aktionen",
+    "revoking": "Wird widerrufen…",
+    "revoke": "Widerrufen",
+    "table": "Tabelle der Geheimnisse",
+    "revokeTitle": "Dieses Geheimnis widerrufen?",
+    "revokeConfirmation": "„{{name}}“ funktioniert danach an keiner Stelle mehr, an der es eingebunden ist.",
+    "statuses_active": "Aktiv",
+    "statuses_expired": "Abgelaufen",
+    "statuses_revoked": "Widerrufen",
+    "effective": "Wirksam",
+    "locked": "Gesperrt",
+    "lockedBy": "Gesperrt durch {{scope}}",
+    "overriddenBy": "Überschrieben durch {{scope}}",
+    "copy": "Kopieren",
+    "copied": "Kopiert",
+    "retry": "Erneut versuchen",
+    "copyCopied": "{{label}} copied",
+    "copyFailed": "Could not copy {{label}}",
+    "copiedMessage": "{{label}} copied to clipboard.",
+    "useEverywhere": "Überall verwenden",
+    "withheldScope": "Als eigenes Geheimnis gespeichert. Nur Organisationsinhaber können ein Geheimnis für {{scopes}} speichern.",
+    "statuses": {
+      "active": "Aktiv",
+      "expired": "Abgelaufen",
+      "revoked": "Widerrufen"
+    },
+    "empty": {
+      "organization": {
+        "active": "Es gibt noch keine Organisationsgeheimnisse. Fügen Sie ein neues hinzu, damit es alle erben.",
+        "revoked": "Es wurde noch kein Organisationsgeheimnis widerrufen."
+      },
+      "personal": {
+        "active": "Es sind noch keine Geheimnisse für Sie verfügbar. Speichern Sie ein eigenes.",
+        "revoked": "Hier wurde noch nichts widerrufen."
+      },
+      "team": {
+        "active": "Für dieses Team sind noch keine Geheimnisse verfügbar. Fügen Sie eines hinzu.",
+        "revoked": "In diesem Team wurde noch kein Geheimnis widerrufen."
+      }
+    },
+    "copyLabel": "Copy {{label}}",
+    "project": "Projekt"
   }
 }

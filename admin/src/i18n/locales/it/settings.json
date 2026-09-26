@@ -411,5 +411,91 @@
     "revoke": "Revoca",
     "revokeSessionTitle": "Revocare questa sessione?",
     "revokeFailed": "Impossibile revocare la sessione."
+  },
+  "secrets": {
+    "saveFailed": "Impossibile salvare il segreto.",
+    "dialogDescription": "Salva un valore nel deposito dei segreti. Dopo il salvataggio non verrà più mostrato.",
+    "newSecret": "Nuovo segreto",
+    "keyHelp": "Lettere maiuscole, numeri e trattini bassi. Le integrazioni usano questa chiave per recuperare il valore.",
+    "keyPlaceholder": "API_KEY",
+    "secretKey": "Chiave del segreto",
+    "value": "Valore",
+    "chooseProject": "Scegli un progetto…",
+    "lockCopy": "Sostituisce tutti i valori {{scope}} nei livelli inferiori.",
+    "scopes": {
+      "personal": "Personale",
+      "project": "Progetto",
+      "team": "Team",
+      "organization": "Organizzazione"
+    },
+    "tabs": {
+      "active": "Attivi",
+      "revoked": "Revocati"
+    },
+    "intro": {
+      "personal": "Segreti disponibili per te.",
+      "team": "Segreti disponibili per questo team.",
+      "organization": "Segreti disponibili in tutta questa organizzazione."
+    },
+    "cascade": {
+      "personal": "I segreti dei livelli superiori possono sostituire questi valori.",
+      "team": "Qui si applicano anche i segreti dell’organizzazione; quelli del team possono sostituirli.",
+      "organization": "Team e persone ereditano questi valori, salvo sostituzione."
+    },
+    "revoked": "Segreto revocato.",
+    "revokeFailed": "Impossibile revocare il segreto.",
+    "noSecrets": "Nessun segreto",
+    "pageRange": "{{start}}–{{end}} di {{count}}",
+    "metadataNotice": "I valori vengono mostrati solo al momento della creazione. Questa tabella contiene solo metadati.",
+    "status": "Stato",
+    "saved": "Segreto salvato.",
+    "saveSecurely": "Salva in modo sicuro",
+    "title": "Segreto",
+    "reference": "Riferimento",
+    "secretReference": "Riferimento del segreto",
+    "scope": "Ambito",
+    "precedence": "Priorità",
+    "actions": "Azioni",
+    "revoking": "Revoca in corso…",
+    "revoke": "Revoca",
+    "table": "Tabella dei segreti",
+    "revokeTitle": "Revocare questo segreto?",
+    "revokeConfirmation": "“{{name}}” smetterà di funzionare ovunque sia utilizzato.",
+    "statuses_active": "Attivo",
+    "statuses_expired": "Scaduto",
+    "statuses_revoked": "Revocato",
+    "effective": "Effettivo",
+    "locked": "Bloccato",
+    "lockedBy": "Bloccato da {{scope}}",
+    "overriddenBy": "Sostituito da {{scope}}",
+    "copy": "Copia",
+    "copied": "Copiato",
+    "retry": "Riprova",
+    "copyCopied": "{{label}} copied",
+    "copyFailed": "Could not copy {{label}}",
+    "copiedMessage": "{{label}} copied to clipboard.",
+    "useEverywhere": "Usa ovunque",
+    "withheldScope": "Salvato come segreto personale. Solo un proprietario dell’organizzazione può salvare un segreto {{scopes}}.",
+    "statuses": {
+      "active": "Attivo",
+      "expired": "Scaduto",
+      "revoked": "Revocato"
+    },
+    "empty": {
+      "organization": {
+        "active": "Non ci sono ancora segreti dell’organizzazione. Aggiungine uno per renderlo disponibile a tutti.",
+        "revoked": "Nessun segreto dell’organizzazione è stato revocato."
+      },
+      "personal": {
+        "active": "Non hai ancora segreti disponibili. Salva un segreto personale.",
+        "revoked": "Non è stato revocato nulla."
+      },
+      "team": {
+        "active": "Non ci sono ancora segreti disponibili per questo team. Aggiungine uno.",
+        "revoked": "Nessun segreto di questo team è stato revocato."
+      }
+    },
+    "copyLabel": "Copy {{label}}",
+    "project": "Progetto"
   }
 }
