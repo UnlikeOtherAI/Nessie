@@ -564,6 +564,11 @@ internal TestFlight distribution.
 
 ## Android
 
+Download the current signed APK from the
+[Android GitHub release](https://github.com/UnlikeOtherAI/Nessie/releases/tag/android-v0.1.2-4).
+The public homepage and admin sign-in link directly to its `Nessie-Android.apk`
+asset. This build is not on Google Play yet.
+
 The package ID is `com.unlikeotherai.nessie`. A release build requires the
 owner-held app signing keystore. Set `NESSIE_ANDROID_KEYSTORE_PATH`,
 `NESSIE_ANDROID_KEYSTORE_PASSWORD`, `NESSIE_ANDROID_KEY_ALIAS`, and
