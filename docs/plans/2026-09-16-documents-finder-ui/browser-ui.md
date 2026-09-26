@@ -229,6 +229,10 @@ listed in [uploads-and-indexing.md](uploads-and-indexing.md) §4 and
 
 ### Tree view (`?view=tree`)
 
+The tree sidebar's trailing divider can be dragged or resized with arrow keys.
+Its width starts at 280 px, stays between 240 and 720 px, and persists in
+`nessie.admin.knowledgeTreeWidth` separately from the column browser widths.
+
 Tree is the compact recursive hierarchy view shared visually with the Channels
 sidebar. It shows Latest, Shared with me, My Documents, Projects, Agents and
 Spaces as one persistent left navigator; the selected space expands its
