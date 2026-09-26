@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import {
+  announcementsIcon,
   appsIcon,
   automationsIcon,
   computerIcon,
@@ -153,12 +154,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         path: '/admin/advanced/announcements',
         label: 'Announcements',
         visibleTo: (viewer) => viewer.isSuperAdmin,
-        icon: icon(
-          <>
-            <path d="M3 10v4h4l10 4V6L7 10H3z" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M7 14l1 5h3l-1-4M20 9a4 4 0 010 6" strokeLinecap="round" />
-          </>,
-        ),
+        icon: announcementsIcon,
       },
       {
         // Deployment-wide infrastructure (worker heartbeat, queue, dead jobs).
