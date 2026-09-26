@@ -4,11 +4,8 @@ import type MaterialIcons from '@expo/vector-icons/MaterialIcons'
 import type { NativeCreationAction } from './native-shell-layout'
 
 export type NativeCreationOption = {
-  accessibilityLabel: string
   action: Exclude<NativeCreationAction, 'message'>
-  description: string
   icon: ComponentProps<typeof MaterialIcons>['name']
-  title: string
 }
 
 // The sheet's rows, in the order they are read. Message is deliberately not one
@@ -17,25 +14,16 @@ export type NativeCreationOption = {
 // immediately above it — the same place it takes in the web create menu.
 export const NATIVE_CREATION_OPTIONS: NativeCreationOption[] = [
   {
-    accessibilityLabel: 'Create project',
     action: 'project',
-    description: 'Organise work in a shared folder',
     icon: 'folder',
-    title: 'Project',
   },
   {
-    accessibilityLabel: 'Create channel',
     action: 'channel',
-    description: 'Start a team conversation',
     icon: 'tag',
-    title: 'Channel',
   },
   {
-    accessibilityLabel: 'Create agent',
     action: 'agent',
-    description: 'Design a new agent',
     icon: 'smart-toy',
-    title: 'Agent',
   },
 ]
 

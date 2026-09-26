@@ -28,6 +28,7 @@ import {
   type NativeScreenBar,
   type NativeScreenBarAction,
 } from '../lib/native-shell-layout'
+import { useNativeCopy } from '../i18n/native'
 
 /**
  * The bar's whole icon vocabulary, mapped once.
@@ -121,6 +122,7 @@ const NavBarLanes = ({
   safeTop: number
   screenBar: NativeScreenBar | null
 }): React.JSX.Element => {
+  const copy = useNativeCopy()
   const back = screenBar?.back ?? null
   const title = screenBar?.title ?? ''
   const { overflow, primary } = partitionNativeScreenBarActions(screenBar?.actions ?? [])
@@ -136,7 +138,7 @@ const NavBarLanes = ({
         .filter((index) => index !== -1),
       options: [
         ...items.map((item) => (item.checked ? `✓ ${item.label}` : item.label)),
-        'Cancel',
+        copy.toolbar.cancel,
       ],
       title: action.label,
     }, (index) => {
@@ -248,7 +250,7 @@ const NavBarLanes = ({
           ) : null}
           {overflow.length > 0 ? (
             <Pressable
-              accessibilityLabel="More actions"
+              accessibilityLabel={copy.toolbar.moreActions}
               accessibilityRole="button"
               hitSlop={10}
               onPress={openOverflow}

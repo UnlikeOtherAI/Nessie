@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { isDesktopApp } from './desktop'
+import { getDesktopLanguage } from './desktop-language'
 
 /**
  * A document in a window of its own — the desktop shell's answer to the
@@ -39,6 +40,7 @@ export const openDocumentWindow = async (input: {
       pageId: input.pageId,
       spaceId: input.spaceId,
       title: input.title,
+      language: getDesktopLanguage(),
     })
     return true
   } catch {

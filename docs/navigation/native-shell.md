@@ -434,3 +434,16 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   `badgeCounts[tab.key]` directly instead of a three-way `channels
   | assignedWork | knowledge` mapping, so every section — including Admin and
   Search — can carry a badge once the admin posts one.
+- **`nessie:account.language` selects native wrapper copy.** The account
+  message carries the selected supported locale (`en-GB`, `en-US`, `cs`, `de`,
+  `fr`, `it`, or `es`) alongside identity and presence. Mobile validates it,
+  persists it in AsyncStorage for cold starts, and applies the matching native
+  catalogue to tab labels, toolbar/accessibility labels, creation actions and
+  the Android direct-update prompt. Before the first account message, native
+  chrome uses `en-GB`; unsupported values are ignored. Tauri commands that
+  show native confirmations or create a document window receive the same
+  selected locale from the admin's `nessie.language` preference, with an
+  `en-GB` fallback. Mobile catalogues live in
+  `mobile/src/i18n/locales/<locale>/native.json`; desktop catalogues live in
+  `desktop/src-tauri/locales/<locale>/native.json`. CI checks each set for
+  matching keys.

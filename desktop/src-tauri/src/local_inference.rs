@@ -17,6 +17,7 @@ mod direct_host;
 mod identity;
 mod origins;
 
+use crate::native_i18n as i18n;
 use direct_host::DirectHostSupervisor;
 use identity::{
     identity_from_store, provision_identity, rotate_identity, MachineIdentityStore,
@@ -125,6 +126,7 @@ fn canonical_consent_display(
 
 async fn confirm_native(
     app: AppHandle,
+    language: String,
     title: &str,
     message: &str,
     action: &str,
@@ -138,7 +140,7 @@ async fn confirm_native(
             .title(title)
             .buttons(MessageDialogButtons::OkCancelCustom(
                 action,
-                "Cancel".to_owned(),
+                i18n::text(&language, "cancel"),
             ))
             .blocking_show()
     })
@@ -174,17 +176,19 @@ pub async fn local_inference_prepare_desktop_enrollment(
     app: AppHandle,
     state: State<'_, LocalInferenceState>,
     webview: WebviewWindow,
+    language: String,
 ) -> Result<LocalInferenceEnrollmentMaterial, String> {
     require_local_inference_caller(&webview)?;
     if !confirm_native(
         app.clone(),
-        "Prepare local Ollama hosting",
-        "Nessie Desktop will create a protected machine key for this computer. It does not start Ollama, inspect files, download a model, or send conversation content until you later approve an exact local model binding.",
-        "Prepare hosting",
+        language.clone(),
+        &i18n::text(&language, "prepareTitle"),
+        &i18n::text(&language, "prepareMessage"),
+        &i18n::text(&language, "prepareAction"),
     )
     .await?
     {
-        return Err("Preparing local Ollama hosting was cancelled.".to_owned());
+        return Err(i18n::text(&language, "prepareCancelled"));
     }
     let store = PlatformMachineIdentityStore::new(&app)?;
     let identity = provision_identity(&store)?;
@@ -204,17 +208,19 @@ pub async fn local_inference_rotate_machine_key(
     app: AppHandle,
     state: State<'_, LocalInferenceState>,
     webview: WebviewWindow,
+    language: String,
 ) -> Result<LocalInferenceEnrollmentMaterial, String> {
     require_local_inference_caller(&webview)?;
     if !confirm_native(
         app.clone(),
-        "Repair local Ollama hosting",
-        "Repairing this connection replaces this computer's protected machine key. Existing local model approvals must be confirmed again before this computer can process any conversation content.",
-        "Replace key",
+        language.clone(),
+        &i18n::text(&language, "rotateTitle"),
+        &i18n::text(&language, "rotateMessage"),
+        &i18n::text(&language, "rotateAction"),
     )
     .await?
     {
-        return Err("Repairing local Ollama hosting was cancelled.".to_owned());
+        return Err(i18n::text(&language, "rotateCancelled"));
     }
     let store = PlatformMachineIdentityStore::new(&app)?;
     let identity = rotate_identity(&store)?;
@@ -236,6 +242,7 @@ pub async fn local_inference_start_direct_host(
     webview: WebviewWindow,
     host_id: String,
     organization_id: String,
+    language: String,
 ) -> Result<LocalInferenceDesktopStatus, String> {
     require_local_inference_caller(&webview)?;
     if !valid_identifier(&host_id) || !valid_identifier(&organization_id) {
@@ -243,11 +250,14 @@ pub async fn local_inference_start_direct_host(
     }
     if !confirm_native(
         app.clone(),
-        "Start local Ollama hosting",
-        "While Nessie Desktop is running, this computer will check only literal loopback Ollama endpoints and may process work for the local model you explicitly connect in Nessie. It will not start, download, modify, or expose Ollama on your network.",
-        "Start hosting",
-    ).await? {
-        return Err("Starting local Ollama hosting was cancelled.".to_owned());
+        language.clone(),
+        &i18n::text(&language, "startTitle"),
+        &i18n::text(&language, "startMessage"),
+        &i18n::text(&language, "startAction"),
+    )
+    .await?
+    {
+        return Err(i18n::text(&language, "startCancelled"));
     }
     let mut supervisor = state
         .supervisor
@@ -280,6 +290,7 @@ pub async fn local_inference_sign_binding_consent(
     state: State<'_, LocalInferenceState>,
     webview: WebviewWindow,
     challenge_id: String,
+    language: String,
 ) -> Result<LocalInferenceBindingConsent, String> {
     require_local_inference_caller(&webview)?;
     if !valid_identifier(&challenge_id) {
@@ -305,19 +316,27 @@ pub async fn local_inference_sign_binding_consent(
     if shown.host_id != host_id || !valid_identifier(&shown.binding_id) {
         return Err("Nessie Desktop could not verify the local model confirmation.".to_owned());
     }
-    let message = format!(
-        "Nessie will connect this local model while Desktop is running.\n\nOrganization reference: {}\nAccount reference: {}\nAgent: {}\nModel: {}\nThis computer: {}\n\nIt will not start Ollama, download models, or use another computer's model.",
-        shown.organization_reference, shown.account_reference, shown.agent_label, shown.model_label, shown.host_label,
+    let message = i18n::format(
+        &language,
+        "consentMessage",
+        &[
+            ("organization", &shown.organization_reference),
+            ("account", &shown.account_reference),
+            ("agent", &shown.agent_label),
+            ("model", &shown.model_label),
+            ("computer", &shown.host_label),
+        ],
     );
     if !confirm_native(
         app.clone(),
-        "Confirm local model use",
+        language.clone(),
+        &i18n::text(&language, "consentTitle"),
         &message,
-        "Confirm model",
+        &i18n::text(&language, "consentAction"),
     )
     .await?
     {
-        return Err("Confirming local model use was cancelled.".to_owned());
+        return Err(i18n::text(&language, "consentCancelled"));
     }
     let payload = format!(
         "nessie-local-inference-consent-v1\n{challenge_id}\n{}\n{host_id}",
@@ -336,17 +355,19 @@ pub async fn local_inference_forget_local_state(
     app: AppHandle,
     state: State<'_, LocalInferenceState>,
     webview: WebviewWindow,
+    language: String,
 ) -> Result<LocalInferenceDesktopStatus, String> {
     require_local_inference_caller(&webview)?;
     if !confirm_native(
         app.clone(),
-        "Delete local Ollama state",
-        "Delete this computer's protected local Ollama key and cached local state. This does not revoke the server relationship; revoke it separately in Nessie when you are online.",
-        "Delete local state",
+        language.clone(),
+        &i18n::text(&language, "forgetTitle"),
+        &i18n::text(&language, "forgetMessage"),
+        &i18n::text(&language, "forgetAction"),
     )
     .await?
     {
-        return Err("Deleting local Ollama state was cancelled.".to_owned());
+        return Err(i18n::text(&language, "forgetCancelled"));
     }
     let store = PlatformMachineIdentityStore::new(&app)?;
     store.delete()?;

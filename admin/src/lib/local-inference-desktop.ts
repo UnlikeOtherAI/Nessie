@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { isDesktopApp } from './desktop'
+import { getDesktopLanguage } from './desktop-language'
 
 export type LocalInferenceDesktopEnrollment = {
   authorizationRevision: number
@@ -15,14 +16,18 @@ const requireDesktop = (): void => {
 /** Native, OS-confirmed operations. This module never discovers or calls Ollama. */
 export const prepareLocalInferenceDesktopEnrollment = async (): Promise<LocalInferenceDesktopEnrollment> => {
   requireDesktop()
-  return invoke<LocalInferenceDesktopEnrollment>('local_inference_prepare_desktop_enrollment')
+  return invoke<LocalInferenceDesktopEnrollment>('local_inference_prepare_desktop_enrollment', {
+    language: getDesktopLanguage(),
+  })
 }
 
 /** Replaces a server-revoked local key only after Desktop's native repair
  * confirmation. The browser cannot mint or rotate a machine identity. */
 export const rotateLocalInferenceDesktopMachineKey = async (): Promise<LocalInferenceDesktopEnrollment> => {
   requireDesktop()
-  return invoke<LocalInferenceDesktopEnrollment>('local_inference_rotate_machine_key')
+  return invoke<LocalInferenceDesktopEnrollment>('local_inference_rotate_machine_key', {
+    language: getDesktopLanguage(),
+  })
 }
 
 /** Starts the native direct host only after the server has assigned its host id. */
@@ -34,6 +39,7 @@ export const startLocalInferenceDirectHost = async (input: {
   await invoke('local_inference_start_direct_host', {
     hostId: input.hostId,
     organizationId: input.organizationId,
+    language: getDesktopLanguage(),
   })
 }
 
@@ -43,6 +49,7 @@ export const signLocalInferenceBindingConsent = async (input: {
   requireDesktop()
   const result = await invoke<{ signature: string }>('local_inference_sign_binding_consent', {
     challengeId: input.challengeId,
+    language: getDesktopLanguage(),
   })
   return result.signature
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { FormField } from '../../components/shared/FormField'
 import { Input } from '../../components/shared/FormControls'
@@ -23,17 +24,6 @@ import {
  */
 
 const DEBOUNCE_MS = 300
-
-const REASON_COPY: Record<SlugUnavailableReason, string> = {
-  taken: 'That address is already in use.',
-  too_short: 'Use at least 2 characters.',
-  too_long: 'Use at most 63 characters.',
-  charset:
-    'Use only letters, numbers and hyphens, starting and ending with a letter or number.',
-  double_hyphen: 'Two hyphens in a row are not allowed.',
-  all_digits: 'An address cannot be only numbers.',
-  reserved: 'That address is reserved.',
-}
 
 /**
  * A cosmetic preview of what UOA would derive. Kept deliberately simple —
@@ -69,6 +59,16 @@ export const TeamAddressField = ({
   orgId?: string
   disabled?: boolean
 }) => {
+  const { t } = useTranslation('shell')
+  const reasonCopy: Record<SlugUnavailableReason, string> = {
+    taken: t('teamAddress.taken'),
+    too_short: t('teamAddress.tooShort'),
+    too_long: t('teamAddress.tooLong'),
+    charset: t('teamAddress.charset'),
+    double_hyphen: t('teamAddress.doubleHyphen'),
+    all_digits: t('teamAddress.allDigits'),
+    reserved: t('teamAddress.reserved'),
+  }
   const [touched, setTouched] = useState(false)
   const [debounced, setDebounced] = useState('')
 
@@ -100,16 +100,16 @@ export const TeamAddressField = ({
 
   const status = (() => {
     if (!effective) return null
-    if (isFetching || debounced !== effective) return { text: 'Checking availability…', bad: false }
-    if (data?.available === true) return { text: 'Available', bad: false }
+    if (isFetching || debounced !== effective) return { text: t('teamAddress.checking'), bad: false }
+    if (data?.available === true) return { text: t('teamAddress.available'), bad: false }
     if (data?.available === false) {
-      return { text: REASON_COPY[data.reason ?? 'taken'], bad: true }
+      return { text: reasonCopy[data.reason ?? 'taken'], bad: true }
     }
     return null
   })()
 
   return (
-    <FormField label="Address">
+    <FormField label={t('teamAddress.label')}>
       <Input
         autoComplete="off"
         disabled={disabled}
@@ -119,7 +119,7 @@ export const TeamAddressField = ({
           setTouched(true)
           onChange(event.target.value.trim().toLowerCase())
         }}
-        placeholder={scope === 'organisation' ? 'e.g. acme' : 'e.g. design'}
+        placeholder={scope === 'organisation' ? t('teamAddress.organizationExample') : t('teamAddress.teamExample')}
         spellCheck={false}
         value={effective}
       />
@@ -129,7 +129,7 @@ export const TeamAddressField = ({
       >
         {status
           ? status.text
-          : 'The web address for this. You can change it later.'}
+          : t('teamAddress.explanation')}
       </p>
     </FormField>
   )

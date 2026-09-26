@@ -6,7 +6,8 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { androidDockGeometry } from '../lib/android-tablet-dock'
 import { withOpacity } from '../lib/ipad-native-chrome'
 import type { NativeAttentionBadges } from '../lib/native-shell-layout'
-import { TABS } from '../lib/tabs'
+import { nativeTabTitles } from '../lib/tabs'
+import { useNativeCopy } from '../i18n/native'
 
 type AndroidTabletTabBarProps = {
   activeIndex: number
@@ -41,7 +42,10 @@ export const AndroidTabletTabBar = ({
   onIndexChange,
   rippleColor,
   surfaceColor,
-}: AndroidTabletTabBarProps): React.JSX.Element => (
+}: AndroidTabletTabBarProps): React.JSX.Element => {
+  const copy = useNativeCopy()
+  const tabs = nativeTabTitles(copy.tabs)
+  return (
   <View pointerEvents="box-none" style={[styles.layer, { bottom }]}>
     <View
       style={[
@@ -78,7 +82,7 @@ export const AndroidTabletTabBar = ({
             { backgroundColor: withOpacity(surfaceColor, Number(Platform.Version) < 31 ? 0.92 : 0.5) },
           ]}
         />
-        {TABS.map((tab, index) => {
+        {tabs.map((tab, index) => {
           const active = index === activeIndex
           const color = active ? activeTintColor : inactiveTintColor
           const badge = badgeCounts[tab.key] ?? 0
@@ -127,7 +131,8 @@ export const AndroidTabletTabBar = ({
       </View>
     </View>
   </View>
-)
+  )
+}
 
 const styles = StyleSheet.create({
   badge: {

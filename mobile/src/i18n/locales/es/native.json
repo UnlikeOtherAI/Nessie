@@ -1,0 +1,49 @@
+{
+  "tabs": {
+    "channels": "Canales",
+    "projects": "Proyectos",
+    "knowledge": "Conocimiento",
+    "admin": "Administración",
+    "search": "Buscar"
+  },
+  "toolbar": {
+    "back": "Atrás",
+    "forward": "Adelante",
+    "recentChannels": "Canales recientes",
+    "helpAndFeedback": "Ayuda y comentarios",
+    "moreActions": "Más acciones",
+    "moreNavigationControls": "Más controles de navegación",
+    "cancel": "Cancelar"
+  },
+  "account": {
+    "menu": "Menú de cuenta",
+    "switchTeam": "Cambiar de equipo",
+    "team": "Equipo"
+  },
+  "focus": {
+    "turnOn": "Activar modo de concentración",
+    "turnOff": "Desactivar modo de concentración"
+  },
+  "creation": {
+    "openMenu": "Abrir menú de creación",
+    "closeMenu": "Cerrar menú de creación",
+    "startDirectMessage": "Iniciar mensaje directo",
+    "message": "Mensaje",
+    "project": "Proyecto",
+    "projectDescription": "Organiza el trabajo en una carpeta compartida",
+    "createProject": "Crear proyecto",
+    "channel": "Canal",
+    "channelDescription": "Iniciar una conversación de equipo",
+    "createChannel": "Crear canal",
+    "agent": "Agente",
+    "agentDescription": "Diseñar un agente",
+    "createAgent": "Crear agente"
+  },
+  "updates": {
+    "title": "¿Actualizar Nessie?",
+    "ready": "La versión {version} está lista para descargar. Android te pedirá que confirmes la instalación.",
+    "skip": "Omitir esta versión",
+    "remindTomorrow": "Recordármelo mañana",
+    "update": "Actualizar"
+  }
+}

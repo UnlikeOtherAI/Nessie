@@ -38,11 +38,8 @@ test('the phone sheet offers Agent last, directly above the Message button', () 
     false,
   )
   assert.deepEqual(NATIVE_CREATION_OPTIONS.at(-1), {
-    accessibilityLabel: 'Create agent',
     action: 'agent',
-    description: 'Design a new agent',
     icon: 'smart-toy',
-    title: 'Agent',
   })
 })
 

@@ -1,4 +1,5 @@
 import { type RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Popover } from '../../components/overlays/Popover'
 import {
   windowLayoutSections,
@@ -32,11 +33,23 @@ export const WindowLayoutPopover = ({
   onPointerEnter,
   onPointerLeave,
   open,
-}: WindowLayoutPopoverProps) => (
+}: WindowLayoutPopoverProps) => {
+  const { t } = useTranslation('shell')
+  const layoutLabels: Record<WindowLayout, string> = {
+    'bottom-half': t('window.bottomHalf'),
+    fill: t('window.fillScreen'),
+    'left-half': t('window.leftHalf'),
+    'left-third': t('window.leftThird'),
+    'middle-third': t('window.middleThird'),
+    'right-half': t('window.rightHalf'),
+    'right-third': t('window.rightThird'),
+    'top-half': t('window.topHalf'),
+  }
+  return (
   <Popover
     anchorRef={anchorRef}
     className="desktop-window-layout-popover"
-    label="Window layouts"
+    label={t('window.layouts')}
     onClose={onClose}
     open={open}
     placement="bottom-start"
@@ -49,20 +62,20 @@ export const WindowLayoutPopover = ({
     >
       {windowLayoutSections.map((section, sectionIndex) => (
         <section
-          aria-label={section.label}
+          aria-label={section.id === 'moveResize' ? t('window.moveResize') : t('window.fillArrange')}
           className="desktop-window-layout-section"
-          key={section.label}
+          key={section.id}
         >
           {sectionIndex > 0 ? <div className="desktop-window-layout-divider" /> : null}
-          <h2>{section.label}</h2>
+          <h2>{section.id === 'moveResize' ? t('window.moveResize') : t('window.fillArrange')}</h2>
           <div className="desktop-window-layout-grid">
             {section.options.map((option) => (
               <button
-                aria-label={option.label}
+                aria-label={layoutLabels[option.layout]}
                 className="desktop-window-layout-option"
                 key={option.layout}
                 onClick={() => onLayout(option.layout)}
-                title={option.label}
+                title={layoutLabels[option.layout]}
                 type="button"
               >
                 <LayoutGlyph layout={option.layout} />
@@ -78,9 +91,10 @@ export const WindowLayoutPopover = ({
         onClick={onFullScreen}
         type="button"
       >
-        <span>Full screen</span>
+        <span>{t('window.fullScreen')}</span>
         <span aria-hidden="true">›</span>
       </button>
     </div>
   </Popover>
-)
+  )
+}

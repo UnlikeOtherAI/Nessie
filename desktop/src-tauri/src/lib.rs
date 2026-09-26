@@ -3,12 +3,13 @@ use tauri::utils::config::WebviewUrl;
 use tauri::Manager;
 use tauri::WebviewWindowBuilder;
 
+#[cfg(feature = "direct-updater")]
+mod direct_updater;
 mod document_window;
 mod executor_companion;
 mod local_inference;
+mod native_i18n;
 mod shell;
-#[cfg(feature = "direct-updater")]
-mod direct_updater;
 
 use shell::{desktop_init_script, desktop_platform, should_register_deep_link_schemes};
 
@@ -227,7 +228,10 @@ mod tests {
         assert!(executor_build.contains(EXECUTOR_MENU_BAR_CONFIG_FILE));
         let staged = executor_build.find("prepare:executor-menubar").unwrap();
         let bundled = executor_build.find("tauri build").unwrap();
-        assert!(staged < bundled, "signing is inside-out: the nested app is staged first");
+        assert!(
+            staged < bundled,
+            "signing is inside-out: the nested app is staged first"
+        );
     }
 
     #[test]

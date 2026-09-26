@@ -1,4 +1,5 @@
 import { useMemo, type RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
 import { faCheck, faPlus, faSpinner } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { UoaPendingTeamInvite } from '@nessie/schemas'
@@ -60,6 +61,7 @@ export const TeamMenu = ({
   onAddTeam,
   onClose,
 }: TeamMenuProps) => {
+  const { t } = useTranslation('shell')
   const orderedTeams = useMemo(
     () => orderTeamsWithActiveFirst(teams, activeTeamId),
     [activeTeamId, teams],
@@ -68,7 +70,7 @@ export const TeamMenu = ({
     <Popover
       anchorRef={anchorRef}
       className={panelClassName}
-      label="Teams"
+      label={t('teams.title')}
       onClose={onClose}
       open={open}
       placement="right"
@@ -78,7 +80,7 @@ export const TeamMenu = ({
       {/* SectionLabel cannot express tracking-[0.18em] at text-xs (xs is 0.2em, 2xs is 11px). */}
       <div className="flex items-center justify-between gap-3 px-2 py-1">
         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
-          Teams
+          {t('teams.title')}
         </div>
         {ssoProviderId ? (
           <button
@@ -88,7 +90,7 @@ export const TeamMenu = ({
             type="button"
           >
             <FontAwesomeIcon aria-hidden className="h-3 w-3" icon={faPlus} />
-            Add team
+            {t('teams.addTeam')}
           </button>
         ) : null}
       </div>
@@ -139,7 +141,7 @@ export const TeamMenu = ({
       {invitations.length > 0 ? (
         <div className="mt-1 border-t border-[color:var(--sep)] pt-1">
           <div className="px-2 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
-            Invitations
+            {t('teams.invitations')}
           </div>
           {invitations.map((invite) => {
             const isBusy = invite.inviteId === busyInviteId
@@ -151,7 +153,7 @@ export const TeamMenu = ({
                   </span>
                   {invite.invitedBy ? (
                     <span className="block truncate text-xs text-[color:var(--tx3)]">
-                      Invited by {invite.invitedBy}
+                      {t('teams.invitedBy', { name: invite.invitedBy })}
                     </span>
                   ) : null}
                 </span>
@@ -162,7 +164,7 @@ export const TeamMenu = ({
                   onClick={() => onAcceptInvitation(invite)}
                   type="button"
                 >
-                  {isBusy ? 'Accepting…' : 'Accept'}
+                  {isBusy ? t('teams.accepting') : t('teams.accept')}
                 </button>
               </div>
             )

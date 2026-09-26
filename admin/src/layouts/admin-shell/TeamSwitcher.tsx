@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { isAdminRole, type UoaPendingTeamInvite } from '@nessie/schemas'
@@ -43,6 +44,7 @@ type TeamSwitcherProps = {
 }
 
 export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
+  const { t } = useTranslation('shell')
   const {
     me,
     reconcileSession,
@@ -119,7 +121,7 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
       setSwitchError(
         error instanceof Error
           ? error.message
-          : 'Couldn’t accept this invitation. Try again.',
+          : t('teams.acceptFailed'),
       )
     } finally {
       setBusyInviteId(null)
@@ -301,14 +303,14 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
       {variant === 'rail' ? (
         <button
           aria-haspopup="menu"
-          aria-label="Switch team"
+          aria-label={t('teams.switch')}
           className={[
             'mt-2 mb-2 flex h-9 w-9 items-center justify-center rounded-xl transition-shadow',
             open ? 'ring-2 ring-[color:var(--accent)]' : 'hover:ring-2 hover:ring-[color:var(--overlay)]',
           ].join(' ')}
           onClick={toggleMenu}
           ref={buttonRef}
-          title={active ? `Team: ${active.label}` : 'Switch team'}
+          title={active ? t('teams.named', { name: active.label }) : t('teams.switch')}
           type="button"
         >
           <span className="relative">
@@ -321,7 +323,7 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
             <TeamAvatar
               directoryImageFirst
               imageUrl={active?.avatarImageUrl}
-              label={active?.label ?? 'Team'}
+              label={active?.label ?? t('teams.team')}
               revision={avatarRevision}
               size={36}
               token={token}
@@ -347,22 +349,22 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
       ) : variant === 'mobile-header' ? (
         <button
           aria-haspopup="menu"
-          aria-label="Switch team"
+          aria-label={t('teams.switch')}
           className="mobile-web-home-team"
           onClick={toggleMenu}
           ref={buttonRef}
-          title={active ? `Team: ${active.label}` : 'Switch team'}
+          title={active ? t('teams.named', { name: active.label }) : t('teams.switch')}
           type="button"
         >
           <TeamAvatar
             directoryImageFirst
             imageUrl={active?.avatarImageUrl}
-            label={active?.label ?? 'Team'}
+            label={active?.label ?? t('teams.team')}
             revision={avatarRevision}
             size={36}
             token={token}
           />
-          <span className="min-w-0 flex-1 truncate">{active?.label ?? 'Team'}</span>
+          <span className="min-w-0 flex-1 truncate">{active?.label ?? t('teams.team')}</span>
           <svg aria-hidden="true" fill="none" height="22" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" width="22">
             <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
           </svg>

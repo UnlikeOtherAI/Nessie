@@ -1,6 +1,7 @@
 import { Fragment } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useCanModifyProject } from '../../facades/projects/administration'
 import { useProjectBoards } from '../../facades/boards/hooks'
 import { BoardIcon } from '../../components/features/projects/kanban/BoardIcon'
@@ -59,6 +60,7 @@ export const ProjectSectionRows = ({
   projectId,
   showBoardSelection,
 }: ProjectSectionRowsProps) => {
+  const { t } = useTranslation('shell')
   const prewarm = usePrewarm()
   const boardsQuery = useProjectBoards(projectId)
   const boards = boardsQuery.data ?? []
@@ -75,6 +77,21 @@ export const ProjectSectionRows = ({
       : defaultBoardId
     : null
   const workingBoardPath = `/projects/${projectId}/board`
+  const sectionLabels = {
+    overview: t('projectSections.overview'),
+    board: t('projectSections.boards'),
+    backlog: t('projectSections.backlog'),
+    insights: t('projectSections.insights'),
+    docs: t('projectSections.docs'),
+    dashboards: t('projectSections.dashboards'),
+    executors: t('projectSections.executors'),
+    settings: t('projectSections.settings'),
+  }
+  const labelledSection = (id: keyof typeof sectionLabels): string => {
+    const count = id === 'board' ? assignedWorkCount : id === 'docs' ? knowledgeCount : 0
+    const label = sectionLabels[id]
+    return count > 0 ? t('projectSections.withCount', { label, total: count }) : label
+  }
 
   return (
     <>
@@ -101,7 +118,7 @@ export const ProjectSectionRows = ({
                 {...rowProps}
               >
                 {rowIcon(section.icon)}
-                <span className="min-w-0 flex-1 truncate">{section.label}</span>
+                <span className="min-w-0 flex-1 truncate">{labelledSection(section.id)}</span>
               </Link>
             )
           }
@@ -124,12 +141,12 @@ export const ProjectSectionRows = ({
                   {...rowProps}
                 >
                   {rowIcon(section.icon)}
-                  <span className="min-w-0 flex-1 truncate">{section.label}</span>
+                  <span className="min-w-0 flex-1 truncate">{labelledSection(section.id)}</span>
                 </Link>
                 <button
                   aria-controls={boardsId}
                   aria-expanded={boardsExpanded}
-                  aria-label={`${boardsExpanded ? 'Collapse' : 'Expand'} boards`}
+                  aria-label={boardsExpanded ? t('projectSections.collapseBoards') : t('projectSections.expandBoards')}
                   className="admin-sidebar-more flex-shrink-0"
                   onClick={(event) => {
                     event.stopPropagation()
@@ -141,7 +158,7 @@ export const ProjectSectionRows = ({
                 </button>
                 {canModifyProject ? (
                   <button
-                    aria-label="New board"
+                    aria-label={t('projectSections.newBoard')}
                     className="admin-sidebar-more flex-shrink-0"
                     onClick={(event) => {
                       event.stopPropagation()
@@ -157,20 +174,20 @@ export const ProjectSectionRows = ({
               {boardsExpanded ? (
                 <div id={boardsId}>
                   {boardsQuery.isLoading ? (
-                    <SidebarEmptyNote indent="grandchild">Loading boards…</SidebarEmptyNote>
+                    <SidebarEmptyNote indent="grandchild">{t('projectSections.loadingBoards')}</SidebarEmptyNote>
                   ) : null}
                   {boardsQuery.isError && boards.length === 0 ? (
                     <div
                       className="admin-sb-item admin-sb-empty sidebar-grandchild flex items-center gap-2"
                       role="alert"
                     >
-                      <span className="min-w-0 flex-1">Couldn&apos;t load boards.</span>
+                      <span className="min-w-0 flex-1">{t('projectSections.loadError')}</span>
                       <button
                         className="font-medium text-[color:var(--accent)] hover:underline"
                         onClick={() => void boardsQuery.refetch()}
                         type="button"
                       >
-                        Retry
+                        {t('projectSections.retry')}
                       </button>
                     </div>
                   ) : null}
@@ -178,7 +195,7 @@ export const ProjectSectionRows = ({
                     // The same quiet line every other empty sidebar section
                     // shows, on the grid its board rows would stand on. The
                     // "+" on the Boards row beside it is the way in.
-                    <SidebarEmptyNote indent="grandchild">There are no boards yet.</SidebarEmptyNote>
+                    <SidebarEmptyNote indent="grandchild">{t('projectSections.emptyBoards')}</SidebarEmptyNote>
                   ) : null}
                   {boards.map((board) => {
                     const isActiveBoard = isActive && board.id === activeBoardId

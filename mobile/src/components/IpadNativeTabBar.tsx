@@ -9,9 +9,8 @@ import {
 } from '../lib/ipad-native-chrome'
 import type { NativeAttentionBadges } from '../lib/native-shell-layout'
 import { TABS, type TabDef } from '../lib/tabs'
-
-const PRIMARY_TABS = TABS.filter((tab) => tab.key !== 'search')
-const SEARCH_TAB = TABS.find((tab) => tab.key === 'search')
+import { nativeTabTitles } from '../lib/tabs'
+import { useNativeCopy } from '../i18n/native'
 
 type IpadNativeTabBarProps = {
   activeIndex: number
@@ -98,10 +97,15 @@ export const IpadNativeTabBar = ({
   onIndexChange,
   showSearch,
   theme,
-}: IpadNativeTabBarProps): React.JSX.Element => (
+}: IpadNativeTabBarProps): React.JSX.Element => {
+  const copy = useNativeCopy()
+  const tabs = nativeTabTitles(copy.tabs)
+  const primaryTabs = tabs.filter((tab) => tab.key !== 'search')
+  const searchTab = tabs.find((tab) => tab.key === 'search')
+  return (
   <View style={styles.controls}>
     <IpadNativeChromeSurface theme={theme}>
-      {PRIMARY_TABS.map((tab) => (
+      {primaryTabs.map((tab) => (
         <IpadNativeTabButton
           activeIndex={activeIndex}
           badgeCounts={badgeCounts}
@@ -113,20 +117,21 @@ export const IpadNativeTabBar = ({
         />
       ))}
     </IpadNativeChromeSurface>
-    {showSearch && SEARCH_TAB ? (
+    {showSearch && searchTab ? (
       <IpadNativeChromeSurface style={styles.searchSurface} theme={theme}>
         <IpadNativeTabButton
           activeIndex={activeIndex}
           badgeCounts={badgeCounts}
           iconOnly={false}
           onIndexChange={onIndexChange}
-          tab={SEARCH_TAB}
+          tab={searchTab}
           theme={theme}
         />
       </IpadNativeChromeSurface>
     ) : null}
   </View>
-)
+  )
+}
 
 const styles = StyleSheet.create({
   badge: {

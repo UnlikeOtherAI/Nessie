@@ -4,6 +4,7 @@ import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
 import { CreateProjectDialog } from '../../components/shared/CreateProjectDialog'
 import { EditProjectDialog } from '../../components/shared/EditProjectDialog'
 import type { ProjectRecord } from '../../lib/api-client'
+import { useTranslation } from 'react-i18next'
 
 type ProjectsNavDialogsProps = {
   boardCreateBoards: BoardRecord[]
@@ -36,6 +37,7 @@ export const ProjectsNavDialogs = ({
   onCloseEdit,
   onConfirmDelete,
 }: ProjectsNavDialogsProps) => {
+  const { t } = useTranslation('shell')
   return (
     <>
       <CreateProjectDialog onClose={onCloseCreate} open={createOpen} />
@@ -57,13 +59,13 @@ export const ProjectsNavDialogs = ({
       ) : null}
       {deleteTarget ? (
         <ConfirmDialog
-          body="This cannot be undone."
-          confirmLabel="Delete"
+          body={t('projects.deleteWarning')}
+          confirmLabel={t('projects.delete')}
           destructive
           onCancel={onCancelDelete}
           onConfirm={() => onConfirmDelete(deleteTarget)}
           open
-          title={`Delete project "${deleteTarget.name}"?`}
+          title={t('projects.deleteNamed', { name: deleteTarget.name })}
         />
       ) : null}
     </>

@@ -5,6 +5,7 @@ import {
   PhysicalSize,
 } from '@tauri-apps/api/window'
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { usesCustomDesktopWindowControls } from '../../lib/desktop'
 import { WindowLayoutPopover } from './WindowLayoutPopover'
 import { windowLayoutBounds, type WindowLayout } from './window-layouts'
@@ -33,6 +34,7 @@ type DesktopWindowControlsProps = {
 export const DesktopWindowControls = ({
   visible = usesCustomDesktopWindowControls(),
 }: DesktopWindowControlsProps = {}) => {
+  const { t } = useTranslation('shell')
   const [maximized, setMaximized] = useState(false)
   const [windowFocused, setWindowFocused] = useState(true)
   const [layoutsOpen, setLayoutsOpen] = useState(false)
@@ -126,30 +128,30 @@ export const DesktopWindowControls = ({
 
   return (
     <div
-      aria-label="Window controls"
+      aria-label={t('window.controls')}
       className={`desktop-window-controls${windowFocused ? '' : ' desktop-window-controls--inactive'}`}
       role="group"
     >
       <button
-        aria-label="Close window"
+        aria-label={t('window.closeWindow')}
         className="desktop-window-control desktop-window-control--close"
         onClick={() => void getCurrentWindow().close()}
-        title="Close"
+        title={t('window.close')}
         type="button"
       >
         <ControlMark kind="close" />
       </button>
       <button
-        aria-label="Minimise window"
+        aria-label={t('window.minimiseWindow')}
         className="desktop-window-control desktop-window-control--minimize"
         onClick={() => void getCurrentWindow().minimize()}
-        title="Minimise"
+        title={t('window.minimise')}
         type="button"
       >
         <ControlMark kind="minimize" />
       </button>
       <button
-        aria-label={maximized ? 'Restore window' : 'Maximise window'}
+        aria-label={maximized ? t('window.restoreWindow') : t('window.maximiseWindow')}
         aria-expanded={layoutsOpen}
         aria-haspopup="dialog"
         className="desktop-window-control desktop-window-control--maximize"
@@ -163,7 +165,7 @@ export const DesktopWindowControls = ({
         onMouseEnter={scheduleLayoutOpen}
         onMouseLeave={scheduleLayoutClose}
         ref={layoutTriggerRef}
-        title={`${maximized ? 'Restore' : 'Maximise'} — hover for layouts`}
+        title={maximized ? t('window.restoreLayouts') : t('window.maximiseLayouts')}
         type="button"
       >
         <ControlMark kind="maximize" />
