@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { ExecutorsTable } from '../../components/features/executors/ExecutorsTable'
 import { PageBody, Section } from '../../components/shared/PageBody'
 import { QueryState } from '../../components/shared/QueryState'
@@ -9,6 +10,7 @@ type ProjectExecutorsTabProps = {
 }
 
 export const ProjectExecutorsTab = ({ projectId }: ProjectExecutorsTabProps) => {
+  const { t } = useTranslation('projects')
   const executorsQuery = useExecutors(projectId)
   const navigate = useNavigate()
   const executors = executorsQuery.data ?? []
@@ -21,19 +23,19 @@ export const ProjectExecutorsTab = ({ projectId }: ProjectExecutorsTabProps) => 
             className="admin-button admin-button-primary"
             to="/agents/executors"
           >
-            Share an executor
+            {t('executors.share')}
           </Link>
         }
-        description="Executors shared with this project or its whole team. Open an executor to manage its agents and sharing."
-        title="Project executors"
+        description={t('executors.description')}
+        title={t('executors.title')}
       >
         <QueryState
-          errorLabel="Couldn't load project executors."
-          loadingLabel="Loading executors…"
+          errorLabel={t('executors.loadError')}
+          loadingLabel={t('executors.loading')}
           query={executorsQuery}
         >
           {() => <ExecutorsTable executors={executors} isLoading={false}
-            emptyMessage="No executor is shared with this project. Open an executor’s Permissions tab to share it."
+            emptyMessage={t('executors.empty')}
             onOpen={(id) => void navigate(`/agents/executors/${id}`)} />}
         </QueryState>
       </Section>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
 import type { AgentVisibility } from '@nessie/schemas'
 import { Notice } from '../../../primitives/Notice'
@@ -115,6 +116,7 @@ export const TaskDialog = ({
   taskColumnId,
   iterationId,
 }: TaskDialogProps) => {
+  const { t } = useTranslation('projects')
   const isEdit = Boolean(task)
   const location = useLocation()
   const { data: projects = [] } = useProjects()
@@ -323,7 +325,7 @@ export const TaskDialog = ({
       taskDraft.clear()
       onClose()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Something went wrong')
+      setError(cause instanceof Error ? cause.message : t('taskDialog.unknownError'))
     }
   }
 
@@ -334,7 +336,7 @@ export const TaskDialog = ({
       await transition.mutateAsync({ id: task.id, status })
       onClose()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not update status')
+      setError(cause instanceof Error ? cause.message : t('taskDialog.updateStatusError'))
     }
   }
 
@@ -345,7 +347,7 @@ export const TaskDialog = ({
       await updateTask.mutateAsync({ id: task.id, archivedAt: null })
       onClose()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not unarchive task')
+      setError(cause instanceof Error ? cause.message : t('taskDialog.unarchiveError'))
     }
   }
 
@@ -358,11 +360,11 @@ export const TaskDialog = ({
       onClose={onClose}
       open={open}
       size="xl"
-      title={isEdit ? 'Task details' : 'New task'}
+      title={isEdit ? t('taskDialog.details') : t('taskDialog.newTask')}
     >
       {task?.externalLink ? (
         <Notice className="mb-4" size="sm" tone="info">
-          Linked to {PROVIDER_LABEL[task.externalLink.provider]}{' '}
+          {t('taskDialog.linkedTo', { provider: PROVIDER_LABEL[task.externalLink.provider] })}{' '}
           <a
             className="underline"
             href={task.externalLink.externalUrl}
@@ -375,9 +377,7 @@ export const TaskDialog = ({
             ? ` · ${task.externalLink.remoteStateName}`
             : ''}
           {task.externalLink.writeMode === 'read_only'
-            ? ` · ${PROVIDER_LABEL[task.externalLink.provider]} owns its status, assignee and
-               title here. Switch the source to read & write in Settings → Sources to change
-               them from Nessie.`
+            ? ` · ${t('taskDialog.readOnlySource', { provider: PROVIDER_LABEL[task.externalLink.provider] })}`
             : ''}
         </Notice>
       ) : null}
@@ -385,8 +385,8 @@ export const TaskDialog = ({
       {isEdit && task ? (
         <div className="mb-5">
           <TabBar<TaskDialogTab>
-            ariaLabel="Task details sections"
-            items={[{ label: 'Details', value: 'details' }, { label: 'Checklist', value: 'checklist' }]}
+            ariaLabel={t('taskDialog.sections')}
+            items={[{ label: t('taskDialog.detailsTab'), value: 'details' }, { label: t('taskDialog.checklistTab'), value: 'checklist' }]}
             onChange={setDialogTab}
             value={dialogTab}
           />
@@ -405,20 +405,20 @@ export const TaskDialog = ({
         {/* Three groups: DOM order is the phone order (short controls, then
             long content), grid placement is the desktop layout — ui.md §5.2. */}
         <div className="task-dialog-head">
-          <FormField label="Title" required>
+          <FormField label={t('taskDialog.title')} required>
             <Input
               autoComplete="off"
               onChange={(event) => patchDraft({ title: event.target.value })}
-              placeholder="What needs doing?"
+              placeholder={t('taskDialog.titlePlaceholder')}
               ref={titleRef}
               value={title}
             />
           </FormField>
 
-          <FormField label="Excerpt">
+          <FormField label={t('taskDialog.excerpt')}>
             <Textarea
               onChange={(event) => patchDraft({ purpose: event.target.value })}
-              placeholder="A short summary…"
+              placeholder={t('taskDialog.excerptPlaceholder')}
               rows={2}
               value={purpose}
             />
@@ -432,7 +432,7 @@ export const TaskDialog = ({
           <TaskPriorityField onChange={(value) => patchDraft({ priority: value })} value={priority} />
 
           <div className="grid gap-1.5">
-            <FieldLabel htmlFor="task-assignee">Assignee</FieldLabel>
+            <FieldLabel htmlFor="task-assignee">{t('taskDialog.assignee')}</FieldLabel>
             <AssigneePicker
               id="task-assignee"
               onChange={(next) => patchDraft({ assignee: next })}
@@ -446,13 +446,13 @@ export const TaskDialog = ({
                   provider={remoteAssignee.provider}
                 />
                 <span>
-                  has it in {PROVIDER_LABEL[remoteAssignee.provider]} and has no Nessie account.
+                  {t('taskDialog.remoteAssignee', { provider: PROVIDER_LABEL[remoteAssignee.provider] })}
                 </span>
               </div>
             ) : null}
           </div>
 
-          <FormField label="Deadline">
+          <FormField label={t('taskDialog.deadline')}>
             <Input onChange={(event) => patchDraft({ due: event.target.value })} type="date" value={due} />
           </FormField>
 
@@ -496,12 +496,12 @@ export const TaskDialog = ({
           />
 
           {!isEdit && !projectId ? (
-            <FormField label="Project">
+            <FormField label={t('taskDialog.project')}>
               <Select
                 onChange={(event) => patchDraft({ formProjectId: event.target.value, labelIds: [] })}
                 value={formProjectId}
               >
-                <option value="">No project</option>
+                <option value="">{t('taskDialog.noProject')}</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>
                     {project.name}
@@ -567,8 +567,8 @@ export const TaskDialog = ({
       </form>
 
       <ConfirmDialog
-        body="It leaves the board. You can still find it under Archived."
-        confirmLabel="Cancel task"
+        body={t('taskDialog.cancelBody')}
+        confirmLabel={t('taskDialog.cancelTask')}
         destructive
         onCancel={() => setCancelConfirmOpen(false)}
         onConfirm={() => {
@@ -576,7 +576,9 @@ export const TaskDialog = ({
           void handleStatus('cancelled')
         }}
         open={cancelConfirmOpen}
-        title={task ? `Cancel "${task.title ?? task.purpose ?? 'this task'}"?` : 'Cancel this task?'}
+        title={task
+          ? t('taskDialog.cancelNamed', { title: task.title ?? task.purpose ?? t('taskDialog.thisTask') })
+          : t('taskDialog.cancelThisTask')}
       />
     </Dialog>
   )

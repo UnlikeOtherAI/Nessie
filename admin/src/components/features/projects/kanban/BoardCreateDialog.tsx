@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { BoardRecord, BoardStyle } from '../../../../facades/boards/hooks'
 import { useCreateBoard } from '../../../../facades/boards/hooks'
 import { ChoiceGroup } from '../../../shared/ChoiceGroup'
@@ -32,6 +33,7 @@ export const BoardCreateDialog = ({
   open,
   projectId,
 }: BoardCreateDialogProps) => {
+  const { t } = useTranslation('projects')
   const createBoard = useCreateBoard(projectId)
   const [name, setName] = useState('')
   const [iconEmoji, setIconEmoji] = useState<string | null>(null)
@@ -62,8 +64,7 @@ export const BoardCreateDialog = ({
           : { copyColumnsFromBoardId: columnSource }),
       },
       {
-        onError: (cause) =>
-          setError(cause instanceof Error ? cause.message : 'Could not create the board'),
+          onError: () => setError(t('boards.create.error')),
         onSuccess: (board) => {
           onCreated(board)
           close()
@@ -74,15 +75,15 @@ export const BoardCreateDialog = ({
 
   return (
     <Dialog
-      description="A board of its own: its own columns, and only the tickets put on it."
+      description={t('boards.create.description')}
       onClose={close}
       open={open}
-      title="New board"
+      title={t('boards.create.title')}
     >
       <div className="grid gap-4">
         <FormField
-          help="The icon is how the board is listed in the Projects sidebar."
-          label="Name"
+          help={t('boards.create.iconHelp')}
+          label={t('common.name')}
         >
           <div className="flex items-center gap-2">
             <BoardIconField
@@ -96,38 +97,38 @@ export const BoardCreateDialog = ({
               onKeyDown={(event) => {
                 if (event.key === 'Enter') submit()
               }}
-              placeholder="Dev board"
+              placeholder={t('boards.create.placeholder')}
               value={name}
             />
           </div>
         </FormField>
 
         <FormField
-          help="Kanban is a continuous board. Iterations adds time-boxed sprints."
-          label="Style"
+          help={t('boards.create.styleHelp')}
+          label={t('common.style')}
         >
           <ChoiceGroup
-            label="Board style"
+            label={t('boards.create.style')}
             labelHidden
             onChange={setStyle}
             options={[
-              { label: 'Kanban', value: 'kanban' },
-              { label: 'Iterations (Scrum)', value: 'scrum' },
+              { label: t('boards.style.kanban'), value: 'kanban' },
+              { label: t('boards.style.scrum'), value: 'scrum' },
             ]}
             value={style}
           />
         </FormField>
 
-        <FormField label="Columns">
+        <FormField label={t('boards.columns.title')}>
           <Select
-            aria-label="Starting columns"
+            aria-label={t('boards.create.startingColumns')}
             onChange={(event) => setColumnSource(event.target.value)}
             value={columnSource}
           >
-            <option value={DEFAULT_COLUMNS}>Start with the default columns</option>
+            <option value={DEFAULT_COLUMNS}>{t('boards.create.defaultColumns')}</option>
             {boards.map((board) => (
               <option key={board.id} value={board.id}>
-                Copy columns from “{board.name}”
+                {t('boards.create.copyColumns', { name: board.name })}
               </option>
             ))}
           </Select>
@@ -137,7 +138,7 @@ export const BoardCreateDialog = ({
 
         <div className="flex justify-end gap-2">
           <button className="admin-button" onClick={close} type="button">
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             className="admin-button admin-button-primary"
@@ -145,7 +146,7 @@ export const BoardCreateDialog = ({
             onClick={submit}
             type="button"
           >
-            Create board
+            {t('boards.create.submit')}
           </button>
         </div>
       </div>

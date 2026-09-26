@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 import { useCanModifyProject } from '../../facades/projects/administration'
 import { useProjectBoards } from '../../facades/boards/hooks'
@@ -64,6 +65,7 @@ const ProjectSettingsContent = ({
   section: (typeof SECTIONS)[number]
   selectSection: (section: (typeof SECTIONS)[number]) => void
 }) => {
+  const { t } = useTranslation('projects')
   const canModify = useCanModifyProject(projectId)
   const [selectedSourceId, selectSource] = useTabParam('source', [] as string[], '')
   const intents = useConsumedIntents(PROJECT_SETTINGS_INTENTS)
@@ -86,21 +88,21 @@ const ProjectSettingsContent = ({
   return (
     <PageBody>
       <>
-        <FormSuccess>{saveState.status === 'success' ? 'Saved.' : undefined}</FormSuccess>
+        <FormSuccess>{saveState.status === 'success' ? t('boardSettings.saved') : undefined}</FormSuccess>
         <FormError>{saveState.status === 'error' ? saveState.message : undefined}</FormError>
 
         {!canModify ? (
           <p className="text-sm text-[color:var(--tx3)]">
-            Only members of this project, or an organisation owner or admin, can change its settings.
+            {t('projectSettings.permission')}
           </p>
         ) : null}
 
         <TabBar
-          ariaLabel="Project settings sections"
+          ariaLabel={t('projectSettings.sections')}
           idPrefix="project-settings"
           items={[
-            { label: 'Fields', value: 'fields' },
-            { label: 'Sources', value: 'sources' },
+            { label: t('projectSettings.fields'), value: 'fields' },
+            { label: t('projectSettings.sources'), value: 'sources' },
           ]}
           onChange={selectSection}
           role="tablist"

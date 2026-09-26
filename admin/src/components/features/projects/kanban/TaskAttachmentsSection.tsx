@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   faArrowUpRightFromSquare,
   faDownload,
@@ -83,6 +84,7 @@ const hostOf = (url: string): string => {
  * it, who removed it, when and why.
  */
 export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; taskId: string }) => {
+  const { t, i18n } = useTranslation('projects')
   const { token } = useAuthSession()
   const resolveActor = useActorNames()
   const attachmentsQuery = useTaskAttachments(taskId)
@@ -114,10 +116,10 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
         .then(() => patch(key, null))
         .catch((cause: unknown) => {
           if (isUploadAborted(cause)) patch(key, null)
-          else patch(key, { error: cause instanceof Error ? cause.message : 'Upload failed' })
+          else patch(key, { error: cause instanceof Error ? cause.message : t('attachments.uploadFailed') })
         })
     }
-  }, [startUpload, taskId])
+  }, [startUpload, t, taskId])
 
   const drop = useFileDrop(upload, !canEdit)
   const attachments = attachmentsQuery.data ?? []
@@ -137,7 +139,7 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
         // Somebody else got there first: the refetch the mutation settles
         // with shows who, so there is nothing left to ask.
         if (cause instanceof ApiClientError && cause.status === 409) setConfirming(null)
-        else setRemoveError(cause.message || `Could not remove ${attachment.filename}.`)
+        else setRemoveError(cause.message || t('attachments.removeError', { name: attachment.filename }))
       },
       onSuccess: () => setConfirming(null),
     })
@@ -168,16 +170,21 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
         </span>
       )
     }
-    return <span>someone</span>
+    return <span>{t('attachments.someone')}</span>
   }
 
   const removalLine = (removal: NonNullable<TaskAttachmentRecord['removed']>) => (
     <span className="flex flex-wrap items-center gap-x-1.5 text-xs text-[color:var(--tx3)]" data-testid="attachment-removal">
-      <span className="inline-flex items-center gap-1.5">Removed by {remover(removal)}</span>
+      <span className="inline-flex items-center gap-1.5">{t('attachments.removedBy')} {remover(removal)}</span>
       <span aria-hidden="true">·</span>
-      <time dateTime={removal.at} title={exactTime(removal.at)}>{relativeTime(removal.at)}</time>
+      <time
+        dateTime={removal.at}
+        title={exactTime(removal.at, i18n.language)}
+      >
+        {relativeTime(removal.at, Date.now(), t, i18n.language)}
+      </time>
       {removal.reason === COMMENT_REMOVAL_REASON ? (
-        <span className="italic">{COMMENT_REMOVAL_REASON}</span>
+        <span className="italic">{t('attachments.removedWithComment')}</span>
       ) : removal.reason ? (
         <span className="min-w-0 break-words text-[color:var(--tx2)]">“{removal.reason}”</span>
       ) : null}
@@ -189,7 +196,7 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
       return (
         <span className="flex items-center gap-1.5">
           <ProviderTile provider={attachment.external.provider} size={16} />
-          From {PROVIDER_LABEL[attachment.external.provider]}
+          {t('attachments.fromProvider', { provider: PROVIDER_LABEL[attachment.external.provider] })}
         </span>
       )
     }
@@ -213,7 +220,7 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
           <Thumbnail attachment={attachment} token={token} />
           <div className="grid min-w-0 flex-1">
             <span className="truncate text-sm text-[color:var(--tx)]" title={external.title ?? attachment.filename}>
-              {failed ? `Couldn't copy from ${provider}` : external.title ?? attachment.filename}
+              {failed ? t('attachments.copyFailed', { provider }) : external.title ?? attachment.filename}
             </span>
             <span className="truncate text-xs text-[color:var(--tx3)]">
               {failed ? external.title ?? attachment.filename : hostOf(external.externalUrl)}
@@ -225,7 +232,7 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
             rel="noopener noreferrer"
             target="_blank"
           >
-            {failed ? `Open in ${provider} ↗` : 'Open ↗'}
+            {failed ? t('attachments.openInProvider', { provider }) : t('attachments.openExternal')}
           </a>
         </li>
       )
@@ -253,39 +260,39 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
               </span>
               {attachment.inline ? (
                 <Pill size="sm" tone="muted" uppercase={false}>
-                  {attachment.commentId ? 'in comment' : 'in description'}
+                  {attachment.commentId ? t('attachments.inComment') : t('attachments.inDescription')}
                 </Pill>
               ) : null}
               {removal ? (
-                <Pill size="sm" tone="muted" uppercase={false}>Removed</Pill>
+                <Pill size="sm" tone="muted" uppercase={false}>{t('attachments.removed')}</Pill>
               ) : null}
             </span>
             <span className="flex flex-wrap items-center gap-x-2 text-xs text-[color:var(--tx3)]">
               <span>{formatBytes(Number(attachment.sizeBytes))}</span>
               {who(attachment)}
-              <time dateTime={attachment.createdAt} title={exactTime(attachment.createdAt)}>
-                {relativeTime(attachment.createdAt)}
+              <time dateTime={attachment.createdAt} title={exactTime(attachment.createdAt, i18n.language)}>
+                {relativeTime(attachment.createdAt, Date.now(), t, i18n.language)}
               </time>
             </span>
             {removal ? removalLine(removal) : null}
           </span>
         </button>
         <button
-          aria-label={`Download ${attachment.filename}`}
+          aria-label={t('attachments.downloadNamed', { name: attachment.filename })}
           className={iconButtonClass}
           onClick={() => void downloadAuthedPath(attachment.downloadPath, attachment.filename, token)
-            .catch(() => setError(`Could not download ${attachment.filename}.`))}
-          title="Download"
+            .catch(() => setError(t('attachments.downloadError', { name: attachment.filename })))}
+          title={t('attachments.download')}
           type="button"
         >
           <FontAwesomeIcon icon={faDownload} />
         </button>
         {canEdit && !external && !removal ? (
           <button
-            aria-label={`Remove ${attachment.filename}`}
+            aria-label={t('attachments.removeNamed', { name: attachment.filename })}
             className={iconButtonClass}
             onClick={() => askRemove(attachment)}
-            title="Remove"
+            title={t('attachments.remove')}
             type="button"
           >
             <FontAwesomeIcon icon={faXmark} />
@@ -297,15 +304,15 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
 
   return (
     <section
-      aria-label="Attachments"
+      aria-label={t('attachments.title')}
       className="relative grid gap-2"
       data-testid="task-attachments"
       {...drop.dropHandlers}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <SectionLabel as="span" size="sm">
-          Attachments{liveCount > 0 ? ` · ${liveCount}` : ''}
-          {removedCount > 0 ? ` · ${removedCount} removed` : ''}
+          {t('attachments.title')}{liveCount > 0 ? ` · ${liveCount}` : ''}
+          {removedCount > 0 ? ` · ${t('attachments.removedCount', { count: removedCount })}` : ''}
         </SectionLabel>
         {canEdit ? (
           <button
@@ -314,7 +321,7 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
             type="button"
           >
             <FontAwesomeIcon icon={faUpload} />
-            Upload file
+            {t('attachments.uploadFile')}
           </button>
         ) : null}
         <input
@@ -337,14 +344,14 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
         <Skeleton count={2} variant="list" />
       ) : attachmentsQuery.isError ? (
         <Notice size="sm" tone="danger">
-          Couldn't load attachments.{' '}
+          {t('attachments.loadError')}{' '}
           <button className="underline" onClick={() => void attachmentsQuery.refetch()} type="button">
-            Retry
+            {t('attachments.retry')}
           </button>
         </Notice>
       ) : attachments.length === 0 && uploading.length === 0 ? (
         <p className="py-1 text-sm text-[color:var(--tx3)]">
-          {canEdit ? 'No files yet. Drop files here or upload.' : 'No files yet.'}
+          {canEdit ? t('attachments.emptyEditable') : t('attachments.empty')}
         </p>
       ) : (
         <ul className="grid gap-0.5">
@@ -371,7 +378,7 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
                 }}
                 type="button"
               >
-                {entry.error ? 'Dismiss' : 'Cancel'}
+                {entry.error ? t('attachments.dismiss') : t('attachments.cancel')}
               </button>
             </li>
           ))}
@@ -380,7 +387,7 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
       )}
 
       {error ? <Notice role="alert" size="sm" tone="danger">{error}</Notice> : null}
-      <DropZoneOverlay active={drop.isDragging} count={drop.draggingCount} label="Drop files to attach" />
+      <DropZoneOverlay active={drop.isDragging} count={drop.draggingCount} label={t('attachments.dropFiles')} />
       {attachmentViewer}
       <RemoveAttachmentDialog
         attachment={confirming}

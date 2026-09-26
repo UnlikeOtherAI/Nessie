@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { BoardIconField } from '../../components/features/projects/kanban/BoardIconField'
 import { ProjectPageHeader } from '../../components/features/projects/ProjectPageHeader'
@@ -42,6 +43,7 @@ const BoardGeneralSettings = ({
   onSaved: () => void
   projectId: string
 }) => {
+  const { t } = useTranslation('projects')
   const navigate = useNavigate()
   const updateBoard = useUpdateBoard(projectId)
   const deleteBoard = useDeleteBoard(projectId)
@@ -59,7 +61,7 @@ const BoardGeneralSettings = ({
     updateBoard.mutate(
       { id: board.id, ...input },
       {
-        onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not save board settings')),
+        onError: (cause) => onSaveError(formErrorMessage(cause, t('boardSettings.saveError'))),
         onSuccess: onSaved,
       },
     )
@@ -69,7 +71,7 @@ const BoardGeneralSettings = ({
     const trimmed = name.trim()
     if (!trimmed) {
       setName(board.name)
-      setNameError('Board name is required.')
+      setNameError(t('boardSettings.nameRequired'))
       return
     }
     setNameError(undefined)
@@ -84,7 +86,7 @@ const BoardGeneralSettings = ({
         ...(board.isDefault && replacement ? { newDefaultBoardId: replacement.id } : {}),
       },
       {
-        onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not delete board')),
+        onError: (cause) => onSaveError(formErrorMessage(cause, t('boardSettings.deleteError'))),
         onSuccess: () => void navigate(`/projects/${projectId}/boards`),
       },
     )
@@ -92,9 +94,9 @@ const BoardGeneralSettings = ({
 
   return (
     <>
-      <Section description="Set how this board appears and which board opens first for the project." title="General">
+      <Section description={t('boardSettings.generalDescription')} title={t('boardSettings.general')}>
         <div className="grid gap-4">
-          <FormField error={nameError} label="Board name" required>
+          <FormField error={nameError} label={t('boardSettings.boardName')} required>
             <Input
               className="max-w-lg"
               disabled={updateBoard.isPending}
@@ -103,7 +105,7 @@ const BoardGeneralSettings = ({
               value={name}
             />
           </FormField>
-          <FormField label="Icon">
+          <FormField label={t('boardSettings.icon')}>
             <BoardIconField
               boardName={board.name}
               disabled={updateBoard.isPending}
@@ -111,7 +113,7 @@ const BoardGeneralSettings = ({
               onChange={(iconEmoji) => update({ iconEmoji })}
             />
           </FormField>
-          <FormField label="Board style">
+          <FormField label={t('boards.create.style')}>
             <Select
               className="max-w-xs"
               disabled={updateBoard.isPending}
@@ -119,11 +121,11 @@ const BoardGeneralSettings = ({
               value={board.style}
             >
               <option value="kanban">Kanban</option>
-              <option value="scrum">Iterations (Scrum)</option>
+              <option value="scrum">{t('boards.style.scrum')}</option>
             </Select>
           </FormField>
           {board.isDefault ? (
-            <p className="text-sm text-[color:var(--tx2)]">This is the project's default board.</p>
+            <p className="text-sm text-[color:var(--tx2)]">{t('boardSettings.isDefault')}</p>
           ) : (
             <div>
               <button
@@ -132,26 +134,26 @@ const BoardGeneralSettings = ({
                 onClick={() => update({ isDefault: true })}
                 type="button"
               >
-                Make default
+                {t('boardSettings.makeDefault')}
               </button>
             </div>
           )}
         </div>
       </Section>
-      <Section description="Deleting a board removes its columns and card positions. Its tickets return to the project's default board." title="Delete board">
+      <Section description={t('boardSettings.deleteDescription')} title={t('boardSettings.deleteBoard')}>
         <button
           className="admin-button admin-button-danger"
           disabled={boards.length <= 1 || deleteBoard.isPending}
           onClick={() => setDeleteOpen(true)}
           type="button"
         >
-          Delete board
+          {t('boardSettings.deleteBoard')}
         </button>
-        {boards.length <= 1 ? <p className="mt-2 text-sm text-[color:var(--tx3)]">A project needs at least one board.</p> : null}
+        {boards.length <= 1 ? <p className="mt-2 text-sm text-[color:var(--tx3)]">{t('boardSettings.minimumBoard')}</p> : null}
       </Section>
       <ConfirmDialog
-        body="Its columns and card positions are deleted. Its tickets move to the project's default board."
-        confirmLabel="Delete board"
+        body={t('boardSettings.deleteConfirmBody')}
+        confirmLabel={t('boardSettings.deleteBoard')}
         destructive
         onCancel={() => setDeleteOpen(false)}
         onConfirm={() => {
@@ -159,7 +161,7 @@ const BoardGeneralSettings = ({
           remove()
         }}
         open={deleteOpen}
-        title={`Delete board “${board.name}”?`}
+        title={t('boardSettings.deleteConfirmTitle', { name: board.name })}
       />
     </>
   )
@@ -167,6 +169,7 @@ const BoardGeneralSettings = ({
 
 /** Settings for one board: each concern has one URL-backed tab instead of one long editor. */
 export const BoardSettingsPage = () => {
+  const { t } = useTranslation('projects')
   const { boardId, projectId } = useParams<{ boardId: string; projectId: string }>()
   const navigate = useNavigate()
   const { data: projects = [] } = useProjects()
@@ -229,10 +232,10 @@ export const BoardSettingsPage = () => {
             ariaLabel="Board settings"
             idPrefix="board-settings"
             items={[
-              { label: 'General', value: 'general' },
-              { label: 'Columns', value: 'columns' },
-              { label: 'Watchers', value: 'watchers' },
-              { label: 'Labels', value: 'labels' },
+              { label: t('boardSettings.general'), value: 'general' },
+              { label: t('boardSettings.columns'), value: 'columns' },
+              { label: t('boardSettings.watchers'), value: 'watchers' },
+              { label: t('taskLabels.title'), value: 'labels' },
             ]}
             onChange={selectTab}
             role="tablist"
@@ -241,21 +244,21 @@ export const BoardSettingsPage = () => {
             value={tab}
           />
         ) : undefined}
-        title={board?.name ?? 'Board settings'}
+        title={board?.name ?? t('boardSettings.title')}
       />
       <PageBody>
         <QueryState
-          errorLabel="Couldn't load board settings."
-          loadingLabel="Loading board settings…"
+          errorLabel={t('boardSettings.loadError')}
+          loadingLabel={t('boardSettings.loading')}
           query={boardsQuery}
         >
           {() => !board ? (
-            <p className="text-sm text-[color:var(--tx3)]">This board no longer exists.</p>
+            <p className="text-sm text-[color:var(--tx3)]">{t('boardSettings.missing')}</p>
           ) : (
           <>
-            <FormSuccess>{saveState.status === 'success' ? 'Saved.' : undefined}</FormSuccess>
+            <FormSuccess>{saveState.status === 'success' ? t('boardSettings.saved') : undefined}</FormSuccess>
             <FormError>{saveState.status === 'error' ? saveState.message : undefined}</FormError>
-            {!canAdminister ? <p className="text-sm text-[color:var(--tx3)]">Only members of this project, or an organisation owner or admin, can change board settings.</p> : null}
+            {!canAdminister ? <p className="text-sm text-[color:var(--tx3)]">{t('boardSettings.permission')}</p> : null}
             {canAdminister && tab === 'general' ? (
               <BoardGeneralSettings
                 board={board}
@@ -267,14 +270,14 @@ export const BoardSettingsPage = () => {
             ) : null}
             {canAdminister && tab === 'columns' ? (
               <QueryState
-                errorLabel="Couldn't load project sources."
-                loadingLabel="Loading project sources…"
+                errorLabel={t('boardSettings.sourcesError')}
+                loadingLabel={t('boardSettings.sourcesLoading')}
                 query={sourcesQuery}
               >
                 {() => (
                   <Section
-                    description="Each column maps to a lifecycle stage so agents and approvals keep working."
-                    title="Columns"
+                    description={t('boardSettings.columnsDescription')}
+                    title={t('boardSettings.columns')}
                   >
                     <BoardColumnsEditor
                       bindableStates={bindableStates}
@@ -308,27 +311,27 @@ export const BoardSettingsPage = () => {
             ) : null}
             {!canAdminister && tab === 'general' ? (
               <Section
-                description="These values describe this board for everyone in the project."
-                title="General"
+                description={t('boardSettings.readOnlyGeneralDescription')}
+                title={t('boardSettings.general')}
               >
                 <dl className="grid gap-3 text-sm sm:grid-cols-3">
                   <div>
-                    <dt className="text-[color:var(--tx3)]">Name</dt>
+                    <dt className="text-[color:var(--tx3)]">{t('common.name')}</dt>
                     <dd>{board.name}</dd>
                   </div>
                   <div>
-                    <dt className="text-[color:var(--tx3)]">Style</dt>
-                    <dd>{board.style === 'scrum' ? 'Iterations' : 'Kanban'}</dd>
+                    <dt className="text-[color:var(--tx3)]">{t('common.style')}</dt>
+                    <dd>{board.style === 'scrum' ? t('boardDirectory.iterations') : 'Kanban'}</dd>
                   </div>
                   <div>
-                    <dt className="text-[color:var(--tx3)]">Default</dt>
-                    <dd>{board.isDefault ? 'Yes' : 'No'}</dd>
+                    <dt className="text-[color:var(--tx3)]">{t('boardDirectory.default')}</dt>
+                    <dd>{board.isDefault ? t('common.yes') : t('common.no')}</dd>
                   </div>
                 </dl>
               </Section>
             ) : null}
             {!canAdminister && tab === 'columns' ? (
-              <Section description="Columns are managed by the project's members." title="Columns">
+              <Section description={t('boardSettings.columnsMemberDescription')} title={t('boardSettings.columns')}>
                 <ul className="grid gap-1 text-sm text-[color:var(--tx2)]">
                   {[...board.columns]
                     .sort((left, right) => left.position - right.position)
@@ -338,10 +341,10 @@ export const BoardSettingsPage = () => {
             ) : null}
             {!canAdminister && tab === 'watchers' ? (
               <Section
-                description="Only members of this project, or an organisation owner or admin, can view or change who receives source updates."
-                title="Watchers"
+                description={t('boardSettings.watchersPermission')}
+                title={t('boardSettings.watchers')}
               >
-                <p className="text-sm text-[color:var(--tx3)]">No watcher details are available.</p>
+                <p className="text-sm text-[color:var(--tx3)]">{t('boardSettings.noWatchers')}</p>
               </Section>
             ) : null}
           </>

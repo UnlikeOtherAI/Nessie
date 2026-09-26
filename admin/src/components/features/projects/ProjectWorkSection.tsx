@@ -1,4 +1,5 @@
 import { DEFAULT_BOARD_NAME } from '@nessie/schemas'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { useProjectBoards } from '../../../facades/boards/hooks'
 import { useIterations } from '../../../facades/iterations/hooks'
@@ -21,28 +22,11 @@ import {
   projectWorkQueue,
   scopeTasksToBoard,
   summarizeWork,
-  type WorkFocus,
 } from './project-dashboard-data'
 
 type ProjectWorkSectionProps = {
   className?: string
   projectId: string
-}
-
-/**
- * The card names the list it is showing. "Your work" and "To do" are different
- * promises, and an unlabelled column of somebody else's tickets reads as yours.
- */
-const FOCUS_TITLE: Record<WorkFocus, string> = {
-  mine: 'Your work',
-  open: 'Open work',
-  todo: 'To do',
-}
-
-const FOCUS_EMPTY: Record<WorkFocus, string> = {
-  mine: 'Nothing assigned to you.',
-  open: 'Nothing open.',
-  todo: 'Nothing waiting to be picked up.',
 }
 
 const formatDueDate = (value: string): string | null => {
@@ -68,6 +52,7 @@ const formatEndDate = (value: string | null): string | null =>
  * and a list ordered by recency will not surface it.
  */
 export const ProjectWorkSection = ({ className, projectId }: ProjectWorkSectionProps) => {
+  const { t } = useTranslation('projects')
   const { me } = useAuthSession()
   const { data: boards = [] } = useProjectBoards(projectId)
   // Backlog and Insights are project-level, so they show when *any* board of
@@ -102,12 +87,12 @@ export const ProjectWorkSection = ({ className, projectId }: ProjectWorkSectionP
     : [{ label: DEFAULT_BOARD_NAME, to: boardHref }]
 
   const exceptions = [
-    { key: 'overdue', label: 'Overdue', tone: 'danger' as const, value: counts.overdue },
-    { key: 'urgent', label: 'Urgent', tone: 'danger' as const, value: counts.urgent },
-    { key: 'failed', label: 'Failed', tone: 'danger' as const, value: counts.failed },
+    { key: 'overdue', label: t('projectWork.overdue'), tone: 'danger' as const, value: counts.overdue },
+    { key: 'urgent', label: t('projectWork.urgent'), tone: 'danger' as const, value: counts.urgent },
+    { key: 'failed', label: t('projectWork.failed'), tone: 'danger' as const, value: counts.failed },
     {
       key: 'awaiting',
-      label: 'Awaiting approval',
+      label: t('projectWork.awaitingApproval'),
       tone: 'warning' as const,
       value: counts.awaitingApproval,
     },
@@ -115,13 +100,23 @@ export const ProjectWorkSection = ({ className, projectId }: ProjectWorkSectionP
 
   const endDate = formatEndDate(activeIteration?.endDate ?? null)
   const now = Date.now()
+  const title = queue.focus === 'mine'
+    ? t('projectWork.yourWork')
+    : queue.focus === 'open'
+      ? t('projectWork.openWork')
+      : t('projectWork.toDo')
+  const empty = queue.focus === 'mine'
+    ? t('projectWork.nothingAssigned')
+    : queue.focus === 'open'
+      ? t('projectWork.nothingOpen')
+      : t('projectWork.nothingWaiting')
 
   return (
     <DashboardSectionCard
       className={className}
       count={isPending ? undefined : queue.matched}
       links={links}
-      title={FOCUS_TITLE[queue.focus]}
+      title={title}
     >
       {isScrum && activeIteration ? (
         <Link
@@ -136,15 +131,15 @@ export const ProjectWorkSection = ({ className, projectId }: ProjectWorkSectionP
             <span className="truncate text-[color:var(--tx3)]">{activeIteration.goal}</span>
           ) : null}
           <span className="ml-auto whitespace-nowrap text-[color:var(--tx3)]">
-            {endDate ? `ends ${endDate} · ` : ''}
-            {activeIteration.pointsDone}/{activeIteration.pointsTotal} pts
+            {endDate ? `${t('projectWork.ends', { date: endDate })} · ` : ''}
+            {t('projectWork.iterationPoints', { done: activeIteration.pointsDone, total: activeIteration.pointsTotal })}
           </span>
         </Link>
       ) : null}
 
       {isPending ? <Skeleton className="p-2" variant="list" /> : null}
 
-      {isError ? <SectionNotice>Tasks could not be loaded. Please refresh.</SectionNotice> : null}
+      {isError ? <SectionNotice>{t('projectWork.tasksError')}</SectionNotice> : null}
 
       {!isPending && !isError && exceptions.length > 0 ? (
         <div className="flex flex-wrap gap-2 px-2 pb-1 pt-2">
@@ -173,11 +168,11 @@ export const ProjectWorkSection = ({ className, projectId }: ProjectWorkSectionP
 
       {!isPending && !isError && queue.tasks.length === 0 ? (
         <SectionNotice>
-          {FOCUS_EMPTY[queue.focus]}{' '}
+          {empty}{' '}
           <Link className="text-[color:var(--tx2)] hover:text-[color:var(--tx)]" to={boardHref}>
-            Open the Board
+            {t('projectWork.openBoard')}
           </Link>{' '}
-          to add work.
+          {t('projectWork.addWork')}
         </SectionNotice>
       ) : null}
 
@@ -192,11 +187,11 @@ export const ProjectWorkSection = ({ className, projectId }: ProjectWorkSectionP
           >
             <span className="project-work-row-status">
               <Pill height="control" radius="chip" size="sm" tone={taskStatusTone(task.status)}>
-                {statusLabel(task.status)}
+                {statusLabel(task.status, t)}
               </Pill>
             </span>
             <span className="project-work-row-title truncate text-sm text-[color:var(--tx)]">
-              {task.title ?? 'Untitled'}
+              {task.title ?? t('projectWork.untitled')}
             </span>
             <span
               className={[
@@ -204,12 +199,16 @@ export const ProjectWorkSection = ({ className, projectId }: ProjectWorkSectionP
                 overdue ? 'text-[color:var(--danger-text)]' : 'text-[color:var(--tx3)]',
               ].join(' ')}
             >
-              {due ? (overdue ? `due ${due}` : due) : formatRelativeAge(task.updatedAt)}
+              {due ? (overdue ? t('projectWork.due', { date: due }) : due) : formatRelativeAge(task.updatedAt, Date.now(), t)}
             </span>
           </Link>
         )
       })}
-      <SectionOverflowHint count={queue.matched - queue.tasks.length} noun="ticket" />
+      <SectionOverflowHint
+        count={queue.matched - queue.tasks.length}
+        label={t('projectWork.moreTickets', { count: queue.matched - queue.tasks.length })}
+        noun="ticket"
+      />
     </DashboardSectionCard>
   )
 }

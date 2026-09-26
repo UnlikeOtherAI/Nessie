@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   PROVIDER_LABEL,
   useProjectSource,
@@ -14,7 +15,7 @@ import { ChoiceGroup } from '../../../components/shared/ChoiceGroup'
 import { Select } from '../../../components/shared/FormControls'
 import { Pill } from '../../../components/primitives/Pill'
 import { Section } from '../../../components/shared/PageBody'
-import { CATEGORY_LABEL, CATEGORY_ORDER } from '../../../components/features/projects/kanban/kanban-config'
+import { CATEGORY_ORDER } from '../../../components/features/projects/kanban/kanban-config'
 
 type SourceMappingPanelProps = {
   canAdminister: boolean
@@ -34,12 +35,6 @@ const LABELS_FIELD = { key: 'labels', label: 'Labels', type: 'labels' } as const
 const carriesLabels = (source: { provider: string; container: Record<string, unknown> }): boolean =>
   !(source.provider === 'github' && source.container.kind === 'project')
 
-const CATEGORY_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: 'Not mapped' },
-  ...CATEGORY_ORDER.map((category) => ({ value: category, label: CATEGORY_LABEL[category] })),
-  { value: 'archived', label: 'Archived' },
-]
-
 /**
  * What this source's states, fields and people mean here.
  *
@@ -54,6 +49,7 @@ export const SourceMappingPanel = ({
   projectId,
   sourceId,
 }: SourceMappingPanelProps) => {
+  const { t } = useTranslation('projects')
   const { data: source } = useProjectSource(projectId, sourceId)
   const { data: assignees = [] } = useTaskAssignees()
   const { data: definitions = [] } = useTaskFields(projectId)
@@ -127,7 +123,7 @@ export const SourceMappingPanel = ({
       {
         onError: (cause) => {
           restoreMappings()
-          onSaveError(cause instanceof Error ? cause.message : 'Could not save the mapping')
+          onSaveError(cause instanceof Error ? cause.message : t('sourceSettings.mappingSaveError'))
         },
         onSuccess: onSaved,
       },
@@ -174,8 +170,8 @@ export const SourceMappingPanel = ({
   return (
     <>
       <Section
-        description={`Choose the Nessie lifecycle column for each ${PROVIDER_LABEL[source.provider]} status. Set one default per column so moving a connected ticket in Nessie knows which ${PROVIDER_LABEL[source.provider]} status to use.`}
-        title="States"
+        description={t('sourceSettings.statesDescription', { provider: PROVIDER_LABEL[source.provider] })}
+        title={t('sourceSettings.states')}
       >
         <div className="grid gap-2">
           {stateMapping.map((entry) => (
@@ -185,17 +181,17 @@ export const SourceMappingPanel = ({
               </span>
               <div className="flex items-center gap-2 sm:contents">
                 <Select
-                  aria-label={`Category for ${entry.externalStateName}`}
+                  aria-label={t('sourceSettings.categoryFor', { name: entry.externalStateName })}
                   className="h-11 min-w-0 flex-1 sm:max-w-[180px]"
                   disabled={!canAdminister || putMappings.isPending}
                   onChange={(event) => setCategory(entry.externalStateId, event.target.value)}
                   value={entry.category ?? ''}
                 >
-                  {CATEGORY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
+                  <option value="">{t('sourceSettings.notMapped')}</option>
+                  {CATEGORY_ORDER.map((category) => (
+                    <option key={category} value={category}>{t(`boardSettings.stage.${category}`)}</option>
                   ))}
+                  <option value="archived">{t('sourceSettings.archived')}</option>
                 </Select>
                 <label className="flex min-h-11 shrink-0 items-center gap-1.5 px-2 text-xs text-[color:var(--tx3)]">
                   <input
@@ -210,22 +206,22 @@ export const SourceMappingPanel = ({
                     onChange={() => setDefault(entry.externalStateId)}
                     type="radio"
                   />
-                  Default
+                  {t('sourceSettings.default')}
                 </label>
               </div>
             </div>
           ))}
           {stateMapping.length === 0 ? (
             <div className="text-sm text-[color:var(--tx3)]">
-              Waiting for the first sync to read this container&rsquo;s states.
+              {t('sourceSettings.waitingStates')}
             </div>
           ) : null}
         </div>
       </Section>
 
       <Section
-        description={`Choose where each ${PROVIDER_LABEL[source.provider]} field imports into Nessie. Each source sync updates mapped values from ${PROVIDER_LABEL[source.provider]}; fields not imported stay unchanged in Nessie.`}
-        title="Fields"
+        description={t('sourceSettings.fieldsDescription', { provider: PROVIDER_LABEL[source.provider] })}
+        title={t('sourceSettings.fields')}
       >
         <div className="grid gap-2">
           {fieldRows.map((field) => {
@@ -240,7 +236,7 @@ export const SourceMappingPanel = ({
                   <span className="ml-2 text-xs text-[color:var(--tx3)]">{field.type}</span>
                 </span>
                 <Select
-                  aria-label={`Target for ${field.label}`}
+                  aria-label={t('sourceSettings.targetFor', { name: field.label })}
                   className="h-11 sm:max-w-[240px]"
                   disabled={!canAdminister || putMappings.isPending}
                   onChange={(event) => {
@@ -262,15 +258,15 @@ export const SourceMappingPanel = ({
                   }}
                   value={mapped?.target ?? ''}
                 >
-                  <option value="">Not imported</option>
+                  <option value="">{t('sourceSettings.notImported')}</option>
                   {isLabels ? (
-                    <option value="native:labels">Labels (native)</option>
+                    <option value="native:labels">{t('sourceSettings.nativeLabels')}</option>
                   ) : (
                     <>
-                      <option value="native:priority">Priority</option>
-                      <option value="native:dueDate">Deadline</option>
-                      <option value="native:storyPoints">Story points</option>
-                      <option value="native:detail">Detail</option>
+                      <option value="native:priority">{t('taskDialog.priority.label')}</option>
+                      <option value="native:dueDate">{t('taskDialog.deadline')}</option>
+                      <option value="native:storyPoints">{t('backlog.storyPoints')}</option>
+                      <option value="native:detail">{t('taskDialog.details')}</option>
                     </>
                   )}
                   {/* A labels row that still names a custom field keeps it
@@ -288,15 +284,15 @@ export const SourceMappingPanel = ({
           })}
           {fieldRows.length === 0 ? (
             <div className="text-sm text-[color:var(--tx3)]">
-              Waiting for the first sync to read this container&rsquo;s fields.
+              {t('sourceSettings.waitingFields')}
             </div>
           ) : null}
         </div>
       </Section>
 
       <Section
-        description={`Who upstream is who here. Matched automatically on an exact email address where ${PROVIDER_LABEL[source.provider]} exposes one; everything else is chosen, and a choice made here always wins. Anybody left "Not linked" keeps their ${PROVIDER_LABEL[source.provider]} name on the card, marked as somebody Nessie does not know.`}
-        title="People"
+        description={t('sourceSettings.peopleDescription', { provider: PROVIDER_LABEL[source.provider] })}
+        title={t('board.assigneeFilter.people')}
       >
         <div className="grid gap-2">
           {source.members.map((member) => {
@@ -315,17 +311,17 @@ export const SourceMappingPanel = ({
                 </span>
                 {link?.matchedBy === 'email' && link.userId ? (
                   <Pill size="sm" tone="success" uppercase={false}>
-                    Matched by email
+                    {t('sourceSettings.matchedByEmail')}
                   </Pill>
                 ) : null}
                 <Select
-                  aria-label={`Nessie identity for ${member.displayName}`}
+                  aria-label={t('sourceSettings.identityFor', { name: member.displayName })}
                   className="h-11 sm:max-w-[220px]"
                   disabled={!canAdminister || putMappings.isPending}
                   onChange={(event) => setPerson(member.externalUserId, event.target.value)}
                   value={identity[member.externalUserId] ?? ''}
                 >
-                  <option value="">Not linked</option>
+                  <option value="">{t('sourceSettings.notLinked')}</option>
                   {assignees.map((person) => (
                     <option key={person.id} value={person.id}>
                       {person.displayName}
@@ -337,7 +333,7 @@ export const SourceMappingPanel = ({
           })}
           {source.members.length === 0 ? (
             <div className="text-sm text-[color:var(--tx3)]">
-              Waiting for the first sync to read this container&rsquo;s members.
+              {t('sourceSettings.waitingPeople')}
             </div>
           ) : null}
         </div>
@@ -346,13 +342,13 @@ export const SourceMappingPanel = ({
       <Section
         description={
           source.writeMode === 'read_only'
-            ? `Read only: ${PROVIDER_LABEL[source.provider]} decides. Moving a card here that would change its stage is refused.`
-            : `Read & write: moving a card here moves it in ${PROVIDER_LABEL[source.provider]}, under ${source.connectionOwnerDisplayName ?? 'the connection owner'}'s account.`
+            ? t('sourceSettings.readOnlyDescription', { provider: PROVIDER_LABEL[source.provider] })
+            : t('sourceSettings.readWriteDescription', { provider: PROVIDER_LABEL[source.provider], owner: source.connectionOwnerDisplayName ?? t('sourceSettings.connectionOwner') })
         }
-        title="Write mode"
+        title={t('sourceSettings.writeMode')}
       >
         <ChoiceGroup
-          label="Write mode"
+          label={t('sourceSettings.writeMode')}
           labelHidden
           onChange={(writeMode: BoardSourceWriteMode) =>
             updateSource.mutate(
@@ -360,15 +356,15 @@ export const SourceMappingPanel = ({
               {
                 onError: (cause) =>
                   onSaveError(
-                    cause instanceof Error ? cause.message : 'Could not change the write mode',
+                    cause instanceof Error ? cause.message : t('sourceSettings.writeModeError'),
                   ),
                 onSuccess: onSaved,
               },
             )
           }
           options={[
-            { label: 'Read only', value: 'read_only' },
-            { label: 'Read & write', value: 'read_write' },
+            { label: t('sourceSettings.readOnly'), value: 'read_only' },
+            { label: t('sourceSettings.readWrite'), value: 'read_write' },
           ]}
           value={source.writeMode}
         />
@@ -376,4 +372,3 @@ export const SourceMappingPanel = ({
     </>
   )
 }
-

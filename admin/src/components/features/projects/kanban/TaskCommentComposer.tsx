@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { detectSecrets } from '@nessie/schemas'
 import { faPaperclip } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
@@ -22,6 +23,7 @@ type TaskCommentComposerProps = {
  * (or Cmd/Ctrl+Enter). A failed post keeps the text and says why.
  */
 export const TaskCommentComposer = ({ onPosted, taskId }: TaskCommentComposerProps) => {
+  const { t } = useTranslation('projects')
   // Unsent words survive closing the dialog (docs/navigation/overview.md →
   // "Drafts"), keyed by the ticket; a draft holding a credential is never stored.
   const commentDraft = useDraft<string>(draftKey('task-comment', taskId), {
@@ -47,7 +49,7 @@ export const TaskCommentComposer = ({ onPosted, taskId }: TaskCommentComposerPro
         ...(attachments.attachmentIds.length > 0 ? { attachmentIds: attachments.attachmentIds } : {}),
       },
       {
-        onError: (cause) => setError(cause.message || 'Could not post the comment.'),
+        onError: (cause) => setError(cause.message || t('comments.postError')),
         onSuccess: (comment) => {
           commentDraft.clear()
           attachments.clearStaged()
@@ -60,13 +62,13 @@ export const TaskCommentComposer = ({ onPosted, taskId }: TaskCommentComposerPro
   return (
     <div className="grid gap-2" data-testid="task-comment-composer">
       <MarkdownEditor
-        ariaLabel="Comment"
+        ariaLabel={t('comments.comment')}
         compact
         disabled={createComment.isPending}
         onChange={setBody}
         onSubmitShortcut={post}
         onUploadImage={uploadImage}
-        placeholder="Write a comment…"
+        placeholder={t('comments.writePlaceholder')}
         value={body}
       />
       <ComposerAttachments attachments={attachments} />
@@ -77,7 +79,7 @@ export const TaskCommentComposer = ({ onPosted, taskId }: TaskCommentComposerPro
           type="button"
         >
           <FontAwesomeIcon icon={faPaperclip} />
-          Attach
+          {t('comments.attach')}
         </button>
         <input
           aria-hidden="true"
@@ -98,7 +100,7 @@ export const TaskCommentComposer = ({ onPosted, taskId }: TaskCommentComposerPro
           onClick={post}
           type="button"
         >
-          Post
+          {t('comments.post')}
         </button>
       </div>
       {error ? (

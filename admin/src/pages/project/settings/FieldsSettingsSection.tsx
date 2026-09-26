@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type {
   TaskFieldDefinitionRecord,
   TaskFieldOption,
@@ -16,16 +17,6 @@ import { Input, Select } from '../../../components/shared/FormControls'
 import { Section } from '../../../components/shared/PageBody'
 import { Pill } from '../../../components/primitives/Pill'
 import { formErrorMessage } from '../../../facades/forms/form-errors'
-
-const TYPE_LABEL: Record<TaskFieldType, string> = {
-  text: 'Text',
-  number: 'Number',
-  date: 'Date',
-  url: 'Link',
-  select: 'Choice',
-  multi_select: 'Multiple choice',
-  user: 'Person',
-}
 
 const TYPE_ORDER: TaskFieldType[] = [
   'text',
@@ -53,6 +44,7 @@ type FieldRowProps = {
 }
 
 const FieldRow = ({ definition, onSaveError, onSaved, projectId }: FieldRowProps) => {
+  const { t } = useTranslation('projects')
   const update = useUpdateTaskField(projectId)
   const remove = useDeleteTaskField(projectId)
   const [name, setName] = useState(definition.name)
@@ -73,14 +65,14 @@ const FieldRow = ({ definition, onSaveError, onSaved, projectId }: FieldRowProps
     // Two live options with the same label render as two identical pills that
     // nothing can tell apart. Retired ones may share a label freely.
     if (live.some((option) => option.label.toLowerCase() === label.toLowerCase())) {
-      onSaveError(`“${label}” is already an option of ${definition.name}.`)
+      onSaveError(t('fieldSettings.duplicateOption', { label, name: definition.name }))
       setNewOption('')
       return
     }
     const option: TaskFieldOption = { id: optionId(label), label }
     save(
       { id: definition.id, options: [...definition.options, option] },
-      'Could not add the option',
+      t('fieldSettings.addOptionError'),
     )
     setNewOption('')
   }
@@ -95,7 +87,7 @@ const FieldRow = ({ definition, onSaveError, onSaved, projectId }: FieldRowProps
           option.id === id ? { ...option, retiredAt: new Date().toISOString() } : option,
         ),
       },
-      'Could not retire the option',
+      t('fieldSettings.retireOptionError'),
     )
 
   return (
@@ -103,12 +95,12 @@ const FieldRow = ({ definition, onSaveError, onSaved, projectId }: FieldRowProps
       <div className="grid gap-2 border-b border-[color:var(--sep)] py-2 last:border-b-0">
         <div className="flex items-center gap-2">
           <Input
-            aria-label="Field name"
+            aria-label={t('fieldSettings.fieldName')}
             className="min-w-0 flex-1"
             onBlur={() => {
               const trimmed = name.trim()
               if (!trimmed || trimmed === definition.name) return
-              save({ id: definition.id, name: trimmed }, 'Could not rename the field')
+              save({ id: definition.id, name: trimmed }, t('fieldSettings.renameError'))
             }}
             onChange={(event) => setName(event.target.value)}
             size="compact"
@@ -117,7 +109,7 @@ const FieldRow = ({ definition, onSaveError, onSaved, projectId }: FieldRowProps
           {/* Type is immutable: changing it would have to rewrite or discard
               every value already stored under this definition. */}
           <span className="text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-            {TYPE_LABEL[definition.type]}
+            {t(`fieldSettings.type.${definition.type}`)}
           </span>
           <label className="flex items-center gap-1.5 text-xs text-[color:var(--tx2)]">
             <input
@@ -125,19 +117,19 @@ const FieldRow = ({ definition, onSaveError, onSaved, projectId }: FieldRowProps
               onChange={(event) =>
                 save(
                   { id: definition.id, showOnCard: event.target.checked },
-                  'Could not change where the field shows',
+                  t('fieldSettings.showOnCardError'),
                 )
               }
               type="checkbox"
             />
-            Show on card
+            {t('fieldSettings.showOnCard')}
           </label>
           <button
             className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
             onClick={() => setDeleteOpen(true)}
             type="button"
           >
-            Delete
+            {t('common.delete')}
           </button>
         </div>
 
@@ -148,7 +140,7 @@ const FieldRow = ({ definition, onSaveError, onSaved, projectId }: FieldRowProps
                 className="rounded-full"
                 key={option.id}
                 onClick={() => retireOption(option.id)}
-                title={`Retire “${option.label}”`}
+                title={t('fieldSettings.retireOption', { label: option.label })}
                 type="button"
               >
                 <Pill size="sm" tone={option.tone ?? 'muted'} uppercase={false}>
@@ -157,13 +149,13 @@ const FieldRow = ({ definition, onSaveError, onSaved, projectId }: FieldRowProps
               </button>
             ))}
             <Input
-              aria-label={`New option for ${definition.name}`}
+              aria-label={t('fieldSettings.newOptionFor', { name: definition.name })}
               className="max-w-[180px]"
               onChange={(event) => setNewOption(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') addOption()
               }}
-              placeholder="Add an option…"
+              placeholder={t('fieldSettings.addOption')}
               size="compact"
               value={newOption}
             />
@@ -172,19 +164,19 @@ const FieldRow = ({ definition, onSaveError, onSaved, projectId }: FieldRowProps
       </div>
 
       <ConfirmDialog
-        body="Every task in this project loses the value it held for this field."
-        confirmLabel="Delete field"
+        body={t('fieldSettings.deleteBody')}
+        confirmLabel={t('fieldSettings.deleteField')}
         destructive
         onCancel={() => setDeleteOpen(false)}
         onConfirm={() => {
           setDeleteOpen(false)
           remove.mutate(definition.id, {
-            onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not delete the field')),
+            onError: (cause) => onSaveError(formErrorMessage(cause, t('fieldSettings.deleteError'))),
             onSuccess: onSaved,
           })
         }}
         open={deleteOpen}
-        title={`Delete field “${definition.name}”?`}
+        title={t('fieldSettings.deleteTitle', { name: definition.name })}
       />
     </>
   )
@@ -207,6 +199,7 @@ export const FieldsSettingsSection = ({
   onSaved,
   projectId,
 }: FieldsSettingsSectionProps) => {
+  const { t } = useTranslation('projects')
   const { data: definitions = [] } = useTaskFields(projectId)
   const create = useCreateTaskField(projectId)
   const [newName, setNewName] = useState('')
@@ -218,7 +211,7 @@ export const FieldsSettingsSection = ({
     create.mutate(
       { name, type: newType },
       {
-        onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not add the field')),
+        onError: (cause) => onSaveError(formErrorMessage(cause, t('fieldSettings.addFieldError'))),
         onSuccess: () => {
           setNewName('')
           onSaved()
@@ -231,13 +224,12 @@ export const FieldsSettingsSection = ({
 
   return (
     <Section
-      description="Fields belong to the project, so a task carries the same ones on every board.
-        A field's type cannot change once it exists — add a new field instead."
-      title="Custom fields"
+      description={t('fieldSettings.description')}
+      title={t('fieldSettings.title')}
     >
       {ordered.length === 0 ? (
-        <EmptyState title="No custom fields.">
-          Add one to track anything a task needs beyond title, priority and deadline.
+        <EmptyState title={t('fieldSettings.emptyTitle')}>
+          {t('fieldSettings.emptyBody')}
         </EmptyState>
       ) : (
         <div className="grid">
@@ -256,15 +248,15 @@ export const FieldsSettingsSection = ({
       {canAdminister ? (
         <div className="flex items-center gap-2 border-t border-[color:var(--sep)] pt-3">
           <Input
-            aria-label="New field name"
+            aria-label={t('fieldSettings.newFieldName')}
             className="min-w-0 flex-1"
             onChange={(event) => setNewName(event.target.value)}
-            placeholder="New field name…"
+            placeholder={t('fieldSettings.newFieldNamePlaceholder')}
             size="compact"
             value={newName}
           />
           <Select
-            aria-label="New field type"
+            aria-label={t('fieldSettings.newFieldType')}
             className="max-w-[180px]"
             onChange={(event) => setNewType(event.target.value as TaskFieldType)}
             size="compact"
@@ -272,7 +264,7 @@ export const FieldsSettingsSection = ({
           >
             {TYPE_ORDER.map((type) => (
               <option key={type} value={type}>
-                {TYPE_LABEL[type]}
+                {t(`fieldSettings.type.${type}`)}
               </option>
             ))}
           </Select>
@@ -282,7 +274,7 @@ export const FieldsSettingsSection = ({
             onClick={add}
             type="button"
           >
-            Add field
+            {t('fieldSettings.addField')}
           </button>
         </div>
       ) : null}

@@ -9,6 +9,8 @@
  * reached through the channel it works in.
  */
 
+import type { TFunction } from 'i18next'
+
 // ─── Channels ───────────────────────────────────────────────────────────────
 
 export type DashboardChannel = {
@@ -88,18 +90,19 @@ export const projectChannelRows = <T extends DashboardChannel>(
 export const formatRelativeAge = (
   value: string | null | undefined,
   now: number = Date.now(),
+  t?: TFunction<'projects'>,
 ): string | null => {
   const ms = parseMs(value)
   if (ms === null) return null
   const minutes = Math.max(0, now - ms) / 60_000
-  if (minutes < 60) return 'now'
+  if (minutes < 60) return t ? t('navigation.meta.ageNow') : 'now'
   const hours = minutes / 60
-  if (hours < 24) return `${Math.floor(hours)}h`
+  if (hours < 24) return t ? t('navigation.meta.ageHours', { count: Math.floor(hours) }) : `${Math.floor(hours)}h`
   const days = hours / 24
-  if (days < 7) return `${Math.floor(days)}d`
+  if (days < 7) return t ? t('navigation.meta.ageDays', { count: Math.floor(days) }) : `${Math.floor(days)}d`
   const weeks = days / 7
-  if (weeks < 52) return `${Math.floor(weeks)}w`
-  return `${Math.floor(days / 365)}y`
+  if (weeks < 52) return t ? t('navigation.meta.ageWeeks', { count: Math.floor(weeks) }) : `${Math.floor(weeks)}w`
+  return t ? t('navigation.meta.ageYears', { count: Math.floor(days / 365) }) : `${Math.floor(days / 365)}y`
 }
 
 // ─── Work ───────────────────────────────────────────────────────────────────

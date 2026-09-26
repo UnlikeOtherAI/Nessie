@@ -1,9 +1,10 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { BoardColumnRecord, ColumnCategory } from '../../../facades/boards/hooks'
 import { useCreateColumn, useDeleteColumn, useUpdateColumn } from '../../../facades/boards/hooks'
 import { ConfirmDialog } from '../../../components/shared/ConfirmDialog'
 import { Input, Select } from '../../../components/shared/FormControls'
-import { CATEGORY_LABEL, CATEGORY_ORDER } from '../../../components/features/projects/kanban/kanban-config'
+import { CATEGORY_ORDER } from '../../../components/features/projects/kanban/kanban-config'
 import { Pill } from '../../../components/primitives/Pill'
 import { formErrorMessage } from '../../../facades/forms/form-errors'
 
@@ -17,8 +18,9 @@ const CategorySelect = ({
   disabled?: boolean
   onChange: (category: ColumnCategory) => void
   ariaLabel: string
-}) => (
-  <Select
+}) => {
+  const { t } = useTranslation('projects')
+  return <Select
     aria-label={ariaLabel}
     className="min-h-11 max-w-[160px]"
     disabled={disabled}
@@ -28,11 +30,11 @@ const CategorySelect = ({
   >
     {CATEGORY_ORDER.map((category) => (
       <option key={category} value={category}>
-        {CATEGORY_LABEL[category]}
+        {t(`boardSettings.stage.${category}`)}
       </option>
     ))}
   </Select>
-)
+}
 
 /** The states of every source in the project whose category matches a column. */
 export type BindableState = {
@@ -72,6 +74,7 @@ const ColumnRow = ({
   prevPosition,
   projectId,
 }: ColumnRowProps) => {
+  const { t } = useTranslation('projects')
   const update = useUpdateColumn(projectId, boardId)
   const remove = useDeleteColumn(projectId, boardId)
   const [name, setName] = useState(column.name)
@@ -83,7 +86,7 @@ const ColumnRow = ({
     update.mutate(
       { id: column.id, name: trimmed },
       {
-        onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not rename column')),
+        onError: (cause) => onSaveError(formErrorMessage(cause, t('boardSettings.renameColumnError'))),
         onSuccess: onSaved,
       },
     )
@@ -94,7 +97,7 @@ const ColumnRow = ({
       { id: column.id, category },
       {
         onError: (cause) =>
-          onSaveError(formErrorMessage(cause, 'Could not change column category')),
+          onSaveError(formErrorMessage(cause, t('boardSettings.changeCategoryError'))),
         onSuccess: onSaved,
       },
     )
@@ -125,7 +128,7 @@ const ColumnRow = ({
             ],
       },
       {
-        onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not change what this column shows')),
+        onError: (cause) => onSaveError(formErrorMessage(cause, t('boardSettings.bindingError'))),
         onSuccess: onSaved,
       },
     )
@@ -143,7 +146,7 @@ const ColumnRow = ({
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-col">
           <button
-            aria-label="Move up"
+            aria-label={t('boardSettings.moveUp')}
             className="h-11 w-11 text-[10px] text-[color:var(--tx3)] hover:text-[color:var(--tx)]
               disabled:opacity-30"
             disabled={isFirst}
@@ -153,7 +156,7 @@ const ColumnRow = ({
             ▲
           </button>
           <button
-            aria-label="Move down"
+            aria-label={t('boardSettings.moveDown')}
             className="h-11 w-11 text-[10px] text-[color:var(--tx3)] hover:text-[color:var(--tx)]
               disabled:opacity-30"
             disabled={isLast}
@@ -164,7 +167,7 @@ const ColumnRow = ({
           </button>
         </div>
         <Input
-          aria-label="Column name"
+          aria-label={t('boardSettings.columnName')}
           className="min-h-11 min-w-0 flex-1"
           onBlur={commitName}
           onChange={(event) => setName(event.target.value)}
@@ -172,7 +175,7 @@ const ColumnRow = ({
           value={name}
         />
         <CategorySelect
-          ariaLabel="Column category"
+          ariaLabel={t('boardSettings.columnCategory')}
           onChange={commitCategory}
           value={column.category}
         />
@@ -181,7 +184,7 @@ const ColumnRow = ({
           onClick={() => setDeleteOpen(true)}
           type="button"
         >
-          Delete
+          {t('common.delete')}
         </button>
       </div>
 
@@ -190,7 +193,7 @@ const ColumnRow = ({
           upstream — and it decides which state a move writes back. */}
       {matching.length > 0 ? (
         <div className="flex flex-wrap items-center gap-1.5 pl-6">
-          <span className="text-xs text-[color:var(--tx3)]">Shows</span>
+          <span className="text-xs text-[color:var(--tx3)]">{t('boardSettings.shows')}</span>
           {matching.map((state) => {
             const bound = column.stateBindings.some(
               (binding) =>
@@ -212,15 +215,15 @@ const ColumnRow = ({
           })}
           {column.stateBindings.length === 0 ? (
             <span className="text-xs text-[color:var(--tx3)]">
-              — everything in this stage
+              — {t('boardSettings.everythingInStage')}
             </span>
           ) : null}
         </div>
       ) : null}
 
       <ConfirmDialog
-        body="Cards in it move to the first column of the same stage. No work is deleted."
-        confirmLabel="Delete"
+        body={t('boardSettings.deleteColumnBody')}
+        confirmLabel={t('common.delete')}
         destructive
         onCancel={() => setDeleteOpen(false)}
         onConfirm={() => {
@@ -228,7 +231,7 @@ const ColumnRow = ({
           remove.mutate(column.id)
         }}
         open={deleteOpen}
-        title={`Delete column "${column.name}"?`}
+        title={t('boardSettings.deleteColumnTitle', { name: column.name })}
       />
     </>
   )
@@ -257,6 +260,7 @@ export const BoardColumnsEditor = ({
   onSaved,
   projectId,
 }: BoardColumnsEditorProps) => {
+  const { t } = useTranslation('projects')
   const createColumn = useCreateColumn(projectId, boardId)
   const [newName, setNewName] = useState('')
   const [newCategory, setNewCategory] = useState<ColumnCategory>('todo')
@@ -268,7 +272,7 @@ export const BoardColumnsEditor = ({
     createColumn.mutate(
       { name: trimmed, category: newCategory },
       {
-        onError: (cause) => onSaveError(formErrorMessage(cause, 'Could not add column')),
+        onError: (cause) => onSaveError(formErrorMessage(cause, t('boardSettings.addColumnError'))),
         onSuccess: () => setNewName(''),
       },
     )
@@ -298,15 +302,15 @@ export const BoardColumnsEditor = ({
 
       <div className="flex flex-wrap items-center gap-2 border-t border-[color:var(--sep)] pt-3">
         <Input
-          aria-label="New column name"
+          aria-label={t('boardSettings.newColumnName')}
           className="min-h-11 min-w-0 flex-1"
           onChange={(event) => setNewName(event.target.value)}
-          placeholder="New column name…"
+          placeholder={t('boardSettings.newColumnNamePlaceholder')}
           size="compact"
           value={newName}
         />
         <CategorySelect
-          ariaLabel="New column category"
+          ariaLabel={t('boardSettings.newColumnCategory')}
           onChange={setNewCategory}
           value={newCategory}
         />
@@ -316,7 +320,7 @@ export const BoardColumnsEditor = ({
           onClick={handleAdd}
           type="button"
         >
-          Add column
+          {t('boardSettings.addColumn')}
         </button>
       </div>
     </>

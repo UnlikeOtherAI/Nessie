@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { faPen } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { SectionLabel } from '../../../primitives/SectionLabel'
@@ -47,6 +48,7 @@ export const TaskDescriptionField = ({
   taskId,
   value,
 }: TaskDescriptionFieldProps) => {
+  const { t } = useTranslation('projects')
   const [editing, setEditing] = useState(createMode)
   const uploadToTicket = useTaskImageUpload(createMode ? undefined : taskId)
   const uploadImage = useCallback(
@@ -66,21 +68,21 @@ export const TaskDescriptionField = ({
   return (
     <div className="grid gap-2">
       <div className="flex min-h-7 items-center justify-between gap-2">
-        <SectionLabel as="span" size="sm">Description</SectionLabel>
+        <SectionLabel as="span" size="sm">{t('taskDescription.title')}</SectionLabel>
         {createMode || !canEdit ? null : open ? (
           <button
             className="admin-button admin-button-secondary admin-button-compact"
             onClick={() => setEditing(false)}
             type="button"
           >
-            Done
+            {t('taskDescription.done')}
           </button>
         ) : (
           <button
-            aria-label="Edit description"
+            aria-label={t('taskDescription.edit')}
             className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx3)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]"
             onClick={startEditing}
-            title="Edit description"
+            title={t('taskDescription.edit')}
             type="button"
           >
             <FontAwesomeIcon icon={faPen} />
@@ -90,16 +92,16 @@ export const TaskDescriptionField = ({
 
       {open ? (
         <MarkdownEditor
-          ariaLabel="Description"
+          ariaLabel={t('taskDescription.title')}
           autoFocus={!createMode}
           onChange={onChange}
           onUploadImage={uploadImage}
-          placeholder="Describe the work — paste or drop images to include them."
+          placeholder={t('taskDescription.placeholder')}
           value={value}
         />
       ) : (
         <div
-          aria-label={canEdit ? 'Description — select to edit' : 'Description'}
+          aria-label={canEdit ? t('taskDescription.selectToEdit') : t('taskDescription.title')}
           className={canEdit ? readViewClass : undefined}
           data-testid="task-description-read"
           onClick={(event) => {
@@ -120,7 +122,7 @@ export const TaskDescriptionField = ({
               {value}
             </MessageMarkdown>
           ) : (
-            <p className="text-sm text-[color:var(--tx3)]">No description yet.</p>
+            <p className="text-sm text-[color:var(--tx3)]">{t('taskDescription.empty')}</p>
           )}
         </div>
       )}

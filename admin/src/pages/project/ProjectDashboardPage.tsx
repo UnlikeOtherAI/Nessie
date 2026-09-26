@@ -20,6 +20,7 @@
 import { faPlus } from '@fortawesome/free-solid-svg-icons'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiClientError } from '@nessie/client-core'
 import type { DashboardLayout, DashboardWidgetKind } from '@nessie/schemas'
@@ -61,6 +62,7 @@ const expandRectFrom = (state: unknown): ExpandRect | null => {
 }
 
 export const ProjectDashboardPage = () => {
+  const { t } = useTranslation('projects')
   const { dashboardId } = useParams<{ dashboardId: string }>()
   const location = useLocation()
   const navigate = useNavigate()
@@ -187,15 +189,15 @@ export const ProjectDashboardPage = () => {
         data-testid="dashboard-detail"
         ref={surfaceRef}
       >
-        <ScreenHeader title="Dashboard" />
+        <ScreenHeader title={t('dashboardDetail.title')} />
         {isLoading ? (
           <Skeleton className="p-6" count={6} variant="board" />
         ) : (
           <QueryState
-            emptyLabel="This dashboard is not available."
-            errorLabel="Failed to load this dashboard."
+            emptyLabel={t('dashboardDetail.unavailable')}
+            errorLabel={t('dashboardDetail.loadError')}
             isEmpty
-            loadingLabel="Loading…"
+            loadingLabel={t('dashboardDetail.loading')}
             query={dashboardQuery}
           >
             {() => null}
@@ -214,7 +216,7 @@ export const ProjectDashboardPage = () => {
           actions={[
             {
               id: 'dashboard-history',
-              label: 'History',
+              label: t('dashboardDetail.history'),
               onSelect: () => setShowVersions((open) => !open),
               priority: 30,
             },
@@ -223,7 +225,7 @@ export const ProjectDashboardPage = () => {
               // mark reads as a typo now that the action is a real button.
               icon: faPlus,
               id: 'dashboard-add-widget',
-              label: 'Add widget',
+              label: t('dashboardDetail.addWidget'),
               onSelect: () => setShowAddWidget(true),
               priority: 60,
             }] : []),
@@ -231,14 +233,14 @@ export const ProjectDashboardPage = () => {
               ? {
                 disabled: saveLayout.isPending,
                 id: 'dashboard-done',
-                label: saveLayout.isPending ? 'Saving…' : 'Done',
+                label: saveLayout.isPending ? t('dashboardDetail.saving') : t('dashboardDetail.done'),
                 onSelect: () => saveArrangement(baseRevisionRef.current ?? undefined),
                 primary: true,
                 priority: 100,
               }
               : {
                 id: 'dashboard-edit',
-                label: 'Edit',
+                label: t('dashboardDetail.edit'),
                 onSelect: () => {
                   baseRevisionRef.current = dashboard.revision
                   setConflictRevision(null)
@@ -262,8 +264,7 @@ export const ProjectDashboardPage = () => {
             style={{ borderColor: 'var(--sep)', background: 'var(--overlay-weak)' }}
           >
             <span style={{ color: 'var(--tx2)' }}>
-              Somebody else rearranged this dashboard while you were editing.
-              Your arrangement is kept.
+              {t('dashboardDetail.conflict')}
             </span>
             <button
               className="rounded px-2.5 py-1 font-medium"
@@ -271,7 +272,7 @@ export const ProjectDashboardPage = () => {
               style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
               type="button"
             >
-              Keep mine
+              {t('dashboardDetail.keepMine')}
             </button>
             <button
               className="rounded px-2.5 py-1"
@@ -279,7 +280,7 @@ export const ProjectDashboardPage = () => {
               style={{ background: 'var(--overlay-weak)', color: 'var(--tx2)' }}
               type="button"
             >
-              Take theirs
+              {t('dashboardDetail.takeTheirs')}
             </button>
           </div>
         ) : null}
@@ -297,9 +298,9 @@ export const ProjectDashboardPage = () => {
         >
           {dashboard.widgets.length === 0 ? (
             <div className="admin-card p-8 text-center" data-testid="dashboard-empty">
-              <p className="text-sm font-medium text-[color:var(--tx)]">No widgets yet</p>
+              <p className="text-sm font-medium text-[color:var(--tx)]">{t('dashboardDetail.noWidgets')}</p>
               <p className="mt-1 text-xs text-[color:var(--tx3)]">
-                Ask your assistant to add one, or connect a data source to get started.
+                {t('dashboardDetail.emptyBody')}
               </p>
               <button
                 className="admin-button admin-button-secondary mt-4"
@@ -309,7 +310,7 @@ export const ProjectDashboardPage = () => {
                 }}
                 type="button"
               >
-                Add a widget yourself
+                {t('dashboardDetail.addWidgetYourself')}
               </button>
             </div>
           ) : (
@@ -327,10 +328,10 @@ export const ProjectDashboardPage = () => {
       <NestedStage
         active={showAddWidget}
         id="dashboard:add-widget"
-        label="Back to dashboard"
+        label={t('dashboardDetail.back')}
         onBack={() => setShowAddWidget(false)}
         priority={LOCAL_BACK_PRIORITY.dashboardPanel}
-        title="Add widget"
+        title={t('dashboardDetail.addWidget')}
       >
         <AddWidgetPanel
           dashboardId={dashboard.id}
@@ -342,10 +343,10 @@ export const ProjectDashboardPage = () => {
       <NestedStage
         active={showVersions}
         id="dashboard:versions"
-        label="Back to dashboard"
+        label={t('dashboardDetail.back')}
         onBack={() => setShowVersions(false)}
         priority={LOCAL_BACK_PRIORITY.dashboardVersions}
-        title="Versions"
+        title={t('dashboardDetail.versions')}
       >
         <DashboardVersionsPanel
           dashboardId={dashboard.id}

@@ -1,5 +1,6 @@
 import { faXmark } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { useTranslation } from 'react-i18next'
 import type { TaskFieldDefinitionRecord } from '../../../../facades/task-fields/hooks'
 import { Input, Select } from '../../../shared/FormControls'
 import { Pill } from '../../../primitives/Pill'
@@ -29,6 +30,7 @@ export const TaskFieldControl = ({
   people,
   value,
 }: TaskFieldControlProps) => {
+  const { t } = useTranslation('projects')
   const live = definition.options.filter((option) => !option.retiredAt)
 
   switch (definition.type) {
@@ -96,7 +98,7 @@ export const TaskFieldControl = ({
           onAdd={(id) => onChange(selected.includes(id) ? selected : [...selected, id])}
           onRemove={(id) => onChange(selected.filter((entry) => entry !== id))}
           options={live.map((option) => ({ id: option.id, label: option.label }))}
-          placeholder={live.length === 0 ? 'No options yet.' : `Add ${definition.name.toLowerCase()}`}
+          placeholder={live.length === 0 ? t('taskFields.noOptions') : t('taskFields.addOption', { name: definition.name })}
           renderToken={(token, remove) => (
             <Pill
               className="gap-1"
@@ -107,7 +109,7 @@ export const TaskFieldControl = ({
               {token.label}
               {remove ? (
                 <button
-                  aria-label={`Remove ${token.label}`}
+                  aria-label={t('taskFields.removeOption', { name: token.label })}
                   className="admin-label-pill-remove"
                   onClick={(event) => {
                     event.stopPropagation()
@@ -134,7 +136,7 @@ export const TaskFieldControl = ({
           size="compact"
           value={asString(value)}
         >
-          <option value="">Unassigned</option>
+          <option value="">{t('taskFields.unassigned')}</option>
           {people.map((person) => (
             <option key={person.id} value={person.id}>
               {person.displayName}

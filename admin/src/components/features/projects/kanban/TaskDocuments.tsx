@@ -1,4 +1,5 @@
 import { useRef, useState, type ChangeEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   faFileLines,
   faPlus,
@@ -35,6 +36,7 @@ export const TaskDocuments = ({
   projectId?: string | null
   taskId: string
 }) => {
+  const { t } = useTranslation('projects')
   const navigate = useNavigate()
   const pagesQuery = useTaskPages(taskId)
   const createPage = useCreateTaskPage(taskId)
@@ -86,9 +88,9 @@ export const TaskDocuments = ({
   return (
     // Directly under the description in the dialog's body group; spacing and
     // the label separate it, never a bordered box (no nesting).
-    <section aria-label="Documents" className="grid gap-2" data-testid="task-documents">
+    <section aria-label={t('taskDocuments.title')} className="grid gap-2" data-testid="task-documents">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <SectionLabel as="span" size="sm">Documents</SectionLabel>
+        <SectionLabel as="span" size="sm">{t('taskDocuments.title')}</SectionLabel>
         {canEdit ? <div className="flex flex-wrap gap-2">
           <button
             className="admin-button admin-button-secondary admin-button-compact gap-1.5"
@@ -100,7 +102,7 @@ export const TaskDocuments = ({
               icon={uploadFile.isPending ? faSpinner : faUpload}
               spin={uploadFile.isPending}
             />
-            Upload file
+            {t('taskDocuments.uploadFile')}
           </button>
           <button
             className="admin-button admin-button-secondary admin-button-compact gap-1.5"
@@ -110,11 +112,11 @@ export const TaskDocuments = ({
               setAddingKind('spreadsheet')
               setAddingNote(true)
             }}
-            title={spaceId ? undefined : 'Add a document first, so this ticket has a space'}
+            title={spaceId ? undefined : t('taskDocuments.createSpreadsheetDisabled')}
             type="button"
           >
             <FontAwesomeIcon icon={faTable} />
-            New spreadsheet
+            {t('taskDocuments.newSpreadsheet')}
           </button>
           <button
             className="admin-button admin-button-secondary admin-button-compact gap-1.5"
@@ -125,7 +127,7 @@ export const TaskDocuments = ({
             type="button"
           >
             <FontAwesomeIcon icon={faPlus} />
-            New note
+            {t('taskDocuments.newNote')}
           </button>
         </div> : null}
         <input
@@ -140,7 +142,7 @@ export const TaskDocuments = ({
       {addingNote ? (
         <div className="flex gap-2">
           <Input
-            aria-label={addingKind === 'spreadsheet' ? 'Spreadsheet title' : 'Note title'}
+            aria-label={addingKind === 'spreadsheet' ? t('taskDocuments.spreadsheetTitle') : t('taskDocuments.noteTitle')}
             autoFocus
             className="flex-1"
             onChange={(event) => setNoteTitle(event.target.value)}
@@ -153,7 +155,7 @@ export const TaskDocuments = ({
                 setNoteTitle('')
               }
             }}
-            placeholder={addingKind === 'spreadsheet' ? 'Spreadsheet title…' : 'Note title…'}
+            placeholder={addingKind === 'spreadsheet' ? t('taskDocuments.spreadsheetTitlePlaceholder') : t('taskDocuments.noteTitlePlaceholder')}
             value={noteTitle}
           />
           <button
@@ -162,22 +164,22 @@ export const TaskDocuments = ({
             onClick={() => void submitNote()}
             type="button"
           >
-            Create
+            {t('taskDocuments.create')}
           </button>
         </div>
       ) : null}
 
       {pagesQuery.isLoading ? (
-        <div className="py-2 text-sm text-[color:var(--tx3)]">Loading…</div>
+        <div className="py-2 text-sm text-[color:var(--tx3)]">{t('taskDocuments.loading')}</div>
       ) : pagesQuery.isError ? (
         <div className="py-2 text-sm text-[color:var(--danger-text)]">
-          Couldn't load documents.{' '}
+          {t('taskDocuments.loadError')}{' '}
           <button className="underline" onClick={() => void pagesQuery.refetch()} type="button">
-            Retry
+            {t('taskDocuments.retry')}
           </button>
         </div>
       ) : pages.length === 0 ? (
-        <div className="py-2 text-sm text-[color:var(--tx3)]">No documents yet</div>
+        <div className="py-2 text-sm text-[color:var(--tx3)]">{t('taskDocuments.empty')}</div>
       ) : (
         <div className="grid gap-0.5">
           {pages.map((page) => (
@@ -200,7 +202,11 @@ export const TaskDocuments = ({
               />
               <span className="min-w-0 flex-1 truncate">{page.title}</span>
               <Pill size="sm" tone={taskDocumentStatusTone(page.status)}>
-                {page.status}
+                {page.status === 'published'
+                  ? t('taskDocuments.status.published')
+                  : page.status === 'archived'
+                    ? t('taskDocuments.status.archived')
+                    : t('taskDocuments.status.draft')}
               </Pill>
             </button>
           ))}

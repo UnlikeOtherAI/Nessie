@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   DndContext,
   MeasuringStrategy,
@@ -97,6 +98,7 @@ export const KanbanBoard = ({
   onStartWork,
   view = 'cards',
 }: KanbanBoardProps) => {
+  const { t } = useTranslation('projects')
   const [isDraggingCard, setIsDraggingCard] = useState(false)
   // Card to pulse after it lands in a column from a drag.
   const [pulseId, setPulseId] = useState<string | null>(null)
@@ -367,11 +369,11 @@ export const KanbanBoard = ({
       >
         <div className="flex min-h-0 flex-1 flex-col">
           {paginated ? (
-            <div aria-label="Board pages" className="mb-2 flex shrink-0 items-center justify-center gap-2">
+            <div aria-label={t('board.pages')} className="mb-2 flex shrink-0 items-center justify-center gap-2">
               {Array.from({ length: pageCount }, (_, index) => (
                 <button
                   aria-current={index === page ? 'page' : undefined}
-                  aria-label={`Show page ${index + 1}`}
+                  aria-label={t('board.showPage', { page: index + 1 })}
                   className="flex h-11 w-11 items-center justify-center rounded-full"
                   key={index}
                   onClick={() => showPage(index)}

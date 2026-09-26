@@ -61,12 +61,12 @@ export const ProjectNavigationTiles = ({ className, projectId }: ProjectNavigati
     canManageMembers,
     channels: projectChannelRows(channels, projectId),
     dashboards,
-    documentsUpdatedAge: formatRelativeAge(pages[0]?.updatedAt),
+    documentsUpdatedAge: formatRelativeAge(pages[0]?.updatedAt, Date.now(), t),
     isScrum,
     memberCount: members.length,
     openWorkCount: tasks.filter(isOpenTask).length,
     projectId,
-  })
+  }, t)
 
   return (
     <>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   PROVIDER_LABEL,
   useBoardSourceConnections,
@@ -43,6 +44,7 @@ export const ConnectSourceDialog = ({
   open,
   projectId,
 }: ConnectSourceDialogProps) => {
+  const { t } = useTranslation('projects')
   const { data: providers = [] } = useBoardSourceProviders()
   const connectionsQuery = useBoardSourceConnections()
   const startConnection = useStartConnection()
@@ -71,7 +73,7 @@ export const ConnectSourceDialog = ({
       { provider },
       {
         onError: (cause) =>
-          setError(cause instanceof Error ? cause.message : 'Could not start the sign-in'),
+          setError(cause instanceof Error ? cause.message : t('sourceSettings.signInError')),
         onSuccess: ({ authorizeUrl }) => {
           // A popup so the person keeps this dialog and its project context;
           // the callback page posts back to it and closes.
@@ -88,7 +90,7 @@ export const ConnectSourceDialog = ({
       { provider: keyProvider, values },
       {
         onError: (cause) =>
-          setError(cause instanceof Error ? cause.message : 'Could not use that key'),
+          setError(cause instanceof Error ? cause.message : t('sourceSettings.keyError')),
         onSuccess: ({ connectionId: created }) => {
           // The key itself is not kept here for a moment longer than the
           // request needed it.
@@ -126,7 +128,7 @@ export const ConnectSourceDialog = ({
       { connectionId, container: container.container, name: container.label },
       {
         onError: (cause) =>
-          setError(cause instanceof Error ? cause.message : 'Could not attach that container'),
+          setError(cause instanceof Error ? cause.message : t('sourceSettings.attachError')),
         onSuccess: (source) => {
           onCreated(source.id)
           onClose()
@@ -137,15 +139,15 @@ export const ConnectSourceDialog = ({
 
   return (
     <Dialog
-      description="Its work appears on this project's boards as ordinary tasks."
+      description={t('sourceSettings.connectDescription')}
       onClose={onClose}
       open={open}
-      title="Connect a source"
+      title={t('sourceSettings.connectTitle')}
     >
       <div className="grid gap-4">
         {providers.length === 0 ? (
-          <EmptyState title="No project tools are available on this deployment.">
-            No connector is registered. An operator enables one in the server configuration.
+          <EmptyState title={t('sourceSettings.noToolsTitle')}>
+            {t('sourceSettings.noToolsBody')}
           </EmptyState>
         ) : keyForm && keyProvider ? (
           <>
@@ -166,7 +168,7 @@ export const ConnectSourceDialog = ({
                 }}
                 type="button"
               >
-                Back
+                {t('common.back')}
               </button>
               <button
                 className="admin-button admin-button-primary h-11"
@@ -175,16 +177,16 @@ export const ConnectSourceDialog = ({
                 type="button"
               >
                 {connectWithApiKey.isPending
-                  ? 'Checking…'
-                  : `Connect ${PROVIDER_LABEL[keyProvider]}`}
+                  ? t('sourceSettings.checking')
+                  : t('sourceSettings.connectProvider', { provider: PROVIDER_LABEL[keyProvider] })}
               </button>
             </div>
           </>
         ) : (
           <>
             <FormField
-              help="Connect the account whose work should appear here. The sync runs as you."
-              label="Account"
+              help={t('sourceSettings.accountHelp')}
+              label={t('sourceSettings.account')}
             >
               {ownConnections.length > 0 ? (
                 <Select
@@ -203,7 +205,7 @@ export const ConnectSourceDialog = ({
                 </Select>
               ) : (
                 <div className="text-sm text-[color:var(--tx3)]">
-                  You have not connected an account yet.
+                  {t('sourceSettings.noAccount')}
                 </div>
               )}
             </FormField>
@@ -221,7 +223,7 @@ export const ConnectSourceDialog = ({
                       }}
                       type="button"
                     >
-                      {PROVIDER_LABEL[entry.provider]} with a key…
+                      {t('sourceSettings.providerWithKey', { provider: PROVIDER_LABEL[entry.provider] })}
                     </button>
                   ) : null}
                   {entry.methods.includes('oauth') ? (
@@ -230,7 +232,7 @@ export const ConnectSourceDialog = ({
                       onClick={() => connect(entry.provider)}
                       type="button"
                     >
-                      Sign in to {PROVIDER_LABEL[entry.provider]}…
+                      {t('sourceSettings.signInProvider', { provider: PROVIDER_LABEL[entry.provider] })}
                     </button>
                   ) : null}
                 </span>
@@ -238,7 +240,7 @@ export const ConnectSourceDialog = ({
             </div>
 
             {connectionId ? (
-              <FormField label="What to bring in">
+              <FormField label={t('sourceSettings.whatToBringIn')}>
                 <Select
                   className="h-11"
                   disabled={containersQuery.isPending}
@@ -246,7 +248,7 @@ export const ConnectSourceDialog = ({
                   value={containerKey}
                 >
                   <option value="">
-                    {containersQuery.isPending ? 'Loading…' : 'Choose…'}
+                    {containersQuery.isPending ? t('sourceSettings.loading') : t('sourceSettings.choose')}
                   </option>
                   {(containersQuery.data ?? []).map((container) => (
                     <option key={container.key} value={container.key}>
@@ -262,7 +264,7 @@ export const ConnectSourceDialog = ({
 
             <div className="flex flex-wrap justify-end gap-2">
               <button className="admin-button h-11" onClick={onClose} type="button">
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 className="admin-button admin-button-primary h-11"
@@ -270,7 +272,7 @@ export const ConnectSourceDialog = ({
                 onClick={attach}
                 type="button"
               >
-                Add source
+                {t('sourceSettings.addSource')}
               </button>
             </div>
           </>

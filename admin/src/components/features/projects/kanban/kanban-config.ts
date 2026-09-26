@@ -1,4 +1,5 @@
 import type { ColumnCategory } from '@nessie/schemas'
+import type { TFunction } from 'i18next'
 
 /**
  * Board presentation constants.
@@ -38,4 +39,16 @@ export const CATEGORY_DOT: Record<ColumnCategory, string> = {
   done: 'var(--success-text)',
 }
 
-export const statusLabel = (status: string): string => status.replace(/_/g, ' ')
+export const statusLabel = (status: string, t: TFunction<'projects'>): string => {
+  switch (status) {
+    case 'inbox': return t('task.status.inbox')
+    case 'assigned': return t('task.status.assigned')
+    case 'in_progress': return t('task.status.in_progress')
+    case 'review': return t('task.status.review')
+    case 'awaiting_approval': return t('task.status.awaiting_approval')
+    case 'done': return t('task.status.done')
+    case 'failed': return t('task.status.failed')
+    case 'cancelled': return t('task.status.cancelled')
+    default: return status.replace(/_/g, ' ')
+  }
+}
