@@ -533,6 +533,31 @@
     "done": "Terminé",
     "dontAllow": "Ne pas autoriser",
     "pairing": "Association…",
-    "allow": "Autoriser"
+    "allow": "Autoriser",
+    "permissions": "Actions possibles",
+    "credential": "Identifiant",
+    "notGranted": "non autorisé",
+    "you": "Vous",
+    "pairedOn": "Associé",
+    "revoked": "Révoqué",
+    "lastUsed": "Dernière utilisation",
+    "scopes": {
+      "boards_read": {
+        "label": "Lire les tableaux",
+        "detail": "Consulter vos tableaux et leurs tâches, y compris ceux synchronisés depuis Linear."
+      },
+      "boards_write": {
+        "label": "Modifier les tableaux",
+        "detail": "Créer et modifier des tâches, puis les déplacer entre les colonnes."
+      },
+      "documents_read": {
+        "label": "Lire les documents",
+        "detail": "Lire les espaces de connaissances et les documents auxquels vous avez accès."
+      },
+      "documents_write": {
+        "label": "Rédiger des documents",
+        "detail": "Créer et modifier des brouillons. Toute publication nécessite votre approbation : l’agent peut la demander, mais ne peut pas publier lui-même."
+      }
+    }
   }
 }

@@ -533,6 +533,31 @@
     "done": "Fertig",
     "dontAllow": "Nicht erlauben",
     "pairing": "Wird gekoppelt…",
-    "allow": "Erlauben"
+    "allow": "Erlauben",
+    "permissions": "Mögliche Aktionen",
+    "credential": "Anmeldeinformation",
+    "notGranted": "nicht gewährt",
+    "you": "Sie",
+    "pairedOn": "Gekoppelt",
+    "revoked": "Widerrufen",
+    "lastUsed": "Zuletzt verwendet",
+    "scopes": {
+      "boards_read": {
+        "label": "Boards lesen",
+        "detail": "Ihre Boards und die darin enthaltenen Aufgaben ansehen, einschließlich aus Linear gespiegelter Boards."
+      },
+      "boards_write": {
+        "label": "Boards ändern",
+        "detail": "Aufgaben erstellen und bearbeiten sowie zwischen Spalten verschieben."
+      },
+      "documents_read": {
+        "label": "Dokumente lesen",
+        "detail": "Wissensbereiche und Dokumente lesen, auf die Sie Zugriff haben."
+      },
+      "documents_write": {
+        "label": "Dokumententwürfe erstellen",
+        "detail": "Dokumente als Entwurf erstellen und bearbeiten. Zum Veröffentlichen ist weiterhin Ihre Freigabe erforderlich. Der Agent kann sie anfragen, aber nicht selbst veröffentlichen."
+      }
+    }
   }
 }

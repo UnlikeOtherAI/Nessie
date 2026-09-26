@@ -533,6 +533,31 @@
     "done": "Listo",
     "dontAllow": "No permitir",
     "pairing": "Vinculando…",
-    "allow": "Permitir"
+    "allow": "Permitir",
+    "permissions": "Acciones disponibles",
+    "credential": "Credencial",
+    "notGranted": "no concedido",
+    "you": "Tú",
+    "pairedOn": "Vinculado",
+    "revoked": "Revocado",
+    "lastUsed": "Último uso",
+    "scopes": {
+      "boards_read": {
+        "label": "Leer tableros",
+        "detail": "Ver tus tableros y sus tareas, incluidos los sincronizados desde Linear."
+      },
+      "boards_write": {
+        "label": "Modificar tableros",
+        "detail": "Crear y editar tareas, y moverlas entre columnas."
+      },
+      "documents_read": {
+        "label": "Leer documentos",
+        "detail": "Leer los espacios de conocimiento y documentos a los que tienes acceso."
+      },
+      "documents_write": {
+        "label": "Crear borradores de documentos",
+        "detail": "Crear y editar borradores. La publicación sigue requiriendo tu aprobación: el agente puede solicitarla, pero no publicar por su cuenta."
+      }
+    }
   }
 }

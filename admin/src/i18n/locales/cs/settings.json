@@ -533,6 +533,31 @@
     "done": "Hotovo",
     "dontAllow": "Nepovolit",
     "pairing": "Párování…",
-    "allow": "Povolit"
+    "allow": "Povolit",
+    "permissions": "Oprávnění agenta",
+    "credential": "Přihlašovací údaj",
+    "notGranted": "nepovoleno",
+    "you": "Vy",
+    "pairedOn": "Spárováno",
+    "revoked": "Odebráno",
+    "lastUsed": "Naposledy použito",
+    "scopes": {
+      "boards_read": {
+        "label": "Číst nástěnky",
+        "detail": "Zobrazit vaše nástěnky a úkoly na nich, včetně nástěnek synchronizovaných z Linear."
+      },
+      "boards_write": {
+        "label": "Měnit nástěnky",
+        "detail": "Vytvářet a upravovat úkoly a přesouvat je mezi sloupci."
+      },
+      "documents_read": {
+        "label": "Číst dokumenty",
+        "detail": "Číst znalostní prostory a dokumenty, ke kterým máte přístup."
+      },
+      "documents_write": {
+        "label": "Vytvářet koncepty dokumentů",
+        "detail": "Vytvářet a upravovat koncepty. Publikování stále vyžaduje vaše schválení — agent o něj může požádat, ale sám publikovat nemůže."
+      }
+    }
   }
 }

@@ -533,6 +533,31 @@
     "done": "Done",
     "dontAllow": "Don’t allow",
     "pairing": "Pairing…",
-    "allow": "Allow"
+    "allow": "Allow",
+    "permissions": "What it can do",
+    "credential": "Credential",
+    "notGranted": "not granted",
+    "you": "You",
+    "pairedOn": "Paired",
+    "revoked": "Revoked",
+    "lastUsed": "Last used",
+    "scopes": {
+      "boards_read": {
+        "label": "Read boards",
+        "detail": "See your boards and the tasks on them, including boards mirrored from Linear."
+      },
+      "boards_write": {
+        "label": "Change boards",
+        "detail": "Create tasks, edit them, and move them between columns."
+      },
+      "documents_read": {
+        "label": "Read documents",
+        "detail": "Read the knowledge spaces and documents you can read."
+      },
+      "documents_write": {
+        "label": "Write documents as drafts",
+        "detail": "Create and edit documents as drafts. Publishing one still comes to you as an approval — an agent can ask, but it cannot publish."
+      }
+    }
   }
 }

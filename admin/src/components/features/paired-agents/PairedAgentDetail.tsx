@@ -1,9 +1,9 @@
 import { Card } from '../../shared/Card'
 import { KeyValueList } from '../../shared/KeyValueList'
 import { SectionLabel } from '../../primitives/SectionLabel'
+import { useTranslation } from 'react-i18next'
 import type { PairedAgentRow } from './PairedAgentsTable'
 import {
-  SCOPE_COPY,
   SCOPE_ORDER,
   credentialLifecycle,
   formatCredentialDate,
@@ -24,12 +24,13 @@ type PairedAgentDetailProps = {
  * them having to decode a summary.
  */
 export const PairedAgentDetail = ({ credential }: PairedAgentDetailProps) => {
+  const { t } = useTranslation('settings')
   const lifecycle = credentialLifecycle(credential)
 
   return (
     <div className="grid max-w-3xl gap-4">
       <Card as="section">
-        <SectionLabel>What it can do</SectionLabel>
+        <SectionLabel>{t('pairedAgents.permissions')}</SectionLabel>
         <div className="mt-3 grid gap-3">
           {SCOPE_ORDER.map((scope) => {
             const held = credential.scopes.includes(scope)
@@ -53,11 +54,11 @@ export const PairedAgentDetail = ({ credential }: PairedAgentDetailProps) => {
                       held ? 'text-[color:var(--tx)]' : 'text-[color:var(--tx3)]',
                     ].join(' ')}
                   >
-                    {SCOPE_COPY[scope].label}
-                    {held ? '' : ' — not granted'}
+                    {t(`pairedAgents.scopes.${scope}.label`)}
+                    {held ? '' : ` — ${t('pairedAgents.notGranted')}`}
                   </div>
                   <p className="mt-0.5 text-xs text-[color:var(--tx3)]">
-                    {SCOPE_COPY[scope].detail}
+                    {t(`pairedAgents.scopes.${scope}.detail`)}
                   </p>
                 </div>
               </div>
@@ -67,19 +68,19 @@ export const PairedAgentDetail = ({ credential }: PairedAgentDetailProps) => {
       </Card>
 
       <Card as="section">
-        <SectionLabel>Credential</SectionLabel>
+        <SectionLabel>{t('pairedAgents.credential')}</SectionLabel>
         <div className="mt-3">
           <KeyValueList
             items={[
               ...(credential.user
-                ? [{ label: 'Works as', value: credential.user.displayName }]
-                : [{ label: 'Works as', value: 'You' }]),
-              { label: 'Paired', value: formatCredentialDate(credential.createdAt) },
+                ? [{ label: t('pairedAgents.worksAsLabel'), value: credential.user.displayName }]
+                : [{ label: t('pairedAgents.worksAsLabel'), value: t('pairedAgents.you') }]),
+              { label: t('pairedAgents.pairedOn'), value: formatCredentialDate(credential.createdAt) },
               {
-                label: lifecycle === 'revoked' ? 'Revoked' : 'Expires',
+                label: lifecycle === 'revoked' ? t('pairedAgents.revoked') : t('pairedAgents.expires'),
                 value: formatCredentialDate(credential.revokedAt ?? credential.expiresAt),
               },
-              { label: 'Last used', value: formatLastUsed(credential.lastUsedAt) },
+              { label: t('pairedAgents.lastUsed'), value: formatLastUsed(credential.lastUsedAt) },
             ]}
           />
         </div>

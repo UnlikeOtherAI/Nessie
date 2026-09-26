@@ -533,6 +533,31 @@
     "done": "Fatto",
     "dontAllow": "Non consentire",
     "pairing": "Associazione…",
-    "allow": "Consenti"
+    "allow": "Consenti",
+    "permissions": "Azioni consentite",
+    "credential": "Credenziale",
+    "notGranted": "non concesso",
+    "you": "Tu",
+    "pairedOn": "Associato",
+    "revoked": "Revocato",
+    "lastUsed": "Ultimo utilizzo",
+    "scopes": {
+      "boards_read": {
+        "label": "Leggere le board",
+        "detail": "Visualizzare le tue board e le attività, incluse quelle sincronizzate da Linear."
+      },
+      "boards_write": {
+        "label": "Modificare le board",
+        "detail": "Creare e modificare attività e spostarle tra le colonne."
+      },
+      "documents_read": {
+        "label": "Leggere i documenti",
+        "detail": "Leggere gli spazi di conoscenza e i documenti a cui hai accesso."
+      },
+      "documents_write": {
+        "label": "Creare bozze di documenti",
+        "detail": "Creare e modificare bozze. La pubblicazione richiede comunque la tua approvazione: l’agente può chiederla, ma non pubblicare."
+      }
+    }
   }
 }
