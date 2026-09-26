@@ -10,6 +10,7 @@ import Fastify from 'fastify'
 import {
   createFileService,
   createDeepSignalMcpIdentityServiceFromEnv,
+  createLedgerDecisionClient,
   createLedgerIdentityServiceFromEnv,
   createModelClient,
   getStorage,
@@ -101,6 +102,8 @@ export const buildApp = async (
   } = serverContext
 
   let sharedModelClient: import('@nessie/runtime').ModelClient | null = null
+  // Jev on the same Ledger route, for memory capture's extraction gate.
+  let decisionClient: import('@nessie/runtime').DecisionModelClient | undefined
   let ledgerIdentity: import('@nessie/runtime').LedgerIdentityService | null = null
   const app = Fastify({
     trustProxy: createFastifyTrustProxyConfig(config.api.trustedProxyHops),
@@ -167,6 +170,17 @@ export const buildApp = async (
         systemComponent: 'api-model-service',
       },
     )
+    if (config.model.baseUrl && isLedgerEndpoint(config.model.baseUrl)) {
+      decisionClient = createLedgerDecisionClient({
+        baseUrl: config.model.baseUrl,
+        apiKey: modelApiKey,
+        requestHeaders: configuredLedgerIdentity
+          ? (attribution) => configuredLedgerIdentity.requestHeaders(attribution, { requireUoaIdentity: true })
+          : undefined,
+        recordUsage: (invocations, attribution) =>
+          recordModelUsage(prisma, app.log, invocations, attribution),
+      })
+    }
   } else {
     if (isLedgerEndpoint(config.model.baseUrl)) {
       throw new Error(
@@ -202,13 +216,13 @@ export const buildApp = async (
   //     NESSIE_DB_POOL_MAX / NESSIE_DB_POOL_MIN.
   const memoryPool = realtimeHub.pool
   const messageMemoryCaptureConfig = sharedModelClient
-    ? { pool: memoryPool, modelClient: sharedModelClient }
+    ? { pool: memoryPool, modelClient: sharedModelClient, ...(decisionClient ? { decisionClient } : {}) }
     : null
-  const thoughtService = sharedModelClient
+  const thoughtService = messageMemoryCaptureConfig
     ? createThoughtService({
       pool: memoryPool,
-      captureConfig: { pool: memoryPool, modelClient: sharedModelClient },
-      searchConfig: { pool: memoryPool, modelClient: sharedModelClient },
+      captureConfig: messageMemoryCaptureConfig,
+      searchConfig: { pool: memoryPool, modelClient: messageMemoryCaptureConfig.modelClient },
     })
     : null
 

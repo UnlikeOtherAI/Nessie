@@ -75,6 +75,7 @@ export const createBuiltinToolExecutor = ({
     memoryCaptureConfig: {
       modelClient: deps.modelClient,
       pool: deps.searchConfig.pool,
+      ...(deps.decisionClient ? { decisionClient: deps.decisionClient } : {}),
     },
     modelClient: deps.modelClient,
     prisma: deps.prisma,
