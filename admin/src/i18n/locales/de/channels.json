@@ -321,5 +321,29 @@
     "removeAttachment": "{{name}} entfernen",
     "removeAttachmentTitle": "Entfernen",
     "uploadFailed": "Upload fehlgeschlagen"
+  },
+  "child": {
+    "rename": {
+      "title": "Unterhaltung umbenennen",
+      "help": "Alle, die diese Unterhaltung sehen können, sehen auch den Namen.",
+      "name": "Name",
+      "cancel": "Abbrechen",
+      "save": "Speichern",
+      "failed": "Diese Unterhaltung konnte nicht umbenannt werden.",
+      "offline": "Die Umbenennung konnte nicht gesendet werden. Prüfe deine Verbindung und versuche es erneut."
+    },
+    "workflow": {
+      "title": "Workflow-Vorschau",
+      "adminRequired": "Zum Anzeigen dieses Diagramms ist Workflow-Administratorzugriff erforderlich.",
+      "openPreview": "Workflow-Vorschau für {{name}} öffnen",
+      "description": "Live-Vorschau des gespeicherten Workflows, nur lesbar.",
+      "openInAdmin": "In der Administration öffnen",
+      "openWorkflowInAdmin": "Workflow in der Administration öffnen"
+    },
+    "markdown": {
+      "image": "Bild",
+      "notLoaded": "— nicht geladen",
+      "messageTable": "Nachrichtentabelle"
+    }
   }
 }

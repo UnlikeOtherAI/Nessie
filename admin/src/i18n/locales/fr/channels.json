@@ -321,5 +321,29 @@
     "removeAttachment": "Supprimer {{name}}",
     "removeAttachmentTitle": "Supprimer",
     "uploadFailed": "Échec du téléversement"
+  },
+  "child": {
+    "rename": {
+      "title": "Renommer la conversation",
+      "help": "Toute personne pouvant voir cette conversation verra son nom.",
+      "name": "Nom",
+      "cancel": "Annuler",
+      "save": "Enregistrer",
+      "failed": "Impossible de renommer cette conversation.",
+      "offline": "Impossible d’envoyer le renommage. Vérifiez votre connexion et réessayez."
+    },
+    "workflow": {
+      "title": "Aperçu du workflow",
+      "adminRequired": "Un accès administrateur aux workflows est requis pour afficher ce diagramme.",
+      "openPreview": "Ouvrir l’aperçu du workflow {{name}}",
+      "description": "Vue en direct et en lecture seule du workflow enregistré.",
+      "openInAdmin": "Ouvrir dans l’administration",
+      "openWorkflowInAdmin": "Ouvrir le workflow dans l’administration"
+    },
+    "markdown": {
+      "image": "Image",
+      "notLoaded": "— non chargée",
+      "messageTable": "Tableau du message"
+    }
   }
 }

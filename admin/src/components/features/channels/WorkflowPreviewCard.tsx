@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { WorkflowPreviewMessageMetadataSchema } from '@nessie/schemas'
 import { useState } from 'react'
 
@@ -16,6 +17,7 @@ export const WorkflowPreviewCard = ({
 }: {
   metadata: Record<string, unknown> | undefined
 }) => {
+  const { t } = useTranslation('channels')
   const parsed = WorkflowPreviewMessageMetadataSchema.safeParse(metadata)
   const [open, setOpen] = useState(false)
   const isOwner = useIsOwner()
@@ -31,9 +33,9 @@ export const WorkflowPreviewCard = ({
         className="mt-2 max-w-2xl rounded-[var(--radius-lg)] border border-[color:var(--line)] bg-[color:var(--panel-soft)] p-3"
         data-testid="workflow-preview-restricted"
       >
-        <p className="m-0 text-sm font-semibold text-[color:var(--tx1)]">Workflow preview</p>
+        <p className="m-0 text-sm font-semibold text-[color:var(--tx1)]">{t('child.workflow.title')}</p>
         <p className="mb-0 mt-1 text-xs text-[color:var(--tx2)]">
-          Workflow admin access is required to view this diagram.
+          {t('child.workflow.adminRequired')}
         </p>
       </section>
     )
@@ -52,18 +54,18 @@ export const WorkflowPreviewCard = ({
             <p className="m-0 truncate text-sm font-semibold text-[color:var(--tx1)]">
               {template.data.name}
             </p>
-            <p className="m-0 text-xs text-[color:var(--tx2)]">Workflow preview</p>
+            <p className="m-0 text-xs text-[color:var(--tx2)]">{t('child.workflow.title')}</p>
           </div>
           <a
             className="shrink-0 text-xs font-semibold text-[color:var(--thinking)] underline"
             href={designerHref}
             onClick={(event) => event.stopPropagation()}
           >
-            Open in Admin
+            {t('child.workflow.openInAdmin')}
           </a>
         </div>
         <button
-          aria-label={`Open ${template.data.name} workflow preview`}
+          aria-label={t('child.workflow.openPreview', { name: template.data.name })}
           className="block w-full overflow-hidden rounded-[var(--radius-md)] border border-[color:var(--line)] text-left transition-shadow hover:shadow-[0_8px_24px_var(--scrim-weak)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           onClick={(event) => {
             event.stopPropagation()
@@ -75,7 +77,7 @@ export const WorkflowPreviewCard = ({
         </button>
       </section>
       <Dialog
-        description="A live, read-only view of the saved workflow."
+        description={t('child.workflow.description')}
         onClose={() => setOpen(false)}
         open={open}
         size="full"
@@ -89,7 +91,7 @@ export const WorkflowPreviewCard = ({
             className="w-fit text-sm font-semibold text-[color:var(--thinking)] underline"
             href={designerHref}
           >
-            Open workflow in Admin
+            {t('child.workflow.openWorkflowInAdmin')}
           </a>
         </div>
       </Dialog>

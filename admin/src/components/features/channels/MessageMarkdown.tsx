@@ -1,4 +1,5 @@
 import React, { useMemo, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { normalizeMessageMarkdown } from '../../../lib/message-markdown'
@@ -38,18 +39,23 @@ const renderTextChildren = (
 // Channel content is stored as Markdown for both humans and agents. Text nodes
 // still pass through the channel mention renderer, while literal code stays
 // untouched so an @name or #channel inside a snippet is never made interactive.
-const ImagePlaceholder = ({ alt }: { alt?: string }) => (
-  <span
-    className={[
-      'my-1 inline-flex max-w-full items-center gap-1.5 rounded border border-dashed',
-      'border-[color:var(--sep)] px-2 py-1 text-xs text-[color:var(--tx3)]',
-    ].join(' ')}
-    data-testid="blocked-remote-image"
-  >
-    <span aria-hidden="true">🖼</span>
-    <span className="min-w-0 truncate">{alt?.trim() || 'Image'} — not loaded</span>
-  </span>
-)
+const ImagePlaceholder = ({ alt }: { alt?: string }) => {
+  const { t } = useTranslation('channels')
+  return (
+    <span
+      className={[
+        'my-1 inline-flex max-w-full items-center gap-1.5 rounded border border-dashed',
+        'border-[color:var(--sep)] px-2 py-1 text-xs text-[color:var(--tx3)]',
+      ].join(' ')}
+      data-testid="blocked-remote-image"
+    >
+      <span aria-hidden="true">🖼</span>
+      <span className="min-w-0 truncate">
+        {alt?.trim() || t('child.markdown.image')} {t('child.markdown.notLoaded')}
+      </span>
+    </span>
+  )
+}
 
 export const MessageMarkdown = ({
   allowRemoteImages = true,
@@ -57,6 +63,7 @@ export const MessageMarkdown = ({
   resolveAttachmentImages = false,
   renderInlineText,
 }: MessageMarkdownProps) => {
+  const { t } = useTranslation('channels')
   const components = useMemo<Components>(
     () => ({
       ...(resolveAttachmentImages
@@ -131,7 +138,7 @@ export const MessageMarkdown = ({
         </strong>
       ),
       table: ({ children: tableChildren, node: _node, ...props }) => (
-        <ExpandableTable expandable label="Message table">
+        <ExpandableTable expandable label={t('child.markdown.messageTable')}>
           <table {...props}>{tableChildren}</table>
         </ExpandableTable>
       ),
@@ -142,7 +149,7 @@ export const MessageMarkdown = ({
         <th {...props}>{renderTextChildren(cellChildren, renderInlineText)}</th>
       ),
     }),
-    [allowRemoteImages, renderInlineText, resolveAttachmentImages],
+    [allowRemoteImages, renderInlineText, resolveAttachmentImages, t],
   )
 
   return (

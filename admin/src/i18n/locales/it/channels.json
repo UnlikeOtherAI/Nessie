@@ -321,5 +321,29 @@
     "removeAttachment": "Rimuovi {{name}}",
     "removeAttachmentTitle": "Rimuovi",
     "uploadFailed": "Caricamento non riuscito"
+  },
+  "child": {
+    "rename": {
+      "title": "Rinomina conversazione",
+      "help": "Chiunque possa vedere questa conversazione ne vede il nome.",
+      "name": "Nome",
+      "cancel": "Annulla",
+      "save": "Salva",
+      "failed": "Impossibile rinominare questa conversazione.",
+      "offline": "Impossibile inviare la modifica. Controlla la connessione e riprova."
+    },
+    "workflow": {
+      "title": "Anteprima workflow",
+      "adminRequired": "È necessario l’accesso amministratore ai workflow per visualizzare questo diagramma.",
+      "openPreview": "Apri anteprima workflow di {{name}}",
+      "description": "Vista dal vivo e di sola lettura del workflow salvato.",
+      "openInAdmin": "Apri in Amministrazione",
+      "openWorkflowInAdmin": "Apri workflow in Amministrazione"
+    },
+    "markdown": {
+      "image": "Immagine",
+      "notLoaded": "— non caricata",
+      "messageTable": "Tabella del messaggio"
+    }
   }
 }

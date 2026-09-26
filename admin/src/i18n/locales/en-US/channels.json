@@ -321,5 +321,29 @@
     "removeAttachment": "Remove {{name}}",
     "removeAttachmentTitle": "Remove",
     "uploadFailed": "Upload failed"
+  },
+  "child": {
+    "rename": {
+      "title": "Rename conversation",
+      "help": "Anyone who can see this conversation sees the name.",
+      "name": "Name",
+      "cancel": "Cancel",
+      "save": "Save",
+      "failed": "This conversation could not be renamed.",
+      "offline": "The rename could not be sent. Check your connection and try again."
+    },
+    "workflow": {
+      "title": "Workflow preview",
+      "adminRequired": "Workflow admin access is required to view this diagram.",
+      "openPreview": "Open {{name}} workflow preview",
+      "description": "A live, read-only view of the saved workflow.",
+      "openInAdmin": "Open in Admin",
+      "openWorkflowInAdmin": "Open workflow in Admin"
+    },
+    "markdown": {
+      "image": "Image",
+      "notLoaded": "— not loaded",
+      "messageTable": "Message table"
+    }
   }
 }

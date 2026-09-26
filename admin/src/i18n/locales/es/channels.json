@@ -321,5 +321,29 @@
     "removeAttachment": "Quitar {{name}}",
     "removeAttachmentTitle": "Quitar",
     "uploadFailed": "Error al subir"
+  },
+  "child": {
+    "rename": {
+      "title": "Cambiar nombre de la conversación",
+      "help": "Cualquiera que pueda ver esta conversación verá su nombre.",
+      "name": "Nombre",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "failed": "No se pudo cambiar el nombre de esta conversación.",
+      "offline": "No se pudo enviar el cambio de nombre. Comprueba tu conexión e inténtalo de nuevo."
+    },
+    "workflow": {
+      "title": "Vista previa del flujo de trabajo",
+      "adminRequired": "Se requiere acceso de administrador de flujos de trabajo para ver este diagrama.",
+      "openPreview": "Abrir vista previa del flujo de trabajo {{name}}",
+      "description": "Vista en directo y de solo lectura del flujo guardado.",
+      "openInAdmin": "Abrir en Administración",
+      "openWorkflowInAdmin": "Abrir flujo de trabajo en Administración"
+    },
+    "markdown": {
+      "image": "Imagen",
+      "notLoaded": "— no se ha cargado",
+      "messageTable": "Tabla del mensaje"
+    }
   }
 }

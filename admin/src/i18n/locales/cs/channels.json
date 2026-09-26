@@ -321,5 +321,29 @@
     "removeAttachment": "Odebrat {{name}}",
     "removeAttachmentTitle": "Odebrat",
     "uploadFailed": "Nahrání se nezdařilo"
+  },
+  "child": {
+    "rename": {
+      "title": "Přejmenovat konverzaci",
+      "help": "Název uvidí každý, kdo má ke konverzaci přístup.",
+      "name": "Název",
+      "cancel": "Zrušit",
+      "save": "Uložit",
+      "failed": "Konverzaci se nepodařilo přejmenovat.",
+      "offline": "Přejmenování se nepodařilo odeslat. Zkontrolujte připojení a zkuste to znovu."
+    },
+    "workflow": {
+      "title": "Náhled workflow",
+      "adminRequired": "K zobrazení tohoto diagramu potřebujete přístup správce workflow.",
+      "openPreview": "Otevřít náhled workflow {{name}}",
+      "description": "Živý náhled uloženého workflow pouze ke čtení.",
+      "openInAdmin": "Otevřít v administraci",
+      "openWorkflowInAdmin": "Otevřít workflow v administraci"
+    },
+    "markdown": {
+      "image": "Obrázek",
+      "notLoaded": "— se nepodařilo načíst",
+      "messageTable": "Tabulka zprávy"
+    }
   }
 }

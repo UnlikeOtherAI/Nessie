@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiClientError } from '@nessie/client-core'
 import { CONVERSATION_TITLE_MAX_CHARS, type AgentConversationRecord } from '@nessie/schemas'
@@ -34,6 +35,7 @@ export const RenameConversationDialog = ({
   onClose,
   open,
 }: RenameConversationDialogProps) => {
+  const { t } = useTranslation('channels')
   const renameThread = useRenameThread()
   const currentTitle = conversation?.title ?? ''
   const [title, setTitle] = useState(currentTitle)
@@ -78,10 +80,10 @@ export const RenameConversationDialog = ({
       // never reached the server (offline, a dropped connection) is not about
       // the field at all.
       if (error instanceof ApiClientError) {
-        setFieldError(error.message || 'This conversation could not be renamed.')
+        setFieldError(error.message || t('child.rename.failed'))
         return
       }
-      setNoticeError('The rename could not be sent. Check your connection and try again.')
+      setNoticeError(t('child.rename.offline'))
     }
   }
 
@@ -90,13 +92,13 @@ export const RenameConversationDialog = ({
       initialFocusRef={inputRef}
       onClose={onClose}
       open={open && conversation !== null}
-      title="Rename conversation"
+      title={t('child.rename.title')}
     >
       <form className="grid gap-4" onSubmit={handleSubmit}>
         <FormField
           error={fieldError}
-          help="Anyone who can see this conversation sees the name."
-          label="Name"
+          help={t('child.rename.help')}
+          label={t('child.rename.name')}
           required
         >
           <Input
@@ -116,14 +118,14 @@ export const RenameConversationDialog = ({
 
         <FormActions>
           <button className="admin-button admin-button-secondary" onClick={onClose} type="button">
-            Cancel
+            {t('child.rename.cancel')}
           </button>
           <button
             className="admin-button admin-button-primary"
             disabled={!saveEnabled}
             type="submit"
           >
-            Save
+            {t('child.rename.save')}
           </button>
         </FormActions>
       </form>
