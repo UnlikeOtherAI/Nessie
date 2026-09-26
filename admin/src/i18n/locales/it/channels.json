@@ -274,5 +274,13 @@
     "title": "Presenze degli assistenti personali",
     "description": "Ogni presenza è l’assistente di un collega in questa conversazione; la sua configurazione privata non viene mostrata.",
     "addMine": "Aggiungi il mio assistente"
+  },
+  "allowedByRule": {
+    "allowed": "Sempre consentito",
+    "allowedByRule": "Consentito in base alle tue istruzioni:",
+    "confirmationOff": "Hai disattivato la conferma per questo account.",
+    "change": "Modifica",
+    "hideDetails": "Nascondi i dettagli",
+    "showDetails": "Mostra i dettagli"
   }
 }

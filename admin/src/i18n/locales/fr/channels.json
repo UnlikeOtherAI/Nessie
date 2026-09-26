@@ -274,5 +274,13 @@
     "title": "Présences des assistants personnels",
     "description": "Chaque présence correspond à l’assistant d’un collègue dans cette conversation, sans révéler sa configuration privée.",
     "addMine": "Ajouter mon assistant"
+  },
+  "allowedByRule": {
+    "allowed": "Toujours autorisé",
+    "allowedByRule": "Autorisé selon votre consigne :",
+    "confirmationOff": "Vous avez désactivé la confirmation pour ce compte.",
+    "change": "Modifier",
+    "hideDetails": "Masquer les détails",
+    "showDetails": "Afficher les détails"
   }
 }

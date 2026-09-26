@@ -274,5 +274,13 @@
     "title": "Personal Assistant presences",
     "description": "Each presence is a colleague's assistant in this conversation, without exposing its private configuration.",
     "addMine": "Add my assistant"
+  },
+  "allowedByRule": {
+    "allowed": "Always allowed",
+    "allowedByRule": "Allowed by what you told me:",
+    "confirmationOff": "You turned off confirmation for this account.",
+    "change": "Change this",
+    "hideDetails": "Hide the details",
+    "showDetails": "Show the details"
   }
 }

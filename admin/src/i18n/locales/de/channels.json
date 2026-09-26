@@ -274,5 +274,13 @@
     "title": "Präsenz persönlicher Assistenten",
     "description": "Jede Präsenz gehört zum Assistenten eines Kollegen in dieser Unterhaltung, ohne dessen private Konfiguration offenzulegen.",
     "addMine": "Meinen Assistenten hinzufügen"
+  },
+  "allowedByRule": {
+    "allowed": "Immer erlaubt",
+    "allowedByRule": "Aufgrund deiner Vorgabe erlaubt:",
+    "confirmationOff": "Du hast die Bestätigung für dieses Konto deaktiviert.",
+    "change": "Ändern",
+    "hideDetails": "Details ausblenden",
+    "showDetails": "Details anzeigen"
   }
 }

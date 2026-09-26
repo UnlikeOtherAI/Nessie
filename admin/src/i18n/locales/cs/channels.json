@@ -274,5 +274,13 @@
     "title": "Přítomnost osobních asistentů",
     "description": "Každý zobrazený asistent patří kolegovi v této konverzaci; jeho soukromé nastavení zůstává skryté.",
     "addMine": "Přidat mého asistenta"
+  },
+  "allowedByRule": {
+    "allowed": "Vždy povoleno",
+    "allowedByRule": "Povoleno podle vašeho pokynu:",
+    "confirmationOff": "Vypnuli jste potvrzování pro tento účet.",
+    "change": "Změnit",
+    "hideDetails": "Skrýt podrobnosti",
+    "showDetails": "Zobrazit podrobnosti"
   }
 }
