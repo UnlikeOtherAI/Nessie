@@ -12,7 +12,9 @@ import {
   connectionScopeOptions,
   keyScopeOptions,
   modelScopeOptions,
+  ownComputersDoorway,
   peopleScopeOptions,
+  teamDoorway,
   teamScopeOption,
   type ScopeViewer,
 } from '../src/pages/admin/scope-entitlements.js'
@@ -77,15 +79,84 @@ test('Company connections: the organisation and every team are any owner’s or 
 })
 
 test('People: the organisation for its administrators, and only the teams the viewer is in', () => {
-  const administrator = peopleScopeOptions({ canSeeOrganization: true }, TEAMS)
+  const administrator = peopleScopeOptions(
+    { administration: 'allowed', isOwner: false, isUoaSession: true },
+    TEAMS,
+  )
   assert.deepEqual(usable(administrator), [ORGANISATION_SCOPE, teamScopeValue(DESIGN.id)])
 
   // Somebody else still sees the organisation — disabled, and why — rather
   // than a switch that silently lacks it; a team they are not in is absent.
-  const member = peopleScopeOptions({ canSeeOrganization: false }, TEAMS)
+  const member = peopleScopeOptions(
+    { administration: 'forbidden', isOwner: false, isUoaSession: true },
+    TEAMS,
+  )
   assert.deepEqual(disabled(member), [ORGANISATION_SCOPE])
+  assert.match(member[0]?.unavailableReason ?? '', /organisation administrators/)
   assert.deepEqual(usable(member), [teamScopeValue(DESIGN.id)])
   assert.equal(member.some((option) => option.value === teamScopeValue(SALES.id)), false)
+
+  // A provider that could not be asked is said, not read as a refusal.
+  const unchecked = peopleScopeOptions(
+    { administration: 'unavailable', isOwner: false, isUoaSession: true },
+    TEAMS,
+  )
+  assert.match(unchecked[0]?.unavailableReason ?? '', /could not be checked/)
+})
+
+test('People on a local install: the local roster is its owner’s, whatever the standing says', () => {
+  // The server's administration standing allows a local admin, but the local
+  // roster's routes are owner-only (`/api/users` management, every write
+  // `requireOwner`), so its scope follows that route, not the standing.
+  const localAdmin = peopleScopeOptions(
+    { administration: 'allowed', isOwner: false, isUoaSession: false },
+    TEAMS,
+  )
+  assert.deepEqual(disabled(localAdmin), [ORGANISATION_SCOPE])
+  assert.match(localAdmin[0]?.unavailableReason ?? '', /organisation owner manages the people on this install/)
+
+  const localOwner = peopleScopeOptions(
+    { administration: 'allowed', isOwner: true, isUoaSession: false },
+    TEAMS,
+  )
+  assert.deepEqual(usable(localOwner), [ORGANISATION_SCOPE, teamScopeValue(DESIGN.id)])
+})
+
+test('a team page’s doorway opens the owning page at the team, or says who holds it', () => {
+  assert.deepEqual(
+    teamDoorway(modelScopeOptions(ADMIN, TEAMS), '/admin/models', DESIGN.id),
+    { href: `/admin/models?scope=team:${DESIGN.id}` },
+  )
+  assert.deepEqual(
+    teamDoorway(keyScopeOptions(ADMIN, TEAMS), '/admin/keys', DESIGN.id),
+    { reason: 'Only the organisation owner manages keys.' },
+  )
+})
+
+test('the own-computers row opens AI models only with the administration standing', () => {
+  const models = teamDoorway(modelScopeOptions(ADMIN, TEAMS), '/admin/models', DESIGN.id)
+
+  // With the standing — which on an unbound local install the server already
+  // grants a local owner or admin — the row is the AI models doorway.
+  assert.deepEqual(ownComputersDoorway(models, 'allowed'), models)
+
+  // An owner or admin without it (a bound organisation whose sign-in provider
+  // denies the capability) gets a greyed row that says who holds the policy,
+  // never a live row into the page's refusal.
+  assert.deepEqual(ownComputersDoorway(models, 'forbidden'), {
+    reason: 'Only an organisation administrator sees or sets this policy.',
+  })
+  assert.match(
+    'reason' in ownComputersDoorway(models, 'unavailable')
+      ? ownComputersDoorway(models, 'unavailable').reason
+      : '',
+    /could not be checked/,
+  )
+  assert.equal('reason' in ownComputersDoorway(models, undefined), true)
+
+  // A viewer the AI models page refuses outright hears that page's reason.
+  const refused = teamDoorway(modelScopeOptions(MEMBER, TEAMS), '/admin/models', DESIGN.id)
+  assert.deepEqual(ownComputersDoorway(refused, 'allowed'), refused)
 })
 
 test('an address that names no scope opens the organisation, when it is the viewer’s', () => {

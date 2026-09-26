@@ -363,8 +363,10 @@ As built:
 - **Scopes follow the API gates.** AI models: the organisation for its owner,
   every team for any owner or admin; Test is the owner's at either scope and
   is shown disabled, with the reason, to an admin; the own-computers policy
-  is shown only to the sign-in provider's administration standing its reads
-  need. Keys: the owner at every scope; anybody else is refused with a
+  is shown only to the organisation-administration standing its reads need,
+  read from the server's one answer (`useOrganizationAdministration`), which
+  on an unbound local install already allows a local owner or admin. Keys:
+  the owner at every scope; anybody else is refused with a
   doorway to Saved keys. Company connections: owner or admin at every scope;
   a shared cloud browser account (company or team) is the owner's to connect,
   so an admin sees its form and Disconnect greyed and saying so (`InertGate`,
@@ -388,7 +390,9 @@ As built:
   Overrides reads the team's narrowing, own-computers policy, shared
   mailboxes, cloud browser account and home page, and keys, with "Set by
   organisation", "Set by this team", "Locked by organisation" and "Locked by
-  this team" chips; each row opens the owning page at `?scope=team:<id>`.
+  this team" chips; each row opens the owning page at `?scope=team:<id>`, or
+  is greyed with who holds it — Keys for anyone but the owner, and the
+  own-computers row for anyone without the administration standing.
 - **Open, outside T2:** `GET /api/browser-cloud/connections` never returns a
   team's own connection, so a team's cloud browser panel cannot show a
   connected team account. It predates this change and needs the backend.
