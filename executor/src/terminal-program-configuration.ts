@@ -8,7 +8,7 @@ export const parseTerminalProgramInput = (value: unknown): TerminalProgramInput 
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid interactive program.')
   const input = value as Record<string, unknown>
   if (Object.keys(input).sort().join(',') !== 'command,workspaceRoot'
-    || !Array.isArray(input.command) || !input.command.length || input.command.length > 64
+    || !Array.isArray(input.command) || !input.command.length || input.command.length > 8
     || input.command.some((arg) => typeof arg !== 'string' || !arg || arg.includes('\0'))
     || typeof input.workspaceRoot !== 'string' || !input.workspaceRoot) throw new Error('Invalid interactive program.')
   return { command: input.command as string[], workspaceRoot: input.workspaceRoot }

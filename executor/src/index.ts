@@ -554,7 +554,9 @@ export const run = async (args: string[]): Promise<void> => {
       input.workspaceFolders,
       input.commandAllowlist,
       input.mcpServers,
-      input.terminalProgram ? { requested: await terminalProgramConfiguration(command.stateDir, state, input.terminalProgram) }
+      input.terminalProgram ? {
+        requested: await terminalProgramConfiguration(command.stateDir, state, input.terminalProgram),
+      }
         : 'codingSessions' in input ? { requested: input.codingSessions } : {},
       input.commandPolicy,
     )

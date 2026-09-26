@@ -24,7 +24,7 @@ export type ExecutorDescription = {
   policy: {
     limits: ExecutorLocalState['descriptor']['limits']
     operations: string[]
-    /** Empty means no program may start, not "no restriction". */
+    /** Legacy descriptor projection. commandPolicy is authoritative for local launch decisions. */
     permittedPrograms: string[]
     profiles: string[]
     revision: number

@@ -4,18 +4,20 @@ Chapter of [Running the Native Apps](overview.md).
 
 ## Pairing and unpairing
 
-There are two supervisors with different OS identities. The standalone
-**Nessie Executor** tray controls the boot-time `NessieExecutor` Windows
-service. Its virtual service account cannot run your personal Claude sessions.
-For Claude and interactive terminals, use **Nessie Desktop's user-session
-executor**, running as the Windows account where Claude is authenticated.
-Do not pair both supervisors as if they were one connection.
+The standalone **Nessie Executor** tray pairs new teams under your signed-in
+Windows account, where your coding tools are installed and authenticated.
+Its console is identical to macOS's. **Paired teams → Add team** gets a code;
+**Folders** and **Commands** edit only the selected team's local permissions.
+See [local executor controls](../executor-local-controls.md).
 
-Both can hold multiple independent account connections. Choose **Add account**
-in the tray, or **Executors → Pair executor → Connect this computer** in Desktop.
-The latter runs under your Windows account and is appropriate for personal
-terminal programs. Adding an account never replaces or stops an existing one.
-The headless equivalent is `nessie-executor pair --cli`; use `status` to list
+Existing boot-time `NessieExecutor` service connections remain available
+through their authenticated control pipe. That virtual service account cannot
+run your personal coding sessions. Adding a user connection preserves these
+service connections and their keys.
+
+Nessie Desktop also has independent user-session connections. Adding an
+account never replaces or stops another one. The headless equivalent is
+`nessie-executor login`; use `teams` to list CLI
 connections and a specific executor ID when starting, stopping or replacing one.
 
 1. Install the intended application. Public releases use Authenticode signing;
@@ -28,7 +30,8 @@ connections and a specific executor ID when starting, stopping or replacing one.
 4. Check Online in Nessie, review Permissions and grant agents access separately.
    Use the real `claude.exe`, not an npm/PowerShell shim; Windows supplies ConPTY.
 
-The service starts at boot; its tray starts at login. Desktop/user-session
+The service starts at boot. The tray's **Settings** tab has a launch-at-login
+toggle; quitting it stops the connections it owns. Desktop/user-session
 executors require that user's login environment. Preserve state in the owning
 supervisor's directory: never copy service keys into Desktop or vice versa.
 The tray refuses to silently duplicate an existing Desktop/CLI pairing.

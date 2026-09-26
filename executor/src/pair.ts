@@ -179,7 +179,7 @@ const configuredOperationKeys = (
   host: ExecutorHost,
   commandAllowlist: readonly string[],
   mcpServerCount: number,
-  allowAllCommands = false,
+  hasLocalCommandRules = false,
 ): string[] => {
   const requested = new Set(requestedOperationKeys)
   if (requested.size === 0 || requested.size !== requestedOperationKeys.length) {
@@ -226,7 +226,7 @@ const configuredOperationKeys = (
   // An enabled operation that can never succeed is a misconfiguration, not a
   // policy: with no permitted program, every command.run would be refused at
   // dispatch while the executor advertised the capability.
-  if (requested.has(COMMAND_OPERATION_KEY) && commandAllowlist.length === 0 && !allowAllCommands) {
+  if (requested.has(COMMAND_OPERATION_KEY) && commandAllowlist.length === 0 && !hasLocalCommandRules) {
     throw new Error('Name at least one permitted program before enabling command.run.')
   }
   const requestedMcpOperations = MCP_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey))
@@ -263,8 +263,8 @@ const profilesForOperationKeys = (operationKeys: string[]): string[] =>
 /**
  * Update the companion's locally enforced policy. Promotion additionally needs
  * an owner-verified native helper. This deliberately does not submit a
- * descriptor: `connect` signs and proposes the new revision, then an entitled
- * human must confirm its review in Nessie before it is usable.
+ * descriptor: the next connection signs and reports the new capabilities.
+ * Machine resource permissions remain owned by this local configuration.
  *
  * An omitted `commandAllowlist` keeps the permitted programs the policy already
  * names — a caller changing operations does not silently disarm the list — and
@@ -286,6 +286,7 @@ export const configureExecutorLocalPolicy = async (
   codingSessions: CodingSessionsRequest = {},
   commandPolicy?: LocalCommandPolicy,
 ): Promise<ExecutorLocalState> => {
+  const permittedPrograms = configuredCommandAllowlist(commandAllowlist ?? state.descriptor.commandAllowlist ?? [])
   const localRules = commandPolicy !== undefined ? parseLocalCommandPolicy(commandPolicy)
     : commandAllowlist !== undefined
       ? parseLocalCommandPolicy({ ...localCommandPolicyOf(state), mode: 'allowlist', allowlist: [...commandAllowlist] })
@@ -304,7 +305,6 @@ export const configureExecutorLocalPolicy = async (
     workspaceFolders: canonicalWorkspaceFolders,
   })
   const namedMcpServers = bridge.servers
-  const permittedPrograms = configuredCommandAllowlist(commandAllowlist ?? state.descriptor.commandAllowlist ?? [])
   const operationKeys = configuredOperationKeys(
     requestedOperationKeys,
     Boolean(state.browserSandbox),
@@ -312,7 +312,7 @@ export const configureExecutorLocalPolicy = async (
     host,
     localRules.allowlist,
     namedMcpServers.length,
-    localRules.mode === 'all',
+    commandPolicy !== undefined || state.commandPolicy !== undefined,
   )
   const helper = nativeHelperPath
     ? await verifyNativeHelperPath(nativeHelperPath)
@@ -391,7 +391,7 @@ export const configureExecutorBrowserSandbox = async (
     'sandbox.stop',
     ...BROWSER_OPERATION_KEYS,
   ])], true, Boolean(state.codexSandbox), host, localCommandPolicyOf(state).allowlist,
-  state.mcpServers?.length ?? 0, localCommandPolicyOf(state).mode === 'all')
+  state.mcpServers?.length ?? 0, state.commandPolicy !== undefined)
   const next: ExecutorLocalState = {
     ...state,
     browserSandbox,
@@ -442,7 +442,7 @@ export const configureExecutorCodexSandbox = async (
     'sandbox.stop',
     ...CODING_OPERATION_KEYS,
   ])], Boolean(state.browserSandbox), true, host,
-  localCommandPolicyOf(state).allowlist, state.mcpServers?.length ?? 0, localCommandPolicyOf(state).mode === 'all')
+  localCommandPolicyOf(state).allowlist, state.mcpServers?.length ?? 0, state.commandPolicy !== undefined)
   const next: ExecutorLocalState = {
     ...state,
     codexSandbox,

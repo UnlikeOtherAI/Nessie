@@ -251,7 +251,10 @@ export const ExecutorDesktopCompanionPanel = ({
                 <button className="admin-button admin-button-secondary" disabled={busy !== null} onClick={() => void run('start', () => startExecutorWithCompanion(activeExecutorId))} type="button">{busy === 'start' ? 'Starting…' : 'Start executor'}</button>
               )}
             </div>
-<p className="text-xs text-[color:var(--tx3)]">Folder and command permissions are controlled only in the local Nessie Executor app or CLI. Nessie manages who may use this executor.</p>
+            <p className="text-xs text-[color:var(--tx3)]">
+              Folder and command permissions are controlled only in the local Nessie Executor app or CLI.
+              Nessie manages who may use this executor.
+            </p>
             <div className="grid gap-1 border-t border-[color:var(--sep)] pt-3">
               <button
                 className="admin-button admin-button-secondary w-fit"

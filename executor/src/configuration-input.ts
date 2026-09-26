@@ -76,7 +76,9 @@ export const parseConfigurationInput = (text: string): ExecutorConfigurationInpu
     return malformed()
   }
   return {
-    ...(input.terminalProgram === undefined ? {} : { terminalProgram: parseTerminalProgramInput(input.terminalProgram) }),
+    ...(input.terminalProgram === undefined ? {} : {
+      terminalProgram: parseTerminalProgramInput(input.terminalProgram),
+    }),
     ...(input.commandPolicy === undefined ? {} : { commandPolicy: parseLocalCommandPolicy(input.commandPolicy) }),
     ...(codingSessions === undefined ? {} : { codingSessions }),
     ...(allowlist === undefined ? {} : { commandAllowlist: allowlist as string[] }),
