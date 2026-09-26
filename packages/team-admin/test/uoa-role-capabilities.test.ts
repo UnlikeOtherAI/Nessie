@@ -8,7 +8,7 @@ import {
   readUoaOrganizationRoleContext,
   uoaRoleHoldsCapability,
 } from '../src/uoa-role-capabilities.js'
-import { UoaRosterRejectedError } from '../src/uoa-org-roster.js'
+import { UoaRosterIdentityError, UoaRosterRejectedError } from '../src/uoa-org-roster.js'
 
 const privateKeyPem = String(
   generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({
@@ -47,6 +47,8 @@ const json = (payload: unknown, status = 200): Response =>
     headers: { 'content-type': 'application/json' },
   })
 
+const identity = { organizationId: 'org_acme', subject: 'alice', teamId: 'team_one', tokenVersion: 1 }
+
 test('the shared resolver keeps owner structural and unknown roles fail closed', () => {
   const grants = { org: { administrator: ['nessie.organisation.manage'] } }
 
@@ -67,7 +69,7 @@ test('the live UOA context must name the exact requested organisation', async ()
       resolveHost: async () => ['93.184.216.34'],
     }
 
-    const context = await readUoaOrganizationRoleContext('org_acme', deps)
+    const context = await readUoaOrganizationRoleContext('org_acme', identity, deps)
     assert.deepEqual(context, { organizationId: 'org_acme', role: 'administrator' })
     assert.equal(calls[0]?.pathname, '/org/me')
   })
@@ -76,11 +78,26 @@ test('the live UOA context must name the exact requested organisation', async ()
 test('a different UOA organisation is a refusal, never a local fallback', async () => {
   await withUoaEnv(async () => {
     await assert.rejects(
-      readUoaOrganizationRoleContext('org_acme', {
+      readUoaOrganizationRoleContext('org_acme', identity, {
         fetchImpl: (async () => json({ ok: true, org: { org_id: 'org_other', org_role: 'owner' } })) as PinnedFetch,
         resolveHost: async () => ['93.184.216.34'],
       }),
       UoaRosterRejectedError,
     )
+  })
+})
+
+test('without a current session for the organisation the read never reaches UOA', async () => {
+  await withUoaEnv(async () => {
+    const deps = {
+      fetchImpl: (async () => { throw new Error('must not call upstream') }) as PinnedFetch,
+      resolveHost: async () => ['93.184.216.34'],
+    }
+    for (const session of [undefined, { ...identity, organizationId: 'org_other' }, { ...identity, tokenVersion: null }]) {
+      await assert.rejects(
+        readUoaOrganizationRoleContext('org_acme', session, deps),
+        UoaRosterIdentityError,
+      )
+    }
   })
 })
