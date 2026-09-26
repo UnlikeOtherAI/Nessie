@@ -287,13 +287,22 @@ Facts not restated there:
     it is what the shareable placeholder exists for. The trade-off, accepted:
     that person's own follow-ups in the room stay restricted while such a post
     is in the window.
+  - **A checkpoint goes only to the run it was claimed for, or to a person's
+    reply** (`loadRunCheckpointForRun`). Its note quotes the stopped run's
+    sources verbatim, so admitting it stamps the reply. A reply in the
+    conversation it stopped in — same agent, principal, thread and reply root
+    — takes one only if its person may read it, asked before the one-shot
+    claim, so a member who may not read it leaves it for one who may; no other
+    run takes one by conversation at all. A schedule used to take a person's
+    "keep going" and post from their notes with their stamp
+    ([tech-and-run-budgets.md](tech-and-run-budgets.md) → "Who resumes one").
   A delegate in its own home is not contained and is unaffected. Deliberate
   reads — knowledge pages, conversation searches, attachments, executor
   output — and a trigger's own handed lineage stamp exactly as before. Pinned
   end to end, through the real trigger fire and run executor, by
-  `worker/test/db/scheduled-post-disclosure.test.ts`; the recall depth and
-  lineage cases by `project-write-recall.test.ts` and
-  `project-write-recall-depth.test.ts`.
+  `worker/test/db/scheduled-post-disclosure.test.ts` and
+  `checkpoint-resume-scope.test.ts`; the recall depth and lineage cases by
+  `project-write-recall.test.ts` and `project-write-recall-depth.test.ts`.
 - **Document versions retain their source boundary.** A `KnowledgePageVersion`
   stores its own basis scopes and private-conversation source authors. A reader
   first passes the document home's ordinary entitlement, then must satisfy the

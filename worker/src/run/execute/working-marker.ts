@@ -207,4 +207,11 @@ export const clearWorking = async (
 export const isContentlessAfterReacting = (
   reacted: boolean,
   responseText: string,
-): boolean => reacted && !/[\p{L}\p{N}]/u.test(responseText)
+): boolean => reacted && isWordless(responseText)
+
+/**
+ * Whether text says anything at all: a letter or a digit, in any script. A
+ * bare emoji or punctuation does not. It asks only that — never what the words
+ * mean — so it can decide what is posted without judging intent.
+ */
+export const isWordless = (text: string): boolean => !/[\p{L}\p{N}]/u.test(text)

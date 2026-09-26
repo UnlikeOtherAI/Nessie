@@ -29,11 +29,13 @@ const checkpointRow = (over: Record<string, unknown> = {}) => ({
 
 const transaction = <T>(work: (tx: unknown) => Promise<T>, tx: unknown): Promise<T> => work(tx)
 
+type CheckpointQuery = { take?: number; where: Record<string, unknown> }
+
 const prismaWith = (input: {
   row: ReturnType<typeof checkpointRow> | null
   updateCount: number
   updates?: UpdateManyArg[]
-  queries?: unknown[]
+  queries?: CheckpointQuery[]
   // The writing run's provenance ledger. A checkpoint belongs to one run, so
   // its `RunBasisScope` rows are the checkpoint's basis.
   runBasis?: Array<{ scopeType: string; scopeId: string }>
@@ -41,12 +43,20 @@ const prismaWith = (input: {
 }): PrismaClient => ({
   $transaction: async <T>(work: (tx: unknown) => Promise<T>) => transaction(work, {}),
   runCheckpoint: {
-    findFirst: async (arg: unknown) => {
+    // The checkpoint claimed for this run, when the row is that.
+    findFirst: async (arg: CheckpointQuery) => {
       input.queries?.push(arg)
-      return input.row
+      return input.row && input.row.consumedByRunId === arg.where['consumedByRunId'] ? input.row : null
     },
-    // The checkpoints the writing run had itself consumed: none here.
-    findMany: async () => [],
+    findMany: async (arg: CheckpointQuery) => {
+      // A reply's conversation: the row, while it is unconsumed.
+      if (arg.where['consumedByRunId'] === null) {
+        input.queries?.push(arg)
+        return input.row && input.row.consumedByRunId === null ? [input.row] : []
+      }
+      // The checkpoints the writing run had itself consumed: none here.
+      return []
+    },
     updateMany: async (arg: UpdateManyArg) => {
       input.updates?.push(arg)
       return { count: input.updateCount }
@@ -58,12 +68,29 @@ const prismaWith = (input: {
   toolCall: { findMany: async () => [] },
 } as unknown as PrismaClient)
 
-test('an unconsumed checkpoint is claimed by a single conditional update', async () => {
+// A person's own live turn, reading as they do.
+const person = (scopes: Array<{ scopeType: string; scopeId: string }> = []) => ({
+  kind: 'user' as const,
+  scopes,
+  userId: 'person-1',
+})
+
+// The run asking to resume: agent-1's reply in thread-1 under root-1.
+const reply = (resumer: ReturnType<typeof person> | null = person()) => ({
+  agentId: 'agent-1',
+  principalUserId: null,
+  resumer,
+  rootMessageId: 'root-1',
+  runId: 'run-2',
+  threadId: 'thread-1',
+})
+
+test('a person\'s reply claims its conversation\'s checkpoint by a single conditional update', async () => {
   const updates: UpdateManyArg[] = []
-  const queries: unknown[] = []
+  const queries: CheckpointQuery[] = []
   const loaded = await loadRunCheckpointForRun(
     prismaWith({ queries, row: checkpointRow(), updateCount: 1, updates }),
-    { rootMessageId: 'root-1', runId: 'run-2', threadId: 'thread-1' },
+    reply(),
   )
 
   assert.equal(loaded?.id, 'checkpoint-1')
@@ -76,18 +103,25 @@ test('an unconsumed checkpoint is claimed by a single conditional update', async
   assert.deepEqual(updates[0]?.where, { id: 'checkpoint-1', consumedByRunId: null })
   assert.equal(updates[0]?.data.consumedByRunId, 'run-2')
 
-  const where = (queries[0] as { where: Record<string, unknown> }).where
-  assert.equal(where.threadId, 'thread-1')
-  assert.deepEqual(where.OR, [
-    { consumedByRunId: 'run-2' },
-    { consumedByRunId: null, rootMessageId: 'root-1' },
+  // Nothing was claimed for this run, then the conversation: this agent and
+  // principal, this thread and reply root.
+  assert.deepEqual(queries.map(({ where }) => where), [
+    { consumedByRunId: 'run-2', reason: { not: 'crash' }, threadId: 'thread-1' },
+    {
+      agentId: 'agent-1',
+      consumedByRunId: null,
+      reason: { not: 'crash' },
+      rootMessageId: 'root-1',
+      run: { principalUserId: null },
+      threadId: 'thread-1',
+    },
   ])
 })
 
 test('losing the claim race is silent: the run proceeds without the notes', async () => {
   const loaded = await loadRunCheckpointForRun(
     prismaWith({ row: checkpointRow(), updateCount: 0 }),
-    { rootMessageId: null, runId: 'run-2', threadId: 'thread-1' },
+    reply(),
   )
   assert.equal(loaded, null)
 })
@@ -96,10 +130,42 @@ test('a checkpoint already claimed by THIS run is reused without a second update
   const updates: UpdateManyArg[] = []
   const loaded = await loadRunCheckpointForRun(
     prismaWith({ row: checkpointRow({ consumedByRunId: 'run-2' }), updateCount: 0, updates }),
-    { rootMessageId: null, runId: 'run-2', threadId: 'thread-1' },
+    // A continuation no person is live in still resumes what was claimed for it.
+    reply(null),
   )
   assert.equal(loaded?.id, 'checkpoint-1')
   assert.equal(updates.length, 0)
+})
+
+// A schedule, an event trigger, a channel policy or a wake is a contribution
+// to the room, not a reply to it: it used to claim a person's "keep going" and
+// answer from their notes.
+test('a run no person is live in does not pick up a conversation\'s checkpoint', async () => {
+  const updates: UpdateManyArg[] = []
+  const queries: CheckpointQuery[] = []
+  const loaded = await loadRunCheckpointForRun(
+    prismaWith({ queries, row: checkpointRow(), updateCount: 1, updates }),
+    reply(null),
+  )
+  assert.equal(loaded, null)
+  assert.equal(updates.length, 0)
+  assert.equal(queries.length, 1, 'only what was claimed for it is looked up')
+})
+
+// Asked before the one-shot claim: a reply that cannot read the notes used to
+// consume them and then drop them, so the person who could never got them back.
+test('a reply leaves a checkpoint its person may not read for one who may', async () => {
+  const updates: UpdateManyArg[] = []
+  const restricted = { runBasis: [{ scopeId: 'private-room', scopeType: 'channel' }], updateCount: 1, updates }
+  assert.equal(await loadRunCheckpointForRun(prismaWith({ ...restricted, row: checkpointRow() }), reply()), null)
+  assert.equal(updates.length, 0)
+
+  const loaded = await loadRunCheckpointForRun(
+    prismaWith({ ...restricted, row: checkpointRow() }),
+    reply(person([{ scopeId: 'private-room', scopeType: 'channel' }])),
+  )
+  assert.equal(loaded?.id, 'checkpoint-1')
+  assert.equal(updates.length, 1)
 })
 
 test('the injected block is explicitly untrusted and lists sources verbatim', () => {
@@ -212,7 +278,7 @@ test("a checkpoint carries the writing run's basis, so a resume cannot launder i
       runBasis: [{ scopeId: 'user-9', scopeType: 'user' }],
       updateCount: 1,
     }),
-    { rootMessageId: 'root-1', runId: 'run-2', threadId: 'thread-1' },
+    reply(person([{ scopeId: 'user-9', scopeType: 'user' }])),
   )
 
   assert.deepEqual(loaded?.basisScopes, [{ scopeId: 'user-9', scopeType: 'user' }])
@@ -221,7 +287,7 @@ test("a checkpoint carries the writing run's basis, so a resume cannot launder i
 test('an unrestricted checkpoint reports an empty basis, which is the common case', async () => {
   const loaded = await loadRunCheckpointForRun(
     prismaWith({ row: checkpointRow(), updateCount: 1 }),
-    { rootMessageId: 'root-1', runId: 'run-2', threadId: 'thread-1' },
+    reply(),
   )
 
   assert.deepEqual(loaded?.basisScopes, [])
@@ -236,7 +302,7 @@ test('a modern checkpoint restores its recorded private original author', async 
       runBasis: [{ scopeId: 'private-room', scopeType: 'channel' }],
       updateCount: 1,
     }),
-    { rootMessageId: 'root-1', runId: 'run-2', threadId: 'thread-1' },
+    reply(person([{ scopeId: 'private-room', scopeType: 'channel' }])),
   )
 
   assert.deepEqual(loaded?.disclosureSources, [

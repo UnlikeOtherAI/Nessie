@@ -9,6 +9,7 @@ test('Windows-native scope includes every shipped Windows source tree', () => {
     'executor/service-windows/src/main.rs',
     'executor/packaging/windows/nessie-executor.wxs',
     'executor/guest/kernel/PIN',
+    'packages/executor-console/main.js',
     'assets/icon-1024.png',
   ]) {
     assert.equal(isWindowsNative(file), true, file);

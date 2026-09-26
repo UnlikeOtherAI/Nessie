@@ -18,6 +18,7 @@ import {
 } from '@nessie/schemas'
 
 import { codingSessionsStateIsConsistent } from './coding-sessions-policy.js'
+import { parseLocalCommandPolicy, type LocalCommandPolicy } from './command-policy.js'
 import {
   assertExecutorLocalMcpServers,
   executorLocalMcpServerNames,
@@ -60,6 +61,7 @@ export type ExecutorCodexSandboxConfig = {
 }
 
 export type ExecutorLocalState = {
+  commandPolicy?: LocalCommandPolicy
   apiBaseUrl: string
   connectionEpoch?: string
   descriptor: {
@@ -219,7 +221,7 @@ export type ExecutorDeepTestExecutionGrant = ExecutorDeepTestSourceGrant & {
 }
 
 /** The VM managers never need paired credentials or control-plane metadata. */
-export type ExecutorGuestVmExecutionConfig = Pick<ExecutorLocalState, 'descriptor' | 'workspaceFolders'> & {
+export type ExecutorGuestVmExecutionConfig = Pick<ExecutorLocalState, 'descriptor' | 'workspaceFolders' | 'commandPolicy'> & {
   browserSandbox?: ExecutorBrowserSandboxConfig
 }
 
@@ -600,6 +602,7 @@ export const loadExecutorState = async (stateDir: string): Promise<ExecutorLocal
   await assertOwnerOnly(dirname(path), 'directory')
   await assertOwnerOnly(path, 'file')
   const parsed = JSON.parse(await readFile(path, 'utf8')) as Partial<ExecutorLocalState>
+  if (parsed.commandPolicy !== undefined) parsed.commandPolicy = parseLocalCommandPolicy(parsed.commandPolicy)
   const workspaceFolders = migratedWorkspaceFolders(parsed as LegacySingleRootShape)
   const mcpServers = parsed.mcpServers === undefined ? undefined : parseLocalMcpServers(parsed.mcpServers)
   if (

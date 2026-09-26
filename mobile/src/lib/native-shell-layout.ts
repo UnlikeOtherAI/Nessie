@@ -123,8 +123,8 @@ export const isFullScreenTaskRoute = (path: string): boolean => path === '/chann
 
 export type NativePhoneBarInput = {
   isIpad: boolean
-  // Android's own answer for the root lanes, from the last `nessie:screen`.
-  // iOS does not use it: see `shouldShowNativePhoneRootLanes`.
+  // The last `nessie:screen` classification, retained for non-iOS/Android hosts.
+  // Native mobile hosts use the global bar or published descriptor below.
   isTabRoot: boolean
   largePhoneLandscape: boolean
   platform: string
@@ -149,9 +149,10 @@ export type NativePhoneBarInput = {
  * the frame resized, one whole animation after the motion it belonged to. See
  * docs/plans/2026-09-05-ios-native-navigation-bar.md §4.
  *
- * Android is unchanged: it still shows the band only where it shows the team
- * and account controls. The same machinery can be turned on for it later by
- * giving it the iOS answer here, but that is a separate decision.
+ * Android keeps its team/account band wherever the tab dock is showing.
+ * Its screen headers stay in the WebView, so removing the band on a detail
+ * screen removed account access entirely — especially on tablets, where the
+ * selected conversation sits beside the list rather than replacing it.
  */
 export const shouldShowNativePhoneNavBar = (input: NativePhoneBarInput): boolean => {
   if (input.isIpad) return false
@@ -165,12 +166,13 @@ export const shouldShowNativePhoneNavBar = (input: NativePhoneBarInput): boolean
   // document load or a logout that replaces the whole app, never by a stack
   // transition, so that frame change is invisible and is accepted deliberately.
   if (input.platform === 'ios') return input.pastAuthGate
-  return input.showBar && (input.largePhoneLandscape || input.isTabRoot)
+  return input.showBar
 }
 
 /**
  * Whether the band carries the team identity and account controls — the root
- * lanes. Portrait only wants them at a tab root; the admitted large-phone
+ * lanes. Android keeps them on every screen with a dock. iOS portrait only
+ * wants them at a tab root; the admitted large-phone
  * landscape lane has room for its compact toolbar on any page, so it keeps
  * them while a detail is shown beside the menu. `isTabRoot` comes from the
  * last-known screen's `type === 'root'`, never from matching a path.
@@ -182,6 +184,9 @@ export const shouldShowNativePhoneNavBar = (input: NativePhoneBarInput): boolean
  */
 export const shouldShowNativePhoneRootLanes = (input: NativePhoneBarInput): boolean => {
   if (!shouldShowNativePhoneNavBar(input)) return false
+  // Android's band owns global controls on every ordinary screen. The web
+  // continues to own each screen's title, Back and actions.
+  if (input.platform === 'android') return true
   if (input.largePhoneLandscape) return true
   // On iOS the lanes follow the **published descriptor**, never the screen
   // type. They are not the same question: `screenType` is the *pathname's*

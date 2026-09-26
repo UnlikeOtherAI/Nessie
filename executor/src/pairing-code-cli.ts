@@ -36,7 +36,7 @@ const destination = (view: PairingCodeView): string => (
 const show = (view: PairingCodeView): void => {
   if (view.status === 'waiting') {
     process.stdout.write(`\n${[...(view.code ?? '')].map((digit) => `[ ${digit} ]`).join(' ')}\n`)
-    process.stdout.write('In Nessie, open Admin › Computers and choose Pair a computer. Enter this code.\n')
+    process.stdout.write('In Nessie, open Admin › Computers › Pair a computer and paste this code.\n')
     process.stdout.write(`${view.machineName ?? 'This computer'} — fingerprint: ${view.fingerprint ?? ''}\n`)
   } else if (view.status === 'confirmation') {
     process.stdout.write(`Connect ${view.machineName ?? 'this computer'} to ${destination(view)}?\n`)
@@ -57,7 +57,7 @@ export const runPairingCodeCli = async (
   args: string[], platform: NodeJS.Platform = process.platform,
 ): Promise<boolean> => {
   const command = args[0] ?? 'pair'
-  if (!['pairing-start', 'pairing-status', 'pairing-confirm', 'pairing-cancel', 'pair'].includes(command)) return false
+  if (!['login', 'pairing-start', 'pairing-status', 'pairing-confirm', 'pairing-cancel', 'pair'].includes(command)) return false
   if (command === 'pair' && args.includes('--enrollment')) return false
   if (pairingUsesWindowsTray(args, platform)) {
     process.stdout.write('Open Nessie Executor in the Windows tray and choose Pair with Nessie.\n')
@@ -121,7 +121,7 @@ export const runPairingCodeCli = async (
     if (!explicitDirectory && view.status === 'paired' && view.executorId) {
       await promoteDefaultPairing(directory, view.executorId)
       if (!json && process.stdin.isTTY && platform === 'linux'
-        && (command === 'pair' || command === 'pairing-start')) {
+        && ['login', 'pair', 'pairing-start'].includes(command)) {
         const environment = createExecutorServiceEnvironment()
         await enableExecutorService({ executorId: view.executorId, assumeYes: true }, {
           ...environment, write: () => undefined,

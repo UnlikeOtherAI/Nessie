@@ -26,6 +26,8 @@ Assistant's `channel_list` / `channel_update` tools. Read
 [its browser evaluation](docs/testing/channel-decisions.md) before changing them.
 
 Executor pairing, independent account/server connections on each platform, and live presence on the computers lists follow [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md), including their browser verification.
+
+The shared macOS/Windows console and machine-only, per-team resource permissions follow [local executor controls](docs/executor-local-controls.md).
 Direct machine access from private agent chat and its self-reminders follows [executor sharing](docs/standards/executor-sharing.md); named internal links and `nessie_link` follow [agent voice](docs/standards/agent-voice.md).
 Authorized executor access has no additional private-conversation write veto; output disclosure still follows [the disclosure standard](docs/standards/disclosure-boundaries.md).
 
@@ -153,7 +155,10 @@ sentence changes only if the invariant itself did.
   Worker-only tests also build the real executor bridge fixture dependency.
   The Linux desktop workflow generates Prisma, builds `@nessie/executor` with
   its workspace dependencies, and prepares the packaged runtime before Tauri
-  builds, matching Windows.
+  builds, matching Windows. Windows releases authenticate to Azure Artifact
+  Signing through the approved release environment's immutable GitHub OIDC
+  subject and pin the certificate profile's durable EKU, never a rotating leaf
+  thumbprint; see [build and release](docs/standards/build-and-release.md).
 - **Preview fixtures stay out of production bundles.** Register the fixture
   in `admin/vite.config.ts` behind its `NESSIE_<NAME>_E2E_FIXTURE` flag, set
   that flag for a manual preview build, and list it in `@nessie/admin#build`

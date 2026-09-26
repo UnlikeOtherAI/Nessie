@@ -1,5 +1,4 @@
 import {
-  executorCommandAllowlistPermits,
   ExecutorCommandRunArgumentsSchema,
   type ExecutorCommandEnvelope,
 } from '@nessie/schemas'
@@ -12,6 +11,7 @@ import {
   type GuestWorkspaceLease,
 } from './guest-workspace-lease.js'
 import type { ExecutorGuestVmExecutionConfig } from './state-store.js'
+import { localCommandPolicyPermits } from './command-policy.js'
 
 const COMMAND_SESSION_MAX_MS = 10 * 60 * 1_000
 const COMMAND_RESULT_MAX_BYTES = 8_192
@@ -177,8 +177,8 @@ export const createExecutorCommandSessionManager = (
       // permitted cannot even cost a VM boot. This is the one path both the
       // control plane and the DeepTest execution adapter reach, which is why
       // the decision lives here rather than only at the daemon's dispatch.
-      if (!executorCommandAllowlistPermits(
-        state.descriptor.commandAllowlist,
+      if (!localCommandPolicyPermits(
+        state,
         args.data.program,
         args.data.args,
       )) {

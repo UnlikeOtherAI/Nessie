@@ -136,15 +136,38 @@ mod imp {
 }
 
 #[cfg(windows)]
-pub use imp::call;
+use imp::call as service_call;
 
 /// The pipe is a Windows object; on any other host the service is simply not
 /// there to answer, and the view says so in the words it would use for a
 /// stopped service.
 #[cfg(not(windows))]
-pub fn call(request: &serde_json::Value) -> Result<ServiceResponse, String> {
+fn service_call(request: &serde_json::Value) -> Result<ServiceResponse, String> {
     let _ = request;
     Err(SERVICE_NOT_RUNNING.to_owned())
+}
+
+/// New pairings belong to this user's session. Existing service connections
+/// retain their original identity and authenticated pipe authorization.
+pub fn call(request: &serde_json::Value) -> Result<ServiceResponse, String> {
+    let command = request["command"].as_str().unwrap_or("");
+    if command == "status" {
+        let ServiceResponse::Status(mut executors) = crate::user_connections::call(request)? else {
+            return Err("Could not list local teams.".into());
+        };
+        match service_call(request) {
+            Ok(ServiceResponse::Status(service)) => executors.extend(service),
+            Err(reason) if reason == SERVICE_NOT_RUNNING || reason == NOT_ADMITTED => {}
+            Err(reason) => return Err(reason),
+            _ => return Err("The service returned an invalid team list.".into()),
+        }
+        return Ok(ServiceResponse::Status(executors));
+    }
+    let local = request["executorId"].as_str().map(crate::user_connections::owns);
+    if local == Some(true) || (local.is_none() && matches!(command,
+        "pairingStart" | "pairingStatus" | "pairingConfirm" | "pairingCancel")) {
+        crate::user_connections::call(request)
+    } else { service_call(request) }
 }
 
 /// The recognised answer shapes, and nothing else: an answer this reader does

@@ -4,18 +4,20 @@ Chapter of [Running the Native Apps](overview.md).
 
 ## Pairing and unpairing
 
-There are two supervisors with different OS identities. The standalone
-**Nessie Executor** tray controls the boot-time `NessieExecutor` Windows
-service. Its virtual service account cannot run your personal Claude sessions.
-For Claude and interactive terminals, use **Nessie Desktop's user-session
-executor**, running as the Windows account where Claude is authenticated.
-Do not pair both supervisors as if they were one connection.
+The standalone **Nessie Executor** tray pairs new teams under your signed-in
+Windows account, where your coding tools are installed and authenticated.
+Its console is identical to macOS's. **Paired teams → Add team** gets a code;
+**Folders** and **Commands** edit only the selected team's local permissions.
+See [local executor controls](../executor-local-controls.md).
 
-Both can hold multiple independent account connections. Choose **Add account**
-in the tray, or **Admin › Computers › Pair a computer › Connect this computer** in Desktop.
-The latter runs under your Windows account and is appropriate for personal
-terminal programs. Adding an account never replaces or stops an existing one.
-The headless equivalent is `nessie-executor pair --cli`; use `status` to list
+Existing boot-time `NessieExecutor` service connections remain available
+through their authenticated control pipe. That virtual service account cannot
+run your personal coding sessions. Adding a user connection preserves these
+service connections and their keys.
+
+Nessie Desktop also has independent user-session connections. Adding an
+account never replaces or stops another one. The headless equivalent is
+`nessie-executor login`; use `teams` to list CLI
 connections and a specific executor ID when starting, stopping or replacing one.
 
 1. Install the intended application. Public releases use Authenticode signing;
@@ -28,7 +30,8 @@ connections and a specific executor ID when starting, stopping or replacing one.
 4. Check Online in Nessie, review Permissions and grant agents access separately.
    Use the real `claude.exe`, not an npm/PowerShell shim; Windows supplies ConPTY.
 
-The service starts at boot; its tray starts at login. Desktop/user-session
+The service starts at boot. The tray's **Settings** tab has a launch-at-login
+toggle; quitting it stops the connections it owns. Desktop/user-session
 executors require that user's login environment. Preserve state in the owning
 supervisor's directory: never copy service keys into Desktop or vice versa.
 The tray refuses to silently duplicate an existing Desktop/CLI pairing.
@@ -103,33 +106,32 @@ including it in the hash-verified runtime layout.
 
 Tauri uses the Windows bundle settings in `desktop/src-tauri/tauri.conf.json` for NSIS and WiX packaging.
 
-To create a build whose executor controls can be used, pin the publisher:
+To create a build whose executor controls can be used, pin the Artifact Signing
+certificate profile:
 
 ```sh
-NESSIE_DESKTOP_WINDOWS_SIGNER_THUMBPRINT=<SHA1_THUMBPRINT> \
+NESSIE_DESKTOP_WINDOWS_SIGNER_EKU=<PROFILE_SPECIFIC_EKU> \
   pnpm --dir desktop run tauri:build:embedded -- --bundles nsis,msi
 ```
 
 That variable is the Windows analogue of macOS's
-`NESSIE_DESKTOP_SIGNING_TEAM_ID`: the SHA-1 thumbprint (40 hexadecimal
-characters, case-insensitive) of the code-signing certificate the release is
-signed with, compiled into the build. At runtime the companion verifies its own
-executable with `WinVerifyTrust` and then reads the signer certificate out of
-that verification and compares its thumbprint to the pinned one — `WinVerifyTrust`
-alone answers "trusted", never "by whom", so a build validly signed by anyone
-else is refused exactly like an unsigned one. Sign the bundle with that same
-certificate after building it, and do not replace a pinned build with a
-differently signed copy: its executor controls will intentionally stay
-unavailable. The packaged executor runtime's hash manifest is checked as a
-second gate, as on every platform. The trusted workflow also compiles the
-manifest's exact Node, executor-bundle, and native-helper hashes into the
-desktop executable before signing it. A per-user install is writable by that
-user, so the adjacent manifest is never its own authority: replacing JavaScript
-and rewriting the manifest still fails against the copy held by the signed
-application.
+`NESSIE_DESKTOP_SIGNING_TEAM_ID`: the profile-specific
+`1.3.6.1.4.1.311.97.*` EKU that Azure keeps stable across that profile's daily
+leaf-certificate renewals. At runtime the companion verifies its own executable
+with `WinVerifyTrust` and then reads the trusted signer certificate's EKUs and
+requires the compiled profile identity — `WinVerifyTrust` alone answers
+"trusted", never "by whom", while pinning the short-lived certificate's
+thumbprint would break every day. A valid signature from another Artifact
+Signing profile is refused exactly like an unsigned one. The packaged executor
+runtime's hash manifest is checked as a second gate, as on every platform. The
+trusted workflow also compiles the manifest's exact Node, executor-bundle, and
+native-helper hashes into the desktop executable before signing it. A per-user
+install is writable by that user, so the adjacent manifest is never its own
+authority: replacing JavaScript and rewriting the manifest still fails against
+the copy held by the signed application.
 
 The build above is otherwise an unsigned development build, and without the
-pinned thumbprint the Executors panel reports `unsigned_release` and names the
+pinned profile EKU the Executors panel reports `unsigned_release` and names the
 remedy rather than disappearing. On a machine with no Hyper-V — Windows Home,
 where it is an edition rather than a setting — the companion pairs as
 `workspace_only`: file review and drafts work, sandboxed commands, browsers and
@@ -198,29 +200,37 @@ reputation. The keys are placeholders in
 `desktop/src-tauri/tauri.windows.conf.json` (`digestAlgorithm` is `sha256`; the
 rest are `null`) and the workflow overrides them:
 
-A `desktop-v*` tag is a release boundary: the workflow fails immediately when
-any signing setting is absent, and every Nessie executable and installer must
-have a valid signature whose subject and exact certificate thumbprint match the
-pinned publisher. A manual run of the exact `main` branch with `source_ref`
+A `v*` tag is a release boundary: the workflow fails immediately when any
+signing setting is absent, and every Nessie executable and installer must have
+a valid signature whose subject and profile-specific EKU match the pinned
+publisher. A manual run of the exact `main` branch with `source_ref`
 empty is also a signed verification boundary and fails closed when the signer
 is absent. This produces an installable security-test artifact without minting
-a release tag. Manual source overrides and non-main runs never receive signing
-credentials and remain unsigned development evidence only. They also never
-reach the persistent self-hosted Hyper-V runner; its administrator-level job is
-gated to the exact trusted `main` run or a release tag, after the signed build
-and install checks pass.
+a release tag. The environment admits only `v*` tags and `main`, so manual
+source overrides and non-main runs cannot enter the signing job or receive an
+OIDC token. The persistent self-hosted Hyper-V runner's administrator-level job
+is likewise gated to the exact trusted `main` run or a release tag, after the
+signed build and install checks pass.
 
-| Secret | What it holds |
+The `direct-download-release` GitHub environment is the trust boundary. Its
+release-owner approval and `v*`/`main` deployment policies gate the job; the job
+then exchanges GitHub's immutable repository-and-environment OIDC subject for
+an Azure token. No client secret or exportable certificate key exists.
+
+| Repository variable | What it holds |
 | --- | --- |
-| `WINDOWS_SIGN_COMMAND` | the whole sign command, with `%1` where the file goes |
-| `WINDOWS_SIGN_TOOL_INSTALL` | the command that installs that signing CLI on the runner |
-| `WINDOWS_SIGNER_THUMBPRINT` | the publisher compiled into the release as `NESSIE_DESKTOP_WINDOWS_SIGNER_THUMBPRINT` |
-| `WINDOWS_SIGNER_SUBJECT` | the certificate subject every artifact is verified against |
-| `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_CLIENT_SECRET` | passed to the signing CLI when the configuration is Azure |
+| `AZURE_CLIENT_ID` | client ID of the `nessie-github-signing` managed identity |
+| `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` | Artifact Signing tenant and subscription |
+| `WINDOWS_ARTIFACT_SIGNING_ENDPOINT` | regional account endpoint |
+| `WINDOWS_ARTIFACT_SIGNING_ACCOUNT` / `WINDOWS_ARTIFACT_SIGNING_PROFILE` | account and certificate profile names |
+| `WINDOWS_SIGNER_EKU` | durable profile-specific EKU compiled into the release |
+| `WINDOWS_SIGNER_SUBJECT` | certificate subject every artifact is verified against |
 
-With all of them set, the workflow verifies every `.exe` and `.msi` with
+With all of them set, `scripts/sign-windows-artifact.ps1` invokes Microsoft's
+Artifact Signing client tools for every build-stage binary and installer. The
+workflow then verifies every `.exe` and `.msi` with
 `Get-AuthenticodeSignature` and fails unless each reports `Valid` with the
-expected subject. With them absent it prints an **unsigned development build**
+expected subject and EKU. With them absent it prints an **unsigned development build**
 warning, skips the gate, and never calls the result a release — and because no
 publisher is pinned into it, the desktop companion and the executor service
 both refuse executor controls, which is the same refusal a tampered build gets.

@@ -119,12 +119,11 @@ for the lease. A daemon Desktop started itself stays Desktop's to stop.
 
 ## First run and pairing
 
-In the menu bar app, open **Settings**, choose the folder this Mac may read,
-and click **Get pairing code**. The app displays eight decimal digits in
-separate boxes with a countdown, followed by this Mac's name and fingerprint.
-In Nessie, open **Admin › Computers › Pair a
-computer** and enter those digits. Choose the organisation, team, and access
-offered there, and review the machine fingerprint.
+In the menu bar app, choose **Add team**, choose the folder this Mac may read,
+and click **Get pairing code**. The app displays eight digits in large black
+text with a Copy button and countdown, followed by its name and fingerprint.
+In Nessie, open **Admin › Computers › Pair a computer** and enter those digits.
+Check the current team and review the machine fingerprint.
 
 The Mac then names that organisation and team beside its machine fingerprint.
 Click **Confirm and connect** on the Mac only when those names match the
@@ -134,22 +133,16 @@ Expired codes cannot be confirmed, and **Cancel pairing** cancels the pending
 attempt through the same runtime that created it. Closing the window leaves
 the attempt available until it expires, including after reopening the app.
 
-An already paired Mac shows connections in the menu and account selector.
-**Add account** creates another while existing connections keep running.
-The selected account uses the same settings and tools views. **Replace
-pairing…** explains which connection will close and offers replacement or
-cancel. Replacement stops this app's executor, retires its old server binding
-through the shared runtime, and only then requests another code. Replacement
-affects only the selected connection; adding an account never replaces one.
-Names are read live from Nessie and held only in memory.
-If replacement is blocked by unfinished local work, the app asks you to remove
-local drafts and stop sandboxes before trying again. This preserves those
-artifacts until you explicitly clear them.
+An already paired Mac shows connections in the menu and **Paired teams** tab.
+**Add team** creates another while existing connections keep running.
+**Folders** and **Commands** apply only to the selected team's local
+permissions; **Settings** contains the login toggle. Names are read live from
+Nessie and held only in memory. The console is the same packaged document as
+Windows's; see [local executor controls](../executor-local-controls.md).
 
-**Which Nessie** offers the named hosted services **Nessie** and **DeepTest**,
-plus **A Nessie you host yourself**. The latter accepts the secure address of
-the person's instance. A development build also offers **Local development**;
-a release does not. Origin validation remains shared with the CLI contract in
+The pairing form accepts the Nessie API address and defaults to production.
+Development builds also permit a local API; releases require HTTPS.
+Origin validation remains shared with the CLI contract in
 `packages/schemas/src/executor-pairing-origins.ts`, with Swift tests checking
 the pinned hosted choices. No copied command, enrollment credential, state
 path, or server address appears as the identity of a paired organisation.

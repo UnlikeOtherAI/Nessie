@@ -48,6 +48,7 @@ const nativeCargoTests = [
   ["Test desktop Rust crate", "desktop/src-tauri/Cargo.toml"],
   ["Test executor native helper crate", "executor/native/Cargo.toml"],
   ["Test Windows provenance crate", "executor/windows-provenance/Cargo.toml"],
+  ["Test shared Windows executor runtime", "executor/windows-common/Cargo.toml"],
   ["Test executor service crate", "executor/service-windows/Cargo.toml"],
   ["Test Hyper-V bridge crate", "executor/hyperv-bridge/Cargo.toml"],
   ["Test executor tray crate", "executor/tray-windows/src-tauri/Cargo.toml"],

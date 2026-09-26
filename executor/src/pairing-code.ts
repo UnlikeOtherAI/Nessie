@@ -1,5 +1,6 @@
 import { createPrivateKey, generateKeyPairSync, randomUUID, sign } from 'node:crypto'
 import { hostname } from 'node:os'
+import { newLocalCommandPolicy } from './command-policy.js'
 
 import {
   canonicalExecutorPayload,
@@ -171,6 +172,7 @@ export const createPairingCodeClient = (overrides: Partial<typeof pairingDepende
     const state = await existingState(directory)
     if (state && state.executorId !== claim.executorId) throw new Error('This computer already has another pairing.')
     if (!state) await saveExecutorState(directory, {
+      commandPolicy: newLocalCommandPolicy(),
       apiBaseUrl: pending.apiBaseUrl, descriptor: localPolicy(pending.workspaceFolders), executorId: claim.executorId,
       machinePrivateKey: pending.machinePrivateKey, machinePublicKey: pending.request.machinePublicKey,
       workspaceFolders: pending.workspaceFolders,

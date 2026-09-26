@@ -134,15 +134,25 @@ const PairingSession = ({
 
   return (
     <Dialog
-      description={!preview ? 'Open Nessie Executor on your machine and choose Pair with Nessie.' : undefined}
+      description={!preview ? 'Paste the pairing code from the computer you want to connect.' : undefined}
       dismissDisabled={busy}
       onClose={() => void close()}
       open
-      title={paired ? 'Machine paired' : executorId ? 'Confirm on your machine' : 'Pair an executor'}
+      title={paired ? 'Machine paired' : executorId ? 'Confirm on your machine' : 'Add executor'}
     >
       <div className="grid gap-4">
         {!preview ? (
           <form className="grid gap-4" onSubmit={(event) => void lookup(event)}>
+            <div className="grid gap-2 text-sm text-[color:var(--tx2)]">
+              <p>Open Nessie Executor on Windows or Mac, choose <strong>Add team</strong>, select a folder, then
+                choose <strong>Get pairing code</strong>.</p>
+              <p>For the CLI, run this on the computer you want to connect:</p>
+              <code className="break-all rounded bg-[var(--overlay-weak)] p-3 text-xs">
+                nessie-executor login --api {getExecutorApiOrigin(getBaseUrl())} --workspace &quot;/path/to/folder&quot;
+              </code>
+              <p>Paste the eight-digit code below, then confirm this team on the computer. Folder and command
+                permissions stay on that computer; you manage team access in Nessie.</p>
+            </div>
             {canPairHere ? (
               <button className="admin-button admin-button-secondary" disabled={busy} onClick={() => void pairHere()} type="button">
                 {localBusy ? 'Connecting…' : 'Connect this computer'}

@@ -114,7 +114,7 @@ pipe, and lives while the app runs. Behind it:
   `std::env::current_exe()` (Authenticode validity and chain), then the
   signer certificate read from the verification state — WinVerifyTrust alone
   answers "trusted", not "by whom" — pinned to the publisher compiled into the
-  release via `option_env!("NESSIE_DESKTOP_WINDOWS_SIGNER_THUMBPRINT")`, the
+  release via `option_env!("NESSIE_DESKTOP_WINDOWS_SIGNER_EKU")`, the
   analogue of `NESSIE_DESKTOP_SIGNING_TEAM_ID`. The packaged-runtime hash
   manifest stays as the second check.
 - **Owner-only state is a DACL.** `state-store.ts` and `daemon-lease.ts`

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { register } from 'node:module'
 import { JSDOM } from 'jsdom'
 import type { ReactNode } from 'react'
 
@@ -17,6 +18,7 @@ const domGlobals = {
   navigator: dom.window.navigator,
   HTMLElement: dom.window.HTMLElement,
   Element: dom.window.Element,
+  CustomEvent: dom.window.CustomEvent,
   Touch: dom.window.Touch,
   TouchEvent: dom.window.TouchEvent,
   getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
@@ -112,6 +114,7 @@ Object.defineProperty(dom.window.Element.prototype, 'animate', {
   },
 })
 
+register('./ionic-loader.mjs', import.meta.url)
 const React = await import('react')
 const { act, createElement: h } = React
 const { createRoot } = await import('react-dom/client')
@@ -183,6 +186,7 @@ export type PhoneNavigationViewportHarness = {
 }
 
 export type PhoneNavigationViewportOptions = {
+  onRender?: () => void
   // Replaces the detail route's default nested-stage fixture. An adopter that
   // mounts its own stages (the column browser) renders itself here and drives
   // them with `render`, while `setStage` keeps serving the default fixture.
@@ -342,7 +346,8 @@ export const mountPhoneNavigationViewport = async (
         h(
           LocalBackProvider,
           null,
-          h(PhoneNavigationProvider, null, h(BackProbe), h(Host)),
+          h(React.Profiler, { id: 'navigation', onRender: () => options.onRender?.() },
+            h(PhoneNavigationProvider, null, h(BackProbe), h(Host))),
         ),
       ),
     )
@@ -350,6 +355,7 @@ export const mountPhoneNavigationViewport = async (
   await flush()
 
   let eventClock = 1000
+  let touchTarget: Element | null = null
   const touch = (
     type: string,
     x: number,
@@ -375,9 +381,18 @@ export const mountPhoneNavigationViewport = async (
       touches: ended ? [] : touches,
     })
     Object.defineProperty(event, 'timeStamp', { value: eventClock })
+    if (type === 'touchstart') touchTarget = target ?? viewport
     act(() => {
-      ;(target ?? viewport).dispatchEvent(event)
+      ;(target ?? touchTarget ?? viewport).dispatchEvent(event)
+      // Ionic delivers captured movement on animation frames, like a browser.
+      if (type === 'touchmove') {
+        const frames = [...pendingFrames.values()]
+        pendingFrames.clear()
+        frameClock += 16
+        for (const frame of frames) frame(frameClock)
+      }
     })
+    if (ended) touchTarget = null
   }
 
   return {
