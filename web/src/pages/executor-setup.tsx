@@ -75,9 +75,9 @@ export const ExecutorSetupPage = () => (
         code, fingerprint and countdown.
       </li>
       <li>
-        Sign in to Nessie and open <strong>Agents → Executors → Pair executor</strong>. Enter all
+        Sign in to Nessie and open <strong>Admin › Computers › Pair a computer</strong>. Enter all
         eight digits, including any leading zeroes. Choose the organisation, the correct team from
-        the live picker and the access scope. A project&rsquo;s Executors tab opens the same pairing
+        the live picker and the access scope. A project&rsquo;s Computers tab opens the same pairing
         flow with that project selected. Do not create a similarly named team to work around a
         missing choice.
       </li>
@@ -112,7 +112,7 @@ export const ExecutorSetupPage = () => (
 
     <h2>Sessions and sharing</h2>
     <p>
-      Open <strong>Executors → Sessions</strong>, an executor&rsquo;s <strong>Sessions</strong> tab,
+      Open <strong>Admin › Computers › Sessions</strong>, an executor&rsquo;s <strong>Sessions</strong> tab,
       or the session link returned by an agent to view live output. <strong>Share session</strong>
       gives named people in your organisation view-only access to that session&rsquo;s screen and
       available scrollback. A URL by itself grants nothing. Viewers cannot type, close or reshare

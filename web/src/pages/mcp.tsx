@@ -51,7 +51,7 @@ export const McpPage = () => (
     </ul>
     <p>
       Most people never touch either directly. The doorway in the admin is the app store
-      at <code>/apps</code>: it browses the same catalogue with the connection details
+      at <code>/admin/apps</code>: it browses the same catalogue with the connection details
       hidden, and <code>Connect</code> on a listing creates an instance. Operators who
       want the raw objects use <code>/api/mcp/catalog</code> and{' '}
       <code>/api/mcp/instances</code>.
@@ -144,7 +144,7 @@ export const McpPage = () => (
     <p>
       Connecting a server does not hand its tools to anybody. When an instance is
       installed, Nessie probes it and projects each tool it advertises into the tool
-      registry, which is what the admin shows at <code>/agents/tools</code> — built-in
+      registry, which is what the admin shows at <code>/admin/advanced/tools</code> — built-in
       tools, MCP tools, bundle tools and executor tools in one list, each with its
       source and status.
     </p>
@@ -179,10 +179,10 @@ export const McpPage = () => (
     </p>
     <p>
       One thing that is easy to look for in the wrong place:{' '}
-      <code>/settings/connections</code> in the admin is <em>connected accounts</em> —
+      <code>/settings/accounts</code> in the admin is <em>connected accounts</em> —
       Slack, mailboxes, model subscriptions and the OAuth links to Linear, Jira, GitHub
-      and Trello that back external boards. MCP connectors are at <code>/apps</code>,
-      and the tools they produce are at <code>/agents/tools</code>.
+      and Trello that back external boards. MCP connectors are at <code>/admin/apps</code>,
+      and the tools they produce are at <code>/admin/advanced/tools</code>.
     </p>
 
     <h3>Approval gates on tool calls</h3>
@@ -272,7 +272,7 @@ export const McpPage = () => (
       </li>
       <li>
         A person opens that URI while signed in to the admin, at{' '}
-        <code>/settings/paired-agents</code>. They see which agent is asking, whose
+        <code>/settings/security</code>. They see which agent is asking, whose
         account it would work as, until when, and exactly what it would be able to do —
         and they choose <strong>Allow</strong> or <strong>Don&rsquo;t allow</strong>.
       </li>
@@ -288,7 +288,7 @@ export const McpPage = () => (
       There is a human step because the credential inherits a person&rsquo;s
       entitlements, so a person has to choose to lend them. Nothing here mints access
       from nothing. Pairing can also be switched off for a whole organisation at{' '}
-      <code>/settings/organization/paired-agents</code>, and that answer is checked when
+      <code>/admin/security?tab=programs</code>, and that answer is checked when
       somebody allows a pairing, not when an agent starts one — nobody is signed in at
       that point.
     </p>
@@ -397,9 +397,9 @@ export const McpPage = () => (
     <h3>Seeing and revoking what is paired</h3>
     <p>
       A person&rsquo;s own paired agents are listed at{' '}
-      <code>/settings/paired-agents</code>, with a label and a revoke control for each.
+      <code>/settings/security</code>, with a label and a revoke control for each.
       An owner or organisation admin sees every credential in the organisation at{' '}
-      <code>/settings/organization/paired-agents</code> — what each is called, what it
+      <code>/admin/security?tab=programs</code> — what each is called, what it
       may do, whether it is live, and whose account it borrows — and can revoke any of
       them. The personal list stays self-only: a list of live credentials is a list of
       footholds, not general reading.
