@@ -20,6 +20,13 @@ export const adminQueryClient = createQueryClient({
   },
 })
 
+// Keep visited screens available while a person works elsewhere in the app.
+// Freshness stays independent: stale reads still refresh in the background.
+adminQueryClient.setDefaultOptions({
+  ...adminQueryClient.getDefaultOptions(),
+  queries: { ...adminQueryClient.getDefaultOptions().queries, gcTime: 30 * 60 * 1000 },
+})
+
 export const QueryProvider = ({ children }: PropsWithChildren) => (
   <BaseQueryProvider client={adminQueryClient}>{children}</BaseQueryProvider>
 )

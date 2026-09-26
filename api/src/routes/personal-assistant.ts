@@ -106,7 +106,7 @@ export const registerPersonalAssistantRoutes = (
       return reply
     }
     if (channel.systemChannelType !== null) {
-      sendApiError(reply, 403, 'CHANNEL_SYSTEM_MANAGED', 'Personal Assistant presences require a shared channel')
+      sendApiError(reply, 403, 'CHANNEL_SYSTEM_MANAGED', 'Personal Assistants cannot be added to system-managed conversations')
       return reply
     }
 

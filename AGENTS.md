@@ -200,6 +200,7 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 - Use Playwright (`mcp__plugin_playwright`, or a local Playwright script) to load `http://localhost:<admin port>/<path>` — 5455 unless this worktree set `NESSIE_ADMIN_PORT` — screenshot the affected page, and confirm the feature renders correctly.
 - Always run Playwright headless unless the user explicitly requests otherwise.
 - Executor pairing, independent account/server connections on each platform, live presence on the computers lists, and their browser verification are documented in [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md).
+- Direct machine access from private agent chat and its self-reminders follows [executor sharing](docs/standards/executor-sharing.md); named internal links and the `nessie_link` tool follow [agent voice](docs/standards/agent-voice.md).
 - This applies to all frontend work: new components, layout changes, styling fixes, and interaction flows.
 
 ## Architecture
@@ -333,7 +334,8 @@ when one changes, the same turn updates it, not this section.
 - **Disclosure boundaries — what an agent read decides who may read its answer.**
   Every read that enters a run's context feeds the `ConsumedSourceSink` in the
   same change; an empty basis means unrestricted, so a forgotten read fails
-  open.
+  open. Context the platform assembles itself — recall, and the room history of
+  a run no person is live in — never restricts a reply in its own room.
   Authorized executor access has no additional private-conversation write veto.
   Read [`docs/standards/disclosure-boundaries.md`](docs/standards/disclosure-boundaries.md)
   before writing code here.

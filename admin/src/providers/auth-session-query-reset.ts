@@ -2,6 +2,7 @@ import type { MeResponse } from '@nessie/schemas'
 import type { SessionPayload } from '@nessie/client-core'
 
 type TenantQueryResetInput = {
+  cacheScope?: (me: MeResponse) => string
   readCurrentMe: () => MeResponse | null
   resetTenantQueries: () => Promise<void>
 }
@@ -55,11 +56,14 @@ export const fetchCurrentSessionSnapshot = async <Snapshot>(
 export const createSessionQueryBoundary = (
   input: TenantQueryResetInput,
 ): {
-  beforeApply: (payload: SessionPayload) => Promise<void>
+  beforeApply: (payload: Pick<SessionPayload, 'me'>) => Promise<void>
   clear: () => Promise<void>
 } => ({
   beforeApply: async (payload) => {
-    if (!hasSessionBoundaryChanged(input.readCurrentMe(), payload.me)) return
+    const current = input.readCurrentMe()
+    const entitlementsChanged = current && input.cacheScope
+      && input.cacheScope(current) !== input.cacheScope(payload.me)
+    if (!hasSessionBoundaryChanged(current, payload.me) && !entitlementsChanged) return
     await input.resetTenantQueries()
   },
   clear: input.resetTenantQueries,

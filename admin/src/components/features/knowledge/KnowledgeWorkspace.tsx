@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useKnowledgePage, useKnowledgeVersions } from '../../../facades/knowledge/hooks'
+import { useProjects } from '../../../facades/projects/hooks'
 import { LOCAL_BACK_PRIORITY } from '../../../navigation/LocalBackContext'
 import { NestedStage, useNestedStageHosted } from '../../../navigation/NestedStage'
 import { CreateSpaceDialog } from './CreateSpaceDialog'
@@ -95,6 +96,12 @@ export const KnowledgeWorkspace = ({
 
   const canWrite = selectedSpace?.canWrite ?? false
   const canManageAccess = selectedSpace?.canManageAccess ?? false
+  const projectRootSelected = selectedSpace?.metadata?.projectDocuments === true
+  const projectsQuery = useProjects(projectRootSelected)
+  const projectRootName = projectRootSelected
+    ? projectsQuery.data?.find((project) => project.id === selectedSpace?.projectId)?.name ?? 'Project'
+    : undefined
+  const spaceDisplayName = projectRootName ?? selectedSpace?.name ?? 'Documents'
   // A space administrator must retain the settings doorway after enabling
   // writeRestricted, even when that switch removes ordinary content writes.
   const canManage = (canWrite && (canManageSpace ?? true)) || canManageAccess
@@ -137,7 +144,7 @@ export const KnowledgeWorkspace = ({
       onBack={stacked ? undefined : closeDocument}
       page={current}
       selectedSpaceId={selectedSpaceId}
-      spaceName={selectedSpace?.name ?? 'Documents'}
+      spaceName={spaceDisplayName}
     />
   ) : null
 
@@ -152,6 +159,7 @@ export const KnowledgeWorkspace = ({
           else openSpaceSettings()
         }}
         scope={scope}
+        spaceDisplayName={spaceDisplayName}
       />
       {selectedSpace && canManage ? (
         <SpaceSettingsDialog
@@ -160,6 +168,7 @@ export const KnowledgeWorkspace = ({
           onSave={updateSpace}
           open={spaceSettingsOpen}
           pending={updateSpacePending}
+          projectRootName={projectRootName}
           space={selectedSpace}
         />
       ) : null}
@@ -222,7 +231,7 @@ export const KnowledgeWorkspace = ({
               page={fullPage ?? null}
               pages={pages}
               pending={savePending}
-              spaceName={selectedSpace?.name ?? 'Documents'}
+              spaceName={spaceDisplayName}
             />
           )}
         </QueryState>
@@ -237,7 +246,7 @@ export const KnowledgeWorkspace = ({
           pages={pages}
           parentPageId={editor.parentPageId}
           pending={savePending}
-          spaceName={selectedSpace?.name ?? 'Documents'}
+          spaceName={spaceDisplayName}
         />
       )}
     </div>

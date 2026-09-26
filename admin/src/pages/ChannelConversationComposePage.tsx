@@ -209,7 +209,7 @@ export const ChannelConversationComposePage = () => {
               // out of reach until the person typed; the list scrolls instead.
               limit={50}
               onChange={setRecipients}
-              placeholder="Type a name, email address or agent"
+              placeholder="Search people or agents"
               recipients={recipients}
               token={token}
               users={users}

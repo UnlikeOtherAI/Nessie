@@ -33,6 +33,7 @@ import type { FinderSelection, FinderSelectionEvent } from './finder-selection'
 export type FinderVirtualRow = {
   id: string
   kind: KnowledgePageKind
+  status: 'draft' | 'published' | 'archived'
   title: string
   indexing: KnowledgeIndexingState
   home: KnowledgeHome
@@ -110,6 +111,7 @@ export const FinderVirtualColumn = ({
                   indexingFamilyLabel={familyLabel[family]}
                   key={row.id}
                   kind={row.kind}
+                  status={row.status}
                   onKeyDown={onRowKeyDown
                     ? (event) => onRowKeyDown(event, row.id)
                     : undefined}

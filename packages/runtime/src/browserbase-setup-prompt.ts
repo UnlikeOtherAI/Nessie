@@ -14,6 +14,37 @@ export type BrowserbaseSetupPromptFacts = {
    * for. It never covers this agent's own toolset, which the deployment fixes.
    */
   canGrantBrowserTools?: boolean
+  /**
+   * True for one of Nessie's own agents — the Personal Assistant, the Agent
+   * Designer — whose toolset the deployment fixes: nobody, owners included,
+   * can add `browser_login_request` to it, so "the owner must enable it at
+   * the Tool registry" is a door that does not exist. The Designer relayed that
+   * sentence about ITS OWN toolset to a person asking about the agent it was
+   * building, for which the tool is an ordinary grant.
+   */
+  ownToolsetFixed?: boolean
+}
+
+const loginRequestLine = (facts: BrowserbaseSetupPromptFacts): string => {
+  if (facts.hasBrowserLoginRequestTool) {
+    return 'Only `browser_login_request` can request temporary personal browser access. It names exact selected '
+      + 'HTTPS origins for one task, expires within fifteen minutes, and is available only in an owner-private '
+      + 'agent home or a system agent\'s exact personal home. It opens a fresh browser with no saved context; '
+      + 'a person may sign in privately, including through identity-provider redirects, but that never widens '
+      + 'the agent\'s approved origins.'
+  }
+  if (facts.ownToolsetFixed) {
+    return 'Temporary personal browser access is not yours to request: `browser_login_request` is not in your '
+      + 'toolset, and your toolset is fixed by the deployment, so nobody can enable it for you. For an agent a '
+      + 'person builds it is an ordinary browser tool, '
+      + (facts.canGrantBrowserTools
+        ? 'granted with `agent_tool_access_set` like the rest. '
+        : 'granted from that agent\'s Tools tab like the rest. ')
+      + 'Do not substitute card_post, prose, or a fabricated permission card.'
+  }
+  return 'Temporary personal browser access is unavailable because `browser_login_request` is not in your toolset. '
+    + 'Explain that the owner must explicitly enable `browser_login_request` at Admin › Advanced › Tool registry '
+    + '(`/admin/advanced/tools`). Do not substitute card_post, prose, or a fabricated permission card.'
 }
 
 export const buildBrowserbaseSetupPrompt = (facts: BrowserbaseSetupPromptFacts): string => [
@@ -31,15 +62,7 @@ export const buildBrowserbaseSetupPrompt = (facts: BrowserbaseSetupPromptFacts):
       + 'Keep that internal destination name out of user-facing text.'
     : 'You cannot collect a Browserbase API key in this conversation because card_post is unavailable. '
       + 'Explain the Browserbase setup path without claiming you can submit it here.',
-  facts.hasBrowserLoginRequestTool
-    ? 'Only `browser_login_request` can request temporary personal browser access. It names exact selected '
-      + 'HTTPS origins for one task, expires within fifteen minutes, and is available only in an owner-private '
-      + 'agent home or a system agent\'s exact personal home. It opens a fresh browser with no saved context; '
-      + 'a person may sign in privately, including through identity-provider redirects, but that never widens '
-      + 'the agent\'s approved origins.'
-    : 'Temporary personal browser access is unavailable because `browser_login_request` is not in your toolset. '
-      + 'Explain that the owner must explicitly enable `browser_login_request` at Admin › Advanced › Tool registry '
-      + '(`/admin/advanced/tools`). Do not substitute card_post, prose, or a fabricated permission card.',
+  loginRequestLine(facts),
   'A `card_post` card or chat text cannot grant browser access or stand in for `browser_login_request`.',
   facts.hasCardTool
     ? 'Before a website reveals a service-issued API key, pause and use the existing personal '
@@ -51,7 +74,9 @@ export const buildBrowserbaseSetupPrompt = (facts: BrowserbaseSetupPromptFacts):
     ? 'A Browserbase account connection is separate from cloud-browser access for an agent. '
       + 'The account connection is theirs to make on the settings surface above; the browser tools '
       + 'themselves you grant to the named agent with `agent_tool_access_set`, which is refused '
-      + 'unless the person asking is an organisation owner. Do not send an owner to the Tool registry '
+      + 'unless the person asking is an organisation owner. The grant does not wait for the account: '
+      + 'grant the tools now and they work the moment an account is connected — say so, rather than '
+      + 'holding the agent back for a key. Do not send an owner to the Tool registry '
       + 'for that grant, and never claim it is done before the tool returns.'
     : 'A Browserbase account connection is separate from cloud-browser access for an agent. '
       + 'An owner must explicitly grant the named agent the browser tools at Admin › Advanced › Tool registry '

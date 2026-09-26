@@ -457,8 +457,10 @@ by a private conversation (`requiresProjectWriteRecallContainment`,
 `worker/src/run/execute/memory.ts`). Otherwise a memory of the requester's DM
 put that DM in the run's basis before its first action and the write gate then
 refused every ticket write. Its memory and history searches go deeper
-(`PROJECT_WRITE_RECALL_DEPTH`) and keep the normal count of what passes, so the
-narrowing does not leave the recall short. The rule and its trade-off are in
+(`CONTAINED_RECALL_DEPTH`) and keep the normal count of what passes, so the
+narrowing does not leave the recall short. Every other contained run judges its
+recall the same way against its own room rather than the project
+(`recallLineageGate`). The rule and its trade-off are in
 [disclosure-boundaries.md](disclosure-boundaries.md).
 
 Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Global agents — one blueprint, one row per organisation".
@@ -471,7 +473,20 @@ through a per-user private home DM (`gagent:{slug}:{orgId}:{userId}`,
 `systemChannelType='system_agent'`, one member and one binding, both database
 facts). Bootstrap runs beside the PA's at login and user provisioning but
 **best-effort** (`attemptGlobalAgentsBootstrap`) — a global agent must never
-lock anyone out. Invariants — the CHECKs, the ensure/policy-merge shape, the
+lock anyone out. **Both tiers are one row per organisation, so every team of
+an organisation has them; what a login provisions is the person's home DMs
+there.** A person's first entry into an organisation is not always a login:
+a team switch, a team or organisation they just created in-app, an accepted
+invitation and an adopted refresh drift all land through `materializeUoaTeam`,
+and a local-mode `POST /api/auth/switch-context` can cross organisations too —
+so the same bootstrap runs there, best-effort for both tiers, because the
+upstream credential is already consumed and the switch must land
+(`attemptSystemAgentsBootstrap`, `api/src/services/system-agents-bootstrap.ts`,
+which is also the one function the four login and provisioning sites call as
+`ensureSystemAgentsForMember`). Before that, a brand-new team created as a new
+organisation had no Personal Assistant and no Agent Designer until the person's
+next interactive sign-in. Pinned by
+`api/test/uoa-team-switch-system-agents-db.test.ts`. Invariants — the CHECKs, the ensure/policy-merge shape, the
 binding, trigger and run-placement refusals, the un-gated list arm, the
 delegation predicate with its one-arm identity-tool gate, and the handoff
 bounds: stated above. The mechanics —

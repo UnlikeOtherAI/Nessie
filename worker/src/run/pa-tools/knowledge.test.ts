@@ -267,6 +267,7 @@ test('kb_page_read returns the page body when the agent is allowed to read it', 
   const result = await runKbPageReadTool(context, { pageId: 'page-1' })
 
   assert.match(result.outputPreview, /Title: Runbook/)
+  assert.match(result.outputPreview, /link=\/knowledge-base\/spaces\/space-1\?pageId=page-1/)
   assert.match(result.outputPreview, /Restart the service, then check logs\./)
   assert.match(result.outputPreview, /versionId=version-1 versionNumber=1/)
 })
@@ -389,6 +390,7 @@ test('kb_list lists a ticket\'s accessible documents when taskId is supplied', a
 
   assert.equal(result.toolName, 'kb_list')
   assert.match(result.outputPreview, /Design notes/)
+  assert.match(result.outputPreview, /link=\/knowledge-base\/spaces\/space-1\?pageId=page-1/)
 })
 
 test('kb_list hides ticket documents whose space the agent cannot read', async () => {

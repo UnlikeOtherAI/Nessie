@@ -150,6 +150,7 @@ const recall = async (
   } as never,
   {
     agent: { agentKind: 'shared', id: s.agentId, systemSlug: null },
+    boundAgentIds: [s.agentId],
     channel: {
       dmKey: null,
       id: s.projectChannelId,
@@ -232,24 +233,16 @@ runDatabaseTest('a run lent ticket writes recalls no private-DM memory and can s
   })
 })
 
-runDatabaseTest('a run without write tools recalls the private-DM memory exactly as before', async (t) => {
+// Without write tools the room is still shared: recalling the DM-fed memory
+// would have restricted the reply for everyone in it but the requester.
+runDatabaseTest('a room run without write tools recalls no private-DM memory either', async (t) => {
   await withSeed(t, async (prisma, pool, s) => {
     const sink = createConsumedSourceSink()
     const memories = await recall(prisma, pool, s, sink, false)
 
-    assert.deepEqual(memories.map(({ id }) => id).sort(), [s.thoughts.clean, s.thoughts.fromDm].sort())
-    assert.deepEqual(sink.list(), [
-      { scopeId: s.organizationId, scopeType: 'organization' },
-      { scopeId: s.dmId, scopeType: 'channel' },
-    ])
-    assert.deepEqual(sink.privateConversationSources(), [
-      { sourceAuthorUserId: s.requesterId, sourceChannelId: s.dmId },
-    ])
-    // The gate is unchanged: that material still cannot reach the board.
-    await assert.rejects(
-      () => runTicketCreateTool(toolContext(prisma, pool, s, sink), { title: 'Should not land' }),
-      { message: REFUSAL },
-    )
+    assert.deepEqual(memories.map(({ id }) => id), [s.thoughts.clean])
+    assert.deepEqual(sink.list(), [{ scopeId: s.organizationId, scopeType: 'organization' }])
+    assert.deepEqual(sink.privateConversationSources(), [])
   })
 })
 

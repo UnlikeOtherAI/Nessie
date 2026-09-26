@@ -19,13 +19,11 @@ export type ExecutorBindingInput = {
   operationKey: ImplementedExecutorOperationKey
   runId: string
   /**
-   * A `ticket.work` run bound under a standing policy
-   * (`executor-standing-policy-binding.ts`): its trigger is the platform's
-   * kickoff, which no person wrote, so the run's trigger must be exactly that
-   * kickoff instead of the actor's own message. The binder checked the policy
-   * and the record before it asked.
+   * A platform kickoff whose authority was checked by the standing-policy or
+   * chat-reminder binder. It must be this run's exact system message, instead
+   * of the actor's own message. Never populated from model or API arguments.
    */
-  standing?: { kickoffMessageId: string }
+  systemKickoff?: { messageId: string }
 }
 
 export type ExecutorBindingBundleInput = Omit<ExecutorBindingInput, 'operationKey'> & {
@@ -170,8 +168,26 @@ export const bindExecutorCandidateInTransaction = async (
   await lockRunBindings(tx, input.runId)
   if (!allowIsolatedBundle) await assertRunHasNoIsolatedBinding(tx, input.runId)
   await lockBinding(tx, input.runId, operationKey)
+  const candidate = await tx.executorAvailabilityCandidate.findUnique({
+    where: { handleDigest: candidateHandleDigest },
+    include: {
+      capabilityRevision: true,
+      executor: {
+        include: {
+          capabilityRevisions: { orderBy: { revision: 'desc' }, take: 1 },
+          operationGrants: { where: { operationKey }, select: { state: true } },
+          privateAssignments: {
+            select: { agentId: true, principalKind: true, role: true, userId: true },
+          },
+        },
+      },
+    },
+  })
+  if (!candidate) {
+    return candidateError('CANDIDATE_INVALID', 'The executor choice is invalid.')
+  }
   const existing = await tx.executorBinding.findUnique({
-    where: { runId_operationKey: { operationKey, runId: input.runId } },
+    where: { runId_executorId_operationKey: { operationKey, runId: input.runId, executorId: candidate.executorId } },
     include: { capabilityRevision: { select: { revision: true } } },
   })
   if (existing) {
@@ -191,24 +207,6 @@ export const bindExecutorCandidateInTransaction = async (
     }
   }
 
-  const candidate = await tx.executorAvailabilityCandidate.findUnique({
-    where: { handleDigest: candidateHandleDigest },
-    include: {
-      capabilityRevision: true,
-      executor: {
-        include: {
-          capabilityRevisions: { orderBy: { revision: 'desc' }, take: 1 },
-          operationGrants: { where: { operationKey }, select: { state: true } },
-          privateAssignments: {
-            select: { agentId: true, principalKind: true, role: true, userId: true },
-          },
-        },
-      },
-    },
-  })
-  if (!candidate) {
-    return candidateError('CANDIDATE_INVALID', 'The executor choice is invalid.')
-  }
   if (candidate.consumedAt || candidate.expiresAt <= now) {
     return candidateError('CANDIDATE_EXPIRED', 'The executor choice has expired.')
   }
@@ -263,8 +261,8 @@ export const bindExecutorCandidateInTransaction = async (
   if (
     !run
     || run.agentId !== candidate.agentId
-    || !(input.standing
-      ? run.triggerMessage?.id === input.standing.kickoffMessageId
+    || !(input.systemKickoff
+      ? run.triggerMessage?.id === input.systemKickoff.messageId
         && run.triggerMessage.role === 'system' && run.triggerMessage.userId === null
       : run.triggerMessage?.userId === input.actorUserId)
     || run.thread.channel.organizationId !== candidate.executor.organizationId

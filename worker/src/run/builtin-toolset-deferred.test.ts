@@ -88,6 +88,7 @@ test('the fixed hot set is fully specified and every other builtin uses its cura
     'message_search',
     'people_search',
     'channel_find',
+    'nessie_link',
     'delegate',
     'kb_document_compose',
     'kb_document_edit',

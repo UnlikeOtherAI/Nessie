@@ -90,6 +90,8 @@ const fireConversationReminder = async (prisma: PrismaClient, id: string, now: D
     })
     // As the agent, with nobody behind it: whoever was talking when the
     // reminder was set is not asking now, so their identity is never re-armed.
+    // Machine setup may recheck assignments inherited from a completed private
+    // chat run; that narrow continuation does not change this actor context.
     const actorContext = buildAgentActorContext({
       agentId: reminder.agentId,
       channelId: thread.channelId,

@@ -9,7 +9,7 @@ import {
   buildSpeakingStyleBlock,
   redactDetectedSecrets,
 } from '@nessie/schemas'
-import type { ConsumedSourceSink } from './disclosure-basis.js'
+import type { BasisScope, ConsumedSourceSink } from './disclosure-basis.js'
 import {
   describeAttachments,
   loadInlineImages,
@@ -161,6 +161,17 @@ export const buildModelPrompt = (
     /** True when `browser_login_request` is in this run's resolved builtin toolset. */
     hasBrowserLoginRequestTool?: boolean
     /**
+     * True when `agent_tool_access_set` is in this run's resolved toolset:
+     * this run grants another agent the browser tools itself, so the
+     * Browserbase block must not send an owner to the Tools tab for it.
+     * The Designer's catalogue said "you grant it" while this block, rendered
+     * for every agent without the fact, said "an owner must" — and it quoted
+     * the refusal.
+     */
+    canGrantBrowserTools?: boolean
+    /** One of Nessie's own agents, whose toolset the deployment fixes. */
+    ownToolsetFixed?: boolean
+    /**
      * What the model can reach on a person's machine this turn, from the
      * run's bindings and its conversation lease (`loadExecutorReachFacts`).
      */
@@ -187,8 +198,10 @@ export const buildModelPrompt = (
     buildAgentTodoFactsBlock(options.todoFacts ?? null) ?? '',
     options.documents ? buildAgentDocumentsBlock(options.documents) ?? '' : '',
     buildAgentCardsBlock({
+      canGrantBrowserTools: options.canGrantBrowserTools ?? false,
       hasBrowserLoginRequestTool: options.hasBrowserLoginRequestTool ?? false,
       hasCardTool: options.hasCardTool ?? false,
+      ownToolsetFixed: options.ownToolsetFixed ?? false,
     }) ?? '',
     options.temporaryBrowserAccess
       ? [
@@ -260,7 +273,9 @@ export const buildModelPrompt = (
   // must never enter the anchor, or every follow-up would miss the cache.
   const executorReach = buildExecutorReachBlock(options.executorReach ?? null)
   if (executorReach) {
-    messages.push(coverProviderInputComponent({ content: executorReach, role: 'system' }, 'prompt_system'))
+    const content = 'Executors are connected computers on which your assigned tools run commands and local apps. '
+      + executorReach
+    messages.push(coverProviderInputComponent({ content, role: 'system' }, 'prompt_system'))
   }
 
   if (conversation.length > 0) {
@@ -332,6 +347,14 @@ export const loadConversation = async (
      * reply derived from the transcript inherits their restriction.
      */
     consumedSources: ConsumedSourceSink
+    /**
+     * Set for a run that reads its room as the room does (`readsRoomHistoryAsRoom`):
+     * what admitting a turn's lineage would add to the run's reply basis
+     * (`addedReplyRestriction`). A turn that would add anything is withheld
+     * like one the viewer cannot read, so the room's own history is never what
+     * restricts such a run's post.
+     */
+    addedRestriction?: (scopes: readonly BasisScope[]) => readonly BasisScope[]
   },
 ): Promise<StoredConversationMessage[]> => {
   const messages = await prisma.message.findMany({
@@ -371,8 +394,21 @@ export const loadConversation = async (
   // Disclosure predicate. A turn the viewer cannot satisfy becomes a fixed
   // server-authored placeholder rather than vanishing: a silent gap makes the
   // model invent continuity across a hole it cannot see.
-  const { visible: readable, withheld } = partitionByDisclosure(ordered, input.viewer)
-  const withheldIds = new Set(withheld.map((message) => message.id))
+  const partitioned = partitionByDisclosure(ordered, input.viewer)
+  // A run reading its room as the room does also withholds what it may read
+  // but the room may not. Every turn here is in the run's own channel, which
+  // its destination implies; a private source elsewhere is what would add.
+  const addsRestriction = (message: (typeof ordered)[number]): boolean =>
+    input.addedRestriction !== undefined && input.addedRestriction([
+      ...message.basisScopes,
+      ...message.disclosureSources.map((source) => ({ scopeId: source.sourceChannelId, scopeType: 'channel' })),
+    ]).length > 0
+  const restricting = new Set(partitioned.visible.filter(addsRestriction).map((message) => message.id))
+  const readable = partitioned.visible.filter((message) => !restricting.has(message.id))
+  const withheldIds = new Set([
+    ...partitioned.withheld.map((message) => message.id),
+    ...restricting,
+  ])
 
   // Transitive inheritance. A reply built from the transcript rather than from
   // retrieval would otherwise compute an empty basis, so "summarise that" would

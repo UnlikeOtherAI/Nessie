@@ -1,11 +1,6 @@
-import {
-  faChevronDown,
-  faEllipsis,
-  type IconDefinition,
-} from '@fortawesome/free-solid-svg-icons'
+import { faChevronDown, faEllipsis } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { ReactNode } from 'react'
-import type { ScreenBarIconName } from '../../navigation/screen-bar'
 import { Popover } from '../overlays/Popover'
 import { PageHeaderMenu } from './PageHeaderMenu'
 import { SectionLabel } from '../primitives/SectionLabel'
@@ -19,133 +14,30 @@ import {
   MORE_ACTION_ID,
   useResponsivePageHeaderOverflow,
 } from './useResponsivePageHeaderOverflow'
+import type {
+  PageHeaderAction,
+  PageHeaderButtonAction,
+  PageHeaderToggleAction,
+} from './page-header-action-types'
 
-type PageHeaderMenuItemBase = {
-  checked?: boolean
-  /**
-   * The row is an independent on and off — "Show archived" — rather than one
-   * choice out of a set, which is what a `checked` row otherwise means. It
-   * decides how the row is announced: a checkbox stands alone, where a radio
-   * says "3 of 3" and implies the rows beside it are the alternatives.
-   */
-  checkbox?: boolean
-  // The little line underneath the label — a sync row's freshness sentence.
-  // The row stays one press; the detail is read, not pressed.
-  detail?: string
-  disabled?: boolean
-  icon?: IconDefinition
-  id: string
-  label: string
-  title?: string
-}
-
-export type PageHeaderMenuButtonItem = PageHeaderMenuItemBase & {
-  onSelect: () => void
-}
-
-export type PageHeaderMenuLinkItem = PageHeaderMenuItemBase & {
-  href: string
-  rel?: string
-  target?: string
-}
-
-// A hairline rule between groups of rows. `aria-hidden`: the grouping it
-// marks is visible, and a screen reader already hears the groups' edges.
-export type PageHeaderMenuSeparatorItem = {
-  id: string
-  kind: 'separator'
-}
-
-// A small muted line of text — the board's "Showing the 500 most recently
-// updated cards." footnote. It answers a question and offers no press, so it
-// is not a `menuitem` and takes no focus.
-export type PageHeaderMenuNoteItem = {
-  id: string
-  kind: 'note'
-  label: string
-}
-
-export type PageHeaderMenuItem =
-  | PageHeaderMenuButtonItem
-  | PageHeaderMenuLinkItem
-  | PageHeaderMenuNoteItem
-  | PageHeaderMenuSeparatorItem
-
-type PageHeaderActionBase = {
-  /**
-   * The glyph the *native* bar should draw for this action, from its closed
-   * set. Separate from `icon`: that one is FontAwesome for the web header,
-   * and the native bar draws Material glyphs from a vocabulary it owns.
-   */
-  barIcon?: ScreenBarIconName
-  compact?: boolean
-  disabled?: boolean
-  form?: string
-  icon?: IconDefinition
-  id: string
-  label: string
-  // Never collapses into More. For a control that carries the screen's own
-  // state rather than firing an action — a menu row could not stand in for it.
-  pinned?: boolean
-  primary?: boolean
-  priority: number
-  pressed?: boolean
-  selected?: boolean
-  title?: string
-  // The action's mark reads red under the pointer. For a control whose colour
-  // is part of what it means — the routine-recording button — rather than a
-  // warning about the click; the box itself keeps the shared treatment.
-  tone?: 'danger'
-}
-
-export type PageHeaderButtonAction = PageHeaderActionBase & {
-  kind?: 'button'
-  onSelect: () => void
-  submit?: boolean
-}
-
-export type PageHeaderLinkAction = PageHeaderActionBase & {
-  href: string
-  kind: 'link'
-  rel?: string
-  target?: string
-}
-
-export type PageHeaderMenuAction = PageHeaderActionBase & {
-  items: PageHeaderMenuItem[]
-  kind: 'menu'
-}
-
-// A header filter that is on or off rather than an action you fire: the label
-// stays readable and the switch carries the state, so the bar says what it is
-// filtered by without the reader having to decode a highlighted button.
-export type PageHeaderToggleAction = PageHeaderActionBase & {
-  checked: boolean
-  kind: 'toggle'
-  onChange: (checked: boolean) => void
-}
-
-// A control the screen draws itself, sitting in the action row so it keeps the
-// row's order and its measured share of the width. For the few filters whose
-// picker is a surface of its own — avatars, a search field — and so cannot be
-// expressed as menu rows. It is always `pinned`: More renders menu items, and
-// this action has none. `measuring` renders the same box inert, for the
-// off-screen mirror the overflow controller measures.
-export type PageHeaderCustomAction = PageHeaderActionBase & {
-  kind: 'custom'
-  pinned: true
-  render: (measuring: boolean) => ReactNode
-}
-
-export type PageHeaderAction =
-  | PageHeaderButtonAction
-  | PageHeaderCustomAction
-  | PageHeaderLinkAction
-  | PageHeaderMenuAction
-  | PageHeaderToggleAction
+export type {
+  PageHeaderAction,
+  PageHeaderButtonAction,
+  PageHeaderCustomAction,
+  PageHeaderLinkAction,
+  PageHeaderMenuAction,
+  PageHeaderMenuButtonItem,
+  PageHeaderMenuItem,
+  PageHeaderMenuLinkItem,
+  PageHeaderMenuNoteItem,
+  PageHeaderMenuSeparatorItem,
+  PageHeaderToggleAction,
+} from './page-header-action-types'
 
 export type ResponsivePageHeaderProps = {
   actions?: PageHeaderAction[]
+  actionBar?: boolean
+  actionBarLabel?: string
   // Rendered inside the header block, under the title row: `ScreenHeader`'s
   // subtitle and tabs slots. One bordered block, never a second header.
   below?: ReactNode
@@ -223,6 +115,8 @@ const toggleClassName = (action: PageHeaderToggleAction): string => [
 // a narrow project tab, and a tablet WebView without brittle viewport rules.
 export const ResponsivePageHeader = ({
   actions = [],
+  actionBar = false,
+  actionBarLabel = 'Page actions',
   below,
   eyebrow,
   heading = 'h1',
@@ -233,7 +127,7 @@ export const ResponsivePageHeader = ({
   titleInput,
   titleTone = 'page',
 }: ResponsivePageHeaderProps) => {
-  const showHeaderAccountMenu = useHeaderAccountMenuVisible()
+  const showHeaderAccountMenu = useHeaderAccountMenuVisible() && !actionBar
   const {
     actionMeasureRefs,
     anchorRefFor,
@@ -250,7 +144,12 @@ export const ResponsivePageHeader = ({
     toggleMenu,
     triggerRefs,
     visibleActions,
-  } = useResponsivePageHeaderOverflow({ actions, onBack, showHeaderAccountMenu })
+  } = useResponsivePageHeaderOverflow({
+    actions,
+    minimumLeadingWidth: actionBar ? 0 : undefined,
+    onBack,
+    showHeaderAccountMenu,
+  })
   const renderAction = (action: PageHeaderAction, measuring = false): ReactNode => {
     if (action.kind === 'link') {
       return (
@@ -334,6 +233,79 @@ export const ResponsivePageHeader = ({
   }
 
   const Heading = heading
+
+  if (actionBar) {
+    return (
+      <div
+        className="knowledge-floating-action-bar"
+        ref={(element) => { headerRef.current = element }}
+      >
+        <div aria-label={actionBarLabel} className="create-menu-panel knowledge-floating-action-bar-inner" data-testid="knowledge-detail-action-bar" role="toolbar">
+        {visibleActions.map((action) => (
+          <div className="relative" key={action.id}>
+            {renderAction(action)}
+            {action.kind === 'menu' ? (
+              <Popover
+                anchorRef={anchorRefFor(action.id)}
+                className={menuPanelClassName}
+                id={`${menuIdPrefix}-${action.id}`}
+                label={action.label}
+                onClose={() => closeMenu()}
+                onKeyDown={handleMenuKeys}
+                open={openMenu === action.id}
+                placement="top-end"
+                role="menu"
+              >
+                <PageHeaderMenu action={action} onSelect={selectMenuItem} />
+              </Popover>
+            ) : null}
+          </div>
+        ))}
+        {overflowActions.length > 0 ? (
+          <div className="relative">
+            <button
+              aria-controls={`${menuIdPrefix}-${MORE_ACTION_ID}`}
+              aria-expanded={openMenu === MORE_ACTION_ID}
+              aria-haspopup="menu"
+              aria-label="More page actions"
+              className={actionClassName(moreAction, openMenu === MORE_ACTION_ID)}
+              onClick={() => toggleMenu(MORE_ACTION_ID)}
+              ref={(element) => { triggerRefs.current[MORE_ACTION_ID] = element }}
+              title="More page actions"
+              type="button"
+            ><FontAwesomeIcon className="h-3 w-3" icon={faEllipsis} /></button>
+            <Popover
+              anchorRef={anchorRefFor(MORE_ACTION_ID)}
+              className={menuPanelClassName}
+              id={`${menuIdPrefix}-${MORE_ACTION_ID}`}
+              label="More page actions"
+              onClose={() => closeMenu()}
+              onKeyDown={handleMenuKeys}
+              open={openMenu === MORE_ACTION_ID}
+              placement="top-end"
+              role="menu"
+            >
+              {overflowActions.map((action, index) => (
+                <div key={action.id}>
+                  <PageHeaderMenu action={action} onSelect={selectMenuItem} />
+                  {index < overflowActions.length - 1 ? <div className="my-1 border-t border-[color:var(--sep)]" /> : null}
+                </div>
+              ))}
+            </Popover>
+          </div>
+        ) : null}
+        <div aria-hidden="true" className="pointer-events-none invisible absolute left-0 top-0 flex items-center gap-2 whitespace-nowrap" ref={measurementRef}>
+          {actions.map((action) => (
+            <div key={action.id} ref={(element) => { actionMeasureRefs.current[action.id] = element }}>
+              {renderAction(action, true)}
+            </div>
+          ))}
+          <div ref={moreMeasureRef}><button className={actionClassName(moreAction, false)} type="button"><FontAwesomeIcon className="h-3 w-3" icon={faEllipsis} /></button></div>
+        </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     // One block: the fixed-height title row, then whatever the screen renders

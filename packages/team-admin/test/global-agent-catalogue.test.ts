@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { AgentEffortSchema, AgentVisibilitySchema, describeAgentTriggerTypes } from '@nessie/schemas'
+import {
+  AgentEffortSchema,
+  AgentVisibilitySchema,
+  describeAgentTriggerTypes,
+  type AgentModelOption,
+} from '@nessie/schemas'
 
 import type { GlobalAgentExecutorFacts } from '@nessie/executor-manage'
 
@@ -177,6 +182,80 @@ test('an unreadable model catalogue says so rather than guessing', () => {
     ],
   })
   assert.match(withModels, /kimi\/kimi-k2 — Kimi K2/)
+})
+
+const ledgerModel = (index: number) => ({
+  displayName: `Model ${index}`,
+  model: `model-${index}`,
+  provider: 'openrouter',
+  providerDisplayName: 'OpenRouter',
+  source: 'ledger' as const,
+})
+
+const kimiPlan = (overrides: Partial<AgentModelOption> = {}): AgentModelOption => ({
+  displayName: 'Kimi for Coding',
+  model: 'kimi-for-coding',
+  modelSubscriptionId: '7d1e0c1a-1111-4111-8111-111111111111',
+  provider: 'subscription/kimi',
+  providerDisplayName: 'Kimi for Coding',
+  source: 'subscription' as const,
+  ...overrides,
+})
+
+// A person who had just linked Kimi under Connected accounts asked the
+// Designer to use it and was told no such connector existed: the catalogue
+// was handed the Ledger list alone, and the sidebar's copy cut the plan off
+// behind a twenty-entry shortlist of a hundred-entry catalogue.
+test('a person\'s own linked plan is listed in full, provider named, past any shortlist', () => {
+  const rendered = block({
+    models: [...Array.from({ length: 25 }, (_, index) => ledgerModel(index)), kimiPlan()],
+  })
+  assert.match(rendered, /Models available here \(25, first 20 shown\)/)
+  assert.match(rendered, /This person's own linked plans \(1\) — a personal model connection, not a connector/)
+  // Written with both fields named: `subscription/kimi/kimi-for-coding` would
+  // read as three segments with no way to split them.
+  assert.match(rendered, /- provider subscription\/kimi, model kimi-for-coding — Kimi for Coding/)
+  assert.doesNotMatch(rendered, /subscription\/kimi\/kimi-for-coding/)
+  // Never a default nobody chose, and the parameter line says where a plan's provider comes from.
+  assert.match(rendered, /never as a default nobody chose/)
+  assert.match(rendered, /own linked plans, whose provider is written subscription\/<key>/)
+  assert.match(rendered, /a deployment model, unless the person asked for their own plan/)
+  // One account at the provider: no id to tell apart, none printed.
+  assert.doesNotMatch(rendered, /modelSubscriptionId 7d1e0c1a/)
+})
+
+test('two accounts at one provider are told apart by their subscription id', () => {
+  const rendered = block({
+    models: [
+      kimiPlan({ accountLabel: 'sk-…a1b2' }),
+      kimiPlan({
+        accountLabel: 'sk-…c3d4',
+        modelSubscriptionId: '7d1e0c1a-2222-4222-8222-222222222222',
+      }),
+    ],
+  })
+  assert.match(rendered, /\(account sk-…a1b2; modelSubscriptionId 7d1e0c1a-1111-4111-8111-111111111111\)/)
+  assert.match(rendered, /\(account sk-…c3d4; modelSubscriptionId 7d1e0c1a-2222-4222-8222-222222222222\)/)
+  assert.match(rendered, /told apart by modelSubscriptionId — pass the one they mean/)
+})
+
+test('no plan linked names the providers and the settings surface, never this chat', () => {
+  const rendered = block({ models: [ledgerModel(1)] })
+  assert.match(rendered, /This person has linked no plan of their own/)
+  // Generated from the adapters a person can link, not remembered.
+  assert.match(rendered, /Kimi for Coding/)
+  assert.match(rendered, /Settings → Connected accounts \(\/settings\/connections\)/)
+  assert.match(rendered, /never into this chat/)
+})
+
+test('a Ledger failure with a plan still readable is said as exactly that', () => {
+  const rendered = block({ ledgerCatalogueUnavailable: true, models: [kimiPlan()] })
+  assert.match(rendered, /The deployment's model catalogue could not be read just now/)
+  assert.match(rendered, /or use one of this person's own plans below/)
+  assert.match(rendered, /- provider subscription\/kimi, model kimi-for-coding/)
+  // Not "no models": that would be a guess about a catalogue nobody read.
+  assert.doesNotMatch(rendered, /lists no selectable models/)
+  assert.doesNotMatch(rendered, /The model catalogue could not be read just now\. Leave/)
 })
 
 test('the block states plainly how this face of the Designer writes', () => {

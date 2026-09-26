@@ -30,6 +30,7 @@ type SpaceSettingsDialogProps = {
   }) => Promise<void>
   open: boolean
   pending?: boolean
+  projectRootName?: string
   space: KnowledgeSpaceRecord
 }
 
@@ -54,6 +55,7 @@ export const SpaceSettingsDialog = ({
   onSave,
   open,
   pending,
+  projectRootName,
   space,
 }: SpaceSettingsDialogProps) => {
   const me = useOptionalAuthSession()?.me ?? null
@@ -116,7 +118,7 @@ export const SpaceSettingsDialog = ({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const trimmedName = name.trim()
+    const trimmedName = projectRootName ? space.name : name.trim()
     if (!trimmedName) return
     try {
       const effectiveMemberUserIds = writeRestricted && me?.user.id
@@ -135,17 +137,23 @@ export const SpaceSettingsDialog = ({
   }
 
   return (
-    <Dialog onClose={onClose} open={open} title="Space settings">
+    <Dialog onClose={onClose} open={open} title={projectRootName ? `${projectRootName} settings` : 'Space settings'}>
       <form className="grid gap-4" onSubmit={handleSubmit}>
-        <FormField label="Name" required>
+        <FormField label={projectRootName ? 'Project folder' : 'Name'} required={!projectRootName}>
           <Input
             autoComplete="off"
             onChange={(event) => {
               setName(event.target.value)
               setFormError(undefined)
             }}
-            value={name}
+            readOnly={Boolean(projectRootName)}
+            value={projectRootName ?? name}
           />
+          {projectRootName ? (
+            <p className="mt-1 text-xs text-[color:var(--tx3)]">
+              This folder follows the project name. Rename the project in Project settings.
+            </p>
+          ) : null}
         </FormField>
 
         <FormField label="Description">

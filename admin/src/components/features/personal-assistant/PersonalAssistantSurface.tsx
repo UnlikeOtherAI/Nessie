@@ -13,6 +13,7 @@ import { IdentityTile } from '../../primitives/IdentityTile'
 
 type PersonalAssistantSidebarEntryProps = {
   active?: boolean
+  activeChild?: boolean
   agent?: AgentRecord | null
   /** Matches the rest of the Direct-messages rows. */
   avatarSize?: number
@@ -87,6 +88,7 @@ const assistantPills = (
 
 export const PersonalAssistantSidebarEntry = ({
   active = false,
+  activeChild = false,
   agent,
   avatarSize = 18,
   bootstrapping = false,
@@ -98,8 +100,8 @@ export const PersonalAssistantSidebarEntry = ({
 }: PersonalAssistantSidebarEntryProps) => {
   return (
     <button
-      aria-current={sidebarAriaCurrent(active)}
-      className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${active ? 'active' : ''}`}
+      aria-current={sidebarAriaCurrent(active && !activeChild)}
+      className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${activeChild ? 'active-parent' : active ? 'active' : ''}`}
       onClick={onClick}
       type="button"
     >

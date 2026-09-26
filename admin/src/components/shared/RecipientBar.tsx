@@ -194,6 +194,7 @@ export const RecipientBar = ({
             aria-label={label}
             ref={inputRef}
             autoFocus={autoFocus}
+            autoComplete="off"
             className="min-h-11 min-w-[160px] flex-1 bg-transparent text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
             disabled={disabled}
             onBlur={() => window.setTimeout(() => {

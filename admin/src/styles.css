@@ -2437,6 +2437,40 @@ html[data-desktop-platform='linux'] #root {
   font-size: 14px;
 }
 
+.admin-sidebar-nav .sidebar-agent-group {
+  margin-top: 2px;
+}
+
+.admin-sidebar-nav .sidebar-agent-disclosure {
+  position: absolute;
+  top: 50%;
+  left: 9px;
+  display: flex;
+  width: 12px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  color: var(--tx3);
+}
+
+.admin-sidebar-nav .sidebar-agent-children {
+  margin-left: 28px;
+  border-left: 1px solid var(--sep);
+  padding-left: 4px;
+}
+
+.admin-sidebar-nav .sidebar-agent-children .admin-sb-item {
+  width: calc(100% - 8px);
+  min-height: 28px;
+  margin: 1px 4px;
+  padding: 3px 8px;
+}
+
+.admin-sidebar-nav .sidebar-agent-children .sidebar-agent-new {
+  color: var(--tx3);
+}
+
 .admin-sidebar-nav .admin-sb-item.sidebar-shared-channel {
   width: 100%;
   min-height: 30px;
@@ -5230,6 +5264,46 @@ button.reaction-pill-active:focus-visible {
   --main-hover: #f1f5f9;
   --panel: #ffffff;
   --panel-soft: rgba(15, 23, 42, 0.05);
+}
+
+.knowledge-floating-action-bar {
+  position: absolute;
+  z-index: 20;
+  inset-inline: 12px;
+  bottom: 12px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.knowledge-floating-action-bar-inner {
+  display: flex;
+  position: relative;
+  width: max-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  box-sizing: border-box;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 999px;
+  pointer-events: auto;
+}
+
+.knowledge-floating-action-bar-inner > .relative {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 420px) {
+  .knowledge-floating-action-bar {
+    inset-inline: 8px;
+  }
+
+  .knowledge-floating-action-bar-inner {
+    gap: 4px;
+    padding-inline: 6px;
+  }
 }
 
 /* Inline note highlights painted over anchored passages in the reader. */

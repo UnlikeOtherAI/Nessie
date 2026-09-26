@@ -1,7 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { faDownload, faPaperclip, faTable } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import {
+  faClockRotateLeft,
+  faDownload,
+  faEllipsis,
+  faPen,
+  faTable,
+  faUpload,
+} from '@fortawesome/free-solid-svg-icons'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { downloadAuthedPath, useAuthedObjectUrlFromPath } from '../../../lib/uploads'
 import { versionDownloadPath } from '../../../facades/knowledge/file-hooks'
@@ -11,7 +17,6 @@ import { RetryableTextFilePreview } from '../../shared/TextFilePreview'
 import { MessageMarkdown } from '../channels/MessageMarkdown'
 import { CommentsSection } from './comments/CommentsSection'
 import {
-  iconForFilename,
   isMarkdownFilename,
   isSpreadsheetSourceFilename,
   isZipFilename,
@@ -44,7 +49,6 @@ type FileNodeViewerProps = {
   onOpenAsSpreadsheet?: () => void
   onSaveMarkdown?: (markdown: string, baseVersionId: string) => Promise<void>
   onUploadVersion: () => void
-  onToggleAttachments: () => void
 }
 
 export const FileNodeViewer = ({
@@ -55,7 +59,6 @@ export const FileNodeViewer = ({
   onOpenHistory,
   onSaveMarkdown,
   onUploadVersion,
-  onToggleAttachments,
 }: FileNodeViewerProps) => {
   const navigate = useNavigate()
   const { token } = useAuthSession()
@@ -94,48 +97,42 @@ export const FileNodeViewer = ({
     // scripts, so they keep the server's media type for correct codec selection.
     previewMime,
   )
-  const headerActions: PageHeaderAction[] = [
-    ...(version && taskSetSourceFormat(page.title) ? [{
-      id: 'process-task-set',
-      label: 'Process with Task Set',
-      onSelect: () => navigate(taskSetCreatePath({
-        pageId: page.id, versionId: version.id, format: taskSetSourceFormat(page.title),
-      })),
-      priority: 75,
-    } satisfies PageHeaderAction] : []),
+  const detailActions: PageHeaderAction[] = [
     {
-      icon: faPaperclip,
-      id: 'attachments',
-      label: 'Attachments',
-      onSelect: onToggleAttachments,
-      priority: 60,
-    },
-    {
+      compact: true,
+      icon: faClockRotateLeft,
       id: 'history',
       label: 'History',
       onSelect: onOpenHistory,
       priority: 50,
+      title: 'Version history',
     },
+    ...(canWrite
+      ? [{
+          compact: true,
+          icon: faUpload,
+          id: 'upload-version',
+          label: 'Upload new version',
+          onSelect: onUploadVersion,
+          priority: 40,
+          title: 'Upload new version',
+        } satisfies PageHeaderAction]
+      : []),
     ...(canWrite && onOpenAsSpreadsheet && isSpreadsheetSourceFilename(page.title)
       ? [{
+          compact: true,
           icon: faTable,
           id: 'convert-to-spreadsheet',
           label: 'Open as spreadsheet',
           onSelect: onOpenAsSpreadsheet,
           priority: 80,
-          title: 'Build an editable spreadsheet document from this file',
-        } satisfies PageHeaderAction]
-      : []),
-    ...(canWrite
-      ? [{
-          id: 'upload-version',
-          label: 'Upload new version',
-          onSelect: onUploadVersion,
-          priority: 40,
+          title: 'Open as spreadsheet',
         } satisfies PageHeaderAction]
       : []),
     ...(canWrite && markdownPreview && downloadPath && onSaveMarkdown
       ? [{
+          compact: true,
+          icon: faPen,
           id: 'edit-markdown',
           label: 'Edit',
           onSelect: () => {
@@ -144,6 +141,25 @@ export const FileNodeViewer = ({
             setMarkdownEditorOpen(true)
           },
           priority: 70,
+          title: 'Edit text file',
+        } satisfies PageHeaderAction]
+      : []),
+    ...(version && taskSetSourceFormat(page.title)
+      ? [{
+          compact: true,
+          icon: faEllipsis,
+          id: 'task-set-actions',
+          items: [{
+            id: 'process-task-set',
+            label: 'Process with Task Set',
+            onSelect: () => navigate(taskSetCreatePath({
+              pageId: page.id, versionId: version.id, format: taskSetSourceFormat(page.title),
+            })),
+          }],
+          kind: 'menu',
+          label: 'More file actions',
+          priority: 10,
+          title: 'More file actions',
         } satisfies PageHeaderAction]
       : []),
     {
@@ -159,24 +175,16 @@ export const FileNodeViewer = ({
 
   return (
     <KnowledgePane
-      actions={headerActions}
+      bottomActionLabel="File actions"
+      bottomActions={detailActions}
       onBack={onBack}
       title={page.title}
     >
-      <div className="mx-auto my-8 w-full max-w-4xl px-4">
-        <div className="flex items-center gap-3 border-b border-[color:var(--sep)] pb-4">
-          <FontAwesomeIcon
-            className="h-7 w-7 text-[color:var(--tx2)]"
-            fixedWidth
-            icon={iconForFilename(page.title)}
-          />
-          <div className="min-w-0">
-            <h1 className="truncate text-2xl font-semibold text-[var(--tx)]">{page.title}</h1>
-            {version ? (
-              <p className="text-xs text-[color:var(--tx3)]">Version {version.versionNumber}</p>
-            ) : null}
-          </div>
-        </div>
+      <>
+        <div className="mx-auto my-8 w-full max-w-4xl px-4">
+        {version ? (
+          <p className="mb-4 text-xs text-[color:var(--tx3)]">Version {version.versionNumber}</p>
+        ) : null}
 
         <div className="mt-6">
           {!version?.attachmentId ? (
@@ -273,6 +281,8 @@ export const FileNodeViewer = ({
           )}
         </div>
 
+        </div>
+        <div className="mx-auto mt-8 w-full max-w-4xl border-t border-[color:var(--sep)] px-4 pt-6">
         <AttachmentsDrawer
           canWrite={canWrite}
           inline
@@ -280,9 +290,11 @@ export const FileNodeViewer = ({
           open
           pageId={page.id}
         />
-
+        </div>
+        <div className="mx-auto mt-8 w-full max-w-4xl border-t border-[color:var(--sep)] px-4 pt-6">
         <CommentsSection canResolve={canWrite} pageId={page.id} />
-      </div>
+        </div>
+      </>
       {markdownEditorOpen && markdownEditorBaseVersionId && onSaveMarkdown ? (
         <MarkdownFileEditorDialog
           baseVersionId={markdownEditorBaseVersionId}

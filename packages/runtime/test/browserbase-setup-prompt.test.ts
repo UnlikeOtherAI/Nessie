@@ -58,3 +58,40 @@ test('without the grant verb the owner surface stays the only truthful path', ()
   assert.match(prompt, /An owner must explicitly grant the named agent the browser tools/)
   assert.doesNotMatch(prompt, /you grant to the named agent with `agent_tool_access_set`/)
 })
+
+test('a grant never waits for the account', () => {
+  // "Just set up the permissions, I'll add the tokens later" was refused:
+  // the grant is written by `setAgentToolPolicyForRegistryEntry`, which never
+  // reads a Browserbase connection; only USING a browser needs one.
+  const prompt = buildBrowserbaseSetupPrompt({ canGrantBrowserTools: true, hasCardTool: true })
+  assert.match(prompt, /The grant does not wait for the account/)
+  assert.match(prompt, /they work the moment an account is connected/)
+})
+
+test('an agent whose toolset is fixed is not sent to enable a tool on itself', () => {
+  // The Designer quoted "the owner must enable `browser_login_request` at
+  // Agents → Tools" — about its OWN toolset, which no owner can change — to a
+  // person asking about the agent it was building.
+  const fixed = buildBrowserbaseSetupPrompt({
+    canGrantBrowserTools: true,
+    hasCardTool: true,
+    ownToolsetFixed: true,
+  })
+  assert.match(fixed, /not yours to request/)
+  assert.match(fixed, /your toolset is fixed by the deployment, so nobody can enable it for you/)
+  assert.match(
+    fixed,
+    /For an agent a person builds it is an ordinary browser tool, granted with `agent_tool_access_set`/,
+  )
+  assert.doesNotMatch(fixed, /enable `browser_login_request` at Agents → Tools/)
+  assert.match(fixed, /Do not substitute card_post, prose, or a fabricated permission card/)
+
+  // The Personal Assistant: same fixed toolset, no grant verb of its own.
+  const assistant = buildBrowserbaseSetupPrompt({ hasCardTool: true, ownToolsetFixed: true })
+  assert.match(assistant, /granted from that agent's Tools tab like the rest/)
+  assert.doesNotMatch(assistant, /enable `browser_login_request` at Agents → Tools/)
+
+  // An ordinary agent's owner CAN enable it, so that door is still named.
+  const ordinary = buildBrowserbaseSetupPrompt({ hasCardTool: true })
+  assert.match(ordinary, /enable `browser_login_request` at Agents → Tools/)
+})
