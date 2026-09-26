@@ -188,7 +188,7 @@ const AuthenticatedAdminShellLayout = () => {
   const showHeaderAccountMenu = hideTopBar && mobileLayout && !nativeIPadApp && !nativePhoneApp;
   const shellState: ShellState = useMemo(
     () => ({
-      onCreateAgent: shell.navigateToAgentDesigner,
+      onCreateAgent: shell.navigateToNewAgent,
       onCreateChannel: shell.openCreateChannel,
       onLogout: shell.logoutAndRedirect,
       onSelectAgent: shell.selectAgent,
@@ -197,7 +197,7 @@ const AuthenticatedAdminShellLayout = () => {
     }),
     [
       shell.logoutAndRedirect,
-      shell.navigateToAgentDesigner,
+      shell.navigateToNewAgent,
       shell.openCreateChannel,
       shell.openMobileDrawer,
       shell.selectAgent,
@@ -479,7 +479,6 @@ const AuthenticatedAdminShellLayout = () => {
                 <AgentDetailDrawer
                   agent={shell.selectedAgent}
                   onClose={shell.closeAgentDrawer}
-                  onSelectAgent={shell.selectAgent}
                 />
             </ShellStateProvider>
           </TransientMenuProvider>

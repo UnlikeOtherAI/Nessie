@@ -67,12 +67,12 @@ export type DesignerToolGroup = {
  * out. `BuiltinToolDefinition.category` is now required, so the catalogue
  * renders a decision its author made rather than guessing one here.
  *
- * `Connectors (MCP)` and `Other` are the two categories this layer still
+ * `Connected apps` and `Other` are the two categories this layer still
  * decides, because neither is a builtin: a connector tool's home is the
  * connector, and an organization-local registry entry genuinely has no
  * declared category. No builtin can reach `Other`.
  */
-const CONNECTOR_GROUP = 'Connectors (MCP)'
+const CONNECTOR_GROUP = 'Connected apps'
 const UNCATEGORISED_GROUP = 'Other'
 
 const GROUP_ORDER: ReadonlyArray<{ description?: string; name: string }> = [
@@ -94,7 +94,7 @@ const groupForBuiltin = (category: string | undefined): string =>
   (category ? findToolCategory(category)?.label : undefined) ?? UNCATEGORISED_GROUP
 
 // Explicit grants decide a tool's default state; they do not make a tool
-// ineligible for an ordinary shared agent. The Tools tab is where an owner
+// ineligible for an ordinary shared agent. The Access tab is where an owner
 // makes that decision. The shared structural predicate is also used by the
 // server-projected Designer catalogue.
 export const isAgentToolAccessBuiltin = (

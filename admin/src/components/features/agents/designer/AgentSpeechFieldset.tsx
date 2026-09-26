@@ -8,85 +8,77 @@ import { FormField } from '../../../shared/FormField'
 import { Select, Textarea } from '../../../shared/FormControls'
 
 /**
- * How this agent sounds, and how it talks.
+ * How this agent sounds on a call, and how it talks everywhere.
  *
- * Two settings that answer the same question from a person's point of view —
- * "what is it like to talk to this agent" — so they sit together rather than
- * one beside Model and the other beside System prompt.
+ * The two used to share one fieldset. They answer different questions on the
+ * agent page, so they now live on different tabs: the voice beside the other
+ * run settings (Settings), the manner beside the instructions it is published
+ * with as `personality.md` (Instructions).
  *
- * The style dropdown is a *starting point*, never the stored value: picking a
- * preset writes its wording into the field below, and after that the field is
- * the person's. Nothing rewrites it unless a different preset is picked, which
- * is why the select's own value is derived from the text rather than held in
- * state — a remembered id would let a re-render silently replace an edit.
+ * Each renders inside its own `<fieldset>`, and read-only is that element's
+ * `disabled` rather than a per-control prop: the native attribute disables
+ * every descendant, including one added here later — the drift a per-control
+ * prop invites, and exactly how this section once stayed live on a built-in
+ * agent's page after the read-only mode shipped.
  *
  * Voices are `GEMINI_LIVE_VOICES` and nothing else: Google publishes no API
- * that enumerates them, so the list is curated once in `@nessie/schemas` and
- * read here.
+ * that enumerates them, so the list is curated once in `@nessie/schemas`.
  */
 
 const DEFAULT_VOICE_VALUE = ''
 
-type AgentSpeechFieldsetProps = {
-  /**
-   * Read-only rendering, for an agent the viewer may not edit (a global agent
-   * ships with the deployment). Carried on the `<fieldset>` rather than each
-   * control: the native attribute disables every descendant, including one
-   * added here later, which is exactly the drift a per-control prop invites —
-   * this section shipped after the read-only mode and stayed live on a
-   * blueprint agent's page until a browser pass caught it.
-   */
+const legendClass = 'text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]'
+
+type AgentVoiceFieldProps = {
   disabled?: boolean
-  onSpeakingStyleChange: (style: string) => void
   onVoiceNameChange: (voiceName: string) => void
-  speakingStyle: string
   voiceName: string
 }
 
-export const AgentSpeechFieldset = ({
+export const AgentVoiceField = ({ disabled = false, onVoiceNameChange, voiceName }: AgentVoiceFieldProps) => (
+  <fieldset className="grid gap-1.5 border-0 p-0" data-testid="agent-voice" disabled={disabled}>
+    <FormField
+      help="Used when someone calls this agent. Falls back to the default voice."
+      label="Voice"
+    >
+      <Select onChange={(event) => onVoiceNameChange(event.target.value)} value={voiceName}>
+        <option value={DEFAULT_VOICE_VALUE}>Default voice</option>
+        {GEMINI_LIVE_VOICES.map((voice) => (
+          <option key={voice.name} value={voice.name}>
+            {`${voice.name} — ${voice.description}`}
+          </option>
+        ))}
+      </Select>
+    </FormField>
+  </fieldset>
+)
+
+type AgentMannerFieldProps = {
+  disabled?: boolean
+  onSpeakingStyleChange: (style: string) => void
+  speakingStyle: string
+}
+
+/**
+ * The style dropdown is a *starting point*, never the stored value: picking a
+ * preset writes its wording into the field below, and after that the field is
+ * the person's. The select's value is derived from the text rather than held
+ * in state, so a re-render can never silently replace an edit.
+ */
+export const AgentMannerField = ({
   disabled = false,
   onSpeakingStyleChange,
-  onVoiceNameChange,
   speakingStyle,
-  voiceName,
-}: AgentSpeechFieldsetProps) => {
+}: AgentMannerFieldProps) => {
   const selectedPreset = presetForText(speakingStyle)
-
   return (
-    <fieldset
-      className="grid gap-3 border-0 p-0"
-      data-testid="agent-speech"
-      disabled={disabled}
-    >
+    <fieldset className="grid gap-3 border-0 p-0" data-testid="agent-manner" disabled={disabled}>
       {/* A `<legend>` cannot be a `<label htmlFor>`, so it carries FieldLabel's
           classes directly — the same exception `RunLimitsFieldset` documents. */}
-      <legend className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-        Voice and manner
-      </legend>
-      {/* A legend sits outside the grid flow, so without a line of prose under
-          it the heading collides with the first field's own label. */}
+      <legend className={legendClass}>Manner</legend>
       <p className="text-xs text-[color:var(--tx3)]">
-        The voice a call is spoken in, and how this agent talks to people
-        everywhere.
+        How this agent talks to people, everywhere. Saved as its personality.md.
       </p>
-
-      <FormField
-        help="Used when someone calls this agent. Falls back to the deployment default."
-        label="Voice"
-      >
-        <Select
-          onChange={(event) => onVoiceNameChange(event.target.value)}
-          value={voiceName}
-        >
-          <option value={DEFAULT_VOICE_VALUE}>Deployment default</option>
-          {GEMINI_LIVE_VOICES.map((voice) => (
-            <option key={voice.name} value={voice.name}>
-              {`${voice.name} — ${voice.description}`}
-            </option>
-          ))}
-        </Select>
-      </FormField>
-
       <FormField
         help="Pick a starting point, then edit the wording below however you like."
         label="How the agent talks to you"
@@ -110,7 +102,6 @@ export const AgentSpeechFieldset = ({
           ))}
         </Select>
       </FormField>
-
       <Textarea
         aria-label="Speaking style"
         autoComplete="off"

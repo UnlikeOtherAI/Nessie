@@ -22,20 +22,16 @@ type AgentCreationModeTabsProps = {
   value: CreationMode
 }
 
+/** New agent's two ways in, as the header's one strip. */
 export const AgentCreationModeTabs = ({
   onChange,
   value,
 }: AgentCreationModeTabsProps) => (
-  <div className="flex-shrink-0 border-b border-[color:var(--sep)] px-[var(--page-gutter)] py-2.5">
-    <div className="mx-auto w-full max-w-md">
-      <TabBar
-        ariaLabel="Agent creation method"
-        fullWidth
-        idPrefix="agent-creation-mode"
-        items={CREATION_MODES}
-        onChange={onChange}
-        value={value}
-      />
-    </div>
-  </div>
+  <TabBar
+    ariaLabel="Agent creation method"
+    idPrefix="agent-creation-mode"
+    items={CREATION_MODES}
+    onChange={onChange}
+    value={value}
+  />
 )

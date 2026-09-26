@@ -1,66 +1,35 @@
 import { useAgentRunFailures } from '../../../facades/agents/queries'
-import { SectionLabel } from '../../primitives/SectionLabel'
-import { EmptyState } from '../../shared/EmptyState'
 import { formatTimestamp } from '../triggers/trigger-presentation'
 
 type AgentRunFailuresPanelProps = {
   agentId: string
 }
 
+/**
+ * The unattended runs of this agent that failed recently, newest first, as
+ * rows under the Activity tab's own heading — a list, not a card of cards.
+ */
 export const AgentRunFailuresPanel = ({ agentId }: AgentRunFailuresPanelProps) => {
   const { data, isError, isPending } = useAgentRunFailures(agentId)
   const failures = data?.failures ?? []
 
   if (isPending) {
-    return (
-      <section className="admin-card p-4">
-        <SectionLabel>Recent run failures</SectionLabel>
-        <div className="mt-3 text-sm text-[color:var(--tx3)]">Loading recent failures…</div>
-      </section>
-    )
+    return <p className="text-sm text-[color:var(--tx3)]">Loading recent failures…</p>
   }
-
   if (isError) {
-    return (
-      <section className="admin-card p-4">
-        <SectionLabel>Recent run failures</SectionLabel>
-        <div className="mt-3 text-sm text-[color:var(--tx3)]">Could not load recent failures.</div>
-      </section>
-    )
+    return <p className="text-sm text-[color:var(--tx3)]">Recent failures could not be loaded.</p>
   }
-
   if (failures.length === 0) {
-    return (
-      <section className="admin-card p-4">
-        <SectionLabel>Recent run failures</SectionLabel>
-        <div className="mt-3">
-          <EmptyState>No unattended runs have failed recently.</EmptyState>
-        </div>
-      </section>
-    )
+    return <p className="text-sm text-[color:var(--tx3)]">No run it started on its own has failed recently.</p>
   }
-
   return (
-    <section className="admin-card p-4">
-      <SectionLabel>Recent run failures</SectionLabel>
-      <div className="mt-3 grid gap-3">
-        {failures.map((failure) => (
-          <div
-            key={failure.runId}
-            className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-3"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-xs font-medium text-[color:var(--tx2)]">
-                Run {failure.runId.slice(0, 8)}
-              </span>
-              <span className="text-xs text-[color:var(--tx3)]">
-                {formatTimestamp(failure.failedAt)}
-              </span>
-            </div>
-            <div className="mt-1 text-sm text-[color:var(--tx)]">{failure.message}</div>
-          </div>
-        ))}
-      </div>
-    </section>
+    <ul className="grid divide-y divide-[color:var(--sep)]" data-testid="agent-run-failures">
+      {failures.map((failure) => (
+        <li className="grid gap-1 py-2" key={failure.runId}>
+          <span className="text-xs text-[color:var(--tx3)]">{formatTimestamp(failure.failedAt)}</span>
+          <span className="text-sm text-[color:var(--tx)]">{failure.message}</span>
+        </li>
+      ))}
+    </ul>
   )
 }

@@ -2,6 +2,7 @@ import { faChevronRight } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Trash2 } from 'lucide-react'
 import type { AgentRecord } from '../../../lib/api-client'
+import { agentStatusSentence } from '../../../lib/status-sentences'
 import { prewarmRowHandlers } from '../../../navigation/prewarm'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { SharedActionButton } from '../../shared/ActionToolbar'
@@ -9,7 +10,6 @@ import { AgentAvatar } from '../../shared/AgentAvatar'
 import { AgentVisibilityPill } from '../../shared/AgentVisibilityPill'
 import { AgentOwnerCell } from './AgentOwnerCell'
 import { AgentAvailability } from './AgentAvailability'
-import { PrivateAgentHomeLink } from './PrivateAgentHomeLink'
 import { useCanDeleteAgent } from './agent-edit-authority'
 
 type AgentListRowProps = {
@@ -20,18 +20,20 @@ type AgentListRowProps = {
    * the control and `DELETE /api/agents/:agentId` agree.
    */
   onDelete?: (agent: AgentRecord) => void
+  onMessage: (agent: AgentRecord) => void
   onOpen: (agentId: string) => void
   /** From the table's own `usePrewarm()`; a row cannot call a hook itself. */
   prewarm: (to: string) => void
   token: string | null
 }
 
-// One agent row: avatar, the agent's name over a short job description, an
-// owner, and a far-right chevron. The whole row opens agent detail, which owns
-// editing alongside the integrated Design Assistant.
+// One agent row: avatar, the agent's name over its role and its state in
+// words, an owner, Message, and a far-right chevron. The whole row opens the
+// agent's page, which owns editing alongside the integrated Design Assistant.
 export const AgentListRow = ({
   agent,
   onDelete,
+  onMessage,
   onOpen,
   prewarm,
   token,
@@ -71,18 +73,13 @@ export const AgentListRow = ({
         <AgentVisibilityPill visibility={agent.visibility} />
       </div>
       <div className="truncate text-xs text-[color:var(--tx3)]">
-        {agent.role}
+        {agent.role} · <span data-testid="agent-row-state">{agentStatusSentence(agent.status).label}</span>
       </div>
       <AgentAvailability
         agentId={agent.id}
         canRepair={canRepairLocalHost}
         localBindingId={agent.localInferenceBindingId}
         provider={agent.provider}
-      />
-      <PrivateAgentHomeLink
-        agent={agent}
-        className="mt-1 inline-flex text-xs text-[color:var(--lnk)] hover:underline"
-        stopParentNavigation
       />
     </td>
     <td className="hidden w-44 px-3 py-2.5 align-middle sm:table-cell">
@@ -91,6 +88,24 @@ export const AgentListRow = ({
         systemManaged={agent.systemManaged}
         token={token}
       />
+    </td>
+    <td className="w-24 py-2.5 pl-0 pr-1 text-right align-middle">
+      {/* A built-in agent that is not reached through the reader's own
+          conversation has none to open from here. */}
+      {!agent.systemManaged || agent.dmAddressable ? (
+        <button
+          className="admin-button admin-button-secondary admin-button-compact"
+          onClick={(event) => {
+            // The row itself opens the agent's page; Message must not do both.
+            event.stopPropagation()
+            onMessage(agent)
+          }}
+          onKeyDown={(event) => event.stopPropagation()}
+          type="button"
+        >
+          Message
+        </button>
+      ) : null}
     </td>
     <td className="w-9 py-2.5 pl-0 pr-1 text-right align-middle">
       {onDelete && canDelete ? (

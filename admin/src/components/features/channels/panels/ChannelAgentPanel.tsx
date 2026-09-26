@@ -70,7 +70,7 @@ export const ChannelAgentPanel = ({
               <button
                 className="admin-button admin-button-primary"
                 data-testid="channel-agent-edit"
-                onClick={() => void navigate(`/admin/agents/${agent.id}?agentTab=edit`)}
+                onClick={() => void navigate(`/admin/agents/${agent.id}?tab=settings`)}
                 type="button"
               >
                 Edit agent

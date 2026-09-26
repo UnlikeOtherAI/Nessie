@@ -85,7 +85,7 @@ export const assertGenericAgentToolPolicyInput = async (
     throw new AgentToolPolicyError(
       AGENT_TOOL_POLICY_ERROR_CODES.PROTECTED_INPUT,
       'Explicit-grant tools are not tool-policy keys: they are granted one at a '
-      + 'time to an existing agent — from its Tools tab, or by the Agent Designer '
+      + 'time to an existing agent — from its page\'s Access tab, or by the Agent Designer '
       + 'with agent_tool_access_set.',
     )
   }

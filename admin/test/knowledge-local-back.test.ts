@@ -136,16 +136,22 @@ test('an inline host delegates document placement to the active Finder view', ()
 test('the agent detail page owns no Back of its own', () => {
   // `/admin/agents/:id` is a real depth-2 route (parent Agents), so the shared route
   // Back returns there. Its old registration outranked the knowledge stages
-  // inside the Documents tab and left the agent instead of unwinding.
+  // inside the documents workspace and left the agent instead of unwinding.
   const page = readSource('../src/pages/AgentDetailPage.tsx')
-  assert.doesNotMatch(page, /useLocalBack/)
-  assert.doesNotMatch(page, /LOCAL_BACK_PRIORITY/)
+  const agentPage = readSource('../src/components/features/agents/page/AgentPage.tsx')
+  const header = readSource('../src/components/features/agents/page/AgentPageHeader.tsx')
+  for (const source of [page, agentPage, header]) {
+    assert.doesNotMatch(source, /useLocalBack/)
+    assert.doesNotMatch(source, /LOCAL_BACK_PRIORITY/)
+  }
   // Wider layouts keep their own Back beside the title — since step 9 that
   // is `ScreenHeader`'s `onBack`, rendered only because the registry says
   // this screen has a parent (docs/navigation/overview.md §9).
   assert.match(page, /<ScreenHeader/)
-  assert.match(page, /onBack=\{backToList\}/)
+  assert.match(page, /onBack=\{onBack\}/)
   assert.match(page, /backLabel="Back to Agents"/)
+  assert.match(header, /<ScreenHeader/)
+  assert.match(header, /backLabel="Back to Agents"/)
 
   assert.equal(matchSurface('/admin/agents/agent_a')?.surface.depth, 2)
   assert.deepEqual(surfaceParent('/admin/agents/agent_a'), {

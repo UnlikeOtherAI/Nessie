@@ -22,7 +22,7 @@ const ordinaryTools: DesignerToolOption[] = [
     allowMode: true,
     defaultEnabled: false,
     description: 'Create a ticket.',
-    group: 'Connectors (MCP)',
+    group: 'Connected apps',
     key: 'connector-ticket',
     kind: 'mcp',
     label: 'Ticket create',

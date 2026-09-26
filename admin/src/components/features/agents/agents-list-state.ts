@@ -1,5 +1,5 @@
-import type { AgentScope } from '../../shared/agent-scope'
 import { DEFAULT_PAGE_LIMIT } from '@nessie/schemas'
+import type { AgentListTab } from './agents-list-tabs'
 
 // The Agents page's per-tab page number is local state, which resets whenever
 // the page unmounts — and it unmounts every time the reader switches rail tabs
@@ -8,34 +8,34 @@ import { DEFAULT_PAGE_LIMIT } from '@nessie/schemas'
 // on, matching the scroll/selection restoration the rest of the section already
 // has. It resets on a full page reload, by design.
 //
-// The active scope itself lives in `?scope=` now (docs/navigation/overview.md §1, "Tab
-// hosts"); the copy kept here is the *default* the hook falls back to when the
-// URL names no scope, which is what makes returning from an agent's detail land
-// on the tab the reader left rather than on Team.
+// The active tab itself lives in `?scope=` (docs/navigation/overview.md §1,
+// "Tab hosts"); the copy kept here is the *default* the hook falls back to when
+// the URL names none, which is what makes returning from an agent's page land
+// on the tab the reader left rather than on Shared.
 export type AgentsListState = {
-  activeScope: AgentScope
-  pageByScope: Record<AgentScope, number>
+  activeTab: AgentListTab
+  pageByTab: Record<AgentListTab, number>
   pageSize: number
 }
 
 const createInitialState = (): AgentsListState => ({
-  activeScope: 'team',
-  pageByScope: { global: 0, personal: 0, team: 0 },
+  activeTab: 'shared',
+  pageByTab: { 'built-in': 0, mine: 0, shared: 0 },
   pageSize: DEFAULT_PAGE_LIMIT,
 })
 
 let saved: AgentsListState = createInitialState()
 
 export const loadAgentsListState = (): AgentsListState => ({
-  activeScope: saved.activeScope,
-  pageByScope: { ...saved.pageByScope },
+  activeTab: saved.activeTab,
+  pageByTab: { ...saved.pageByTab },
   pageSize: saved.pageSize,
 })
 
 export const saveAgentsListState = (state: AgentsListState): void => {
   saved = {
-    activeScope: state.activeScope,
-    pageByScope: { ...state.pageByScope },
+    activeTab: state.activeTab,
+    pageByTab: { ...state.pageByTab },
     pageSize: state.pageSize,
   }
 }

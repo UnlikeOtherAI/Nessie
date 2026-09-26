@@ -21,13 +21,15 @@ import type { AgentRecord } from '../src/lib/api-client.js'
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
 
-test('agent detail mounts documents through the shared knowledge team seam', () => {
-  const tabs = readSource('../src/components/features/agents/AgentDetailTabs.tsx')
+test('the agent page mounts its documents through the shared knowledge team seam', () => {
+  const instructions = readSource('../src/components/features/agents/page/AgentInstructionsTab.tsx')
   const documents = readSource('../src/components/features/agents/AgentDocumentsTab.tsx')
   const projectDocs = readSource('../src/pages/project/ProjectDocsTab.tsx')
 
-  assert.match(tabs, /label: 'Documents', value: 'documents'/)
-  assert.match(tabs, /documents: \{/)
+  // The Instructions tab holds the agent's documents, in a bounded frame so
+  // the workspace scrolls inside itself beneath the instruction fields.
+  assert.match(instructions, /title="Its documents"/)
+  assert.match(instructions, /<AgentDocumentsTab agent=\{agent\} \/>/)
   assert.match(documents, /<KnowledgeProvider agentId=\{agent\.id\} spaceId=\{space\.id\}>/)
   // Both mounts are the same Finder, parameterised by scope: the agent's tab
   // starts inside the agent's own folder, the project's inside the project's.

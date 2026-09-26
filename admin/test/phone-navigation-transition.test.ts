@@ -166,7 +166,7 @@ test('does not animate cross-tab or unrelated routes', () => {
 test('pushes and pops the Agents family and the settings nested details', () => {
   assert.equal(getPhoneNavigationDirection('/admin/agents', '/admin/agents/agent_a'), 'forward')
   assert.equal(getPhoneNavigationDirection('/admin/agents/agent_a', '/admin/agents'), 'back')
-  assert.equal(getPhoneNavigationDirection('/admin/agents', '/admin/agents/designer/agent_a'), 'forward')
+  assert.equal(getPhoneNavigationDirection('/admin/agents', '/admin/agents/new'), 'forward')
   assert.equal(
     getPhoneNavigationDirection('/settings/status', '/settings/status/status_a'),
     'forward',

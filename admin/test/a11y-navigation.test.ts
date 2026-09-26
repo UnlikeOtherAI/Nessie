@@ -201,9 +201,9 @@ test('the channel list and the Finder columns carry a stable scroll-memory key',
   assert.match(finder, /scrollKey=\{`finder:\$\{level\.key\}`\}/)
 })
 
-test('the agents list already remembers its scroll position per scope', () => {
+test('the agents list already remembers its scroll position per tab', () => {
   const agentsList = source('../src/components/features/agents/AgentsList.tsx')
-  assert.match(agentsList, /useScrollMemory\(`agents:list:\$\{activeScope\}`\)/)
+  assert.match(agentsList, /useScrollMemory\(`agents:list:\$\{activeTab\}`\)/)
 })
 
 // --- jsdom: the visualViewport listener itself ---

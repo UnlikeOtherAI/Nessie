@@ -27,12 +27,11 @@ test('the Agents group is Agents, Apps, Computers and Automations, with no Desig
   )
 })
 
-test('an agent, its designer and its mailbox keep "Agents" highlighted', () => {
+test('an agent, New agent and a mailbox keep "Agents" highlighted', () => {
   assert.ok(agentsItem, 'Agents item exists')
   for (const path of [
     '/admin/agents',
-    '/admin/agents/designer',
-    '/admin/agents/designer/abc-123',
+    '/admin/agents/new',
     '/admin/agents/agent-abc-123',
     '/admin/agents/agent-abc-123/mailbox',
   ]) {
@@ -41,13 +40,13 @@ test('an agent, its designer and its mailbox keep "Agents" highlighted', () => {
 })
 
 test('sibling pages own their own routes (no double-highlight)', () => {
-  // The designer routes light up ONLY the Agents item.
+  // New agent lights up ONLY the Agents item.
   const others = agentsGroup!.items.filter((item) => item.path !== '/admin/agents')
   for (const item of others) {
     assert.equal(
-      isAdminNavItemActive(item, '/admin/agents/designer/abc-123'),
+      isAdminNavItemActive(item, '/admin/agents/new'),
       false,
-      `${item.path} must not activate on the agent designer`,
+      `${item.path} must not activate on New agent`,
     )
   }
   // And Agents does not steal a sibling's own route, nor a prefix look-alike.

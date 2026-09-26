@@ -2,11 +2,10 @@ import {
   createContext,
   useCallback,
   useContext,
+  useMemo,
   useRef,
-  useState,
   type ReactNode,
 } from 'react'
-import type { DesignerPageContext } from '../../../../facades/designer/types'
 
 export type DesignerAssistantActionHandler = (
   name: string,
@@ -14,54 +13,49 @@ export type DesignerAssistantActionHandler = (
 ) => boolean
 
 type DesignerAssistantPanelState = {
-  actionHandler: DesignerAssistantActionHandler
-  closeDrawer: () => void
-  pageContext: DesignerPageContext
-  panelOutlet: HTMLDivElement | null
+  /**
+   * Hands a tool call to the control that owns it. When that control is not
+   * mounted yet — the page is still switching to its tab — the call waits and
+   * is replayed the moment the control registers, instead of being lost.
+   */
+  dispatchToolCall: (name: string, args: Record<string, unknown>) => boolean
   registerActionHandler: (handler: DesignerAssistantActionHandler | null) => void
-  registerDrawerClose: (close: (() => void) | null) => void
-  setPageContext: (context: DesignerPageContext) => void
-  setPanelOutlet: (outlet: HTMLDivElement | null) => void
-}
-
-const defaultPageContext: DesignerPageContext = {
-  actions: [],
-  description: 'Review this agent and its available team controls.',
-  title: 'Agent',
 }
 
 const DesignerAssistantPanelContext = createContext<DesignerAssistantPanelState | null>(null)
 
+/**
+ * The agent page's line between the Design Assistant and a control that keeps
+ * its own state. Today that is one control: an existing agent's tools, which
+ * the Access tab edits and saves itself (`AgentAvailableTools`), so the
+ * assistant's toggles go to it rather than into the form.
+ */
 export const DesignerAssistantPanelProvider = ({ children }: { children: ReactNode }) => {
-  const [pageContext, setPageContext] = useState(defaultPageContext)
-  const [panelOutlet, setPanelOutlet] = useState<HTMLDivElement | null>(null)
-  const actionHandlerRef = useRef<DesignerAssistantActionHandler | null>(null)
-  const drawerCloseRef = useRef<(() => void) | null>(null)
+  const handlerRef = useRef<DesignerAssistantActionHandler | null>(null)
+  const pendingRef = useRef<Array<{ args: Record<string, unknown>; name: string }>>([])
 
   const registerActionHandler = useCallback((handler: DesignerAssistantActionHandler | null) => {
-    actionHandlerRef.current = handler
+    handlerRef.current = handler
+    if (!handler) return
+    const pending = pendingRef.current
+    pendingRef.current = []
+    for (const call of pending) handler(call.name, call.args)
   }, [])
 
-  const actionHandler: DesignerAssistantActionHandler = useCallback((name, args) =>
-    actionHandlerRef.current?.(name, args) ?? false, [])
-  const closeDrawer = useCallback(() => drawerCloseRef.current?.(), [])
-  const registerDrawerClose = useCallback((close: (() => void) | null) => {
-    drawerCloseRef.current = close
+  const dispatchToolCall = useCallback((name: string, args: Record<string, unknown>) => {
+    const handler = handlerRef.current
+    if (handler) return handler(name, args)
+    pendingRef.current.push({ args, name })
+    return true
   }, [])
+
+  const value = useMemo(
+    () => ({ dispatchToolCall, registerActionHandler }),
+    [dispatchToolCall, registerActionHandler],
+  )
 
   return (
-    <DesignerAssistantPanelContext.Provider
-      value={{
-        actionHandler,
-        closeDrawer,
-        pageContext,
-        panelOutlet,
-        registerActionHandler,
-        registerDrawerClose,
-        setPageContext,
-        setPanelOutlet,
-      }}
-    >
+    <DesignerAssistantPanelContext.Provider value={value}>
       {children}
     </DesignerAssistantPanelContext.Provider>
   )

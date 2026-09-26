@@ -7,7 +7,8 @@ import type { GlobalAgentExecutorFacts } from '@nessie/executor-manage'
 import type { z } from 'zod'
 
 import type { DesignerChatBodySchema } from '../contracts/designer.js'/**
- * The Agent Designer's second face: the sidebar on the Agent Designer page.
+ * The Agent Designer's second face: the Design Assistant docked on the agent
+ * page and on New agent.
  *
  * One brain, two doorways (D9). The persona and the generated capability
  * catalogue come from the blueprint module the DM face uses — this file adds

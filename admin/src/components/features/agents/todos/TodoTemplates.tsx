@@ -37,7 +37,7 @@ export const TodoTemplates = ({ agent, query }: TodoTemplatesProps) => {
 
   const refuseOwnerAction = () => {
     pushToast({
-      body: 'Only organization owners can create, edit, or archive to-do templates.',
+      body: 'Only organisation owners can create, edit, or archive to-do templates.',
       title: 'Template changes need owner access',
     })
   }
@@ -126,7 +126,7 @@ export const TodoTemplates = ({ agent, query }: TodoTemplatesProps) => {
         emptyLabel={
           isOwner
             ? 'Create a template to give this agent a reusable checklist.'
-            : 'No templates exist yet. An organization owner can add a reusable checklist here.'
+            : 'No templates exist yet. An organisation owner can add a reusable checklist here.'
         }
         errorLabel="Templates could not be loaded."
         isEmpty={templates.length === 0}

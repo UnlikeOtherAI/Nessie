@@ -73,7 +73,7 @@ export type AgentHandoffBriefMetadata = z.infer<typeof AgentHandoffBriefMetadata
 
 /**
  * The other brief a global agent can receive: a form draft handed over from the
- * Agent Designer page's sidebar ("Continue in chat", D9).
+ * Design Assistant on the agent page ("Continue in chat", D9).
  *
  * Same shape of act as a handoff and the same delivery — a hidden `system`
  * message that starts the run — so it carries its own server-authored

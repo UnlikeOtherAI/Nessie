@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 
-import { AgentDetailTabs } from '../../src/components/features/agents/AgentDetailTabs'
+import { AgentActivityTab } from '../../src/components/features/agents/page/AgentActivityTab'
 import { ThoughtProcessDialog } from '../../src/components/features/channels/ThoughtProcessDialog'
 import type { AgentIdentity } from '../../src/components/shared/agent-identity'
 import type { ThinkingEntry } from '../../src/facades/threads/thinking'
@@ -24,7 +24,8 @@ import '../../src/styles.css'
  * `?surface=thought` opens the dialog on a live run whose newest call — a
  * Kelpie screenshot — has not returned yet; `window.__toolScreenshotsFixture`
  * plays the next reasoning chunk and the run's end the way the thread stream
- * would. `?surface=agent` is the agent page on its Activity tab.
+ * would. `?surface=agent` is the agent page's Activity tab, with the tool log
+ * folded as it is on the page.
  */
 
 const RUN_ID = '50000000-0000-4000-8000-000000000001'
@@ -100,8 +101,8 @@ const AgentSurface = () => (
     className="flex h-screen flex-col bg-[color:var(--main)] text-[color:var(--tx)]"
   >
     <h1 className="px-[var(--page-gutter)] pt-4 text-lg font-semibold">CTO</h1>
-    <div className="min-h-0 flex-1">
-      <AgentDetailTabs agent={agentRecord} />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AgentActivityTab agent={agentRecord} />
     </div>
   </main>
 )

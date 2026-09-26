@@ -324,18 +324,14 @@ export const useAdminShell = () => {
     });
   }, [location.hash, location.pathname, location.search, navigate]);
 
-  // The designer carries its own visibility picker, so Create → Agent opens it
-  // directly and returns to wherever the person was.
+  // New agent carries its own visibility choice, so every "create an agent"
+  // doorway opens it directly and it returns to wherever the person was.
   const navigateToNewAgent = useCallback(() => {
     setSidebarMenu(null);
-    void navigate('/admin/agents/designer', {
+    void navigate('/admin/agents/new', {
       state: { returnTo: `${location.pathname}${location.search}${location.hash}` },
     });
   }, [location.hash, location.pathname, location.search, navigate]);
-
-  const navigateToAgentDesigner = useCallback(() => {
-    void navigate('/admin/agents/designer');
-  }, [navigate]);
 
   const logoutAndRedirect = useCallback(() => {
     void logout().then(() => navigate('/login', { replace: true }));
@@ -446,7 +442,6 @@ export const useAdminShell = () => {
     navigateToThreads,
     navigateToUnreadMessages,
     navigateToDm,
-    navigateToAgentDesigner,
     navigateToNewAgent,
     navigateToNewConversation,
     navigateToProject,

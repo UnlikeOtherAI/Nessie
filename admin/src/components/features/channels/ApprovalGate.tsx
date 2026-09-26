@@ -124,7 +124,7 @@ export const ApprovalGate = ({
   const openable = gate.action === 'knowledge.page.publish' && pageId && spaceId
     ? { href: `/knowledge-base?spaceId=${spaceId}&pageId=${pageId}`, label: 'Open page' }
     : gate.action === 'agent.todo_template.publish' && approval.data?.agentId
-      ? { href: `/admin/agents/${approval.data.agentId}?agentTab=to-dos`, label: 'Open to-dos' }
+      ? { href: `/admin/agents/${approval.data.agentId}?tab=activity`, label: 'Open to-dos' }
       : null
 
   const submit = () => {

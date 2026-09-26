@@ -10,11 +10,15 @@ type AgentsTableProps = {
   isLoading: boolean
   /** Omitted on a read-only tier (the system agents), where nothing deletes. */
   onDelete?: (agent: AgentRecord) => void
+  /** Opens a conversation with the agent — the list's way to talk to it. */
+  onMessage: (agent: AgentRecord) => void
   onOpen: (agentId: string) => void
   token: string | null
 }
 
 const SKELETON_ROWS = 4
+// Avatar, agent, owner, message, delete, chevron.
+const COLUMN_COUNT = 6
 
 const TableFrame = ({ children }: { children: React.ReactNode }) => (
   <ExpandableTable
@@ -31,7 +35,7 @@ const HeaderRow = () => (
     <tr className="border-b border-[color:var(--sep)]">
       <th
         className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--tx3)]"
-        colSpan={4}
+        colSpan={COLUMN_COUNT}
         scope="col"
       >
         Agent
@@ -49,6 +53,7 @@ export const AgentsTable = ({
   emptyMessage,
   isLoading,
   onDelete,
+  onMessage,
   onOpen,
   token,
 }: AgentsTableProps) => {
@@ -60,7 +65,7 @@ export const AgentsTable = ({
         <HeaderRow />
         <tbody>
           <tr>
-            <td className="px-4 py-4" colSpan={4}>
+            <td className="px-4 py-4" colSpan={COLUMN_COUNT}>
               <Skeleton count={SKELETON_ROWS} variant="list" />
             </td>
           </tr>
@@ -77,7 +82,7 @@ export const AgentsTable = ({
           <tr>
             <td
               className="px-4 py-12 text-center text-sm text-[color:var(--tx3)]"
-              colSpan={4}
+              colSpan={COLUMN_COUNT}
             >
               {emptyMessage}
             </td>
@@ -96,6 +101,7 @@ export const AgentsTable = ({
             agent={agent}
             key={agent.id}
             {...(onDelete ? { onDelete } : {})}
+            onMessage={onMessage}
             onOpen={onOpen}
             prewarm={prewarm}
             token={token}

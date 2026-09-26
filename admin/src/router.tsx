@@ -14,7 +14,6 @@ import { ExternalAuthCompletionPage } from './pages/ExternalAuthCompletionPage'
 import { LoginRoute } from './pages/LoginRoute'
 import { NotFoundPage } from './pages/NotFoundPage'
 import {
-  AgentDesignerPage,
   AgentDetailPage,
   AgentMailboxPage,
   AgentsPage,
@@ -40,6 +39,7 @@ import {
   KeysPage,
   KnowledgeBasePage,
   ModelsPage,
+  NewAgentPage,
   NotificationsPage,
   OperationalTelemetryPage,
   OpsHealthPage,
@@ -302,8 +302,7 @@ export const router = createBrowserRouter([
       { path: '/admin', element: <ContextualListRoute to="/admin/agents" /> },
       // Agents — everyone's first group: agents, apps, computers, automations.
       { path: '/admin/agents', element: lazyElement(AgentsPage, 'list') },
-      { path: '/admin/agents/designer', element: lazyElement(AgentDesignerPage, 'detail') },
-      { path: '/admin/agents/designer/:agentId', element: lazyElement(AgentDesignerPage, 'detail') },
+      { path: '/admin/agents/new', element: lazyElement(NewAgentPage, 'detail') },
       { path: '/admin/agents/:agentId', element: lazyElement(AgentDetailPage, 'detail') },
       { path: '/admin/agents/:agentId/mailbox', element: lazyElement(AgentMailboxPage, 'feed') },
       { path: '/admin/apps', element: lazyElement(AppsPage, 'board') },

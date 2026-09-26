@@ -1,26 +1,35 @@
 import { useNavigate } from 'react-router-dom'
 import { Sheet } from '../../overlays/Sheet'
 import type { AgentRecord } from '../../../lib/api-client'
-import { useCanEditAgent } from './agent-edit-authority'
+import { useAgentEditViewer, useCanEditAgent } from './agent-edit-authority'
 import { AgentIdentityBlock } from './AgentIdentityBlock'
-import { AgentDetailTabs } from './AgentDetailTabs'
+import { agentOwnershipLabel } from './AgentOwnershipState'
 
 type AgentDetailDrawerProps = {
   agent: AgentRecord | null
   onClose: () => void
-  onSelectAgent: (agentId: string) => void
 }
 
-export const AgentDetailDrawer = ({
-  agent,
-  onClose,
-  onSelectAgent,
-}: AgentDetailDrawerProps) => {
+/**
+ * The quick look at an agent from wherever its name was pressed: who it is,
+ * what state it is in, who manages it, and the way to its page. It carries no
+ * sections of its own — everything about the agent lives on one page, so a
+ * second copy of those tabs over a conversation is exactly the fork Rule zero
+ * names (and it is what forced the page's tab into an `agentTab` parameter to
+ * stay out of the conversation's own `tab`).
+ */
+export const AgentDetailDrawer = ({ agent, onClose }: AgentDetailDrawerProps) => {
   const navigate = useNavigate()
   const canEdit = useCanEditAgent(agent)
+  const viewer = useAgentEditViewer()
 
   if (!agent) {
     return null
+  }
+
+  const openPage = () => {
+    onClose()
+    void navigate(`/admin/agents/${agent.id}`)
   }
 
   return (
@@ -41,27 +50,20 @@ export const AgentDetailDrawer = ({
           <div className="flex items-center gap-3">
             <AgentIdentityBlock agent={agent} canEditAvatar={canEdit} />
           </div>
-          <div className="flex gap-2">
-            {canEdit ? (
-              <button
-                className="admin-button admin-button-secondary"
-                onClick={() => void navigate(`/admin/agents/designer/${agent.id}`)}
-                type="button"
-              >
-                Edit details
-              </button>
-            ) : null}
-            <button
-              className="admin-button admin-button-secondary"
-              onClick={onClose}
-              type="button"
-            >
-              Close
+          <button className="admin-button admin-button-secondary" onClick={onClose} type="button">
+            Close
+          </button>
+        </header>
+        <div className="grid gap-4 px-6 py-5">
+          <p className="text-sm text-[color:var(--tx2)]">
+            {agent.systemManaged ? 'Provided by Nessie.' : `${agentOwnershipLabel(agent, viewer)}.`}
+          </p>
+          <div>
+            <button className="admin-button admin-button-primary" onClick={openPage} type="button">
+              Open agent page
             </button>
           </div>
-        </header>
-
-        <AgentDetailTabs key={agent.id} agent={agent} onSelectAgent={onSelectAgent} />
+        </div>
       </div>
     </Sheet>
   )

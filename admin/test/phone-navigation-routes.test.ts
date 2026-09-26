@@ -375,9 +375,9 @@ test('depth changes animate; cross-section switches do not', () => {
 
 // Before the surface registry every route in ADMIN_ROUTE_PREFIXES collapsed
 // onto one `admin:detail` key at depth 1, so nothing inside the Agents family
-// animated, a sub-agent drill-in was invisible, and neither designer knew
+// animated, a sub-agent drill-in was invisible, and New agent did not know
 // what it was covering.
-test('the Agents family is a real stack: list depth1, agent depth2, designers as flows', () => {
+test('the Agents family is a real stack: list depth1, agent depth2, New agent a flow', () => {
   assert.equal(getPhoneNavigationScreen('/admin/agents')?.depth, 1)
   assert.equal(getPhoneNavigationScreen('/admin/agents/agent_a')?.depth, 2)
   assert.equal(getPhoneNavigationScreen('/admin/agents/agent_a')?.section, 'admin')
@@ -400,21 +400,22 @@ test('the Agents family is a real stack: list depth1, agent depth2, designers as
     pathname: '/admin/agents/agent_a',
   })
 
-  // The agent's designer is a Flow at depth 2 — pushed from the list it edits.
-  assert.equal(getPhoneNavigationScreen('/admin/agents/designer')?.depth, 2)
-  assert.equal(getPhoneNavigationScreen('/admin/agents/designer/agent_a')?.depth, 2)
-  assert.equal(getPhoneNavigationDirection('/admin/agents', '/admin/agents/designer'), 'forward')
-  assert.equal(getPhoneNavigationDirection('/admin/agents/designer/agent_a', '/admin/agents'), 'back')
-  assert.deepEqual(getPhoneNavigationBackTarget('/admin/agents/designer/agent_a'), {
+  // New agent is a Flow at depth 2 — pushed from the list it adds to — and
+  // `new` is never read as an agent id. The old designer addresses are gone.
+  assert.equal(getPhoneNavigationScreen('/admin/agents/new')?.depth, 2)
+  assert.equal(getPhoneNavigationDirection('/admin/agents', '/admin/agents/new'), 'forward')
+  assert.equal(getPhoneNavigationDirection('/admin/agents/new', '/admin/agents'), 'back')
+  assert.deepEqual(getPhoneNavigationBackTarget('/admin/agents/new'), {
     label: 'Back to Agents',
     pathname: '/admin/agents',
   })
-  // An agent detail and its designer are different screens at the same depth:
+  // An agent's page and New agent are different screens at the same depth:
   // no transition, but not the same layer either.
   assert.notEqual(
     getPhoneNavigationScreen('/admin/agents/agent_a')?.key,
-    getPhoneNavigationScreen('/admin/agents/designer/agent_a')?.key,
+    getPhoneNavigationScreen('/admin/agents/new')?.key,
   )
+  assert.equal(getPhoneNavigationScreen('/admin/agents/designer/agent_a')?.depth, undefined)
 })
 
 test('computers and automations push their records one step in', () => {

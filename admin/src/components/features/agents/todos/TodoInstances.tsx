@@ -150,7 +150,7 @@ export const TodoInstances = ({
 
       {activeTemplates.length === 0 ? (
         <EmptyState>
-          No active templates are available. An organization owner can create one above,
+          No active templates are available. An organisation owner can create one above,
           then anyone who can see this agent can start it.
         </EmptyState>
       ) : null}

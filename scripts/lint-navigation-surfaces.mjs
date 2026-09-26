@@ -183,7 +183,7 @@ export const findDeadPatterns = (patterns, routerPaths) =>
 // `matchSurface` (admin/src/navigation/surfaces.ts) is first-match-wins, so a
 // router path matched by more than one pattern depends entirely on array
 // order for its depth, parent and motion. Most of the 14 that do this today
-// are intentional — a specific row (`/admin/agents/designer`) declared ahead of a
+// are intentional — a specific row (`/admin/agents/new`) declared ahead of a
 // broader sibling (`/admin/agents/:id`) — but the ordering itself is silent: moving
 // the general row above its specific sibling reclassifies the route with
 // every other test still green. Returns a Map of routerPath -> the source

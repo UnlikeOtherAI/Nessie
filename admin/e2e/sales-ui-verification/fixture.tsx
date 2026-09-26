@@ -5,8 +5,8 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 
 import { AgentCreationModeTabs } from '../../src/components/features/agents/designer/AgentCreationModeTabs'
-import { type AgentDesignerSection, AgentDesignerForm } from '../../src/components/features/agents/designer/AgentDesignerForm'
-import { useAgentDesigner } from '../../src/components/features/agents/designer/useAgentDesigner'
+import { AgentInstructionsField, AgentNameRoleFields } from '../../src/components/features/agents/page/AgentConfigFields'
+import { useAgentConfigForm } from '../../src/components/features/agents/page/useAgentConfigForm'
 import { GoogleScopeRequestCard } from '../../src/components/features/channels/GoogleScopeRequestCard'
 import { TodoTemplateEditor } from '../../src/components/features/agents/todos/TodoTemplateEditor'
 import { TaskDialog } from '../../src/components/features/projects/kanban/TaskDialog'
@@ -43,6 +43,9 @@ const client = {
     if (path === '/api/agents/agent-sales/todo-templates') return [{ id: 'template-venue', name: 'Venue research', status: 'active', steps: [] }]
     if (path === '/api/tasks/task-sales/pages') return []
     if (path === '/api/comms/connections') return { connections: [{ id: 'google-sales', provider: 'google', status: 'active' }] }
+    // New agent's own reads: the model catalogue and the tool catalogue.
+    if (path.startsWith('/api/agents/models')) return []
+    if (path === '/api/tools' || path.startsWith('/api/mcp/tools')) return []
     throw new Error(`Unexpected GET ${path}`)
   },
   patch: async (path: string, body: Record<string, unknown>) => {
@@ -65,17 +68,18 @@ const client = {
   put: async () => ({ ok: true }),
 } as unknown as ApiClient
 
+// New agent's two modes over one draft: the Configure fields are the same
+// components the agent page's Settings and Instructions tabs render.
 const DesignerFixture = () => {
   const [mode, setMode] = useState<'create' | 'configure'>('configure')
-  const [section, setSection] = useState<AgentDesignerSection>('basics')
-  const { actions, state } = useAgentDesigner({ name: 'Venue scout' })
+  const form = useAgentConfigForm({})
   return <section aria-label="Designer verification" className="grid gap-4">
     <AgentCreationModeTabs onChange={setMode} value={mode} />
     <p data-testid="designer-mode">{mode}</p>
-    <AgentDesignerForm actions={actions} canManageExplicitTools={false} canManageTodos modelOptions={[]}
-      modelsLoading={false} onLocalBindingChange={() => undefined} onModelSelect={actions.setModelSelection}
-      onSectionChange={setSection} section={section} showTools={false} state={state}
-      toolGroups={[]} toolsQuery={{ data: [], isError: false, isLoading: false } as never} />
+    <div className="grid gap-4" hidden={mode !== 'configure'}>
+      <AgentNameRoleFields form={form} readOnly={false} />
+      <AgentInstructionsField form={form} readOnly={false} />
+    </div>
   </section>
 }
 

@@ -16,92 +16,42 @@ import {
   type AgentTodoTemplateRecord,
 } from '@nessie/schemas'
 
-import { AgentDesignerForm } from '../src/components/features/agents/designer/AgentDesignerForm.js'
+import { AgentTodosSetting } from '../src/components/features/agents/page/AgentConfigFields.js'
 import { TodoInstanceCard, canChangeTodo } from '../src/components/features/agents/todos/TodoInstanceCard.js'
 import { TodoTemplateCard } from '../src/components/features/agents/todos/TodoTemplateCard.js'
 import { TodoTemplateEditor } from '../src/components/features/agents/todos/TodoTemplateEditor.js'
-import { emptyRunLimitsForm } from '../src/facades/designer/run-limits.js'
-import type {
-  AgentDesignerActions,
-  AgentFormState,
-} from '../src/facades/designer/types.js'
 import { agentTodoKeys } from '../src/facades/agent-todos/keys.js'
 import type { AgentRecord } from '../src/lib/api-client.js'
+import { fakeAgentConfigForm } from './support/agent-config-form.js'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
-const actions: AgentDesignerActions = {
-  applyToolCall: () => undefined,
-  dispatch: () => undefined,
-  setEffort: () => undefined,
-  setModelSelection: () => undefined,
-  setName: () => undefined,
-  setRole: () => undefined,
-  setRunLimit: () => undefined,
-  setSpeakingStyle: () => undefined,
-  setSystemPrompt: () => undefined,
-  setTodosEnabled: () => undefined,
-  setVoiceName: () => undefined,
-  toggleTool: () => undefined,
-}
-
-const state: AgentFormState = {
-  effort: 'medium',
-  model: '',
-  name: 'Checklist agent',
-  provider: '',
-  role: 'assistant',
-  runLimits: emptyRunLimitsForm,
-  speakingStyle: '',
-  streamingField: null,
-  systemPrompt: '',
-  todosEnabled: false,
-  tools: {},
-  voiceName: '',
-}
-
-test('the Designer renders the persisted to-dos switch and visibility caveat', () => {
+test('Settings renders the persisted to-dos switch and its caveat', () => {
   const html = renderToStaticMarkup(
-    createElement(MemoryRouter, null, createElement(AgentDesignerForm, {
-      actions,
-      canManageExplicitTools: true,
+    createElement(MemoryRouter, null, createElement(AgentTodosSetting, {
       canManageTodos: true,
-      modelOptions: [],
-      modelsLoading: false,
-      onSectionChange: () => undefined,
-      section: 'todos',
-      showTools: false,
-      state,
-      toolGroups: [],
-      toolsLoading: false,
+      form: fakeAgentConfigForm(),
+      readOnly: false,
     })),
   )
 
   assert.match(html, /role="switch"/)
   assert.match(html, /aria-label="Enable to-dos for this agent"/)
   assert.match(html, /Give this agent reusable checklists it can work through\./)
-  assert.match(html, /Do not put secrets in them\./)
+  assert.match(html, /keep secrets out of them\./)
 })
 
 test('a member sees the to-dos switch but cannot change it', () => {
   const html = renderToStaticMarkup(
-    createElement(MemoryRouter, null, createElement(AgentDesignerForm, {
-      actions,
-      canManageExplicitTools: false,
+    createElement(MemoryRouter, null, createElement(AgentTodosSetting, {
       canManageTodos: false,
-      modelOptions: [],
-      modelsLoading: false,
-      onSectionChange: () => undefined,
-      section: 'todos',
-      showTools: false,
-      state,
-      toolGroups: [],
-      toolsLoading: false,
+      form: fakeAgentConfigForm(),
+      readOnly: false,
     })),
   )
 
   assert.match(html, /aria-label="Enable to-dos for this agent"[^>]*disabled=""/)
-  assert.match(html, /Only organization owners can enable or disable to-dos\./)
+  assert.match(html, /Only an organisation owner can turn to-dos on or off\./)
 })
 
 test('the template editor takes every persisted bound from the shared schema', () => {

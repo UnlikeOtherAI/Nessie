@@ -43,7 +43,7 @@ import { recordKnowledgeVersionRead } from './knowledge-basis.js'
 /**
  * Reading and rewriting an agent's configuration from chat.
  *
- * Each tool calls the very same shared function the Agent Designer page's
+ * Each tool calls the very same shared function the agent page's
  * controls call — `readAgentRecordForActor` for the record the detail page
  * reads out of the entitled list, `updateAgentRecord` / `updateAgentAvatar` for
  * the writes — so the conversation and the form cannot disagree about who may

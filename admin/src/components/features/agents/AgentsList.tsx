@@ -1,8 +1,9 @@
 import { faPlus } from '@fortawesome/free-solid-svg-icons'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAgents } from '../../../facades/agents/hooks'
+import { useAgents, useStartAgentConversation } from '../../../facades/agents/hooks'
 import { useDeleteAgent } from '../../../facades/agents/mutations'
+import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { useScrollMemory } from '../../../hooks/useScrollMemory'
 import type { AgentRecord } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
@@ -11,19 +12,22 @@ import { TabBar } from '../../primitives/TabBar'
 import { PaginationFooter } from '../../shared/PaginationFooter'
 import { ScreenHeader } from '../../shared/ScreenHeader'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
+import { useToasts } from '../../../providers/ToastProvider'
 import { AgentsTable } from './AgentsTable'
 import {
-  AGENT_SCOPES,
-  AGENT_SCOPE_META,
-  getAgentScope,
-  type AgentScope,
-} from '../../shared/agent-scope'
+  AGENT_LIST_TABS,
+  AGENT_LIST_TAB_META,
+  agentListTab,
+  type AgentListTab,
+} from './agents-list-tabs'
 import { loadAgentsListState, saveAgentsListState } from './agents-list-state'
+import { conversationPath } from './conversations/AgentConversationList'
+import { privateAgentHomeChannelId } from './PrivateAgentHomeLink'
 
-const emptyBuckets = (): Record<AgentScope, AgentRecord[]> => ({
-  global: [],
-  personal: [],
-  team: [],
+const emptyBuckets = (): Record<AgentListTab, AgentRecord[]> => ({
+  'built-in': [],
+  mine: [],
+  shared: [],
 })
 
 export const AgentsList = () => {
@@ -35,14 +39,14 @@ export const AgentsList = () => {
 
   const [initialState] = useState(loadAgentsListState)
   // `scope` in the URL, seeded from the session ledger: a pasted
-  // `/admin/agents?scope=personal` opens on Personal, and arriving with no param
-  // restores the scope this reader left on (docs/navigation/overview.md §1, "Tab hosts").
-  const [activeScope, setActiveScope] = useTabParam(
+  // `/admin/agents?scope=mine` opens on Mine, and arriving with no param
+  // restores the tab this reader left on (docs/navigation/overview.md §1, "Tab hosts").
+  const [activeTab, setActiveTab] = useTabParam(
     'scope',
-    AGENT_SCOPES,
-    initialState.activeScope,
+    AGENT_LIST_TABS,
+    initialState.activeTab,
   )
-  const [pageByScope, setPageByScope] = useState(initialState.pageByScope)
+  const [pageByTab, setPageByTab] = useState(initialState.pageByTab)
   const [pageSize, setPageSize] = useState(initialState.pageSize)
   // Agents → Admin is the owning surface for deleting an agent (Rule zero: it
   // is where a person already stands when the question arises). The row draws
@@ -51,38 +55,58 @@ export const AgentsList = () => {
   const [pendingDelete, setPendingDelete] = useState<AgentRecord | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const deleteAgent = useDeleteAgent()
+  const startConversation = useStartAgentConversation()
+  const { pushToast } = useToasts()
 
   useEffect(() => {
-    saveAgentsListState({ activeScope, pageByScope, pageSize })
-  }, [activeScope, pageByScope, pageSize])
+    saveAgentsListState({ activeTab, pageByTab, pageSize })
+  }, [activeTab, pageByTab, pageSize])
 
-  // Only root agents are listed; sub-agents are reached from the detail page.
+  // Only root agents are listed; the helpers an agent starts are reached from
+  // its page.
   const buckets = useMemo(() => {
     const grouped = emptyBuckets()
     for (const agent of agents) {
       if (agent.parentAgentId) continue
-      grouped[getAgentScope(agent)].push(agent)
+      grouped[agentListTab(agent)].push(agent)
     }
-    for (const scope of AGENT_SCOPES) {
-      grouped[scope].sort((left, right) => left.name.localeCompare(right.name))
+    for (const tab of AGENT_LIST_TABS) {
+      grouped[tab].sort((left, right) => left.name.localeCompare(right.name))
     }
     return grouped
   }, [agents])
 
-  const scopeAgents = buckets[activeScope]
+  const scopeAgents = buckets[activeTab]
   const totalPages = Math.max(1, Math.ceil(scopeAgents.length / pageSize))
-  const page = Math.min(pageByScope[activeScope], totalPages - 1)
+  const page = Math.min(pageByTab[activeTab], totalPages - 1)
   const pageAgents = scopeAgents.slice(page * pageSize, page * pageSize + pageSize)
 
   const setPage = (next: number) => {
-    setPageByScope((prev) => ({ ...prev, [activeScope]: next }))
+    setPageByTab((prev) => ({ ...prev, [activeTab]: next }))
   }
   const setPageSizeAndReset = (next: number) => {
     setPageSize(next)
-    setPageByScope((previous) => ({ ...previous, [activeScope]: 0 }))
+    setPageByTab((previous) => ({ ...previous, [activeTab]: 0 }))
   }
 
-  const scroll = useScrollMemory(`agents:list:${activeScope}`)
+  // A private agent lives in its owner's one conversation; any other is met
+  // in a fresh conversation, or the empty one the person already has.
+  const openConversation = (agent: AgentRecord) => {
+    const home = privateAgentHomeChannelId(agent)
+    if (home) {
+      void navigate(`/channels/${home}`)
+      return
+    }
+    startConversation.mutate({ agentId: agent.id }, {
+      onError: (error) => pushToast({
+        body: formErrorMessage(error, 'A conversation with this agent could not be opened.'),
+        title: 'No conversation opened',
+      }),
+      onSuccess: (result) => void navigate(conversationPath(result.conversation)),
+    })
+  }
+
+  const scroll = useScrollMemory(`agents:list:${activeTab}`)
 
   const rangeStart = scopeAgents.length === 0 ? 0 : page * pageSize + 1
   const rangeEnd = Math.min((page + 1) * pageSize, scopeAgents.length)
@@ -97,25 +121,25 @@ export const AgentsList = () => {
           icon: faPlus,
           id: 'new-agent',
           label: 'New agent',
-          onSelect: () => void navigate('/admin/agents/designer'),
+          onSelect: () => void navigate('/admin/agents/new'),
           primary: true,
           priority: 100,
         }]}
         subtitle={
-          <p className="text-sm text-[color:var(--tx3)]">
-            {AGENT_SCOPE_META[activeScope].description}
+          <p className="text-sm text-[color:var(--tx3)]" data-testid="agents-tab-note">
+            {AGENT_LIST_TAB_META[activeTab].description}
           </p>
         }
         tabs={
           <TabBar
-            ariaLabel="Agent scopes"
-            items={AGENT_SCOPES.map((scope) => ({
-              count: buckets[scope].length,
-              label: AGENT_SCOPE_META[scope].label,
-              value: scope,
+            ariaLabel="Whose agents"
+            items={AGENT_LIST_TABS.map((tab) => ({
+              count: buckets[tab].length,
+              label: AGENT_LIST_TAB_META[tab].label,
+              value: tab,
             }))}
-            onChange={setActiveScope}
-            value={activeScope}
+            onChange={setActiveTab}
+            value={activeTab}
           />
         }
         title="Agents"
@@ -128,12 +152,13 @@ export const AgentsList = () => {
       >
         <AgentsTable
           agents={pageAgents}
-          emptyMessage={AGENT_SCOPE_META[activeScope].empty}
+          emptyMessage={AGENT_LIST_TAB_META[activeTab].empty}
           isLoading={isPending}
           onDelete={(agent) => {
             setDeleteError(null)
             setPendingDelete(agent)
           }}
+          onMessage={openConversation}
           onOpen={(agentId) => void navigate(`/admin/agents/${agentId}`)}
           token={token}
         />
@@ -145,7 +170,7 @@ export const AgentsList = () => {
             <p>
               {pendingDelete
                 ? `${pendingDelete.name} will stop working: it is removed from every `
-                  + 'channel it was placed in, its triggers are deleted, and any run '
+                  + 'channel it was placed in, its schedules are deleted, and any run '
                   + 'it has in flight is cancelled. Its past work stays in the record.'
                 : ''}
             </p>

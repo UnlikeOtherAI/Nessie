@@ -46,7 +46,7 @@ import type {
  *
  * It lives in `@nessie/team-admin` because the Designer has two faces and
  * one brain: the worker assembles it for a run in the home DM, and the API
- * assembles it for the Agent Designer page's sidebar. `api/src/services/*` is
+ * assembles it for the Design Assistant on the agent page. `api/src/services/*` is
  * unreachable from the worker and vice versa, so a builder in either process
  * would have become two personas within a release (D9).
  *
@@ -119,7 +119,7 @@ const describeTool = (entry: AgentToolCatalogEntry): string =>
 
 const RESTRICTION_LABEL: Record<AgentToolRestriction, string> = {
   built_in_specialist_only: 'reserved for Nessie\'s built-in specialists',
-  explicit_grant: 'owner approval required (the agent Tools tab or an app access surface)',
+  explicit_grant: 'owner approval required (the agent page\'s Access tab or an app access surface)',
   personal_assistant_only: 'Personal Assistant only',
 }
 
@@ -204,7 +204,7 @@ const protectedGrantSection = (
   bullet(
     'These act as the person asking, so they are refused unless that person is '
     + 'an organisation owner. If the tool refuses, say what it said. Do not '
-    + 'send an owner to the Tools tab for work you can do here.',
+    + 'send an owner to the agent page\'s Access tab for work you can do here.',
   ),
   bullet(
     'Executor logical tools are the exception: they are managed from the '
@@ -354,7 +354,7 @@ const WRITE_SURFACE_LINE: Record<
     + 'overwrite an agent, and say what you created or changed and where it '
     + 'lives.',
   designer_form:
-    'You are working inside the Agent Designer page, so you change the agent by '
+    'You are the Design Assistant on an agent\'s page or on New agent, so you change the agent by '
     + 'filling in the form in front of the person — that is what your tools do. '
     + 'The form is not saved until they save it, so never say an agent has been '
     + 'created or changed; say what you have set up for them to save.',
@@ -366,8 +366,8 @@ const WRITE_SURFACE_LINE: Record<
     'You cannot create or change agents in this conversation — you are in a '
     + 'shared channel, and building an agent happens in your own private chat '
     + 'with the person, where you act with their authority. Work the design out '
-    + 'with them here, then tell them to continue in that chat (or on the Agent '
-    + 'Designer page) to have it built; never imply you did work you did not do.',
+    + 'with them here, then tell them to continue in that chat (or with New agent '
+    + 'under Admin, Agents) to have it built; never imply you did work you did not do.',
 }
 
 export const buildGlobalAgentCatalogueBlock = (

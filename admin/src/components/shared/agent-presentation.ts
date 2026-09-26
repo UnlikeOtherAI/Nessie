@@ -2,29 +2,11 @@ import type { AgentStatus } from '@nessie/schemas'
 import type { PillTone } from '../primitives/Pill'
 
 /**
- * The one place mapping `AgentStatus` to a colour, for both the shapes the
- * admin renders it as. `getStatusTone` was duplicated near-verbatim in
- * `AgentDetailPage` and `AgentDetailDrawer`, and `AgentStatusDot` held a third,
- * independent map of the same six-value union. This is the pattern
- * `todos/todo-presentation.ts` already models for to-do statuses.
+ * An agent's status as a dot. Its words and its pill tone are
+ * `lib/status-sentences.ts` → `agentStatusSentence`, the one place every
+ * status is said; the dot keeps a map of its own only for the pulse a `Pill`
+ * has no equivalent for.
  */
-export const agentStatusTone = (status: AgentStatus): PillTone => {
-  switch (status) {
-    case 'error':
-      return 'danger'
-    case 'waiting_approval':
-    case 'waiting_input':
-      return 'warning'
-    case 'idle':
-    case 'offline':
-      return 'muted'
-    case 'executing':
-    case 'thinking':
-      return 'accent'
-  }
-}
-
-/** The dot's fill, including the pulse a `Pill` has no equivalent for. */
 export const agentStatusDotClass: Record<AgentStatus, string> = {
   error: 'bg-[color:var(--danger)]',
   executing: 'bg-[color:var(--executing)] status-pulse',

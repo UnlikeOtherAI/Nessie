@@ -51,7 +51,7 @@ const describeDraft = (draft: DesignerContinueInput['formState']): string => {
     .map(([key]) => key)
 
   return [
-    'The person was designing an agent on the Agent Designer page and moved the',
+    'The person was designing an agent with the Design Assistant on its page and moved the',
     'conversation here. This is the draft exactly as it stands on that form,',
     'unsaved — nothing has been created yet. Pick it up from here: say what you',
     'understand it to be, and improve it with them.',

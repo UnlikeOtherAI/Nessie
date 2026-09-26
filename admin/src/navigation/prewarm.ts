@@ -201,7 +201,7 @@ export const matchPrewarm = (
   const pathname = normalizeNavigationPathname(to)
   for (const entry of PREWARM_REGISTRY) {
     const match = entry.pattern.exec(pathname)
-    // A screen that pushes no id (`/admin/agents/designer`) is not a prewarm
+    // A screen that pushes no id (`/admin/agents/new`) is not a prewarm
     // target; the patterns above exclude it, and the surface registry owns it
     // as a row of its own.
     if (match?.[1]) return { entry, id: decodeURIComponent(match[1]) }

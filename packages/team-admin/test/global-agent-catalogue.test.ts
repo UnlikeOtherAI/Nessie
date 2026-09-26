@@ -300,7 +300,7 @@ test('a face that cannot resolve the style says nothing about it', () => {
 
 // The proposal card is described only where one can actually be posted. The
 // persona is shared by three faces and only the DM face holds `card_post`: the
-// Agent Designer page fills a form and the shared-channel face writes nothing,
+// Design Assistant on the agent page fills a form and the shared-channel face writes nothing,
 // so telling either of them to post a card would be the prompt breaking the
 // "never imply you did work you did not do" rule on its own.
 test('the standard proposal card is described for the chat face and nowhere else', () => {

@@ -6,12 +6,14 @@ import {
   loadAgentsListState,
   saveAgentsListState,
 } from '../src/components/features/agents/agents-list-state.js'
+import { AGENT_LIST_TABS, agentListTab } from '../src/components/features/agents/agents-list-tabs.js'
+import type { AgentRecord } from '../src/lib/api-client'
 
-test('the default list state opens the Team tab at the first page of every tab', () => {
+test('the default list state opens the Shared tab at the first page of every tab', () => {
   __resetAgentsListState()
   assert.deepEqual(loadAgentsListState(), {
-    activeScope: 'team',
-    pageByScope: { global: 0, personal: 0, team: 0 },
+    activeTab: 'shared',
+    pageByTab: { 'built-in': 0, mine: 0, shared: 0 },
     pageSize: 25,
   })
 })
@@ -19,13 +21,13 @@ test('the default list state opens the Team tab at the first page of every tab',
 test('a saved tab and page survive to the next load (across an unmount)', () => {
   __resetAgentsListState()
   saveAgentsListState({
-    activeScope: 'global',
-    pageByScope: { global: 2, personal: 0, team: 1 },
+    activeTab: 'built-in',
+    pageByTab: { 'built-in': 2, mine: 0, shared: 1 },
     pageSize: 50,
   })
   assert.deepEqual(loadAgentsListState(), {
-    activeScope: 'global',
-    pageByScope: { global: 2, personal: 0, team: 1 },
+    activeTab: 'built-in',
+    pageByTab: { 'built-in': 2, mine: 0, shared: 1 },
     pageSize: 50,
   })
 })
@@ -33,21 +35,34 @@ test('a saved tab and page survive to the next load (across an unmount)', () => 
 test('loaded state is a copy — mutating it does not corrupt the store', () => {
   __resetAgentsListState()
   saveAgentsListState({
-    activeScope: 'team',
-    pageByScope: { global: 0, personal: 0, team: 3 },
+    activeTab: 'shared',
+    pageByTab: { 'built-in': 0, mine: 0, shared: 3 },
     pageSize: 25,
   })
   const loaded = loadAgentsListState()
-  loaded.pageByScope.team = 99
-  assert.equal(loadAgentsListState().pageByScope.team, 3)
+  loaded.pageByTab.shared = 99
+  assert.equal(loadAgentsListState().pageByTab.shared, 3)
 })
 
 test('saving is snapshot-by-value, not by reference', () => {
   __resetAgentsListState()
-  const pageByScope = { global: 0, personal: 0, team: 1 } as const
-  saveAgentsListState({ activeScope: 'team', pageByScope: { ...pageByScope }, pageSize: 25 })
-  const mutable = { global: 0, personal: 0, team: 1 }
-  saveAgentsListState({ activeScope: 'team', pageByScope: mutable, pageSize: 25 })
-  mutable.team = 7
-  assert.equal(loadAgentsListState().pageByScope.team, 1)
+  const mutable = { 'built-in': 0, mine: 0, shared: 1 }
+  saveAgentsListState({ activeTab: 'shared', pageByTab: mutable, pageSize: 25 })
+  mutable.shared = 7
+  assert.equal(loadAgentsListState().pageByTab.shared, 1)
+})
+
+const agent = (overrides: Partial<AgentRecord>): AgentRecord =>
+  ({ agentKind: 'shared', systemManaged: false, visibility: 'team', ...overrides }) as AgentRecord
+
+test('the three tabs are Mine, Shared and Built-in, in that order', () => {
+  assert.deepEqual([...AGENT_LIST_TABS], ['mine', 'shared', 'built-in'])
+})
+
+test('an agent lands on the tab its kind says, the Personal Assistant on Mine', () => {
+  assert.equal(agentListTab(agent({})), 'shared')
+  assert.equal(agentListTab(agent({ visibility: 'private' })), 'mine')
+  assert.equal(agentListTab(agent({ systemManaged: true })), 'built-in')
+  // The Personal Assistant is system-managed too, and still the reader's own.
+  assert.equal(agentListTab(agent({ agentKind: 'personal_assistant', systemManaged: true })), 'mine')
 })

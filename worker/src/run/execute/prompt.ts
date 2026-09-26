@@ -163,7 +163,7 @@ export const buildModelPrompt = (
     /**
      * True when `agent_tool_access_set` is in this run's resolved toolset:
      * this run grants another agent the browser tools itself, so the
-     * Browserbase block must not send an owner to the Tools tab for it.
+     * Browserbase block must not send an owner to the Access tab for it.
      * The Designer's catalogue said "you grant it" while this block, rendered
      * for every agent without the fact, said "an owner must" — and it quoted
      * the refusal.

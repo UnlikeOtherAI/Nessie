@@ -12,7 +12,7 @@ import {
  *
  * `GET /api/mcp/tools` is organization-owner-only and must stay that way — it
  * carries transport config, grants and review state. This is the member-safe
- * projection of the same two sources the Agent Designer page merges
+ * projection of the same two sources the agent page's tool picker merges
  * (`admin/src/facades/designer/tool-catalog.ts`): the builtin definitions in
  * deny-mode, and the organization's live, active connector rows in allow-mode
  * keyed by registry uuid.
@@ -166,7 +166,7 @@ export const loadAgentToolCatalog = async (
     // (`resolveProjectDelegatedToolIds`), so it is allow-mode like an
     // explicit grant. Deriving this from `requiresExplicitGrant` alone had the
     // Designer promise board work "on by default" and build an agent with no
-    // ticket tools. Same rule as the Agent Designer page's own catalogue
+    // ticket tools. Same rule as the agent page's own catalogue
     // (`admin/src/facades/designer/tool-catalog.ts`).
     const offUntilGranted = tool.requiresExplicitGrant === true
       || tool.projectDelegatedOnly === true

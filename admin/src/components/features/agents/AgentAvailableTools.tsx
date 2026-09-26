@@ -13,14 +13,15 @@ import { useDesignerAssistantPanel } from './designer/DesignerAssistantPanelCont
 import { revealDesignerControl } from './designer/reveal-control'
 
 /**
- * The agent's Tools tab: the single place an agent's tool access is managed.
+ * The agent page's Access › Tools and apps: the single place an agent's tool
+ * access is managed.
  * Whoever may edit this agent gets the enable/disable switches (the same
  * ToolPicker the create-agent designer uses) plus an inline Save; everyone else
  * sees the resolved read-only list — the same resolution the worker applies at
  * run time. Explicit-grant tools appear off until an owner enables them; tools
  * limited to the Personal Assistant remain unavailable to shared agents.
  *
- * "May edit" is `canEditAgent`, not the organization owner role: the steward of
+ * "May edit" is `canEditAgent`, not the organisation owner role: the steward of
  * a private or person-owned agent, and any entitled member of a team-owned one,
  * may change its tools too.
  */
@@ -158,10 +159,7 @@ const AgentToolsEditor = ({ agent }: { agent: AgentRecord }) => {
 
   return (
     <div className="grid gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-[color:var(--tx3)]">
-          Project and cloud-browser access are granted explicitly here. Connected apps are managed on Apps.
-        </p>
+      <div className="flex items-center justify-end gap-3">
         <button
           className="admin-button admin-button-primary flex-shrink-0"
           disabled={!dirty || toolCatalog.isLoading || hasMissingExplicitRegistry
@@ -174,7 +172,7 @@ const AgentToolsEditor = ({ agent }: { agent: AgentRecord }) => {
       </div>
       {!isOwner ? (
         <p className="text-xs text-[color:var(--tx3)]">
-          Only organization owners can change cloud-browser and other protected tool grants.
+          Only an organisation owner can change the cloud browser and other protected tools.
         </p>
       ) : null}
       {saveError ? <p className="text-sm text-[color:var(--danger)]" role="alert">{saveError}</p> : null}

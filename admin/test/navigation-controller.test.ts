@@ -110,14 +110,14 @@ test('history reads come from the ledger, not a private counter', () => {
 
 test('a section tab returns to the last place visited in that section this session', () => {
   const ledger = ledgerOf([
-    '/channels', '/admin/agents', '/admin/agents/a1?agentTab=tools', '/settings/profile', '/channels/c2',
+    '/channels', '/admin/agents', '/admin/agents/a1?tab=access', '/settings/profile', '/channels/c2',
   ])
   // Your settings lights no rail item, so it is never the Admin tab's memory.
-  assert.equal(lastPathInSection(ledger, 'admin'), '/admin/agents/a1?agentTab=tools')
+  assert.equal(lastPathInSection(ledger, 'admin'), '/admin/agents/a1?tab=access')
   assert.equal(lastPathInSection(ledger, 'channels'), '/channels/c2')
   assert.equal(lastPathInSection(ledger, 'knowledge'), null)
   assert.equal(resolveSectionTarget(ledger, 'knowledge', '/knowledge-base'), '/knowledge-base')
-  assert.equal(resolveSectionTarget(ledger, 'admin', '/admin'), '/admin/agents/a1?agentTab=tools')
+  assert.equal(resolveSectionTarget(ledger, 'admin', '/admin'), '/admin/agents/a1?tab=access')
 })
 
 test('the transition signal counts in-flight transitions and releases waiters on settle', async () => {

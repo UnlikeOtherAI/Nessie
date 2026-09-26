@@ -39,7 +39,7 @@ const loginRequestLine = (facts: BrowserbaseSetupPromptFacts): string => {
       + 'person builds it is an ordinary browser tool, '
       + (facts.canGrantBrowserTools
         ? 'granted with `agent_tool_access_set` like the rest. '
-        : 'granted from that agent\'s Tools tab like the rest. ')
+        : 'granted from that agent\'s Access tab like the rest. ')
       + 'Do not substitute card_post, prose, or a fabricated permission card.'
   }
   return 'Temporary personal browser access is unavailable because `browser_login_request` is not in your toolset. '

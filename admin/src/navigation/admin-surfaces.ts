@@ -35,12 +35,15 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     type: 'detail',
   },
   {
+    // New agent: the agent page before there is an agent. A Flow that returns
+    // to wherever it was opened (the Create menu, a channel, the workflow
+    // designer), so the page owns its Back; `mode` is Create or Configure.
     depth: 2,
-    identityOf: (match) => `designer:${match[1] ?? 'new'}`,
-    keyScope: () => 'agent-designer',
-    intent: { state: ['designerSection', 'designerMode', 'visibility', 'parentId'] },
+    identityOf: () => 'agent:new',
+    keyScope: () => 'agent-new',
+    intent: { state: ['mode'] },
     parentOf: toAgents,
-    pattern: /^\/admin\/agents\/designer(?:\/([^/]+))?$/,
+    pattern: /^\/admin\/agents\/new$/,
     root: adminRoot,
     section: 'admin',
     type: 'flow',
@@ -62,13 +65,14 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     type: 'nested',
   },
   {
-    // `designer` is the flow above, never an agent id.
+    // `new` is the creation flow above, never an agent id. The six tabs are
+    // `?tab=`; the Instructions tab's document workspace keeps its own view.
     depth: 2,
     identityOf: (match) => `agent:${match[1]}`,
     keyScope: () => 'agent',
-    intent: { state: ['agentTab'] },
+    intent: { state: ['tab', 'view', 'sort', 'folder'] },
     parentOf: toAgents,
-    pattern: /^\/admin\/agents\/(?!designer$)([^/]+)$/,
+    pattern: /^\/admin\/agents\/(?!new$)([^/]+)$/,
     root: adminRoot,
     section: 'admin',
     type: 'detail',

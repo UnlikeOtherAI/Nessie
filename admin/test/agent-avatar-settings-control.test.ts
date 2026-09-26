@@ -45,14 +45,17 @@ test('the avatar pencil opens a modal, built on the shared Dialog shell, with a 
   assert.match(source, /hasCustom && !generated/)
 })
 
-test('the designer edit form and the detail header share the one avatar editor + mutation flow', () => {
-  const designer = readSource('../src/pages/AgentDesignerPage.tsx')
+test('the agent page header is the one avatar editor, fed the unsaved draft', () => {
+  const header = readSource('../src/components/features/agents/page/AgentPageHeader.tsx')
+  const page = readSource('../src/components/features/agents/page/AgentPage.tsx')
   const quickEdit = readSource('../src/components/features/agents/AgentAvatarQuickEdit.tsx')
 
-  // The designer's edit-mode avatar is the same pencil-modal component, not a
-  // second panel implementation, fed the live draft context.
-  assert.match(designer, /<AgentAvatarQuickEdit/)
-  assert.match(designer, /avatarContext=\{\{/)
+  // The page's avatar is the same pencil-modal component, not a second panel
+  // implementation, fed the live draft so a generated picture reflects edits
+  // not saved yet.
+  assert.match(header, /<AgentAvatarQuickEdit/)
+  assert.match(header, /avatarContext=\{avatarContext\}/)
+  assert.match(page, /avatarContext=\{\{/)
   // Both doorways go through the shared mutation hook.
   assert.match(quickEdit, /useAgentAvatarChanges\(\n {4}agent\.id,/)
 })

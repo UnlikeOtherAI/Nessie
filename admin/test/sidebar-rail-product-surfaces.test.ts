@@ -22,7 +22,7 @@ test('the left rail exposes the shared create actions immediately above the acco
   assert.ok(rail.indexOf('<CreateMenuTrigger') < rail.indexOf('<UserMenuTrigger'))
 })
 
-test('Create ends with Agent, opening the Agent Designer', () => {
+test('Create ends with Agent, opening New agent', () => {
   const createMenu = readSource('../src/layouts/admin-shell/CreateMenuTrigger.tsx')
   const shell = readSource('../src/layouts/AdminShellLayout.tsx')
   const shellHook = readSource('../src/layouts/admin-shell/useAdminShell.ts')
@@ -31,9 +31,11 @@ test('Create ends with Agent, opening the Agent Designer', () => {
   assert.match(createMenu, />Create a private or shared agent</)
   // Agent is the last row of the menu.
   assert.ok(createMenu.indexOf('>Project<') < createMenu.indexOf('>Agent<'))
-  // Desktop and the native phone sheet reach the same designer.
+  // Desktop and the native phone sheet reach the same flow, and so does every
+  // other create-an-agent doorway the shell hands out.
   assert.equal(shell.split('onCreateAgent={shell.navigateToNewAgent}').length - 1, 2)
-  assert.match(shellHook, /navigate\('\/admin\/agents\/designer', \{\n\s+state: \{ returnTo:/)
+  assert.match(shell, /onCreateAgent: shell\.navigateToNewAgent,/)
+  assert.match(shellHook, /navigate\('\/admin\/agents\/new', \{\n\s+state: \{ returnTo:/)
 })
 
 test('the New message composer is one address book with no agent creation', () => {
@@ -41,11 +43,13 @@ test('the New message composer is one address book with no agent creation', () =
   const visibility = readSource(
     '../src/components/features/agents/AgentVisibilityPicker.tsx',
   )
-  const designerForm = readSource('../src/components/features/agents/designer/AgentDesignerForm.tsx')
+  const fields = readSource('../src/components/features/agents/page/AgentConfigFields.tsx')
+  const newAgent = readSource('../src/components/features/agents/page/NewAgentFlow.tsx')
 
-  assert.doesNotMatch(compose, /DirectMessageTargetTabs|DirectMessageAgentCreator|agents\/designer/)
-  // Visibility is still chosen when creating an agent — in the designer itself.
-  assert.match(designerForm, /<AgentVisibilityPicker/)
+  assert.doesNotMatch(compose, /DirectMessageTargetTabs|DirectMessageAgentCreator|agents\/new/)
+  // Visibility is still chosen when creating an agent — in New agent itself.
+  assert.match(fields, /<AgentVisibilityPicker/)
+  assert.match(newAgent, /<AgentVisibilityField form=\{form\} readOnly=\{false\} \/>/)
   assert.match(visibility, /label: 'Private'/)
   assert.match(visibility, /label: 'Shared'/)
   assert.match(visibility, /People who can see its channels can find it; people who can post there can address it/)

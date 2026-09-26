@@ -179,13 +179,17 @@ const openCase = async (browser, surface, contextOptions) => {
     if (path === `/api/agents/${AGENT_ID}/run-failures`) return route.fulfill({ json: { data: { failures: [] } } })
     if (path === `/api/agents/${AGENT_ID}/messages`) return route.fulfill({ json: pagedEmpty })
     if (path === `/api/agents/${AGENT_ID}/conversations`) return route.fulfill({ json: pagedEmpty })
+    // The agent has no email address: the Activity tab reads that as no Mailbox section.
+    if (path === `/api/agents/${AGENT_ID}/mailbox`) {
+      return route.fulfill({ json: { error: { code: 'MAILBOX_NOT_FOUND', message: 'No mailbox' } }, status: 404 })
+    }
     state.unexpected.push(`GET ${path}`)
     return route.fulfill({ json: { error: { code: 'NOT_FOUND', message: 'Not in this fixture' } }, status: 404 })
   })
   const page = await context.newPage()
   const errors = []
   page.on('pageerror', (error) => errors.push(String(error)))
-  const query = surface === 'agent' ? 'surface=agent&agentTab=activity' : 'surface=thought'
+  const query = surface === 'agent' ? 'surface=agent' : 'surface=thought'
   await page.goto(`${ADMIN_URL}/e2e/tool-screenshots/index.html?${query}`)
   return { context, errors, page, state }
 }
@@ -308,6 +312,8 @@ try {
   // ── The agent page's tool execution log, at 1280 ────────────────────────
   {
     const { context, errors, page, state } = await openCase(browser, 'agent', desktop)
+    // The tool log is a technical fold on the Activity tab; a person opens it.
+    await page.getByTestId('agent-tool-log').locator('summary').click()
     const log = page.locator('section').filter({ has: page.getByText('Tool execution log', { exact: true }) })
     await log.waitFor()
     await log.getByText('web_search', { exact: true }).waitFor()
@@ -343,6 +349,7 @@ try {
   }
   {
     const { context, errors, page, state } = await openCase(browser, 'agent', phone)
+    await page.getByTestId('agent-tool-log').locator('summary').click()
     const list = page.getByTestId('tool-screenshots').first()
     await assertPainted(list.getByTestId('tool-screenshot'), 2)
     await assertNoSidewaysScroll(page, 'agent page on a phone')

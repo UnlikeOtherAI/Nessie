@@ -20,7 +20,7 @@ import {
 } from './useAgentAvatarChanges'
 import { AgentAvatarGenerationIndicator } from './AgentAvatarGenerationIndicator'
 
-type AgentAvatarContext = {
+export type AgentAvatarContext = {
   name: string
   role: string
   systemPrompt: string

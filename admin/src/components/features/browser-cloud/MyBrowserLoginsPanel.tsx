@@ -23,7 +23,7 @@ export const MyBrowserLoginsPanel = () => {
       <SectionLabel>Your browser sign-ins</SectionLabel>
       <p className="mt-2 text-sm text-[color:var(--tx2)]">
         Services you have signed an agent’s browser into. Reset a browser from the agent’s
-        Tools tab to clear them.
+        Access tab to clear them.
       </p>
       <ul className="mt-3 grid gap-2">
         {rows.map((login) => (

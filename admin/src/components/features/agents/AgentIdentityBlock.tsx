@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react'
 import { useAgentStatus } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
+import { agentStatusSentence } from '../../../lib/status-sentences'
 import { Pill } from '../../primitives/Pill'
 import { AgentAvatarQuickEdit } from './AgentAvatarQuickEdit'
 import { AgentStatusDot } from '../../shared/AgentStatusDot'
 import { RunStopButton } from '../../shared/RunStopButton'
-import { agentStatusTone } from '../../shared/agent-presentation'
 import { AgentAvailability } from './AgentAvailability'
 
 type AgentIdentityBlockProps = {
@@ -18,7 +18,7 @@ type AgentIdentityBlockProps = {
   avatar?: boolean
   avatarSize?: 'lg' | 'xl'
   canEditAvatar: boolean
-  /** Extra content under the role line — the detail page's private-home link. */
+  /** Extra content under the role line — the agent page's who-manages-it line. */
   children?: ReactNode
   /**
    * The page's own heading vs. a panel's, for correct document structure.
@@ -30,7 +30,7 @@ type AgentIdentityBlockProps = {
 }
 
 /**
- * Avatar + name + status dot + status `Pill` (with Stop while a run is live)
+ * Avatar + name + status dot + the status in words (with Stop while a run is live)
  * + role + activity line — the agent's identity, written out once. It was duplicated almost verbatim
  * between `AgentDetailPage`'s header and `AgentDetailDrawer`'s header,
  * including its own copy of the status→tone mapping.
@@ -68,7 +68,13 @@ export const AgentIdentityBlock = ({
             </Heading>
           ) : null}
           <AgentStatusDot status={agent.status} />
-          <Pill tone={agentStatusTone(agent.status)}>{agent.status}</Pill>
+          <Pill
+            title={agentStatusSentence(agent.status).sentence}
+            tone={agentStatusSentence(agent.status).tone}
+            uppercase={false}
+          >
+            {agentStatusSentence(agent.status).label}
+          </Pill>
           {/* The status read names a current run only while one the viewer
               may read is live — pending, running, or parked on a person's
               approval or answer — and drops it when that run ends, so Stop

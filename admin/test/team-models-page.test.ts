@@ -12,7 +12,7 @@ const entitlementsSource = read('pages', 'admin', 'scope-entitlements.ts')
 const modelsPageSource = read('pages', 'admin', 'ModelsPage.tsx')
 const hooksSource = read('facades', 'inference-models', 'hooks.ts')
 const agentQueriesSource = read('facades', 'agents', 'queries.ts')
-const designerSource = read('pages', 'AgentDesignerPage.tsx')
+const agentFormSource = read('components', 'features', 'agents', 'page', 'useAgentConfigForm.ts')
 
 test('AI models is one Admin page, and a team narrows it at its own scope there', () => {
   assert.match(navSource, /path: '\/admin\/models', label: 'AI models'[\s\S]*?icon: modelsIcon/)
@@ -37,5 +37,5 @@ test('team availability calls team-scoped catalogue endpoints', () => {
 
 test('editing an agent asks for that agent team model policy explicitly', () => {
   assert.match(agentQueriesSource, /\/api\/agents\/models\?agentId=/)
-  assert.match(designerSource, /useAgentModelOptions\(editingAgent\?\.id\)/)
+  assert.match(agentFormSource, /useAgentModelOptions\(agent\?\.id\)/)
 })

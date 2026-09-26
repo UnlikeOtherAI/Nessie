@@ -58,7 +58,6 @@ const MUTATION_FEEDBACK_ALLOWLIST: Record<string, string> = {
   'components/features/task-sets/TaskSetItemEditor.tsx':
     'Both mutations run inside useFormSubmit; its formError and fieldErrors render beside the item fields.',
   'components/features/agents/AgentOwnershipState.tsx': REASON,
-  'components/features/agents/AgentTriggerPanel.tsx': REASON,
   'components/features/billing/UoaBillingAutoTopUpDialog.tsx': REASON,
   'components/features/billing/UoaBillingBuyCreditsDialog.tsx': REASON,
   'components/features/billing/UoaBillingRecurringAddonsPanel.tsx': REASON,
@@ -84,7 +83,6 @@ const MUTATION_FEEDBACK_ALLOWLIST: Record<string, string> = {
   'facades/channels/dm-navigation.ts': REASON,
   'layouts/admin-shell/AlertsBell.tsx': REASON,
   'layouts/admin-shell/user-menu/StatusSection.tsx': REASON,
-  'pages/AgentDesignerPage.tsx': REASON,
   'pages/AlertsPage.tsx': REASON,
   'pages/AppDetailPage.tsx': REASON,
   'pages/OpsHealthPage.tsx': REASON,

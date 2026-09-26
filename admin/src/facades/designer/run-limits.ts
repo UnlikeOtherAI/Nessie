@@ -1,15 +1,16 @@
 import { AgentRunLimitsSchema, type AgentRunLimits } from '@nessie/schemas'
 
 /**
- * Agent Designer's "Run limits" fieldset state.
+ * The agent's "Run limits" fields, as a person states them.
  *
  * Every field is a raw input string so a blank field means "no explicit limit"
- * (the key is omitted and the deployment backstop governs that dimension). Only
- * duration is re-expressed for humans: the contract stores `maxWallclockMs`,
- * the form shows minutes.
+ * (the key is omitted and the deployment backstop governs that dimension). Two
+ * are re-expressed for humans: the contract stores `maxWallclockMs` and
+ * `maxCostCents`, the form says minutes and dollars — "stop a task after 20
+ * minutes or 2 dollars of estimated cost".
  */
 export type RunLimitsFormState = {
-  maxCostCents: string
+  maxCostDollars: string
   maxDurationMinutes: string
   maxIterations: string
   maxTokens: string
@@ -17,7 +18,7 @@ export type RunLimitsFormState = {
 }
 
 export const emptyRunLimitsForm: RunLimitsFormState = {
-  maxCostCents: '',
+  maxCostDollars: '',
   maxDurationMinutes: '',
   maxIterations: '',
   maxTokens: '',
@@ -28,21 +29,31 @@ export type RunLimitsField = keyof RunLimitsFormState
 
 const MS_PER_MINUTE = 60_000
 
-const positiveInteger = (raw: string): number | undefined => {
-  const trimmed = raw.trim()
+// `undefined` too: a draft stored before a field existed restores without it.
+const positiveInteger = (raw: string | undefined): number | undefined => {
+  const trimmed = (raw ?? '').trim()
   if (trimmed === '') return undefined
   const value = Number(trimmed)
   if (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0) return undefined
   return value
 }
 
-const millisecondsFromMinutes = (raw: string): number | undefined => {
-  const trimmed = raw.trim()
+const millisecondsFromMinutes = (raw: string | undefined): number | undefined => {
+  const trimmed = (raw ?? '').trim()
   if (trimmed === '') return undefined
   const minutes = Number(trimmed)
   if (!Number.isFinite(minutes) || minutes <= 0) return undefined
   const milliseconds = Math.round(minutes * MS_PER_MINUTE)
   return milliseconds > 0 ? milliseconds : undefined
+}
+
+const centsFromDollars = (raw: string | undefined): number | undefined => {
+  const trimmed = (raw ?? '').trim()
+  if (trimmed === '') return undefined
+  const dollars = Number(trimmed)
+  if (!Number.isFinite(dollars) || dollars <= 0) return undefined
+  const cents = Math.round(dollars * 100)
+  return cents > 0 ? cents : undefined
 }
 
 /**
@@ -60,7 +71,7 @@ export const buildRunLimits = (form: RunLimitsFormState): AgentRunLimits | null 
   if (maxIterations !== undefined) limits.maxIterations = maxIterations
   const maxWallclockMs = millisecondsFromMinutes(form.maxDurationMinutes)
   if (maxWallclockMs !== undefined) limits.maxWallclockMs = maxWallclockMs
-  const maxCostCents = positiveInteger(form.maxCostCents)
+  const maxCostCents = centsFromDollars(form.maxCostDollars)
   if (maxCostCents !== undefined) limits.maxCostCents = maxCostCents
   return Object.keys(limits).length > 0 ? limits : null
 }
@@ -71,7 +82,9 @@ const toInput = (value: number | undefined): string =>
 export const runLimitsToForm = (limits: AgentRunLimits | null): RunLimitsFormState => {
   if (!limits) return emptyRunLimitsForm
   return {
-    maxCostCents: toInput(limits.maxCostCents),
+    maxCostDollars: toInput(
+      limits.maxCostCents === undefined ? undefined : limits.maxCostCents / 100,
+    ),
     // Exact for any whole number of minutes; a sub-minute limit set through the
     // API renders as its fractional minute rather than being rounded away.
     maxDurationMinutes: toInput(

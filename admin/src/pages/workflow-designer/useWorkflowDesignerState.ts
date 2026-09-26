@@ -233,7 +233,7 @@ export const useWorkflowDesignerState = ({
           key: 'new-agent',
           label: 'New agent',
           state: { returnTo },
-          to: '/admin/agents/designer',
+          to: '/admin/agents/new',
         },
         emptyLabel: 'No top-level agents',
         icon: faRobot,

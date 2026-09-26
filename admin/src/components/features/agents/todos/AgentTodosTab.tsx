@@ -18,8 +18,8 @@ export const AgentTodosTab = ({ agent }: { agent: AgentRecord }) => {
         <SectionLabel>To-dos are off</SectionLabel>
         <EmptyState>
           {isOwner
-            ? 'Enable To-dos in the Designer to give this agent reusable checklists.'
-            : 'This agent does not have to-dos enabled. An organization owner can enable them in the Designer.'}
+            ? 'Turn to-dos on in the agent page’s Settings to give this agent reusable checklists.'
+            : 'This agent does not have to-dos turned on. An organisation owner can turn them on in the agent page’s Settings.'}
         </EmptyState>
       </section>
     )

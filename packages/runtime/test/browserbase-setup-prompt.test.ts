@@ -65,7 +65,7 @@ test('service keys use the personal secret form before reveal', () => {
   assert.match(withoutCard, /Never ask for or receive a service-issued API key in chat/)
 })
 
-test('an agent holding the grant verb is not told to send owners to the Tools tab', () => {
+test('an agent holding the grant verb is not told to send owners to the Access tab', () => {
   // The Agent Designer quoted this exact sentence back to an owner while
   // holding `agent_tool_access_set` for the agent it had just built.
   const prompt = buildBrowserbaseSetupPrompt({
@@ -117,7 +117,7 @@ test('an agent whose toolset is fixed is not sent to enable a tool on itself', (
 
   // The Personal Assistant: same fixed toolset, no grant verb of its own.
   const assistant = buildBrowserbaseSetupPrompt({ hasCardTool: true, ownToolsetFixed: true })
-  assert.match(assistant, /granted from that agent's Tools tab like the rest/)
+  assert.match(assistant, /granted from that agent's Access tab like the rest/)
   assert.doesNotMatch(assistant, /enable `browser_login_request` at Admin › Advanced › Tool registry/)
 
   // An ordinary agent's owner CAN enable it, so that door is still named.
