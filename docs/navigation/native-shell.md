@@ -246,6 +246,14 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   carries, so the web and the iPhone are untouched and the rules above hold
   unchanged in both orientations.
 
+  **The dock is glass over the live page.** The WebView sits in one
+  `expo-blur` `BlurTargetView`, sampled by the dock's `BlurView` on Android 12
+  and newer. A translucent theme-surface wash, fine highlighted rim and soft
+  shadow keep labels readable over moving content. Older Android versions use
+  a stronger surface tint instead of the costly legacy blur. The clipped glass
+  sits inside the shadow host; neither changes the dock's geometry, interaction
+  clearance, tab actions or badge counts. iOS keeps its system tab controller.
+
   **The soft keyboard takes the dock away, so the page stops reserving it.**
   `androidDockShowing` is false while the keyboard is up, which publishes a
   clearance of zero. The dock does not move for the keyboard — it stays at the

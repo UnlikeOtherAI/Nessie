@@ -104,7 +104,10 @@ receive the same internal inset. This covers full-height and horizontal layouts
 as well as ordinary lists. It never shortens the page or sidebar surface:
 content continues behind the glass while the final row can scroll above it. iPad and Android
 reserve their top inset in the native frame. Android's
-floating dock has no independent separator: the shared dock-geometry contract
+floating dock blurs the live page on Android 12 and newer, with a translucent
+theme tint and highlighted pill edge; older devices retain a stronger tint
+for readability. This uses `expo-blur` and requires rebuilding the native app.
+It has no independent separator: the shared dock-geometry contract
 adds its exact interaction clearance to the WebView columns, keeping the chat
 composer entirely above the dock while page backgrounds continue beneath it. The
 per-section secondary sidebar (channel list, admin sub-pages, …) opens from a
