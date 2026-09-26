@@ -20,6 +20,20 @@ const me = (
   user: { id: userId },
 } as unknown as MeResponse)
 
+test('changed live entitlements reset cached reads even when the user and tenant are unchanged', async () => {
+  const current = { ...me('org', 'project', 'team'), user: { id: 'person', roleIds: ['owner'] } } as MeResponse
+  let resets = 0
+  const boundary = createSessionQueryBoundary({
+    cacheScope: (session) => JSON.stringify(session.user.roleIds),
+    readCurrentMe: () => current,
+    resetTenantQueries: async () => { resets += 1 },
+  })
+  await boundary.beforeApply({ me: current })
+  assert.equal(resets, 0)
+  await boundary.beforeApply({ me: { ...current, user: { ...current.user, roleIds: ['member'] } } })
+  assert.equal(resets, 1)
+})
+
 test('session boundary comparison covers user, organization, project, and team', () => {
   const current = me('org-a', 'project-a', 'team-a')
 

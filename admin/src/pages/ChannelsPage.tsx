@@ -61,8 +61,9 @@ export const ChannelsPage = () => {
   const backgroundChannelId = isComposeRoute
     ? parseChannelIdFromPath(composeReturnTo)
     : channelId
-  const activeChannel =
-    channels.find((channel) => channel.id === backgroundChannelId) ?? channels[0] ?? null
+  const activeChannel = backgroundChannelId
+    ? channels.find((channel) => channel.id === backgroundChannelId) ?? null
+    : channels[0] ?? null
   const isPersonalAssistantActiveChannel = isPersonalAssistantChannel(activeChannel)
   const isExternalAgentActiveChannel = isExternalAgentChannel(activeChannel)
   const isGlobalAgentActiveChannel = isGlobalAgentChannel(activeChannel)
@@ -335,6 +336,7 @@ export const ChannelsPage = () => {
           feedItems={messageSurface.feedItems}
           feedScroll={messageSurface.feedScroll}
           messageHistory={{
+            initialQuery: messageSurface.messagesQuery,
             hasOlder: Boolean(messageSurface.hasOlderThreadMessages),
             isLoadingOlder: messageSurface.isLoadingOlderThreadMessages,
             olderLoadFailed: messageSurface.olderThreadMessagesFailed,

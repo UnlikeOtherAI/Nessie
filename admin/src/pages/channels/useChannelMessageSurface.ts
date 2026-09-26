@@ -89,6 +89,7 @@ export const useChannelMessageSurface = ({
   threadId,
   visibleActiveTab,
 }: ChannelMessageSurfaceInput) => {
+  const messagesQuery = useThreadMessages(activeThreadId)
   const {
     data: threadMessages = [],
     fetchNextPage: fetchOlderThreadMessages,
@@ -98,7 +99,7 @@ export const useChannelMessageSurface = ({
     isFetchingNextPage: isLoadingOlderThreadMessages,
     isPlaceholderData: threadMessagesArePlaceholder,
     pageCount: threadMessagePageCount,
-  } = useThreadMessages(activeThreadId)
+  } = messagesQuery
   const { documentSessions, documentStore, pendingMessages } = useThreadStream(activeThreadId)
   const { mentionEntities, renderContent } = useChannelMentions({
     activeChannel,
@@ -254,6 +255,7 @@ export const useChannelMessageSurface = ({
     joinChannel,
     messageActions,
     mentionEntities,
+    messagesQuery,
     olderThreadMessagesFailed,
     oversizePaste: composer.oversizePaste,
     pendingMessages,
