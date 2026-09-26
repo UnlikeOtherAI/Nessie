@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { TaskPresentationMessageMetadataSchema } from '@nessie/schemas'
 import { KanbanCardContent } from '../projects/kanban/KanbanCard'
 import { usePresentedTask } from '../../../facades/tasks/hooks'
@@ -27,6 +28,7 @@ export const TaskPresentation = ({
 }: {
   metadata: Record<string, unknown> | undefined
 }) => {
+  const { t } = useTranslation('channels')
   const parsed = TaskPresentationMessageMetadataSchema.safeParse(metadata)
   const presentation = parsed.success ? parsed.data.taskPresentation : undefined
   const taskQuery = usePresentedTask(presentation?.taskId)
@@ -40,20 +42,20 @@ export const TaskPresentation = ({
   if (taskQuery.isError || !taskQuery.data) {
     return (
       <div className="mt-2 max-w-sm rounded-lg border border-[color:var(--sep)] px-3 py-2 text-sm text-[color:var(--tx3)]">
-        That ticket is no longer available to you.
+        {t('taskPresentation.unavailable')}
       </div>
     )
   }
 
   const task = taskQuery.data
   const changes = (presentation.changes ?? [])
-    .map((change) => CHANGE_LABEL[change] ?? change)
+    .map((change) => CHANGE_LABEL[change] ? t(`taskPresentation.change.${CHANGE_LABEL[change]}`) : change)
     .join(' and ')
 
   return (
     <div className="mt-2 max-w-sm">
       {changes ? (
-        <p className="mb-1 text-xs text-[color:var(--tx3)]">Ticket {changes}</p>
+        <p className="mb-1 text-xs text-[color:var(--tx3)]">{t('taskPresentation.ticketChanges', { changes })}</p>
       ) : null}
       <Link
         className="block"

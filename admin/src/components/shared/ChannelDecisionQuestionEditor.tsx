@@ -1,5 +1,6 @@
 import type { ChannelDecisionPolicy } from '@nessie/schemas'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { AgentRecord } from '../../lib/api-client'
 import { agentSelectionLabel } from './AgentVisibilityPill'
 import { FormField } from './FormField'
@@ -19,6 +20,7 @@ type Props = {
 export const ChannelDecisionQuestionEditor = ({
   agents, errors, index, onChange, onRemove, question,
 }: Props) => {
+  const { t } = useTranslation('channels')
   const path = `questions.${index}`
   const [expanded, setExpanded] = useState(index === 0 || question.id === '')
   const [expandedOutcomes, setExpandedOutcomes] = useState<Set<number>>(() => new Set([0]))
@@ -39,22 +41,22 @@ export const ChannelDecisionQuestionEditor = ({
   }
 
   return (
-    <section aria-label={`Decision ${index + 1}`} className="grid min-w-0 gap-4 border-t border-[var(--bd)] pt-4">
+    <section aria-label={t('decisions.decisionGroup', { index: index + 1 })} className="grid min-w-0 gap-4 border-t border-[var(--bd)] pt-4">
       <details open={expanded} onToggle={(event) => setExpanded(event.currentTarget.open)}>
         <summary className="cursor-pointer text-sm font-semibold">
-          {question.id || `Decision ${index + 1}`} · {question.options.length} outcomes
+          {question.id || t('decisions.decisionNumber', { index: index + 1 })} · {t('decisions.outcomes', { count: question.options.length })}
         </summary>
         <div className="mt-4 grid min-w-0 gap-4">
           <div className="flex items-center justify-between gap-2">
-            <h4 className="text-sm font-semibold">Decision {index + 1}</h4>
+            <h4 className="text-sm font-semibold">{t('decisions.decisionNumber', { index: index + 1 })}</h4>
             <button className="admin-button admin-button-secondary" onClick={onRemove} type="button">
-              Remove decision
+              {t('decisions.removeDecision')}
             </button>
           </div>
           <FormField
             error={errors[`${path}.id`]}
-            help="A short name using letters, numbers, hyphens or underscores."
-            label="Decision name"
+            help={t('decisions.nameHelp')}
+            label={t('decisions.decisionName')}
           >
             <Input
               maxLength={64}
@@ -62,17 +64,17 @@ export const ChannelDecisionQuestionEditor = ({
               value={question.id}
             />
           </FormField>
-          <FormField error={errors[`${path}.instructions`]} label="What should be decided?">
+          <FormField error={errors[`${path}.instructions`]} label={t('decisions.question')}>
             <Textarea
               maxLength={4000}
               onChange={(event) => onChange({ ...question, instructions: event.target.value })}
-              placeholder="Has the conversation reached a decision that belongs in our decision log?"
+              placeholder={t('decisions.questionPlaceholder')}
               rows={2}
               value={question.instructions}
             />
           </FormField>
           <p className="text-xs text-[color:var(--tx3)]">
-            Jev chooses one outcome. Include an outcome that needs no further work.
+          {t('decisions.outcomeHelp')}
           </p>
           {errors[`${path}.options`] ? <p className="text-sm text-[color:var(--danger-text)]" role="alert">
             {errors[`${path}.options`]}
@@ -93,13 +95,13 @@ export const ChannelDecisionQuestionEditor = ({
               }}
             >
               <summary className="cursor-pointer break-words text-sm">
-                {option.id || `Outcome ${optionIndex + 1}`} · {option.followUp ? 'Agent follow-up' : 'No further work'}
+                {option.id || t('decisions.outcomeNumber', { index: optionIndex + 1 })} · {option.followUp ? t('decisions.agentFollowUp') : t('decisions.noFurtherWork')}
               </summary>
-              <div className="mt-3 grid min-w-0 gap-3" role="group" aria-label={`Outcome ${optionIndex + 1}`}>
+              <div className="mt-3 grid min-w-0 gap-3" role="group" aria-label={t('decisions.outcomeNumber', { index: optionIndex + 1 })}>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-[color:var(--tx3)]">Outcome {optionIndex + 1}</span>
+                  <span className="text-xs font-semibold text-[color:var(--tx3)]">{t('decisions.outcomeNumber', { index: optionIndex + 1 })}</span>
                   <button
-                    aria-label={`Remove outcome ${optionIndex + 1}`}
+                    aria-label={t('decisions.removeOutcome', { index: optionIndex + 1 })}
                     className="admin-button admin-button-secondary admin-button-compact"
                     disabled={question.options.length <= 2}
                 onClick={() => onChange({
@@ -107,18 +109,18 @@ export const ChannelDecisionQuestionEditor = ({
                 })}
                     type="button"
                   >
-                    Remove
+                    {t('decisions.remove')}
                   </button>
                 </div>
-                <FormField error={errors[`${path}.options.${optionIndex}.id`]} label="Outcome name">
+                <FormField error={errors[`${path}.options.${optionIndex}.id`]} label={t('decisions.outcomeName')}>
                   <Input
                     maxLength={64}
                     onChange={(event) => updateOption(optionIndex, { ...option, id: event.target.value })}
-                    placeholder="confirmed, proposed, superseded, unrelated…"
+                    placeholder={t('decisions.outcomePlaceholder')}
                     value={option.id}
                   />
                 </FormField>
-                <FormField error={errors[`${path}.options.${optionIndex}.description`]} label="When to choose this outcome">
+                <FormField error={errors[`${path}.options.${optionIndex}.description`]} label={t('decisions.whenChooseOutcome')}>
                   <Textarea
                     maxLength={1000}
                     onChange={(event) => updateOption(optionIndex, { ...option, description: event.target.value })}
@@ -128,8 +130,8 @@ export const ChannelDecisionQuestionEditor = ({
                 </FormField>
                 <FormField
                   error={errors[`${path}.options.${optionIndex}.followUp.agentId`]}
-                  help={agents.length === 0 ? 'Add an agent to this channel to ask it to follow up.' : undefined}
-                  label="Next action"
+                  help={agents.length === 0 ? t('decisions.addAgentHelp') : undefined}
+                  label={t('decisions.nextAction')}
                 >
                   <Select
                     onChange={(event) => {
@@ -141,13 +143,13 @@ export const ChannelDecisionQuestionEditor = ({
                     }}
                     value={option.followUp?.agentId ?? ''}
                   >
-                    <option value="">No further work</option>
+                    <option value="">{t('decisions.noFurtherWork')}</option>
                     {option.followUp && !agents.some((agent) => agent.id === option.followUp?.agentId) ? (
-                      <option disabled value={option.followUp.agentId}>Previously selected agent is unavailable</option>
+                      <option disabled value={option.followUp.agentId}>{t('decisions.agentUnavailable')}</option>
                     ) : null}
                     {agents.map((agent) => (
                       <option key={agent.id} value={agent.id}>
-                        Ask {agentSelectionLabel(agent.name, agent.visibility)}
+                        {t('decisions.askAgent', { agent: agentSelectionLabel(agent.name, agent.visibility) })}
                         {agents.some((other) => other.id !== agent.id
                           && other.name === agent.name && other.visibility === agent.visibility)
                           ? ` (${agent.id.slice(0, 8)})` : ''}
@@ -156,14 +158,14 @@ export const ChannelDecisionQuestionEditor = ({
                   </Select>
                 </FormField>
                 {option.followUp ? (
-                  <FormField error={errors[`${path}.options.${optionIndex}.followUp.instructions`]} label="Work for the agent">
+                  <FormField error={errors[`${path}.options.${optionIndex}.followUp.instructions`]} label={t('decisions.agentWork')}>
                     <Textarea
                       maxLength={4000}
                       onChange={(event) => updateOption(optionIndex, {
                         ...option,
                         followUp: { ...option.followUp!, instructions: event.target.value },
                       })}
-                      placeholder="Record the decision, its reasoning and the message link in the project's decision log."
+                      placeholder={t('decisions.workPlaceholder')}
                       rows={3}
                       value={option.followUp.instructions}
                     />
@@ -181,7 +183,7 @@ export const ChannelDecisionQuestionEditor = ({
             }}
             type="button"
           >
-            Add outcome
+            {t('decisions.addOutcome')}
           </button>
         </div>
       </details>

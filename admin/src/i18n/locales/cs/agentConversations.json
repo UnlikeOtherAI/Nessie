@@ -1,0 +1,69 @@
+{
+  "starting": "Zahajování…",
+  "newConversation": "Nová konverzace",
+  "home": {
+    "personalIdeaPlan": "Pomoz mi naplánovat další kroky",
+    "personalIdeaSummary": "Shrň, co potřebuji vědět",
+    "personalIdeaProjects": "Najdi odpověď v mých projektech",
+    "agentIdeaRole": "S čím mi můžeš pomoci v roli {{role}}?",
+    "agentIdeaPlan": "Pomoz mi vytvořit plán",
+    "agentIdeaSummary": "Shrň důležité souvislosti",
+    "talkWith": "{{name}} — konverzace",
+    "description": "Vyberte konverzaci vlevo nebo začněte novou. Každá konverzace si uchovává vlastní kontext.",
+    "tryAsking": "Zkuste se zeptat"
+  },
+  "panel": {
+    "back": "Zpět ke konverzaci",
+    "title": "Konverzace",
+    "startFailed": "Konverzaci se nepodařilo zahájit. Zkuste to znovu.",
+    "withAgent": "Konverzace s {{name}}",
+    "close": "Zavřít panel konverzací",
+    "agent": "Agent",
+    "emptyNudge": "Tato konverzace je stále prázdná — zkuste nejdřív napsat sem."
+  },
+  "sidebar": {
+    "startFailed": "Konverzaci se nepodařilo zahájit.",
+    "collapse": "Sbalit konverzace s {{name}}",
+    "expand": "Rozbalit konverzace s {{name}}",
+    "newWith": "Nová konverzace s {{name}}"
+  },
+  "room": {
+    "personalAssistant": "Osobní asistent",
+    "directMessage": "Soukromá zpráva"
+  },
+  "time": {
+    "now": "teď",
+    "minutes": "{{value}} min",
+    "hours": "{{value}} h"
+  },
+  "status": {
+    "running": "Probíhá",
+    "queued": "Ve frontě",
+    "waitingApproval": "Čeká na schválení",
+    "needsReply": "Potřebuje odpověď",
+    "done": "Hotovo",
+    "failed": "Nezdařilo se",
+    "cancelled": "Zrušeno",
+    "notStarted": "Nezahájeno"
+  },
+  "body": {
+    "nothingYet": "Zatím nic neřečeno",
+    "noMessagesYet": "Zatím žádné zprávy"
+  },
+  "list": {
+    "loadFailed": "Konverzace se nepodařilo načíst.",
+    "tryAgain": "Zkusit znovu",
+    "empty": "Zatím žádné konverzace",
+    "runningNow": "Právě probíhá",
+    "loadedSoFar": "Dosud načteno: {{value}}",
+    "tickets": "Úkoly",
+    "documents": "Dokumenty",
+    "loading": "Načítání…",
+    "showOlder": "Zobrazit starší"
+  },
+  "card": {
+    "hidden": "Konverzace, kterou nemůžete zobrazit.",
+    "loadFailed": "Tuto konverzaci se nepodařilo načíst",
+    "open": "Otevřít →"
+  }
+}

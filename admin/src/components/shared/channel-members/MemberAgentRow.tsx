@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { AgentRecord, PersonalAssistantPresenceParticipant } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { getAgentScope } from '../agent-scope'
@@ -23,7 +24,7 @@ const isGlobalAgent = (agent: AgentRecord): boolean => getAgentScope(agent) === 
 
 const GlobalAgentPill = () => (
   <Pill radius="chip" size="sm" tone="outline">
-    global
+    {useTranslation('channels').t('members.global')}
   </Pill>
 )
 
@@ -55,6 +56,7 @@ export const CurrentAgentRow = ({
   onView,
   onUnbind,
 }: CurrentAgentRowProps) => {
+  const { t } = useTranslation('channels')
   const { token } = useAuthSession()
   return (
     <div className={rowClass}>
@@ -70,7 +72,7 @@ export const CurrentAgentRow = ({
       {isGlobalAgent(agent) ? <GlobalAgentPill /> : null}
       {isGlobalAgent(agent) ? null : <AgentVisibilityPill visibility={agent.visibility} />}
       <Pill className="border border-[color:var(--accent)]/30" radius="chip" size="sm" tone="accent">
-        agent
+        {t('members.agent')}
       </Pill>
       <div className="flex items-center gap-1">
         {isGlobalAgent(agent) ? null : (
@@ -78,7 +80,7 @@ export const CurrentAgentRow = ({
             className={agentActionBtnClass}
             disabled={clonePending}
             onClick={() => onClone(agent.id)}
-            title="Create a copy you own"
+            title={t('members.cloneAgent')}
             type="button"
           >
             <CloneIcon />
@@ -87,7 +89,7 @@ export const CurrentAgentRow = ({
         <button
           className={agentActionBtnClass}
           onClick={() => onView(agent.id)}
-          title="View agent details"
+          title={t('members.viewAgent')}
           type="button"
         >
           <ViewIcon />
@@ -98,7 +100,7 @@ export const CurrentAgentRow = ({
             data-testid="channel-agent-remove"
             disabled={unbindPending}
             onClick={() => onUnbind(agent.id, channelId)}
-            title="Remove from channel"
+            title={t('members.remove')}
             type="button"
           >
             <CloseIcon className="h-3.5 w-3.5" />
@@ -127,6 +129,7 @@ export const CurrentPersonalAssistantRow = ({
   removePending,
   onRemove,
 }: CurrentPersonalAssistantRowProps) => {
+  const { t } = useTranslation('channels')
   const { token } = useAuthSession()
   const isMine = presence.principalUserId === currentUserId
   return (
@@ -136,7 +139,7 @@ export const CurrentPersonalAssistantRow = ({
           avatarAttachmentId: presence.avatarAttachmentId,
           id: presence.agentId,
           name: presence.displayName,
-          role: 'Personal Assistant',
+          role: t('members.personalAssistant'),
         }}
         size="sm"
         token={token}
@@ -146,7 +149,7 @@ export const CurrentPersonalAssistantRow = ({
           {presence.displayName}
         </div>
         <div className="truncate text-xs text-[color:var(--tx3)]">
-          Personal Assistant
+          {t('members.personalAssistant')}
         </div>
       </div>
       <Pill className="border border-[color:var(--accent)]/30" radius="chip" size="sm" tone="accent">
@@ -159,7 +162,7 @@ export const CurrentPersonalAssistantRow = ({
           onClick={onRemove}
           type="button"
         >
-          Remove
+        {t('members.remove')}
         </button>
       ) : null}
     </div>
@@ -192,6 +195,7 @@ export const AvailableAgentRow = ({
   onClone,
   onBind,
 }: AvailableAgentRowProps) => {
+  const { t } = useTranslation('channels')
   const { token } = useAuthSession()
   return (
     <div className={rowClass}>
@@ -212,7 +216,7 @@ export const AvailableAgentRow = ({
             className={agentActionBtnClass}
             disabled={clonePending}
             onClick={() => onClone(agent.id)}
-            title="Create a copy you own"
+            title={t('members.cloneAgent')}
             type="button"
           >
             <CloneIcon />
@@ -230,7 +234,7 @@ export const AvailableAgentRow = ({
             onClick={() => onBind(agent.id, channelId)}
             type="button"
           >
-            Add
+            {t('members.add')}
           </button>
         ) : null}
       </div>

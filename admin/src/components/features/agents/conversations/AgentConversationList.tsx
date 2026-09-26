@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { faChevronDown, faChevronRight } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import type { AgentConversationRecord } from '@nessie/schemas'
 
 import { useAgentConversations } from '../../../../facades/agents/hooks'
@@ -77,6 +78,7 @@ export const AgentConversationList = ({
   presentation = 'panel',
   refetchInterval,
 }: AgentConversationListProps) => {
+  const { t } = useTranslation('agentConversations')
   const navigate = useNavigate()
   const prewarm = usePrewarm()
   const query = useAgentConversations(agentId, {
@@ -95,13 +97,13 @@ export const AgentConversationList = ({
       <div className="p-3">
         <Notice role="alert" size="sm" tone="danger">
           <div className="flex flex-wrap items-center gap-2">
-            <span>Couldn’t load these conversations.</span>
+            <span>{t('list.loadFailed')}</span>
             <button
               className="admin-button admin-button-secondary admin-button-compact"
               onClick={() => void query.refetch()}
               type="button"
             >
-              Try again
+              {t('list.tryAgain')}
             </button>
           </div>
         </Notice>
@@ -113,7 +115,7 @@ export const AgentConversationList = ({
     if (presentation === 'sidebar') return null
     return (
       <p className="px-3 py-6 text-center text-sm text-[color:var(--tx3)]">
-        No conversations yet
+        {t('list.empty')}
       </p>
     )
   }
@@ -175,7 +177,7 @@ export const AgentConversationList = ({
               {conversation.title}
             </span>
             {presentation === 'panel' ? <span className="truncate text-xs text-[color:var(--tx2)]">
-              {conversationBodyLine(conversation, 'No messages yet')}
+              {conversationBodyLine(conversation, t('body.noMessagesYet'))}
             </span> : null}
           </span>
           {presentation === 'panel' ? <span className="flex flex-shrink-0 flex-col items-end gap-1 pt-0.5">
@@ -188,7 +190,7 @@ export const AgentConversationList = ({
               </Pill>
             ) : null}
           </span> : null}
-          {running ? <span className="sr-only">Running now</span> : null}
+          {running ? <span className="sr-only">{t('list.runningNow')}</span> : null}
         </button>
       </div>
     )
@@ -221,7 +223,8 @@ export const AgentConversationList = ({
         {/* Counted over the pages loaded so far: more may sit behind "Show older". */}
         <span
           className="font-normal normal-case tracking-normal"
-          title={query.hasNextPage ? `${input.rows.length} loaded so far` : undefined}
+          title={query.hasNextPage
+            ? t('list.loadedSoFar', { value: input.rows.length }) : undefined}
         >
           {input.rows.length}{query.hasNextPage ? '+' : ''}
         </span>
@@ -240,14 +243,14 @@ export const AgentConversationList = ({
         {otherRows.map(renderRow)}
       </div>
       {fold({
-        label: 'Tickets',
+        label: t('list.tickets'),
         open: ticketsOpen ?? onScreen(ticketRows),
         rows: ticketRows,
         setOpen: setTicketsOpen,
         testId: 'agent-conversation-tickets',
       })}
       {fold({
-        label: 'Documents',
+        label: t('list.documents'),
         open: documentsOpen ?? onScreen(documentRows),
         rows: documentRows,
         setOpen: setDocumentsOpen,
@@ -261,7 +264,7 @@ export const AgentConversationList = ({
             onClick={() => void query.fetchNextPage()}
             type="button"
           >
-            {query.isFetchingNextPage ? 'Loading…' : 'Show older'}
+            {query.isFetchingNextPage ? t('list.loading') : t('list.showOlder')}
           </button>
         </div>
       ) : null}

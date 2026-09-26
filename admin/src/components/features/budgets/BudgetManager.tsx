@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { budgetKeys } from '../../../lib/query-keys'
 import { useApiClient } from '../../../providers/ApiClientProvider'
 import { useProjects, useTeams } from '../../../facades/projects/hooks'
@@ -34,17 +35,17 @@ type BudgetStatus = {
 
 const BYTES_PER_GB = 1024 ** 3
 
-const formatBytes = (bytes: number): string => {
+const formatBytes = (bytes: number, locale: string): string => {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
   const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
   const value = bytes / 1024 ** exponent
-  return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`
+  return `${new Intl.NumberFormat(locale, { maximumFractionDigits: value >= 10 || exponent === 0 ? 0 : 1 }).format(value)} ${units[exponent]}`
 }
 
-const formatTokens = (count: number) => new Intl.NumberFormat('en-US').format(count)
-const formatUsd = (amount: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
+const formatTokens = (count: number, locale: string) => new Intl.NumberFormat(locale).format(count)
+const formatUsd = (amount: number, locale: string) =>
+  new Intl.NumberFormat(locale, { style: 'currency', currency: 'USD' }).format(amount)
 
 const parseLimit = (raw: string, integer: boolean): number | null | 'invalid' => {
   const trimmed = raw.trim()
@@ -61,6 +62,8 @@ const levelTone: Record<BudgetStatus['level'], PillTone> = {
 }
 
 export const BudgetManager = ({ organizationId }: { organizationId: string }) => {
+  const { t, i18n } = useTranslation('opsBudget')
+  const locale = i18n.resolvedLanguage ?? 'en-GB'
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
 
@@ -111,7 +114,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
       resetForm()
       invalidate()
     },
-    onError: (err) => setFormError((err as Error).message),
+    onError: () => setFormError(t('saveFailed')),
   })
 
   const remove = useMutation({
@@ -126,27 +129,27 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
   const handleSave = () => {
     const resolvedScopeId = scopeType === 'organization' ? organizationId : scopeId
     if (scopeType !== 'organization' && !scopeId) {
-      setFormError('Pick a project or team for this budget.')
+      setFormError(t('chooseScope'))
       return
     }
     const cost = parseLimit(costLimit, false)
     const tokens = parseLimit(tokenLimit, true)
     if (cost === 'invalid' || tokens === 'invalid') {
-      setFormError('Caps must be non-negative numbers — leave blank for no cap.')
+      setFormError(t('invalidCap'))
       return
     }
     const threshold = Math.round(Number(warnThreshold))
     if (!Number.isFinite(threshold) || threshold < 1 || threshold > 100) {
-      setFormError('Warn threshold must be between 1 and 100.')
+      setFormError(t('invalidThreshold'))
       return
     }
     if (mode === 'degrade' && degradeModel.trim() === '') {
-      setFormError('Degrade mode needs a fallback model to route to.')
+      setFormError(t('fallbackModelRequired'))
       return
     }
     const storageGb = parseLimit(storageCapGb, false)
     if (storageGb === 'invalid') {
-      setFormError('Storage cap must be a non-negative number of GB — leave blank for no cap.')
+      setFormError(t('invalidStorageCap'))
       return
     }
     setFormError(null)
@@ -182,23 +185,35 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
   }
 
   const scopeLabel = (b: BudgetStatus): string => {
-    if (b.scopeType === 'organization') return 'Organization'
-    if (b.scopeType === 'project') return projects.find((p) => p.id === b.scopeId)?.name ?? 'Project'
-    return teams.find((t) => t.id === b.scopeId)?.name ?? 'Team'
+    if (b.scopeType === 'organization') return t('organization')
+    if (b.scopeType === 'project') return projects.find((p) => p.id === b.scopeId)?.name ?? t('project')
+    return teams.find((team) => team.id === b.scopeId)?.name ?? t('team')
+  }
+
+  const scopeNames: Record<BudgetScopeType, string> = {
+    organization: t('organization'), project: t('project'), team: t('team'),
+  }
+  const modeNames: Record<BudgetMode, string> = {
+    off: t('modeOffShort'), warn: t('modeWarnShort'), enforce: t('modeEnforceShort'),
+    degrade: t('modeDegradeShort'), unlimited: t('modeUnlimitedShort'),
+  }
+  const periodNames: Record<BudgetPeriod, string> = {
+    weekly: t('weekly'), monthly: t('monthly'), yearly: t('yearly'),
+  }
+  const periodUsage: Record<BudgetPeriod, string> = {
+    weekly: t('thisWeek'), monthly: t('thisMonth'), yearly: t('thisYear'),
   }
 
   return (
     <div className="admin-card mt-4 p-4">
-      <SectionLabel>Budgets</SectionLabel>
+      <SectionLabel>{t('title')}</SectionLabel>
       <p className="mt-1 text-xs text-[color:var(--tx2)]">
-        Most-specific budget wins (team &rarr; project &rarr; organization). A scope set to
-        Unlimited is exempt and stops inheriting a parent cap. Soft cap &mdash; in-flight runs can
-        overshoot slightly.
+        {t('description')}
       </p>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <label className="text-xs text-[color:var(--tx2)]">
-          Scope
+          {t('scope')}
           <select
             className="admin-input mt-1"
             onChange={(e) => {
@@ -207,20 +222,20 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
             }}
             value={scopeType}
           >
-            <option value="organization">Organization</option>
-            <option value="project">Project</option>
-            <option value="team">Team</option>
+            <option value="organization">{t('organization')}</option>
+            <option value="project">{t('project')}</option>
+            <option value="team">{t('team')}</option>
           </select>
         </label>
         {scopeType !== 'organization' && (
           <label className="text-xs text-[color:var(--tx2)]">
-            {scopeType === 'project' ? 'Project' : 'Team'}
+            {scopeType === 'project' ? t('project') : t('team')}
             <select
               className="admin-input mt-1"
               onChange={(e) => setScopeId(e.target.value)}
               value={scopeId}
             >
-              <option value="">Select&hellip;</option>
+              <option value="">{t('select')}</option>
               {(scopeType === 'project' ? projects : teams).map((entity) => (
                 <option key={entity.id} value={entity.id}>
                   {entity.name}
@@ -233,45 +248,45 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <label className="text-xs text-[color:var(--tx2)]">
-          Mode
+          {t('mode')}
           <select
             className="admin-input mt-1"
             onChange={(e) => setMode(e.target.value as BudgetMode)}
             value={mode}
           >
-            <option value="off">Off — inherit parent</option>
-            <option value="warn">Warn — track, never block</option>
-            <option value="enforce">Enforce — throttle automations</option>
-            <option value="degrade">Degrade — cheaper model over cap</option>
-            <option value="unlimited">Unlimited — exempt, no cap</option>
+            <option value="off">{t('modeOff')}</option>
+            <option value="warn">{t('modeWarn')}</option>
+            <option value="enforce">{t('modeEnforce')}</option>
+            <option value="degrade">{t('modeDegrade')}</option>
+            <option value="unlimited">{t('modeUnlimited')}</option>
           </select>
         </label>
         <label className="text-xs text-[color:var(--tx2)]">
-          Period
+          {t('period')}
           <select
             className="admin-input mt-1"
             onChange={(e) => setPeriod(e.target.value as BudgetPeriod)}
             value={period}
           >
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-            <option value="yearly">Yearly</option>
+            <option value="weekly">{t('weekly')}</option>
+            <option value="monthly">{t('monthly')}</option>
+            <option value="yearly">{t('yearly')}</option>
           </select>
         </label>
       </div>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <label className="text-xs text-[color:var(--tx2)]">
-          Storage cap (GB)
+          {t('storageCap')}
           <input
             className="admin-input mt-1"
             inputMode="decimal"
             onChange={(e) => setStorageCapGb(e.target.value)}
-            placeholder="No cap"
+            placeholder={t('noCap')}
             value={storageCapGb}
           />
           <span className="mt-1 block text-[11px] text-[color:var(--tx3)]">
-            Blocks uploads for this scope once exceeded (applies in any mode).
+            {t('storageCapHelp')}
           </span>
         </label>
       </div>
@@ -279,27 +294,27 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
       {(mode === 'warn' || mode === 'enforce' || mode === 'degrade') && (
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           <label className="text-xs text-[color:var(--tx2)]">
-            Cost cap (USD)
+            {t('costCap')}
             <input
               className="admin-input mt-1"
               inputMode="decimal"
               onChange={(e) => setCostLimit(e.target.value)}
-              placeholder="No cap"
+              placeholder={t('noCap')}
               value={costLimit}
             />
           </label>
           <label className="text-xs text-[color:var(--tx2)]">
-            Token cap
+            {t('tokenCap')}
             <input
               className="admin-input mt-1"
               inputMode="numeric"
               onChange={(e) => setTokenLimit(e.target.value)}
-              placeholder="No cap"
+              placeholder={t('noCap')}
               value={tokenLimit}
             />
           </label>
           <label className="text-xs text-[color:var(--tx2)]">
-            Warn at (%)
+            {t('warnAt')}
             <input
               className="admin-input mt-1"
               inputMode="numeric"
@@ -318,14 +333,14 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
             onChange={(e) => setBlockHumans(e.target.checked)}
             type="checkbox"
           />
-          Also block people&apos;s live requests (off by default — only automations are throttled)
+          {t('blockLiveRequests')}
         </label>
       )}
 
       {mode === 'degrade' && (
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="text-xs text-[color:var(--tx2)]">
-            Fallback model (used once over cap)
+            {t('fallbackModel')}
             <input
               className="admin-input mt-1"
               onChange={(e) => setDegradeModel(e.target.value)}
@@ -334,7 +349,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
             />
           </label>
           <label className="text-xs text-[color:var(--tx2)]">
-            Fallback provider
+            {t('fallbackProvider')}
             <input
               className="admin-input mt-1"
               onChange={(e) => setDegradeProvider(e.target.value)}
@@ -347,7 +362,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
 
       <div className="mt-3 flex items-center justify-end gap-2">
         <button className="admin-button admin-button-secondary" onClick={resetForm} type="button">
-          Clear
+          {t('clear')}
         </button>
         <button
           className="admin-button admin-button-primary"
@@ -355,18 +370,18 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
           onClick={handleSave}
           type="button"
         >
-          Save budget
+          {t('saveBudget')}
         </button>
       </div>
       {formError && <div className="mt-2 text-xs text-[var(--danger-text)]">{formError}</div>}
 
-      <SectionLabel className="mt-5">Configured budgets ({budgets.length})</SectionLabel>
+      <SectionLabel className="mt-5">{t('configuredBudgets', { count: budgets.length })}</SectionLabel>
       <div className="mt-2 grid gap-2">
         <QueryState
-          emptyLabel="No budgets configured"
-          errorLabel="Failed to load budgets."
+          emptyLabel={t('noBudgets')}
+          errorLabel={t('loadFailed')}
           isEmpty={budgets.length === 0}
-          loadingLabel="Loading budgets…"
+          loadingLabel={t('loading')}
           query={budgetsQuery}
         >
           {() => (
@@ -377,7 +392,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
                     <div className="min-w-0">
                       <span className="font-semibold text-[var(--tx)]">{scopeLabel(b)}</span>
                       <span className="ml-2 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-                        {b.scopeType} · {b.mode} · {b.period}
+                        {scopeNames[b.scopeType]} · {modeNames[b.mode]} · {periodNames[b.period]}
                       </span>
                     </div>
                     <Pill
@@ -386,22 +401,23 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
                       tone={b.mode === 'unlimited' ? 'muted' : levelTone[b.level]}
                     >
                       {b.mode === 'unlimited'
-                        ? 'unlimited'
+                        ? t('modeUnlimitedShort')
                         : b.percentUsed != null
-                          ? `${b.percentUsed}% used`
-                          : 'no cap'}
+                          ? t('percentUsed', { percent: b.percentUsed })
+                          : t('noCapLower')}
                     </Pill>
                   </div>
                   <div className="mt-1 text-xs text-[color:var(--tx2)]">
-                    {formatTokens(b.spentTokens)} tokens · {formatUsd(b.spentUsd)} this {b.period.replace('ly', '')}
-                    {b.costLimitUsd != null && ` · cap ${formatUsd(b.costLimitUsd)}`}
-                    {b.tokenLimit != null && ` · cap ${formatTokens(b.tokenLimit)} tok`}
+                    {t('spentSummary', { tokens: formatTokens(b.spentTokens, locale),
+                      amount: formatUsd(b.spentUsd, locale), period: periodUsage[b.period] })}
+                    {b.costLimitUsd != null && t('costCapSummary', { amount: formatUsd(b.costLimitUsd, locale) })}
+                    {b.tokenLimit != null && t('tokenCapSummary', { tokens: formatTokens(b.tokenLimit, locale) })}
                   </div>
                   <div className="mt-1 text-xs text-[color:var(--tx2)]">
-                    {formatBytes(Number(b.storageUsedBytes))} stored
+                    {t('stored', { amount: formatBytes(Number(b.storageUsedBytes), locale) })}
                     {b.storageLimitBytes != null
-                      ? ` of ${formatBytes(Number(b.storageLimitBytes))} cap`
-                      : ' · no storage cap'}
+                      ? t('ofStorageCap', { amount: formatBytes(Number(b.storageLimitBytes), locale) })
+                      : t('noStorageCap')}
                   </div>
                   <div className="mt-2 flex gap-2">
                     <button
@@ -409,7 +425,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
                       onClick={() => editBudget(b)}
                       type="button"
                     >
-                      Edit
+                      {t('edit')}
                     </button>
                     <button
                       className="admin-button admin-button-secondary"
@@ -417,7 +433,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
                       onClick={() => setPendingDelete(b)}
                       type="button"
                     >
-                      Delete
+                      {t('delete')}
                     </button>
                   </div>
                 </div>
@@ -428,8 +444,8 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
       </div>
 
       <ConfirmDialog
-        body={pendingDelete ? `This removes the ${scopeLabel(pendingDelete)} budget. It can be re-created later.` : undefined}
-        confirmLabel="Delete budget"
+        body={pendingDelete ? t('deleteBody', { scope: scopeLabel(pendingDelete) }) : undefined}
+        confirmLabel={t('deleteBudget')}
         destructive
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => {
@@ -439,7 +455,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
         }}
         open={pendingDelete != null}
         pending={remove.isPending}
-        title="Delete this budget?"
+        title={t('deleteTitle')}
       />
     </div>
   )

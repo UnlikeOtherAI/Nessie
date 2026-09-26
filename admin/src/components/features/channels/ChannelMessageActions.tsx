@@ -6,6 +6,7 @@ import {
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Check, Copy, Pencil, Reply, Smile, Trash2 } from 'lucide-react'
 import type { MessageReaction } from '../../../lib/api-client'
 import { EmojiReactionButton } from '../../shared/EmojiReactionButton'
@@ -48,6 +49,7 @@ export const ChannelMessageActions = ({
   onReply,
   onStartEdit,
 }: ChannelMessageActionsProps) => {
+  const { t } = useTranslation('channels')
   const copiedTimer = useRef<number | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -92,9 +94,9 @@ export const ChannelMessageActions = ({
         onPointerDown={stopRowToggle}
       >
         <SharedActionButton
-          aria-label={copied ? 'Message copied' : 'Copy message'}
+          aria-label={copied ? t('messageActions.copied') : t('messageActions.copy')}
           onClick={copyMessage}
-          title={copied ? 'Copied' : 'Copy message'}
+          title={copied ? t('messageActions.copiedShort') : t('messageActions.copy')}
           type="button"
         >
           {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
@@ -102,13 +104,13 @@ export const ChannelMessageActions = ({
         <EmojiReactionButton
           icon={<Smile aria-hidden="true" />}
           onSelect={addReaction}
-          title="Add emoji reaction"
+          title={t('messageActions.addReaction')}
         />
         {onReply ? (
           <SharedActionButton
-            aria-label="Reply in thread"
+            aria-label={t('messageActions.reply')}
             onClick={onReply}
-            title="Reply in thread"
+            title={t('messageActions.reply')}
             type="button"
           >
             <Reply aria-hidden="true" />
@@ -116,9 +118,9 @@ export const ChannelMessageActions = ({
         ) : null}
         {canEdit ? (
           <SharedActionButton
-            aria-label="Edit message"
+            aria-label={t('messageActions.edit')}
             onClick={() => onStartEdit(messageId, content)}
-            title="Edit message"
+            title={t('messageActions.edit')}
             type="button"
           >
             <Pencil aria-hidden="true" />
@@ -126,9 +128,9 @@ export const ChannelMessageActions = ({
         ) : null}
         {canDelete ? (
           <SharedActionButton
-            aria-label="Delete message"
+            aria-label={t('messageActions.delete')}
             onClick={() => onConfirmDelete(messageId)}
-            title="Delete message"
+            title={t('messageActions.delete')}
             type="button"
           >
             <Trash2 aria-hidden="true" />

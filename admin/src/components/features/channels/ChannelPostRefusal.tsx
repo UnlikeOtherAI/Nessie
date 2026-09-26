@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import {
   WorkThreadReadOnlyNotice,
   type WorkThreadComposer,
@@ -27,6 +28,7 @@ export const ChannelPostRefusal = ({
   postRefusal: ChannelRoomControls['postRefusal']
   workThread: WorkThreadComposer | null
 }) => {
+  const { t } = useTranslation('channels')
   if (postRefusal) {
     return (
       <div
@@ -34,8 +36,8 @@ export const ChannelPostRefusal = ({
         role="status"
       >
         {postRefusal === 'join-to-post'
-          ? 'Join this channel to send messages.'
-          : 'You are not a member of this channel, so you cannot send messages in it.'}
+          ? t('postRefusal.joinToPost')
+          : t('postRefusal.notMember')}
       </div>
     )
   }

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { Pill } from '../../primitives/Pill'
 
@@ -44,6 +45,7 @@ export const AllowedByRuleCard = ({
 }: {
   metadata: Record<string, unknown> | undefined
 }) => {
+  const { t } = useTranslation('channels')
   const card = readAllowedByRule(metadata)
   const [showDetails, setShowDetails] = useState(false)
 
@@ -59,24 +61,24 @@ export const AllowedByRuleCard = ({
           {card.headline}
         </span>
         <Pill radius="chip" size="sm" tone="success" uppercase={false}>
-          Always allowed
+          {t('allowedByRule.allowed')}
         </Pill>
       </div>
 
       <p className="mt-1 text-xs leading-5 text-[color:var(--tx2)]">
         {card.rule ? (
           <>
-            Allowed by what you told me:{' '}
+            {t('allowedByRule.allowedByRule')} 
             <span className="text-[color:var(--tx)]">“{card.rule}”</span>
           </>
         ) : (
-          <>You turned off confirmation for this account.</>
+          <>{t('allowedByRule.confirmationOff')}</>
         )}{' '}
         <Link
           className="font-semibold text-[color:var(--accent)]"
           to="/settings/connections"
         >
-          Change this
+          {t('allowedByRule.change')}
         </Link>
       </p>
 
@@ -93,7 +95,7 @@ export const AllowedByRuleCard = ({
             onClick={() => setShowDetails((value) => !value)}
             type="button"
           >
-            {showDetails ? '⌄ Hide the details' : '› Show the details'}
+            {showDetails ? `⌄ ${t('allowedByRule.hideDetails')}` : `› ${t('allowedByRule.showDetails')}`}
           </button>
           {showDetails ? (
             <pre className="mt-1 overflow-x-auto whitespace-pre-wrap rounded border border-[color:var(--sep)] bg-[color:var(--overlay-weak)] p-2 text-[11px] leading-4 text-[color:var(--tx2)]">

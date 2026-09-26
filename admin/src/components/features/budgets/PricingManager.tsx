@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { budgetKeys, opsTelemetryKeys } from '../../../lib/query-keys'
 import { useApiClient } from '../../../providers/ApiClientProvider'
 import { SectionLabel } from '../../primitives/SectionLabel'
@@ -30,9 +31,13 @@ const parseRate = (raw: string): number | null | 'invalid' => {
   return value
 }
 
-const rate = (value: number | null): string => (value == null ? '—' : `$${value}/M`)
+const rate = (value: number | null, locale: string): string => (value == null
+  ? '—'
+  : `${new Intl.NumberFormat(locale, { style: 'currency', currency: 'USD' }).format(value)}/M`)
 
 export const PricingManager = () => {
+  const { t, i18n } = useTranslation('opsBudget')
+  const locale = i18n.resolvedLanguage ?? 'en-GB'
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
 
@@ -76,7 +81,7 @@ export const PricingManager = () => {
       resetForm()
       invalidate()
     },
-    onError: (err) => setFormError((err as Error).message),
+    onError: () => setFormError(t('pricing.saveFailed')),
   })
 
   const remove = useMutation({
@@ -98,17 +103,19 @@ export const PricingManager = () => {
       ),
     onSuccess: (r) => {
       setRecomputeMsg(
-        `Re-priced ${r.updatedEvents.toLocaleString()} past event(s) across ${r.pricedPairs} model(s)` +
-          (r.unpricedPairs ? `; ${r.unpricedPairs} model(s) still have no pricing.` : '.'),
+        t('pricing.repriced', {
+          events: new Intl.NumberFormat(locale).format(r.updatedEvents),
+          models: new Intl.NumberFormat(locale).format(r.pricedPairs),
+        }) + (r.unpricedPairs ? t('pricing.unpriced', { count: r.unpricedPairs }) : ''),
       )
       invalidate()
     },
-    onError: (err) => setRecomputeMsg((err as Error).message),
+    onError: () => setRecomputeMsg(t('pricing.repriceFailed')),
   })
 
   const handleSave = () => {
     if (provider.trim() === '' || modelPattern.trim() === '') {
-      setFormError('Provider and model pattern are required.')
+      setFormError(t('pricing.requiredFields'))
       return
     }
     const rates = {
@@ -118,7 +125,7 @@ export const PricingManager = () => {
       cacheWritePerMillion: parseRate(cacheWrite),
     }
     if (Object.values(rates).some((v) => v === 'invalid')) {
-      setFormError('Rates must be non-negative numbers (USD per million tokens) — leave blank to skip.')
+      setFormError(t('pricing.invalidRates'))
       return
     }
     setFormError(null)
@@ -133,16 +140,16 @@ export const PricingManager = () => {
 
   return (
     <div className="admin-card mt-4 p-4">
-      <SectionLabel>Model pricing</SectionLabel>
+      <SectionLabel>{t('pricing.title')}</SectionLabel>
       <p className="mt-1 text-xs text-[color:var(--tx2)]">
-        Per-million-token rates turn the usage ledger into dollars. Use the exact model name, or
-        <code className="mx-1 rounded bg-[var(--overlay-weak)] px-1">*</code> as a provider-wide
-        fallback. Saving a model again replaces its current rate.
+        {t('pricing.descriptionBefore')}
+        <code className="mx-1 rounded bg-[var(--overlay-weak)] px-1">*</code>
+        {t('pricing.descriptionAfter')}
       </p>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <label className="text-xs text-[color:var(--tx2)]">
-          Provider
+          {t('pricing.provider')}
           <input
             className="admin-input mt-1"
             onChange={(e) => setProvider(e.target.value)}
@@ -151,37 +158,37 @@ export const PricingManager = () => {
           />
         </label>
         <label className="text-xs text-[color:var(--tx2)]">
-          Model pattern
+          {t('pricing.modelPattern')}
           <input
             className="admin-input mt-1"
             onChange={(e) => setModelPattern(e.target.value)}
-            placeholder="gpt-5-mini or *"
+            placeholder={t('pricing.modelExample')}
             value={modelPattern}
           />
         </label>
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-4">
         <label className="text-xs text-[color:var(--tx2)]">
-          Input $/M
+          {t('pricing.inputRate')}
           <input className="admin-input mt-1" inputMode="decimal" onChange={(e) => setInput(e.target.value)} placeholder="0.25" value={input} />
         </label>
         <label className="text-xs text-[color:var(--tx2)]">
-          Output $/M
+          {t('pricing.outputRate')}
           <input className="admin-input mt-1" inputMode="decimal" onChange={(e) => setOutput(e.target.value)} placeholder="2.00" value={output} />
         </label>
         <label className="text-xs text-[color:var(--tx2)]">
-          Cache read $/M
+          {t('pricing.cacheReadRate')}
           <input className="admin-input mt-1" inputMode="decimal" onChange={(e) => setCacheRead(e.target.value)} placeholder="0.025" value={cacheRead} />
         </label>
         <label className="text-xs text-[color:var(--tx2)]">
-          Cache write $/M
-          <input className="admin-input mt-1" inputMode="decimal" onChange={(e) => setCacheWrite(e.target.value)} placeholder="optional" value={cacheWrite} />
+          {t('pricing.cacheWriteRate')}
+          <input className="admin-input mt-1" inputMode="decimal" onChange={(e) => setCacheWrite(e.target.value)} placeholder={t('pricing.optional')} value={cacheWrite} />
         </label>
       </div>
 
       <div className="mt-3 flex items-center justify-end gap-2">
         <button className="admin-button admin-button-secondary" onClick={resetForm} type="button">
-          Clear
+          {t('clear')}
         </button>
         <button
           className="admin-button admin-button-primary"
@@ -189,13 +196,13 @@ export const PricingManager = () => {
           onClick={handleSave}
           type="button"
         >
-          Save pricing
+          {t('pricing.save')}
         </button>
       </div>
       {formError && <div className="mt-2 text-xs text-[var(--danger-text)]">{formError}</div>}
 
       <div className="mt-5 flex items-center justify-between gap-2">
-        <SectionLabel as="span">Configured pricing ({profiles.length})</SectionLabel>
+        <SectionLabel as="span">{t('pricing.configured', { count: profiles.length })}</SectionLabel>
         <button
           className="admin-button admin-button-secondary"
           disabled={recompute.isPending || profiles.length === 0}
@@ -203,19 +210,19 @@ export const PricingManager = () => {
             setRecomputeMsg(null)
             recompute.mutate()
           }}
-          title="Value past usage that was logged before pricing existed"
+          title={t('pricing.repriceTitle')}
           type="button"
         >
-          {recompute.isPending ? 'Re-pricing…' : 'Re-price historical usage'}
+          {recompute.isPending ? t('pricing.repricing') : t('pricing.reprice')}
         </button>
       </div>
       {recomputeMsg && <div className="mt-2 text-xs text-[color:var(--tx2)]">{recomputeMsg}</div>}
       <div className="mt-2 grid gap-2">
         <QueryState
-          emptyLabel="No pricing configured"
-          errorLabel="Failed to load pricing."
+          emptyLabel={t('pricing.none')}
+          errorLabel={t('pricing.loadFailed')}
           isEmpty={profiles.length === 0}
-          loadingLabel="Loading pricing…"
+          loadingLabel={t('pricing.loading')}
           query={profilesQuery}
         >
           {() => (
@@ -228,8 +235,11 @@ export const PricingManager = () => {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-xs text-[color:var(--tx2)]">
-                      in {rate(p.inputPerMillion)} · out {rate(p.outputPerMillion)} · cache{' '}
-                      {rate(p.cacheReadPerMillion)}
+                      {t('pricing.rateSummary', {
+                        input: rate(p.inputPerMillion, locale),
+                        output: rate(p.outputPerMillion, locale),
+                        cache: rate(p.cacheReadPerMillion, locale),
+                      })}
                     </span>
                     <button
                       className="admin-button admin-button-secondary"
@@ -237,7 +247,7 @@ export const PricingManager = () => {
                       onClick={() => setPendingDelete(p)}
                       type="button"
                     >
-                      Delete
+                      {t('delete')}
                     </button>
                   </div>
                 </div>
@@ -248,8 +258,10 @@ export const PricingManager = () => {
       </div>
 
       <ConfirmDialog
-        body={pendingDelete ? `This removes the ${pendingDelete.provider} / ${pendingDelete.modelPattern} rate.` : undefined}
-        confirmLabel="Delete pricing"
+        body={pendingDelete ? t('pricing.deleteBody', {
+          provider: pendingDelete.provider, model: pendingDelete.modelPattern,
+        }) : undefined}
+        confirmLabel={t('pricing.delete')}
         destructive
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => {
@@ -257,7 +269,7 @@ export const PricingManager = () => {
         }}
         open={pendingDelete != null}
         pending={remove.isPending}
-        title="Delete this pricing rule?"
+        title={t('pricing.deleteTitle')}
       />
     </div>
   )

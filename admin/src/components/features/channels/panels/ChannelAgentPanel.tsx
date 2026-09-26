@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import type {
   AgentRecord,
   ChannelRecord,
@@ -44,6 +45,7 @@ export const ChannelAgentPanel = ({
   personalAssistantPresences: PersonalAssistantPresenceParticipant[]
   personalAssistantState: PersonalAssistantStateResponse | null | undefined
 }) => {
+  const { t } = useTranslation('channels')
   const navigate = useNavigate()
   // Who may edit is the agent's ownership state, not the organization owner
   // role. A system-managed agent has no Designer to open either — the Personal
@@ -73,7 +75,7 @@ export const ChannelAgentPanel = ({
                 onClick={() => void navigate(`/agents/${agent.id}?agentTab=edit`)}
                 type="button"
               >
-                Edit agent
+                {t('agentsPanel.edit')}
               </button>
             ) : null}
           </div>
@@ -84,9 +86,9 @@ export const ChannelAgentPanel = ({
             sentence twice on one screen. */}
         {isPersonalAssistantConversation ? null : (
           <div className="mt-4 border-t border-[color:var(--sep)] pt-4">
-            <SectionLabel>Instructions</SectionLabel>
+            <SectionLabel>{t('agentsPanel.instructions')}</SectionLabel>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx2)]">
-              {agent.systemPrompt ?? 'No system prompt configured for this agent yet.'}
+              {agent.systemPrompt ?? t('agentsPanel.noSystemPrompt')}
             </p>
           </div>
         )}
@@ -105,9 +107,9 @@ export const ChannelAgentPanel = ({
           system forbids. The label and the rule carry the grouping instead. */}
       <section className="grid gap-3">
         <div className="border-b border-[color:var(--sep)] pb-3">
-          <SectionLabel>Tools</SectionLabel>
+          <SectionLabel>{t('agentsPanel.tools')}</SectionLabel>
           <p className="mt-2 text-sm leading-6 text-[color:var(--tx2)]">
-            Everything {agent.name} can reach in a run.
+            {t('agentsPanel.toolsDescription', { name: agent.name })}
           </p>
         </div>
         <AgentAvailableTools agent={agent} editable={!agent.systemManaged} />

@@ -56,6 +56,7 @@ export const ThinkingBubble = ({
   token,
   variant,
 }: ThinkingBubbleProps) => {
+  const { t } = useTranslation('channels')
   const compact = variant === 'compact'
   const lines = toThinkingLines(entry.thinking, TICKER_MAX_LINES)
   const open = (event: KeyboardEvent<HTMLDivElement> | MouseEvent<HTMLDivElement>) => {
@@ -73,7 +74,7 @@ export const ThinkingBubble = ({
       ].join(' ')}
     >
       {lines.length === 0 ? (
-        <div className="italic opacity-80">Thinking…</div>
+        <div className="italic opacity-80">{t('thinking.loading')}</div>
       ) : (
         lines.map((line) => (
           <div className="whitespace-pre-wrap break-words" key={line.key}>
@@ -92,7 +93,7 @@ export const ThinkingBubble = ({
   return (
     <div className={containerClass(variant)} data-testid="thinking-bubble" data-variant={variant}>
       <div
-        aria-label={`View ${agentName}’s thought process`}
+        aria-label={t('thinking.viewProcess', { name: agentName })}
         className={openClass(variant)}
         onClick={open}
         onKeyDown={(event) => {
@@ -121,3 +122,4 @@ export const ThinkingBubble = ({
     </div>
   )
 }
+import { useTranslation } from 'react-i18next'

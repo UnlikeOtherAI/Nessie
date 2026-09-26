@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type {
   AgentRecord,
   PersonalAssistantPresenceParticipant,
@@ -73,6 +74,7 @@ export const ChannelMembersPopup = ({
   onClose,
   onSelectAgent,
 }: ChannelMembersPopupProps) => {
+  const { t } = useTranslation('channels')
   const [search, setSearch] = useState('')
 
   const addMember = useAddChannelMember()
@@ -130,7 +132,7 @@ export const ChannelMembersPopup = ({
             || filteredAgents.length > 0
             || filteredPersonalAssistantPresences.length > 0) && (
             <div>
-              <div className={sectionHeadingClass}>In this channel</div>
+              <div className={sectionHeadingClass}>{t('members.inChannel')}</div>
 
               {filteredUsers.map((user) => (
                 <CurrentUserRow
@@ -138,7 +140,7 @@ export const ChannelMembersPopup = ({
                   canRemove={viewerCanManage}
                   user={user}
                   currentUserId={currentUserId}
-                  removeLabel="Remove from channel"
+                  removeLabel={t('members.remove')}
                   removePending={removeMember.isPending}
                   onRemove={(userId) =>
                     removeMember.mutate({ channelId, userId })
@@ -180,7 +182,7 @@ export const ChannelMembersPopup = ({
           {/* Available to add */}
           {hasAvailable && (
             <div className="mt-2">
-              <div className={sectionHeadingClass}>Add to channel</div>
+              <div className={sectionHeadingClass}>{t('members.addToChannel')}</div>
 
               {viewerCanManage && availableUsers.map((user) => (
                 <AvailableUserRow
@@ -210,11 +212,11 @@ export const ChannelMembersPopup = ({
 
           {viewerIsChannelMember && !hasMyPersonalAssistant ? (
             <div className="mt-2">
-              <div className={sectionHeadingClass}>Personal Assistant</div>
+              <div className={sectionHeadingClass}>{t('members.personalAssistant')}</div>
               <div className="flex items-center justify-between gap-3 rounded-lg px-3 py-2">
                 <div className="min-w-0">
-                  <div className="text-sm font-medium text-[color:var(--tx)]" data-testid="channel-pa-offer">Add my assistant</div>
-                  <div className="text-xs text-[color:var(--tx3)]">Let people in this channel hand it a task.</div>
+                  <div className="text-sm font-medium text-[color:var(--tx)]" data-testid="channel-pa-offer">{t('members.addMyAssistant')}</div>
+                  <div className="text-xs text-[color:var(--tx3)]">{t('members.assistantDescription')}</div>
                 </div>
                 <button
                   className={[
@@ -226,7 +228,7 @@ export const ChannelMembersPopup = ({
                   onClick={() => addPersonalAssistant.mutate(channelId)}
                   type="button"
                 >
-                  {addPersonalAssistant.isPending ? 'Adding…' : 'Add'}
+                  {addPersonalAssistant.isPending ? t('members.adding') : t('members.add')}
                 </button>
               </div>
             </div>
@@ -237,7 +239,7 @@ export const ChannelMembersPopup = ({
             filteredPersonalAssistantPresences.length === 0 &&
             !hasAvailable && (
               <div className="px-3 py-6 text-center text-sm text-[color:var(--tx3)]">
-                No members match your search.
+                {t('members.noMatches')}
               </div>
             )}
     </MemberManagementPopup>

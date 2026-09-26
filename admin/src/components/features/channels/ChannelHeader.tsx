@@ -1,4 +1,5 @@
 import { faCircleDot } from '@fortawesome/free-regular-svg-icons'
+import { useTranslation } from 'react-i18next'
 import {
   faCircleInfo,
   faGear,
@@ -111,12 +112,13 @@ export const ChannelHeader = ({
   voiceCallSupported,
   titleFavorite,
 }: ChannelHeaderProps) => {
+  const { t } = useTranslation('channels')
   const single = usePhoneLayout()
   const roomTitle = isPersonalAssistantConversation
-    ? 'Personal Assistant'
+    ? t('header.personalAssistant')
     : isExternalAgentConversation
-      ? externalAgentIdentity?.name ?? activeChannel?.label ?? 'Channels'
-      : activeChannel?.label ?? 'Channels'
+      ? externalAgentIdentity?.name ?? activeChannel?.label ?? t('header.channels')
+      : activeChannel?.label ?? t('header.channels')
   const title = conversation?.title ?? roomTitle
   const { canManageChannel, canOpenConversationInfo, shouldJoin } = channelRoomControls({
     activeChannel,
@@ -128,15 +130,15 @@ export const ChannelHeader = ({
   // a provider-linked meeting and rings people.
   const callLabel = voiceCallSupported
     ? voiceCallActive
-      ? 'Call in progress'
-      : 'Call your assistant'
+      ? t('header.callInProgress')
+      : t('header.callAssistant')
     : callStarting
-      ? 'Starting call…'
+      ? t('header.startingCall')
       : callEligible
         ? activeCall
-          ? 'Join call'
-          : 'Start a call'
-        : 'You can only start a call with humans for now'
+          ? t('incomingCall.join')
+          : t('header.startCall')
+        : t('header.humanCallsOnly')
   const participantCount = channelUsers.length + boundAgents.length + personalAssistantPresenceCount
   const actions: PageHeaderAction[] = [
     ...(titleFavorite ? [{
@@ -144,7 +146,7 @@ export const ChannelHeader = ({
       disabled: titleFavorite.isPending,
       icon: faStar,
       id: 'favorite',
-      label: titleFavorite.isFavorite ? 'Remove favorite' : 'Add favorite',
+      label: titleFavorite.isFavorite ? t('header.removeFavorite') : t('header.addFavorite'),
       onSelect: titleFavorite.onToggle,
       pressed: titleFavorite.isFavorite,
       priority: 90,
@@ -157,20 +159,20 @@ export const ChannelHeader = ({
       compact: true,
       icon: faCircleInfo,
       id: 'conversation-info',
-      label: 'Conversation info',
+      label: t('header.conversationInfo'),
       onSelect: onOpenInfo,
       priority: 80,
     } satisfies PageHeaderAction] : !isPersonalAssistantConversation ? [{
       icon: faUsers,
       id: 'members',
-      label: `Members (${participantCount})`,
+      label: t('header.members', { count: participantCount }),
       onSelect: onOpenMembers,
       priority: 80,
     } satisfies PageHeaderAction] : []),
     ...(shouldJoin ? [{
       disabled: joinPending,
       id: 'join',
-      label: 'Join',
+      label: t('header.join'),
       onSelect: onJoin,
       primary: true,
       priority: 100,
@@ -189,7 +191,7 @@ export const ChannelHeader = ({
       compact: true,
       icon: faGear,
       id: 'settings',
-      label: 'Channel settings',
+      label: t('settings.title'),
       onSelect: onOpenSettings,
       priority: 60,
     } satisfies PageHeaderAction] : []),
@@ -201,7 +203,7 @@ export const ChannelHeader = ({
       // hole punched out of it.
       icon: faCircleDot,
       id: 'record-routine',
-      label: routineRecording ? 'Recording routine' : 'Record routine',
+      label: routineRecording ? t('routine.recordingTitle') : t('routine.recordTitle'),
       onSelect: onToggleRoutineRecording,
       priority: 55,
       selected: routineRecording,
@@ -236,7 +238,7 @@ export const ChannelHeader = ({
       compact: true,
       icon: faMagnifyingGlass,
       id: 'search',
-      label: 'Search messages',
+      label: t('header.searchMessages'),
       onSelect: onToggleSearch,
       pressed: searchOpen,
       priority: 40,
@@ -251,7 +253,7 @@ export const ChannelHeader = ({
         conversation
           ? conversation.eyebrow
           : isPersonalAssistantConversation
-            ? 'System managed'
+            ? t('header.systemManaged')
             : isExternalAgentConversation
               ? externalAgentIdentity?.description ?? undefined
               : undefined

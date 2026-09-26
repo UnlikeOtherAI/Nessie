@@ -1,4 +1,5 @@
 import { useState, useRef, type FocusEvent, type FormEvent, type ReactNode, type RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import { faPaperclip } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
@@ -85,6 +86,7 @@ export const ChannelComposer = ({
   onOpenExecutorRun,
   executorLeaseIndicator,
 }: ChannelComposerProps) => {
+  const { t } = useTranslation('channels')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isFocusWithin, setIsFocusWithin] = useState(false)
   const [voiceState, setVoiceState] = useState<VoiceDictationState>('idle')
@@ -141,7 +143,7 @@ export const ChannelComposer = ({
                   <span className="font-semibold text-[color:var(--accent)]">
                     @{agent.name}
                   </span>{' '}
-                  isn’t in this channel yet. Invite it to answer this message.
+                  {t('composer.inviteAgent', { name: agent.name })}
                 </span>
                 <span className="flex flex-shrink-0 items-center gap-2">
                   <button
@@ -151,15 +153,15 @@ export const ChannelComposer = ({
                     type="button"
                   >
                     {invitingAgentId === agent.id
-                      ? 'Inviting…'
-                      : 'Invite & reply'}
+                      ? t('composer.inviting')
+                      : t('composer.inviteAndReply')}
                   </button>
                   <button
                     className="admin-button admin-button-secondary"
                     onClick={() => onDismissPendingAgent(agent.id)}
                     type="button"
                   >
-                    Dismiss
+                    {t('composer.dismiss')}
                   </button>
                 </span>
               </div>
@@ -215,7 +217,7 @@ export const ChannelComposer = ({
             <button
               className={toolbarButtonClass}
               onClick={onInsertAtSign}
-              title="Mention person or agent"
+              title={t('composer.mentionPersonAgent')}
               type="button"
             >
               @
@@ -223,7 +225,7 @@ export const ChannelComposer = ({
             <button
               className={toolbarButtonClass}
               onClick={onInsertHashSign}
-              title="Mention channel"
+              title={t('composer.mentionChannel')}
               type="button"
             >
               #
@@ -251,10 +253,10 @@ export const ChannelComposer = ({
             ) : null}
             {onOpenExecutorRun ? (
               <button
-                aria-label="Run on executor"
+                aria-label={t('composer.runOnExecutor')}
                 className={`${toolbarButtonClass} admin-compose-executor`}
                 onClick={onOpenExecutorRun}
-                title="Run on executor"
+                title={t('composer.runOnExecutor')}
                 type="button"
               >
                 <svg
@@ -272,10 +274,10 @@ export const ChannelComposer = ({
             {executorLeaseIndicator}
             <ComposerEmojiButton onSelect={onInsertEmoji} />
             <button
-              aria-label="Attach files"
+              aria-label={t('composer.attachFiles')}
               className={toolbarButtonClass}
               onClick={() => fileInputRef.current?.click()}
-              title="Attach files"
+              title={t('composer.attachFiles')}
               type="button"
             >
               <FontAwesomeIcon className="admin-compose-action-icon h-4 w-4" icon={faPaperclip} />
@@ -307,7 +309,7 @@ export const ChannelComposer = ({
             onStateChange={setVoiceState}
           />
           <button
-            aria-label="Send message"
+            aria-label={t('composer.sendMessage')}
             className="admin-compose-send flex h-[30px] items-center justify-center rounded-lg bg-[color:var(--accent)] px-3 text-[var(--on-accent)] disabled:opacity-50"
             disabled={!canSend}
             type="submit"

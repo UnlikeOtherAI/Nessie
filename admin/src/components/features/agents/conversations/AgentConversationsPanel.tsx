@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 import type { AgentRecord } from '../../../../lib/api-client'
 import { useStartAgentConversation } from '../../../../facades/agents/hooks'
@@ -35,9 +36,6 @@ const CONVERSATIONS_PANEL_WIDTH_STORAGE_KEY = 'nessie.agentConversationsPanelWid
  * button that looks broken — so the row blinks and this says why, in the
  * agent's own voice.
  */
-const EMPTY_CONVERSATION_NUDGE =
-  'This one is still empty — try talking to me here first.'
-
 /** How long the nudge stands before the column goes quiet again. */
 const NUDGE_VISIBLE_MS = 8_000
 
@@ -96,6 +94,7 @@ export const AgentConversationsPanel = ({
   onClose,
   onSelectAgent,
 }: AgentConversationsPanelProps) => {
+  const { t } = useTranslation('agentConversations')
   const navigate = useNavigate()
   const { token } = useAuthSession()
   const phoneLayout = useNavigationLayout() === 'single'
@@ -130,15 +129,15 @@ export const AgentConversationsPanel = ({
   useLocalBack({
     active: true,
     id: 'chat-tool:conversations',
-    label: 'Back to conversation',
+    label: t('panel.back'),
     onBack: onClose,
     priority: LOCAL_BACK_PRIORITY.chatToolPanel,
   })
 
   const { hidden: nativeBarOwnsHeader } = useNativeBarHeader({
     actions: [],
-    back: { label: 'Back to conversation', onBack: onClose },
-    title: 'Conversations',
+    back: { label: t('panel.back'), onBack: onClose },
+    title: t('panel.title'),
   })
 
   const startNewConversation = () => {
@@ -151,7 +150,7 @@ export const AgentConversationsPanel = ({
           setStartError(
             error instanceof Error && error.message
               ? error.message
-              : 'Could not start a conversation. Please try again.',
+              : t('panel.startFailed'),
           )
         },
         onSuccess: (result) => {
@@ -181,7 +180,7 @@ export const AgentConversationsPanel = ({
 
   return (
     <SidePanelShell
-      ariaLabel={`Conversations with ${agent.name}`}
+      ariaLabel={t('panel.withAgent', { name: agent.name })}
       isClosing={false}
       onClose={onClose}
       panelWidth={geometry.panelWidth}
@@ -193,15 +192,15 @@ export const AgentConversationsPanel = ({
       {nativeBarOwnsHeader ? null : (
         <header className="flex flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4 py-3">
           {phoneLayout ? (
-            <PhoneBackButton label="Back to conversation" onBack={onClose} />
+            <PhoneBackButton label={t('panel.back')} onBack={onClose} />
           ) : null}
           <AgentAvatar agent={agent} size="xs" token={token} />
           <h2 className="flex-1 truncate text-sm font-semibold text-[color:var(--tx)]">
-            Conversations
+            {t('panel.title')}
           </h2>
           {phoneLayout ? null : (
             <button
-              aria-label="Close conversations panel"
+              aria-label={t('panel.close')}
               className="admin-icon-button"
               onClick={onClose}
               type="button"
@@ -214,7 +213,7 @@ export const AgentConversationsPanel = ({
       {agents.length > 1 ? (
         <div className="flex-shrink-0 border-b border-[color:var(--sep)] px-3 py-2">
           <TabBar
-            ariaLabel="Agent"
+            ariaLabel={t('panel.agent')}
             items={agents.map((candidate) => ({
               icon: (
                 <AgentAvatar agent={candidate} size={STRIP_AVATAR_PX} token={token} />
@@ -240,7 +239,7 @@ export const AgentConversationsPanel = ({
           onClick={startNewConversation}
           type="button"
         >
-          {startConversation.isPending ? 'Starting…' : 'New conversation'}
+          {startConversation.isPending ? t('starting') : t('newConversation')}
         </button>
         {startError ? (
           <Notice className="mt-2" role="alert" size="sm" tone="danger">
@@ -255,7 +254,7 @@ export const AgentConversationsPanel = ({
             size="sm"
             tone="info"
           >
-            {EMPTY_CONVERSATION_NUDGE}
+            {t('panel.emptyNudge')}
           </Notice>
         ) : null}
       </div>

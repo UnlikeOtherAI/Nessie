@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useStartAgentConversation } from '../../facades/agents/hooks'
 import { parseThreadIdFromPath } from '../../lib/channel-route'
 import { focusComposerState } from '../../components/features/agents/conversations/conversation-intent'
@@ -27,6 +28,7 @@ export const SidebarAgentSessions = ({
   entry,
   pathname,
 }: SidebarAgentSessionsProps) => {
+  const { t } = useTranslation('agentConversations')
   const navigate = useNavigate()
   const start = useStartAgentConversation()
   const selected = currentChannelId === channelId
@@ -45,7 +47,7 @@ export const SidebarAgentSessions = ({
       const result = await start.mutateAsync({ agentId, channelId })
       void navigate(conversationPath(result.conversation), { state: focusComposerState() })
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not start a conversation.')
+      setError(cause instanceof Error ? cause.message : t('sidebar.startFailed'))
     }
   }
 
@@ -56,7 +58,9 @@ export const SidebarAgentSessions = ({
         <button
           aria-controls={childrenId}
           aria-expanded={expanded}
-          aria-label={`${expanded ? 'Collapse' : 'Expand'} conversations with ${agentName}`}
+          aria-label={expanded
+            ? t('sidebar.collapse', { name: agentName })
+            : t('sidebar.expand', { name: agentName })}
           className="sidebar-agent-disclosure"
           onClick={() => setExpanded((value) => !value)}
           type="button"
@@ -67,14 +71,14 @@ export const SidebarAgentSessions = ({
       {expanded ? (
         <div className="sidebar-agent-children" id={childrenId}>
           <button
-            aria-label={`New conversation with ${agentName}`}
+            aria-label={t('sidebar.newWith', { name: agentName })}
             className="admin-sb-item sidebar-child sidebar-agent-new group"
             disabled={start.isPending}
             onClick={() => void startConversation()}
             type="button"
           >
             <span aria-hidden="true">＋</span>
-            <span>{start.isPending ? 'Starting…' : 'New conversation'}</span>
+            <span>{start.isPending ? t('starting') : t('newConversation')}</span>
           </button>
           {error ? <p className="px-2 py-1 text-xs text-[color:var(--danger-text)]" role="alert">{error}</p> : null}
           <AgentConversationList

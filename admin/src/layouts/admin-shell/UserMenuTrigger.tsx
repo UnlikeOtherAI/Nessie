@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { UserAvatar, useResolvedAvatarUrl } from '../../components/shared/UserAvatar'
 import { useDataUrl } from '../../lib/native-shell-avatar'
 import { useMyAvatarRevision } from '../../facades/auth/hooks'
@@ -33,6 +34,7 @@ export const UserMenuTrigger = ({
   placement = 'rail',
   ringColor = 'var(--rail)',
 }: UserMenuTriggerProps) => {
+  const { t } = useTranslation('accountMenu')
   const { me, token } = useAuthSession()
   const { focusModeEnabled, toggleFocusMode, updating: focusModeUpdating } = useFocusMode()
   const { language } = useLocalization()
@@ -102,7 +104,7 @@ export const UserMenuTrigger = ({
     <>
       <button
         aria-haspopup="menu"
-        aria-label="Account menu"
+        aria-label={t('accountMenu')}
         className={[
           'rounded-md transition-shadow',
           className ?? '',

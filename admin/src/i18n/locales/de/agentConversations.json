@@ -1,0 +1,69 @@
+{
+  "starting": "Wird gestartet…",
+  "newConversation": "Neue Unterhaltung",
+  "home": {
+    "personalIdeaPlan": "Hilf mir, meine nächsten Schritte zu planen",
+    "personalIdeaSummary": "Fasse zusammen, was ich wissen muss",
+    "personalIdeaProjects": "Finde eine Antwort in meinen Projekten",
+    "agentIdeaRole": "Wobei kannst du mir als {{role}} helfen?",
+    "agentIdeaPlan": "Hilf mir, einen Plan zu erstellen",
+    "agentIdeaSummary": "Fasse den relevanten Kontext zusammen",
+    "talkWith": "Mit {{name}} sprechen",
+    "description": "Wähle links eine Unterhaltung oder beginne eine neue. Jede Unterhaltung behält ihren eigenen Kontext.",
+    "tryAsking": "Frag zum Beispiel"
+  },
+  "panel": {
+    "back": "Zurück zur Unterhaltung",
+    "title": "Unterhaltungen",
+    "startFailed": "Unterhaltung konnte nicht gestartet werden. Bitte versuche es erneut.",
+    "withAgent": "Unterhaltungen mit {{name}}",
+    "close": "Unterhaltungsbereich schließen",
+    "agent": "Agent",
+    "emptyNudge": "Diese Unterhaltung ist noch leer — versuche, zuerst hier zu schreiben."
+  },
+  "sidebar": {
+    "startFailed": "Unterhaltung konnte nicht gestartet werden.",
+    "collapse": "Unterhaltungen mit {{name}} einklappen",
+    "expand": "Unterhaltungen mit {{name}} ausklappen",
+    "newWith": "Neue Unterhaltung mit {{name}}"
+  },
+  "room": {
+    "personalAssistant": "Persönlicher Assistent",
+    "directMessage": "Direktnachricht"
+  },
+  "time": {
+    "now": "jetzt",
+    "minutes": "{{value}} Min.",
+    "hours": "{{value}} Std."
+  },
+  "status": {
+    "running": "Läuft",
+    "queued": "In Warteschlange",
+    "waitingApproval": "Wartet auf Genehmigung",
+    "needsReply": "Antwort erforderlich",
+    "done": "Erledigt",
+    "failed": "Fehlgeschlagen",
+    "cancelled": "Abgebrochen",
+    "notStarted": "Nicht gestartet"
+  },
+  "body": {
+    "nothingYet": "Noch nichts gesagt",
+    "noMessagesYet": "Noch keine Nachrichten"
+  },
+  "list": {
+    "loadFailed": "Diese Unterhaltungen konnten nicht geladen werden.",
+    "tryAgain": "Erneut versuchen",
+    "empty": "Noch keine Unterhaltungen",
+    "runningNow": "Läuft gerade",
+    "loadedSoFar": "Bisher geladen: {{value}}",
+    "tickets": "Tickets",
+    "documents": "Dokumente",
+    "loading": "Wird geladen…",
+    "showOlder": "Ältere anzeigen"
+  },
+  "card": {
+    "hidden": "Eine Unterhaltung, auf die du keinen Zugriff hast.",
+    "loadFailed": "Diese Unterhaltung konnte nicht geladen werden",
+    "open": "Öffnen →"
+  }
+}

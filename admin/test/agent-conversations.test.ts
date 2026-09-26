@@ -184,9 +184,16 @@ describe('conversation presentation', () => {
     )
     // Exactly a week old is already a date: the weekday would be this weekday,
     // which reads as today.
-    assert.equal(at('2026-09-01T12:00:00.000Z'), `${new Date('2026-09-01T12:00:00.000Z').getDate()} Sep`)
+    assert.equal(
+      at('2026-09-01T12:00:00.000Z'),
+      new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' })
+        .format(new Date('2026-09-01T12:00:00.000Z')),
+    )
     const older = new Date('2026-08-03T12:00:00.000Z')
-    assert.equal(at('2026-08-03T12:00:00.000Z'), `${older.getDate()} Aug`)
+    assert.equal(
+      at('2026-08-03T12:00:00.000Z'),
+      new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(older),
+    )
   })
 
   it('never fabricates an age', () => {

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { ChannelRecord } from '../../../../lib/api-client'
 import { SectionLabel } from '../../../primitives/SectionLabel'
 
@@ -14,19 +15,20 @@ export const ChannelFilesPanel = ({
   activeChannel: ChannelRecord | null
   isConversationSurface: boolean
   isPersonalAssistantConversation: boolean
-}) => (
+}) => {
+  const { t } = useTranslation('channels')
+  return (
   <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
     <section className="admin-card p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <SectionLabel>Conversation files</SectionLabel>
+          <SectionLabel>{t('files.title')}</SectionLabel>
           <p className="mt-2 text-sm leading-6 text-[color:var(--tx2)]">
-            Files shared in this {isConversationSurface ? 'conversation' : 'channel'} will
-            live here instead of getting mixed into runs or agent controls.
+            {t('files.description', { surface: isConversationSurface ? t('files.conversation') : t('files.channel') })}
           </p>
         </div>
         <span className="rounded-full border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-1 text-xs font-semibold text-[color:var(--tx3)]">
-          Upload backend next
+          {t('files.uploadBackendNext')}
         </span>
       </div>
 
@@ -46,37 +48,35 @@ export const ChannelFilesPanel = ({
             />
           </svg>
         </div>
-        <div className="mt-4 text-sm font-semibold text-[var(--tx)]">No files yet</div>
+        <div className="mt-4 text-sm font-semibold text-[var(--tx)]">{t('files.empty')}</div>
         <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[color:var(--tx3)]">
-          Attachment upload is the next backend step. Once it lands, files attached to
-          messages and added directly to this surface will be searchable and manageable
-          from this tab.
+          {t('files.emptyDescription')}
         </p>
       </div>
     </section>
 
     <aside className="admin-card p-4">
-      <SectionLabel>Scope</SectionLabel>
+      <SectionLabel>{t('files.scope')}</SectionLabel>
       <div className="mt-4 grid gap-3 text-sm">
         <div className="rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-3">
-          <div className="text-[color:var(--tx3)]">Surface</div>
+          <div className="text-[color:var(--tx3)]">{t('files.surface')}</div>
           <div className="mt-1 font-semibold text-[var(--tx)]">
-            {isConversationSurface ? 'Conversation' : 'Channel'}
+            {isConversationSurface ? t('files.conversation') : t('files.channel')}
           </div>
         </div>
         <div className="rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-3">
-          <div className="text-[color:var(--tx3)]">Owner</div>
+          <div className="text-[color:var(--tx3)]">{t('files.owner')}</div>
           <div className="mt-1 font-semibold text-[var(--tx)]">
             {isPersonalAssistantConversation
-              ? 'Personal Assistant DM'
-              : activeChannel?.label ?? 'Current channel'}
+              ? t('files.personalAssistantDm')
+              : activeChannel?.label ?? t('files.currentChannel')}
           </div>
         </div>
         <div className="rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-3 text-[color:var(--tx2)]">
-          This tab is intentionally visible on every channel so file management has one
-          predictable home.
+          {t('files.scopeDescription')}
         </div>
       </div>
     </aside>
   </div>
-)
+  )
+}
