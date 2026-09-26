@@ -1,0 +1,29 @@
+{
+  "general": "Generale",
+  "title": "Feedback",
+  "compose": {
+    "heading": "Invia feedback",
+    "description": "Dicci cosa funziona e cosa no. Il tuo feedback viene registrato come issue su GitHub.",
+    "title": "Titolo",
+    "titlePlaceholder": "Breve riepilogo",
+    "details": "Dettagli",
+    "detailsPlaceholder": "Che cosa è successo, cosa ti aspettavi, passaggi per riprodurre il problema…",
+    "changeAttachment": "Cambia allegato",
+    "attachFile": "Allega file",
+    "attachmentPreview": "Anteprima allegato",
+    "remove": "rimuovi",
+    "sending": "Invio…"
+  },
+  "list": {
+    "heading": "Il tuo feedback",
+    "empty": "Non hai ancora inviato feedback.",
+    "error": "Impossibile caricare il tuo feedback.",
+    "loading": "Caricamento del feedback…",
+    "viewIssue": "Visualizza issue{{number}}"
+  },
+  "status": {
+    "recorded": "Registrato",
+    "sent": "Inviato a GitHub",
+    "failed": "Invio non riuscito"
+  }
+}

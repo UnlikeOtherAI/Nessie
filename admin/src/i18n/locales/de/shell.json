@@ -207,5 +207,10 @@
     "conflict": "Eine andere Sitzungsaktualisierung wurde zuerst abgeschlossen. Versuchen Sie es erneut.",
     "signInUoa": "Melden Sie sich mit UnlikeOtherAI an, um es zu öffnen.",
     "unlinked": "Dieses Team ist nicht mit UnlikeOtherAI verknüpft und kann daher nicht geöffnet werden. Eine erneute Anmeldung hilft nicht. Ein Administrator muss es über UnlikeOtherAI neu erstellen."
+  },
+  "notFound": {
+    "title": "Seite nicht gefunden",
+    "description": "Die gesuchte Seite existiert nicht oder wurde verschoben.",
+    "backToChannels": "Zurück zu den Kanälen"
   }
 }

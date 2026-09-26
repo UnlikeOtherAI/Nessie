@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 export const NotFoundPage = () => {
+  const { t } = useTranslation('shell')
   return (
     <main
       className={[
@@ -16,15 +18,15 @@ export const NotFoundPage = () => {
         <div className="text-xs font-semibold uppercase tracking-[0.3em] text-[color:var(--tx3)]">
           404
         </div>
-        <h1 className="text-2xl font-semibold text-[color:var(--tx)]">Page not found</h1>
+        <h1 className="text-2xl font-semibold text-[color:var(--tx)]">{t('notFound.title')}</h1>
         <p className="text-sm text-[color:var(--tx2)]">
-          The page you were looking for does not exist or has moved.
+          {t('notFound.description')}
         </p>
         <Link
           className="admin-button admin-button-primary mt-2"
           to="/channels"
         >
-          Back to channels
+          {t('notFound.backToChannels')}
         </Link>
       </section>
     </main>

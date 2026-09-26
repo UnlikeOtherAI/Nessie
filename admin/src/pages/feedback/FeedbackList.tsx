@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { UseQueryResult } from '@tanstack/react-query'
 import { DEFAULT_PAGE_LIMIT, buildPageLabel } from '@nessie/schemas'
 import { Card } from '../../components/shared/Card'
@@ -8,11 +9,11 @@ import { Row, RowList } from '../../components/shared/RowList'
 import { Pill } from '../../components/primitives/Pill'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
 import type { FeedbackRecord } from '../../lib/api-client'
-import { feedbackStatusLabel, feedbackStatusTone } from './feedback-presentation'
+import { feedbackStatusKey, feedbackStatusTone } from './feedback-presentation'
 
-const formatDate = (iso: string): string => {
+const formatDate = (iso: string, locale: string): string => {
   const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString()
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(locale)
 }
 
 export const getFeedbackPage = <Item,>(
@@ -40,9 +41,14 @@ export const FeedbackList = ({
   page: number
   query: UseQueryResult<FeedbackRecord[]>
 }) => {
+  const { t, i18n } = useTranslation('feedback')
   const items = query.data ?? []
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_LIMIT)
   const { currentPage, items: pageItems, totalPages } = getFeedbackPage(items, page, pageSize)
+  const statusLabel = (status: string): string => {
+    const key = feedbackStatusKey(status)
+    return key ? t(key) : status
+  }
 
   useEffect(() => {
     if (currentPage !== page) onPageChange(currentPage)
@@ -50,26 +56,26 @@ export const FeedbackList = ({
 
   return (
     <Card variant="section">
-      <SectionLabel>Your feedback</SectionLabel>
+      <SectionLabel>{t('list.heading')}</SectionLabel>
 
       <div className="mt-3">
         <QueryState
-          emptyLabel="You haven't sent any feedback yet."
-          errorLabel="Your feedback could not be loaded."
+          emptyLabel={t('list.empty')}
+          errorLabel={t('list.error')}
           isEmpty={items.length === 0}
-          loadingLabel="Loading your feedback…"
+          loadingLabel={t('list.loading')}
           query={query}
         >
           {() => (
             <>
-              <RowList label="Your feedback">
+              <RowList label={t('list.heading')}>
                 {pageItems.map((item) => (
                   <Row
                     key={item.id}
                     title={item.title}
                     trailing={
                       <Pill radius="chip" size="sm" tone={feedbackStatusTone(item.status)}>
-                        {feedbackStatusLabel(item.status)}
+                        {statusLabel(item.status)}
                       </Pill>
                     }
                   >
@@ -77,7 +83,7 @@ export const FeedbackList = ({
                       {item.body}
                     </span>
                     <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[color:var(--tx3)]">
-                      <span>{formatDate(item.createdAt)}</span>
+                      <span>{formatDate(item.createdAt, i18n.resolvedLanguage ?? i18n.language)}</span>
                       {item.attachmentFilename && <span>📎 {item.attachmentFilename}</span>}
                       {item.githubIssueUrl && (
                         <a
@@ -86,7 +92,9 @@ export const FeedbackList = ({
                           rel="noreferrer"
                           target="_blank"
                         >
-                          View issue{item.githubIssueNumber ? ` #${item.githubIssueNumber}` : ''}
+                          {t('list.viewIssue', {
+                            number: item.githubIssueNumber ? ` #${item.githubIssueNumber}` : '',
+                          })}
                         </a>
                       )}
                     </span>

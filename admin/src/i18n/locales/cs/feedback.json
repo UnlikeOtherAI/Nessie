@@ -1,0 +1,29 @@
+{
+  "general": "Obecné",
+  "title": "Zpětná vazba",
+  "compose": {
+    "heading": "Odeslat zpětnou vazbu",
+    "description": "Napište nám, co funguje a co ne. Vaše zpětná vazba se uloží jako úkol na GitHubu.",
+    "title": "Název",
+    "titlePlaceholder": "Stručné shrnutí",
+    "details": "Podrobnosti",
+    "detailsPlaceholder": "Co se stalo, co jste očekávali, postup k zopakování…",
+    "changeAttachment": "Změnit přílohu",
+    "attachFile": "Přiložit soubor",
+    "attachmentPreview": "Náhled přílohy",
+    "remove": "odebrat",
+    "sending": "Odesílání…"
+  },
+  "list": {
+    "heading": "Vaše zpětná vazba",
+    "empty": "Zatím jste neposlali žádnou zpětnou vazbu.",
+    "error": "Vaši zpětnou vazbu se nepodařilo načíst.",
+    "loading": "Načítání zpětné vazby…",
+    "viewIssue": "Zobrazit úkol{{number}}"
+  },
+  "status": {
+    "recorded": "Zaznamenáno",
+    "sent": "Odesláno na GitHub",
+    "failed": "Odeslání selhalo"
+  }
+}

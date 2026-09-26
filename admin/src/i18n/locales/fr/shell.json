@@ -207,5 +207,10 @@
     "conflict": "Une autre mise à jour de session s’est terminée en premier. Réessayez.",
     "signInUoa": "Connectez-vous avec UnlikeOtherAI pour l’ouvrir.",
     "unlinked": "Cette équipe n’est pas liée à UnlikeOtherAI et ne peut pas être ouverte. Une nouvelle connexion n’y changera rien. Un administrateur doit la recréer dans UnlikeOtherAI."
+  },
+  "notFound": {
+    "title": "Page introuvable",
+    "description": "La page recherchée n’existe pas ou a été déplacée.",
+    "backToChannels": "Retour aux canaux"
   }
 }

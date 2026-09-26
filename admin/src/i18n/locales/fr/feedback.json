@@ -1,0 +1,29 @@
+{
+  "general": "Général",
+  "title": "Commentaires",
+  "compose": {
+    "heading": "Envoyer un commentaire",
+    "description": "Dites-nous ce qui fonctionne ou non. Votre commentaire sera enregistré comme issue GitHub.",
+    "title": "Titre",
+    "titlePlaceholder": "Résumé court",
+    "details": "Détails",
+    "detailsPlaceholder": "Que s’est-il passé, qu’attendiez-vous, étapes pour reproduire…",
+    "changeAttachment": "Changer la pièce jointe",
+    "attachFile": "Joindre un fichier",
+    "attachmentPreview": "Aperçu de la pièce jointe",
+    "remove": "retirer",
+    "sending": "Envoi…"
+  },
+  "list": {
+    "heading": "Vos commentaires",
+    "empty": "Vous n’avez encore envoyé aucun commentaire.",
+    "error": "Impossible de charger vos commentaires.",
+    "loading": "Chargement de vos commentaires…",
+    "viewIssue": "Voir l’issue{{number}}"
+  },
+  "status": {
+    "recorded": "Enregistré",
+    "sent": "Envoyé à GitHub",
+    "failed": "Échec de l’envoi"
+  }
+}

@@ -207,5 +207,10 @@
     "conflict": "Another session update finished first. Try again.",
     "signInUoa": "Sign in with UnlikeOtherAI to open it.",
     "unlinked": "It is not linked to UnlikeOtherAI, so it cannot be opened — signing in again will not help. An administrator has to recreate it through UnlikeOtherAI."
+  },
+  "notFound": {
+    "title": "Page not found",
+    "description": "The page you were looking for does not exist or has moved.",
+    "backToChannels": "Back to channels"
   }
 }

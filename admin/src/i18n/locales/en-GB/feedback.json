@@ -1,0 +1,29 @@
+{
+  "general": "General",
+  "title": "Feedback",
+  "compose": {
+    "heading": "Send feedback",
+    "description": "Tell us what’s working or what’s not. Your feedback is filed as a GitHub issue.",
+    "title": "Title",
+    "titlePlaceholder": "Short summary",
+    "details": "Details",
+    "detailsPlaceholder": "What happened, what did you expect, steps to reproduce…",
+    "changeAttachment": "Change attachment",
+    "attachFile": "Attach file",
+    "attachmentPreview": "Attachment preview",
+    "remove": "remove",
+    "sending": "Sending…"
+  },
+  "list": {
+    "heading": "Your feedback",
+    "empty": "You haven’t sent any feedback yet.",
+    "error": "Your feedback could not be loaded.",
+    "loading": "Loading your feedback…",
+    "viewIssue": "View issue{{number}}"
+  },
+  "status": {
+    "recorded": "Recorded",
+    "sent": "Sent to GitHub",
+    "failed": "Send failed"
+  }
+}

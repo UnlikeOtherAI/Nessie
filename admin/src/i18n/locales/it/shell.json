@@ -207,5 +207,10 @@
     "conflict": "Un altro aggiornamento della sessione è terminato prima. Riprova.",
     "signInUoa": "Accedi con UnlikeOtherAI per aprirlo.",
     "unlinked": "Questo team non è collegato a UnlikeOtherAI e non può essere aperto. Accedere di nuovo non servirà. Un amministratore deve ricrearlo tramite UnlikeOtherAI."
+  },
+  "notFound": {
+    "title": "Pagina non trovata",
+    "description": "La pagina cercata non esiste o è stata spostata.",
+    "backToChannels": "Torna ai canali"
   }
 }

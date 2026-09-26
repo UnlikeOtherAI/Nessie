@@ -207,5 +207,10 @@
     "conflict": "Jiná aktualizace relace se dokončila dříve. Zkuste to znovu.",
     "signInUoa": "Chcete-li ho otevřít, přihlaste se přes UnlikeOtherAI.",
     "unlinked": "Tým není propojen s UnlikeOtherAI, takže ho nelze otevřít. Opětovné přihlášení nepomůže. Správce ho musí znovu vytvořit přes UnlikeOtherAI."
+  },
+  "notFound": {
+    "title": "Stránka nenalezena",
+    "description": "Stránka, kterou hledáte, neexistuje nebo byla přesunuta.",
+    "backToChannels": "Zpět na kanály"
   }
 }

@@ -7,10 +7,10 @@ import type { PillTone } from '../../components/primitives/Pill'
  * `Pill`.
  */
 
-const FEEDBACK_STATUS_LABELS: Record<string, string> = {
-  saved: 'Recorded',
-  submitted: 'Sent to GitHub',
-  failed: 'Send failed',
+const FEEDBACK_STATUS_KEYS: Record<string, 'status.recorded' | 'status.sent' | 'status.failed'> = {
+  saved: 'status.recorded',
+  submitted: 'status.sent',
+  failed: 'status.failed',
 }
 
 const FEEDBACK_STATUS_TONES: Record<string, PillTone> = {
@@ -19,6 +19,6 @@ const FEEDBACK_STATUS_TONES: Record<string, PillTone> = {
   submitted: 'accent',
 }
 
-export const feedbackStatusLabel = (status: string): string => FEEDBACK_STATUS_LABELS[status] ?? status
+export const feedbackStatusKey = (status: string) => FEEDBACK_STATUS_KEYS[status]
 
 export const feedbackStatusTone = (status: string): PillTone => FEEDBACK_STATUS_TONES[status] ?? 'muted'

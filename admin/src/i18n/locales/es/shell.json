@@ -207,5 +207,10 @@
     "conflict": "Otra actualización de sesión terminó primero. Inténtalo de nuevo.",
     "signInUoa": "Inicia sesión con UnlikeOtherAI para abrirlo.",
     "unlinked": "Este equipo no está vinculado a UnlikeOtherAI y no se puede abrir. Iniciar sesión de nuevo no ayudará. Un administrador debe volver a crearlo mediante UnlikeOtherAI."
+  },
+  "notFound": {
+    "title": "Página no encontrada",
+    "description": "La página que buscas no existe o se ha movido.",
+    "backToChannels": "Volver a los canales"
   }
 }

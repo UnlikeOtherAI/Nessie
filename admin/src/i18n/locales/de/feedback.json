@@ -1,0 +1,29 @@
+{
+  "general": "Allgemein",
+  "title": "Feedback",
+  "compose": {
+    "heading": "Feedback senden",
+    "description": "Teile uns mit, was funktioniert und was nicht. Dein Feedback wird als GitHub-Issue erfasst.",
+    "title": "Titel",
+    "titlePlaceholder": "Kurze Zusammenfassung",
+    "details": "Details",
+    "detailsPlaceholder": "Was ist passiert, was hast du erwartet, wie lässt es sich nachstellen…",
+    "changeAttachment": "Anhang ändern",
+    "attachFile": "Datei anhängen",
+    "attachmentPreview": "Anhangvorschau",
+    "remove": "entfernen",
+    "sending": "Wird gesendet…"
+  },
+  "list": {
+    "heading": "Dein Feedback",
+    "empty": "Du hast noch kein Feedback gesendet.",
+    "error": "Dein Feedback konnte nicht geladen werden.",
+    "loading": "Feedback wird geladen…",
+    "viewIssue": "Issue{{number}} ansehen"
+  },
+  "status": {
+    "recorded": "Erfasst",
+    "sent": "An GitHub gesendet",
+    "failed": "Senden fehlgeschlagen"
+  }
+}

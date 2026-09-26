@@ -1,0 +1,29 @@
+{
+  "general": "General",
+  "title": "Comentarios",
+  "compose": {
+    "heading": "Enviar comentarios",
+    "description": "Cuéntanos qué funciona y qué no. Tus comentarios se registrarán como incidencia en GitHub.",
+    "title": "Título",
+    "titlePlaceholder": "Resumen breve",
+    "details": "Detalles",
+    "detailsPlaceholder": "Qué ocurrió, qué esperabas, pasos para reproducirlo…",
+    "changeAttachment": "Cambiar archivo adjunto",
+    "attachFile": "Adjuntar archivo",
+    "attachmentPreview": "Vista previa del archivo adjunto",
+    "remove": "quitar",
+    "sending": "Enviando…"
+  },
+  "list": {
+    "heading": "Tus comentarios",
+    "empty": "Aún no has enviado comentarios.",
+    "error": "No se pudieron cargar tus comentarios.",
+    "loading": "Cargando tus comentarios…",
+    "viewIssue": "Ver incidencia{{number}}"
+  },
+  "status": {
+    "recorded": "Registrado",
+    "sent": "Enviado a GitHub",
+    "failed": "Error al enviar"
+  }
+}

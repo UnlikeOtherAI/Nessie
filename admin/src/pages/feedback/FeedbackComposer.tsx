@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Card } from '../../components/shared/Card'
 import { FormActions, FormError } from '../../components/shared/FormActions'
 import { FormField } from '../../components/shared/FormField'
@@ -11,6 +12,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useShakeFeedback } from '../../providers/ShakeFeedbackContext'
 
 export const FeedbackComposer = ({ onSubmitted }: { onSubmitted: () => void }) => {
+  const { t } = useTranslation('feedback')
   const { token } = useAuthSession()
   const createFeedback = useCreateFeedback()
   const { screenshot, setScreenshot } = useShakeFeedback()
@@ -77,27 +79,27 @@ export const FeedbackComposer = ({ onSubmitted }: { onSubmitted: () => void }) =
   return (
     <Card variant="section">
       <form onSubmit={handleSubmit}>
-        <SectionLabel>Send feedback</SectionLabel>
+        <SectionLabel>{t('compose.heading')}</SectionLabel>
         <div className="mt-2 text-sm text-[color:var(--tx2)]">
-          Tell us what&apos;s working or what&apos;s not. Your feedback is filed as a GitHub issue.
+          {t('compose.description')}
         </div>
 
-        <FormField className="mt-4" error={formErrors.fieldErrors.title} label="Title" required>
+        <FormField className="mt-4" error={formErrors.fieldErrors.title} label={t('compose.title')} required>
           <Input
             maxLength={200}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="Short summary"
+            placeholder={t('compose.titlePlaceholder')}
             type="text"
             value={title}
           />
         </FormField>
 
-        <FormField className="mt-3" error={formErrors.fieldErrors.body} label="Details" required>
+        <FormField className="mt-3" error={formErrors.fieldErrors.body} label={t('compose.details')} required>
           <Textarea
             className="min-h-[120px]"
             maxLength={20000}
             onChange={(event) => setBody(event.target.value)}
-            placeholder="What happened, what did you expect, steps to reproduce…"
+            placeholder={t('compose.detailsPlaceholder')}
             value={body}
           />
         </FormField>
@@ -109,13 +111,13 @@ export const FeedbackComposer = ({ onSubmitted }: { onSubmitted: () => void }) =
             onClick={() => inputRef.current?.click()}
             type="button"
           >
-            {file ? 'Change attachment' : 'Attach file'}
+            {file ? t('compose.changeAttachment') : t('compose.attachFile')}
           </button>
           {file && (
             <div className="flex items-center gap-2">
               {previewUrl && (
                 <img
-                  alt="Attachment preview"
+                  alt={t('compose.attachmentPreview')}
                   className="h-14 w-14 rounded-md border border-[color:var(--sep)] object-cover"
                   src={previewUrl}
                 />
@@ -127,7 +129,7 @@ export const FeedbackComposer = ({ onSubmitted }: { onSubmitted: () => void }) =
                   onClick={() => setFile(null)}
                   type="button"
                 >
-                  remove
+                  {t('compose.remove')}
                 </button>
               </span>
             </div>
@@ -139,7 +141,7 @@ export const FeedbackComposer = ({ onSubmitted }: { onSubmitted: () => void }) =
 
         <FormActions className="mt-4">
           <button className="admin-button admin-button-primary" disabled={!canSubmit} type="submit">
-            {busy ? 'Sending…' : 'Send feedback'}
+            {busy ? t('compose.sending') : t('compose.heading')}
           </button>
         </FormActions>
       </form>
