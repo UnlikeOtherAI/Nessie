@@ -538,7 +538,7 @@ when one changes, the same turn updates it, not this section.
   Read [`docs/standards/google-workspace.md`](docs/standards/google-workspace.md)
   before writing code here.
 
-## Personal model subscriptions
+## Personal model subscriptions (Your AI plans on Connected accounts)
 
 A person links a consumer AI plan they already pay for and the agents **they
 own** run on it instead of the organisation's Ledger credits. The lane is

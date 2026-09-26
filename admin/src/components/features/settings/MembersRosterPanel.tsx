@@ -173,8 +173,8 @@ export const MembersRosterPanel = ({
             ) : null}
           </div>
           <QueryState
-            errorLabel={tab === 'pending' ? 'Invitations could not be loaded.' : 'Members could not be loaded.'}
-            loadingLabel={tab === 'pending' ? 'Loading invitations…' : 'Loading members…'}
+            errorLabel={tab === 'pending' ? 'Invitations could not be loaded.' : 'People could not be loaded.'}
+            loadingLabel={tab === 'pending' ? 'Loading invitations…' : 'Loading people…'}
             query={(current ?? roster).query}
           >
             {() => tab === 'pending' ? (
@@ -200,7 +200,7 @@ export const MembersRosterPanel = ({
             ) : (
               members.length === 0 ? (
                 <EmptyState title={tab === 'active' ? 'No active members' : 'No deactivated members'}>
-                  {tab === 'active' ? 'Invite someone to add the first member.' : 'Members you deactivate show up here.'}
+                  {tab === 'active' ? 'Invite someone to add the first member.' : 'People you deactivate show up here.'}
                 </EmptyState>
               ) : (
                 <ul aria-label={tab === 'active' ? 'Active members' : 'Deactivated members'}

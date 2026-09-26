@@ -285,7 +285,7 @@ try {
     await open('?fail=search')
     await page.getByRole('button', { name: 'Invite people', exact: true }).click()
     await page.getByLabel('Search your organisation').fill('Ondřej')
-    await page.getByText('Members could not be searched.', { exact: false }).waitFor()
+    await page.getByText('People could not be searched.', { exact: false }).waitFor()
     assert.equal(await page.getByText('No one to add by that name. Try inviting them by email.', { exact: true }).count(), 0)
     await page.getByRole('button', { name: 'Retry', exact: true }).click()
     assert.deepEqual(errors, [])

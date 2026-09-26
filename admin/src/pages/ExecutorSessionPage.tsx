@@ -28,7 +28,7 @@ export const ExecutorSessionPage = () => {
           {() => view.data ? (
             <>
               <p className="text-sm text-[color:var(--tx2)]" role="status">
-                {view.data.online ? 'Connected to executor' : 'Executor offline · waiting to reconnect'}
+                {view.data.online ? 'Connected to the computer' : 'Computer offline · waiting to reconnect'}
                 {session ? ` · ${session.status.replaceAll('_', ' ')}` : ''}
               </p>
               {view.data.screen ? <>
@@ -39,7 +39,7 @@ export const ExecutorSessionPage = () => {
                     : 'Agent activity · recent projected messages and tool results. This session uses a structured CLI protocol.'}
                 </p>
               </> : <p className="text-sm text-[color:var(--tx2)]">
-                Waiting for a screen from the executor. If it stays unavailable, update the executor and
+                Waiting for a screen from the computer. If it stays unavailable, update the computer and
                 check that the session still exists.
               </p>}
             </>

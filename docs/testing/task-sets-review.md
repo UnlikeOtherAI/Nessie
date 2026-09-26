@@ -1,6 +1,6 @@
 # Task Sets implementation review
 
-The authoritative behavior is [Sequential task sets](../standards/task-sets.md).
+The authoritative behavior is [Sequential task sets](../standards/task-sets.md) (Batch jobs in the admin).
 Kimix reviewed the item admission, step journal and settlement implementation
 as an adviser. The implementing agent assessed each finding against the actual
 transaction boundaries; this review did not delegate design authority.

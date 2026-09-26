@@ -1,4 +1,4 @@
-# Personal model subscriptions — the owner's plan, the owner's grant
+# Personal model subscriptions (Your AI plans on Connected accounts) — the owner's plan, the owner's grant
 
 Authoritative standard, moved verbatim out of [`AGENTS.md`](../../AGENTS.md)
 so it is read when the work touches this area rather than loaded into every

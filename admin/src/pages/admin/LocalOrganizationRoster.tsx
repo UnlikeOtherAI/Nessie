@@ -218,8 +218,8 @@ export const LocalOrganizationRoster = ({ host }: { host?: SettingsTabHostProps 
       <div className="grid gap-4 xl:grid-cols-2">
         <Section title="People">
           <QueryState
-            errorLabel="Members could not be loaded."
-            loadingLabel="Loading members…"
+            errorLabel="People could not be loaded."
+            loadingLabel="Loading people…"
             query={usersQuery}
           >
             {() => (
