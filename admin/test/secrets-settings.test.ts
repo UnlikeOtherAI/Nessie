@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import { JSDOM } from 'jsdom'
 import * as ReactNamespace from 'react'
@@ -10,7 +12,9 @@ import {
   buildSecretCreateInput,
   CreateSecretDialog,
   SECRET_CREATION_SCOPES,
+  secretCreationScopes,
 } from '../src/components/features/settings/CreateSecretDialog.js'
+import { secretScopeWritable } from '../src/lib/secret-scopes.js'
 import {
   belongsToSecretsPage,
   resolveSecretRows,
@@ -430,9 +434,14 @@ test('an enabled content table opens in a near-fullscreen dialog', async () => {
 type DialogHarnessProps = {
   onCreate: (input: CreateSecretInput) => Promise<unknown>
   pageScope?: 'personal' | 'team' | 'organization'
+  viewerIsOwner?: boolean
 }
 
-const SecretDialogHarness = ({ onCreate, pageScope = 'personal' }: DialogHarnessProps) => {
+const SecretDialogHarness = ({
+  onCreate,
+  pageScope = 'personal',
+  viewerIsOwner = true,
+}: DialogHarnessProps) => {
   const [open, setOpen] = useState(false)
   return h(
     React.Fragment,
@@ -447,6 +456,7 @@ const SecretDialogHarness = ({ onCreate, pageScope = 'personal' }: DialogHarness
       pending: false,
       projects: [project],
       scopeId: pageScope === 'team' ? 'team-1' : 'org-1',
+      viewerIsOwner,
     }),
   )
 }
@@ -619,4 +629,99 @@ test('no page offers a scope above its own level', () => {
   assert.deepEqual(SECRET_CREATION_SCOPES.organization, ['organization'])
   assert.deepEqual(SECRET_CREATION_SCOPES.team, ['team'])
   assert.deepEqual(SECRET_CREATION_SCOPES.personal, ['personal', 'project'])
+})
+
+test('only personal is anyone’s; every level above it is an organisation owner’s', () => {
+  const owner = { viewerIsOwner: true }
+  const other = { viewerIsOwner: false }
+  for (const scope of ['project', 'team', 'organization'] as const) {
+    assert.equal(secretScopeWritable(scope, owner), true, scope)
+    // `canManageSecretScope` refuses a member and an admin alike.
+    assert.equal(secretScopeWritable(scope, other), false, scope)
+  }
+  assert.equal(secretScopeWritable('personal', other), true)
+
+  assert.deepEqual(secretCreationScopes('personal', owner), ['personal', 'project'])
+  assert.deepEqual(secretCreationScopes('personal', other), ['personal'])
+  // The owner doorways leave nothing for anyone else, reached by address or not.
+  assert.deepEqual(secretCreationScopes('team', other), [])
+  assert.deepEqual(secretCreationScopes('organization', other), [])
+  assert.deepEqual(secretCreationScopes('team', owner), ['team'])
+})
+
+test('a page offers "New secret" only to a viewer with something to write there', () => {
+  const panel = readFileSync(
+    fileURLToPath(new URL('../src/pages/settings/SecretsPanel.tsx', import.meta.url)),
+    'utf8',
+  )
+  assert.match(panel, /const viewerIsOwner = useIsOwner\(\)/)
+  assert.match(
+    panel,
+    /const canCreate = secretCreationScopes\(scope, \{ viewerIsOwner \}\)\.length > 0/,
+  )
+  assert.match(panel, /actions=\{canCreate \? \[/)
+  assert.match(panel, /\{canCreate \? \(\s*<CreateSecretDialog/)
+  assert.match(panel, /viewerIsOwner=\{viewerIsOwner\}/)
+})
+
+// A select changes through React's `change` path, which its IE input fallback
+// never touches. That is why these cases assert what the form offers rather
+// than typing a key into it: once an earlier file left a focused input from
+// another window, the fallback throws on every focus and typed text never
+// reaches state. What a save posts is `buildSecretCreateInput`, above.
+const choose = async (select: HTMLSelectElement, value: string) => {
+  await act(async () => {
+    select.value = value
+    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+  })
+}
+
+const pickers = () => [...dom.window.document.querySelectorAll<HTMLSelectElement>('select')]
+
+test('an organisation owner may pick Project, and is then asked which project', async () => {
+  const restoreDom = installDom()
+  const container = dom.window.document.createElement('div')
+  dom.window.document.body.appendChild(container)
+  const root = createRoot(container)
+
+  try {
+    await openDialog(container, root, { onCreate: async () => undefined, viewerIsOwner: true })
+    const [scope] = pickers()
+    assert.ok(scope, 'a Scope picker')
+    assert.deepEqual(Array.from(scope.options, (option) => option.value), ['personal', 'project'])
+    // Personal first, as it always opens.
+    assert.equal(scope.value, 'personal')
+    assert.doesNotMatch(dom.window.document.body.textContent ?? '', /Only an organisation owner/)
+
+    await choose(scope, 'project')
+    const [, project] = pickers()
+    assert.ok(project, 'picking Project asks which project')
+    assert.deepEqual(Array.from(project.options, (option) => option.value), ['', 'project-1'])
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    restoreDom()
+  }
+})
+
+test('anyone else is offered their own secret only, and told who saves a project’s', async () => {
+  const restoreDom = installDom()
+  const container = dom.window.document.createElement('div')
+  dom.window.document.body.appendChild(container)
+  const root = createRoot(container)
+
+  try {
+    await openDialog(container, root, { onCreate: async () => undefined, viewerIsOwner: false })
+    assert.ok(dom.window.document.querySelector('[role="dialog"]'))
+    // No Project to pick, so no picker at all: Personal is the only write left.
+    assert.equal(pickers().length, 0)
+    assert.match(
+      dom.window.document.body.textContent ?? '',
+      /Saved as your own secret\. Only an organisation owner can save a project secret\./,
+    )
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    restoreDom()
+  }
 })
