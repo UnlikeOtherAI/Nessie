@@ -60,12 +60,14 @@ import type { DocumentsFinderProps } from './documents-finder-types'
 
 export const DocumentsFinder = ({
   canManageSpace,
+  spaceDisplayName,
   onCreateRootFolder,
   onOpenSettings,
   documentPane,
   scope,
 }: DocumentsFinderProps) => {
   const knowledge = useKnowledge()
+  const selectedSpace = knowledge.selectedSpace
   const { pathname, search } = useLocation()
   const navigate = useNavigate()
   const single = useNavigationLayout() === 'single'
@@ -165,13 +167,13 @@ export const DocumentsFinder = ({
     if (!selectedSpaceId || virtualKind) return []
     // An agent's Documents home is named `${agent} — Documents`; in the
     // column's own header the suffix is furniture (agent-space-name.ts).
-    const spaceName = knowledge.selectedSpace?.name ?? 'Documents'
+    const spaceName = spaceDisplayName ?? selectedSpace?.name ?? 'Documents'
     return [
       {
         depth: 0,
         key: `space:${selectedSpaceId}`,
         parentPageId: null,
-        title: knowledge.selectedSpace?.ownerAgentId
+        title: selectedSpace?.ownerAgentId
           ? agentDocumentsSpaceDisplayName(spaceName)
           : spaceName,
       },
@@ -182,7 +184,7 @@ export const DocumentsFinder = ({
         title: folder.title,
       })),
     ]
-  }, [knowledge.selectedSpace?.name, knowledge.selectedSpace?.ownerAgentId, pathPages, selectedSpaceId, virtualKind])
+  }, [selectedSpace?.name, selectedSpace?.ownerAgentId, pathPages, selectedSpaceId, spaceDisplayName, virtualKind])
 
   const virtualColumnKey = virtualKind ? `virtual:${virtualKind}` : null
   const agentsDirectorySelected = knowledge.selectedRoot?.kind === 'agents'
@@ -501,7 +503,7 @@ export const DocumentsFinder = ({
       actions={actions}
       title={finderBarTitle({
         deepestFolderTitle: pathPages.at(-1)?.title,
-        spaceName: knowledge.selectedSpace?.name,
+        spaceName: spaceDisplayName ?? knowledge.selectedSpace?.name,
         virtualKind,
       })}
     />
@@ -526,8 +528,6 @@ export const DocumentsFinder = ({
             onOpenRoot={openRootRow} pagePath={pagePath} pagesQuery={pagesQuery}
             root={rootQuery.data} rootQuery={rootQuery} rowsIn={rowsIn}
             selectedSpaceId={selectedSpaceId}
-            agentDocumentsActive={knowledge.selectedRoot?.kind === 'agent-space'}
-            agentsDirectoryActive={agentsDirectoryActive}
             documentPane={documentPane}
             onOpenAgent={openAgentHome}
             virtualListing={virtualKind ? { dispatch, kind: virtualKind, openDocument,
@@ -553,7 +553,7 @@ export const DocumentsFinder = ({
               onOpen={(page) => openPageIn(levels.at(-1) as FinderFolderLevel, page)} onSelectSort={chooseSort}
               onSubmitFolder={(name) => submitFolder(levels.at(-1)?.parentPageId ?? null, name)} pageById={pageById}
               pathPages={pathPages}
-              rootLabel={knowledge.selectedSpace?.name ?? 'Documents'}
+              rootLabel={spaceDisplayName ?? knowledge.selectedSpace?.name ?? 'Documents'}
               rows={rowsIn(levels.at(-1)?.parentPageId ?? null)}
               selection={selection}
               sort={sort}

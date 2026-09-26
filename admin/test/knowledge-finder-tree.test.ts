@@ -22,8 +22,8 @@ test('Knowledge Finder exposes Tree, Columns and List views', () => {
   assert.match(readSource('../src/components/features/knowledge/finder/FinderTreePane.tsx'), /<FinderTreeDetail/)
   const detail = readSource('../src/components/features/knowledge/finder/FinderTreeDetail.tsx')
   assert.match(detail, /if \(documentPane\) return documentPane/)
-  assert.match(detail, /if \(agentsDirectoryActive\)/)
-  assert.match(detail, /Select a folder or document to see its contents here\./)
+  assert.match(detail, /Select a document from the tree to read it here\./)
+  assert.doesNotMatch(detail, /FinderAgentsColumn|FinderTreeSurface/)
   assert.match(documents, /rowsIn=\{rowsIn\}/)
   assert.match(tree, /rowsIn/)
   const sidebar = readSource('../src/components/features/knowledge/finder/FinderTreeSidebar.tsx')
@@ -60,15 +60,17 @@ test('Tree keeps Latest and Shared with me in its detail pane', () => {
   assert.match(detail, /if \(virtualContent\) return virtualContent/)
 })
 
-test('folder-detail navigation keeps the selected folder ancestry in child paths', () => {
+test('agents and their documents stay in the Tree hierarchy', () => {
   const detail = readSource('../src/components/features/knowledge/finder/FinderTreeDetail.tsx')
-  const surface = readSource('../src/components/features/knowledge/finder/FinderTreeSurface.tsx')
-  const tree = readSource('../src/components/features/knowledge/finder/FinderTreeView.tsx')
+  const sidebar = readSource('../src/components/features/knowledge/finder/FinderTreeSidebar.tsx')
+  const pane = readSource('../src/components/features/knowledge/finder/FinderTreePane.tsx')
 
-  assert.match(detail, /basePath=\{parentPageId \? pagePath : \[\]\}/)
-  assert.match(surface, /basePath=\{basePath\}/)
-  assert.match(tree, /basePath = \[\]/)
-  assert.match(tree, /renderPages\(rowsIn\(null\), basePath, 0\)/)
+  assert.match(sidebar, /const agentsExpanded = activeRootRowId === 'virtual:agents'/)
+  assert.match(sidebar, /root\.agentHomes/)
+  assert.match(sidebar, /onOpenAgent\(space\)/)
+  assert.match(sidebar, /rootColumnKey=\{`space:\$\{space\.spaceId\}`\}/)
+  assert.match(pane, /onOpenAgent=\{onOpenAgent\}/)
+  assert.doesNotMatch(detail, /FinderTreeView|FinderAgentsColumn/)
 })
 
 test('Tree rows use channel-style icons and contextual selection', () => {
@@ -84,14 +86,13 @@ test('Tree rows use channel-style icons and contextual selection', () => {
 })
 
 test('Tree keeps the existing query recovery and avoids nested buttons', () => {
-  const surface = readSource('../src/components/features/knowledge/finder/FinderTreeSurface.tsx')
+  const sidebar = readSource('../src/components/features/knowledge/finder/FinderTreeSidebar.tsx')
   const tree = readSource('../src/components/features/knowledge/finder/FinderTreeView.tsx')
   const row = readSource('../src/components/features/knowledge/finder/FinderRow.tsx')
   const channels = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
 
-  assert.match(surface, /QueryState/)
-  assert.match(surface, /Couldn’t load your documents\./)
-  assert.match(surface, /EmptyState/)
+  assert.match(sidebar, /QueryState/)
+  assert.match(sidebar, /Couldn’t load your documents\./)
   assert.doesNotMatch(row, /finder-row-chevron-button|onToggle/)
   assert.match(tree, /if \(children\.length > 0\) \{\s*toggle\(page\.id\)/)
   assert.match(tree, /className=\{depth > 0 \? 'sidebar-tree-depth' : ''\}/)

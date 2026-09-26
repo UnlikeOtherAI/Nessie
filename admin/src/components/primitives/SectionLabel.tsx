@@ -25,6 +25,7 @@ type SectionLabelProps = {
   as?: SectionLabelElement
   children: ReactNode
   className?: string
+  id?: string
   size?: SectionLabelSize
 }
 
@@ -49,6 +50,7 @@ export const SectionLabel = ({
   as: Element = 'div',
   children,
   className,
+  id,
   size = 'xs',
 }: SectionLabelProps) => (
   <Element
@@ -59,6 +61,7 @@ export const SectionLabel = ({
     ]
       .filter(Boolean)
       .join(' ')}
+    id={id}
   >
     {children}
   </Element>

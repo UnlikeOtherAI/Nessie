@@ -110,13 +110,14 @@ test('Channels and Knowledge reuse the sidebar tree presentation primitives', ()
   const tree = readSource('../src/components/primitives/SidebarTree.tsx')
   const menuSection = readSource('../src/layouts/admin-shell/SidebarMenuSection.tsx')
   const knowledgeTree = readSource('../src/components/features/knowledge/finder/FinderTreeView.tsx')
+  const knowledgeSidebar = readSource('../src/components/features/knowledge/finder/FinderTreeSidebar.tsx')
   const styles = readSource('../src/styles.css')
 
   assert.match(tree, /export const SidebarTreePanel/)
   assert.match(tree, /export const SidebarTreeSectionHeader/)
   assert.match(tree, /export const SidebarTreeChildren/)
   assert.match(menuSection, /SidebarTreeSectionHeader/)
-  assert.match(knowledgeTree, /SidebarTreePanel/)
+  assert.match(knowledgeSidebar, /SidebarTreePanel/)
   assert.match(knowledgeTree, /SidebarTreeChildren/)
   assert.match(
     styles,

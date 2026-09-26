@@ -93,7 +93,7 @@ export const useKnowledgeMutations = ({
     setSpaceSettingsOpen(false)
   }, [selectedSpaceId, setSpaceSettingsOpen, updateSpaceMutation])
 
-  const savePage = useCallback(async (input: SavePageInput): Promise<void> => {
+  const savePage = useCallback(async (input: SavePageInput, publish = false): Promise<void> => {
     const editor = readEditor()
     if (editor?.mode === 'edit') {
       await updatePageMutation.mutateAsync({ ...input, pageId: editor.page.id })
@@ -102,6 +102,7 @@ export const useKnowledgeMutations = ({
     }
 
     const created = await createPageMutation.mutateAsync(input)
+    if (publish) await publishPageMutation.mutateAsync({ pageId: created.id })
     const parentPageId = input.parentPageId ?? null
     if (parentPageId) {
       const parentPath: string[] = []
@@ -121,6 +122,7 @@ export const useKnowledgeMutations = ({
   }, [
     createPageMutation,
     pagesById,
+    publishPageMutation,
     readEditor,
     setEditor,
     setOpenPageId,
@@ -180,7 +182,7 @@ export const useKnowledgeMutations = ({
     restorePending: restoreVersionMutation.isPending,
     restoreVersion,
     savePage,
-    savePending: createPageMutation.isPending || updatePageMutation.isPending,
+    savePending: createPageMutation.isPending || updatePageMutation.isPending || publishPageMutation.isPending,
     updateSpace,
     updateSpacePending: updateSpaceMutation.isPending,
   }), [

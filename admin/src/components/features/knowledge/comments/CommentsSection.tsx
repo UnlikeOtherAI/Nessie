@@ -32,8 +32,8 @@ export const CommentsSection = ({
   const authorLabel = useAnnotationAuthors()
 
   return (
-    <div className="mt-10 border-t border-[color:var(--sep)] pt-6">
-      <SectionLabel as="h2" size="2xs">Comments</SectionLabel>
+    <section aria-labelledby="knowledge-comments-title" className="mt-10 border-t border-[color:var(--sep)] pt-6">
+      <SectionLabel as="h2" id="knowledge-comments-title" size="2xs">Comments</SectionLabel>
       <div className="mt-3">
         <CommentComposer
           onSubmit={(body) => createComment.mutateAsync({ body })}
@@ -59,6 +59,6 @@ export const CommentsSection = ({
           ))
         )}
       </div>
-    </div>
+    </section>
   )
 }

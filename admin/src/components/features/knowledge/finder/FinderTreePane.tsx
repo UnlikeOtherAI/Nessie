@@ -22,8 +22,6 @@ type FinderTreePaneProps = {
   rootQuery: { isError: boolean; isLoading: boolean; refetch: () => unknown }
   rowsIn: (parentPageId: string | null) => KnowledgePageRecord[]
   selectedSpaceId?: string
-  agentDocumentsActive?: boolean
-  agentsDirectoryActive?: boolean
   documentPane?: ReactNode
   onOpenAgent: (space: KnowledgeRootSpace) => void
   virtualListing?: Parameters<typeof FinderTreeVirtualDetail>[0]
@@ -45,13 +43,11 @@ export const FinderTreePane = ({
   rootQuery,
   rowsIn,
   selectedSpaceId,
-  agentDocumentsActive = false,
-  agentsDirectoryActive = false,
   documentPane,
   onOpenAgent,
   virtualListing,
 }: FinderTreePaneProps) => (
-  <div className="flex min-w-0 flex-1">
+  <div className="flex min-w-0 flex-1" data-knowledge-tree-pane>
     <FinderTreeSidebar
       activePageId={activePageId}
       activeRootRowId={activeRootRowId}
@@ -62,6 +58,7 @@ export const FinderTreePane = ({
       onSubmitFolder={onSubmitFolder}
       onOpenDocument={onOpenDocument}
       onOpenRoot={onOpenRoot}
+      onOpenAgent={onOpenAgent}
       pagePath={pagePath}
       pagesQuery={pagesQuery}
       root={root}
@@ -71,18 +68,7 @@ export const FinderTreePane = ({
     />
     <div className="min-w-0 flex-1 border-l border-[color:var(--sep)] bg-[color:var(--main)]">
       <FinderTreeDetail
-        activePageId={activePageId}
-        agentDocumentsActive={agentDocumentsActive}
-        agentsDirectoryActive={agentsDirectoryActive}
-        browseTo={browseTo}
         documentPane={documentPane}
-        onOpenAgent={onOpenAgent}
-        onOpenDocument={onOpenDocument}
-        pagePath={pagePath}
-        pagesQuery={pagesQuery}
-        root={root}
-        rootQuery={rootQuery}
-        rowsIn={rowsIn}
         virtualContent={virtualListing ? <FinderTreeVirtualDetail {...virtualListing} /> : undefined}
       />
     </div>
