@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { faEllipsis, faPen, faTrash } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { TaskAttachmentRecord, TaskCommentRecord } from '@nessie/schemas'
@@ -19,20 +21,26 @@ import type { AttachmentRecord } from '../../../../lib/uploads'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
 
 /** "3 min ago" — the row's glance; the exact time rides on `title`. */
-export const relativeTime = (iso: string, now = Date.now()): string => {
+export const relativeTime = (iso: string, now = Date.now(), t?: TFunction<'projects'>, locale?: string): string => {
   const at = new Date(iso).getTime()
   if (Number.isNaN(at)) return ''
   const minutes = Math.round((now - at) / 60_000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes} min ago`
+  if (minutes < 1) return t ? t('comments.relative.justNow') : 'just now'
+  if (minutes < 60) return t
+    ? t('comments.relative.minutes', { count: minutes })
+    : `${minutes} min ago`
   const hours = Math.round(minutes / 60)
-  if (hours < 48) return `${hours} h ago`
+  if (hours < 48) return t
+    ? t('comments.relative.hours', { count: hours })
+    : `${hours} h ago`
   const days = Math.round(hours / 24)
-  if (days < 30) return `${days} d ago`
-  return new Date(iso).toLocaleDateString()
+  if (days < 30) return t
+    ? t('comments.relative.days', { count: days })
+    : `${days} d ago`
+  return new Date(iso).toLocaleDateString(locale)
 }
 
-export const exactTime = (iso: string): string => new Date(iso).toLocaleString()
+export const exactTime = (iso: string, locale?: string): string => new Date(iso).toLocaleString(locale)
 
 /**
  * A provider as an author or an uploader: its initial on a neutral tile. The
@@ -86,6 +94,7 @@ const iconButtonClass = [
  * this viewer may (`viewerCanEdit` / `viewerCanDelete`, never re-derived here).
  */
 export const TaskCommentRow = ({ comment, mirrored, onOpenAttachment, taskId }: TaskCommentRowProps) => {
+  const { t, i18n } = useTranslation('projects')
   const { token } = useAuthSession()
   const resolveActor = useActorNames()
   const menu = useContextMenu()
@@ -111,7 +120,7 @@ export const TaskCommentRow = ({ comment, mirrored, onOpenAttachment, taskId }: 
     updateComment.mutate(
       { body, commentId: comment.id },
       {
-        onError: (cause) => setError(cause.message || 'Could not save the comment.'),
+        onError: (cause) => setError(cause.message || t('comments.saveError')),
         onSuccess: () => setEditing(false),
       },
     )
@@ -121,7 +130,7 @@ export const TaskCommentRow = ({ comment, mirrored, onOpenAttachment, taskId }: 
   const menuItems = [
     ...(comment.viewerCanEdit
       ? [{
-          icon: faPen, id: 'edit', kind: 'item' as const, label: 'Edit',
+          icon: faPen, id: 'edit', kind: 'item' as const, label: t('comments.edit'),
           onSelect: () => {
             setDraft(comment.body)
             setEditing(true)
@@ -130,7 +139,7 @@ export const TaskCommentRow = ({ comment, mirrored, onOpenAttachment, taskId }: 
       : []),
     ...(comment.viewerCanDelete
       ? [{
-          destructive: true, icon: faTrash, id: 'delete', kind: 'item' as const, label: 'Delete',
+          destructive: true, icon: faTrash, id: 'delete', kind: 'item' as const, label: t('comments.delete'),
           onSelect: () => setConfirmDelete(true),
         }]
       : []),
@@ -140,7 +149,7 @@ export const TaskCommentRow = ({ comment, mirrored, onOpenAttachment, taskId }: 
     <li className="flex gap-3 py-3" data-comment-id={comment.id}>
       <div className="flex-none pt-0.5">
         {author.kind === 'user' ? (
-          <UserAvatar displayName={actor?.name ?? 'Person'} size={28} token={token} userId={author.userId} />
+          <UserAvatar displayName={actor?.name ?? t('comments.person')} size={28} token={token} userId={author.userId} />
         ) : author.kind === 'agent' ? (
           <AgentAvatar agentId={author.agentId} size={28} token={token} />
         ) : (
@@ -154,16 +163,16 @@ export const TaskCommentRow = ({ comment, mirrored, onOpenAttachment, taskId }: 
               // The avatar already says person or agent; the audit-log suffix is noise here.
               <span title={actor.id}>{actor.name}</span>
             ) : author.kind === 'external' ? (
-              <span title={`${PROVIDER_LABEL[author.provider]} user ${author.externalUserId}`}>
+              <span title={t('comments.providerUser', { provider: PROVIDER_LABEL[author.provider], id: author.externalUserId })}>
                 {author.displayName}
                 <span className="font-normal text-[color:var(--tx3)]"> · {PROVIDER_LABEL[author.provider]}</span>
               </span>
             ) : null}
           </span>
-          <time dateTime={comment.createdAt} title={exactTime(comment.createdAt)}>
-            {relativeTime(comment.createdAt)}
+          <time dateTime={comment.createdAt} title={exactTime(comment.createdAt, i18n.language)}>
+            {relativeTime(comment.createdAt, Date.now(), t, i18n.language)}
           </time>
-          {comment.editedAt ? <span title={exactTime(comment.editedAt)}>edited</span> : null}
+          {comment.editedAt ? <span title={exactTime(comment.editedAt, i18n.language)}>{t('comments.edited')}</span> : null}
           {comment.external ? (
             comment.external.url ? (
               <a href={comment.external.url} rel="noopener noreferrer" target="_blank">
@@ -173,11 +182,11 @@ export const TaskCommentRow = ({ comment, mirrored, onOpenAttachment, taskId }: 
               <Pill size="sm" tone="muted" uppercase={false}>{PROVIDER_LABEL[comment.external.provider]}</Pill>
             )
           ) : mirrored ? (
-            <Pill size="sm" tone="muted" uppercase={false}>Nessie only</Pill>
+            <Pill size="sm" tone="muted" uppercase={false}>{t('comments.nessieOnly')}</Pill>
           ) : null}
           {menuItems.length > 0 && !editing ? (
             <button
-              aria-label="Comment actions"
+              aria-label={t('comments.actions')}
               className={`${iconButtonClass} ml-auto`}
               onClick={(event) => menu.openFor(event.currentTarget)}
               ref={menuButtonRef}
@@ -191,7 +200,7 @@ export const TaskCommentRow = ({ comment, mirrored, onOpenAttachment, taskId }: 
         {editing ? (
           <div className="grid gap-2">
             <MarkdownEditor
-              ariaLabel="Edit comment"
+              ariaLabel={t('comments.editComment')}
               autoFocus
               compact
               onChange={setDraft}
@@ -204,7 +213,7 @@ export const TaskCommentRow = ({ comment, mirrored, onOpenAttachment, taskId }: 
                 onClick={() => setEditing(false)}
                 type="button"
               >
-                Cancel
+                {t('comments.cancel')}
               </button>
               <button
                 className="admin-button admin-button-primary admin-button-compact"
@@ -212,7 +221,7 @@ export const TaskCommentRow = ({ comment, mirrored, onOpenAttachment, taskId }: 
                 onClick={save}
                 type="button"
               >
-                Save
+                {t('comments.save')}
               </button>
             </div>
           </div>
@@ -230,25 +239,25 @@ export const TaskCommentRow = ({ comment, mirrored, onOpenAttachment, taskId }: 
       <ContextMenu
         anchor={menu.anchor}
         items={menuItems}
-        label="Comment actions"
+        label={t('comments.actions')}
         layer="modal"
         onClose={menu.close}
         returnFocusRef={menuButtonRef}
       />
       <ConfirmDialog
         blocking
-        body="It is removed for everyone, with any files it carried."
-        confirmLabel="Delete"
+        body={t('comments.deleteBody')}
+        confirmLabel={t('comments.delete')}
         destructive
         onCancel={() => setConfirmDelete(false)}
         onConfirm={() => {
           setConfirmDelete(false)
           deleteComment.mutate(comment.id, {
-            onError: (cause) => setError(cause.message || 'Could not delete the comment.'),
+            onError: (cause) => setError(cause.message || t('comments.deleteError')),
           })
         }}
         open={confirmDelete}
-        title="Delete this comment?"
+        title={t('comments.deleteTitle')}
       />
     </li>
   )

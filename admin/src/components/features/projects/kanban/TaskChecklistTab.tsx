@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import type { AgentTodoTemplateRecord } from '@nessie/schemas'
@@ -25,6 +26,7 @@ type TemplateChoice = {
 }
 
 export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
+  const { t } = useTranslation('projects')
   const apiClient = useApiClient()
   const { data: agents = [] } = useAgents()
   const checklist = useTaskChecklist(taskId)
@@ -80,27 +82,27 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
   )
 
   if (checklist.isLoading) {
-    return <p className="text-sm text-[color:var(--tx2)]">Loading checklist…</p>
+    return <p className="text-sm text-[color:var(--tx2)]">{t('checklist.loading')}</p>
   }
   if (checklist.isError) {
-    return <Notice tone="danger">The checklist could not be loaded.</Notice>
+    return <Notice tone="danger">{t('checklist.loadError')}</Notice>
   }
   if (!checklist.data) {
     return (
       <section className="grid gap-4">
-        <EmptyState>This task has no checklist yet.</EmptyState>
+        <EmptyState>{t('checklist.empty')}</EmptyState>
         {templates.isError || applyError ? (
           <Notice tone="danger">
-            {applyError ?? 'The checklist could not be applied.'}
+            {applyError ?? t('checklist.applyError')}
           </Notice>
         ) : null}
-        <FormField label="Apply a reusable checklist">
+        <FormField label={t('checklist.applyReusable')}>
           <Select
-            aria-label="Checklist template"
+            aria-label={t('checklist.template')}
             onChange={(event) => setChoice(event.target.value)}
             value={choice}
           >
-            <option value="">Choose a template</option>
+            <option value="">{t('checklist.chooseTemplate')}</option>
             {templates.data?.map((item) => (
               <option
                 key={`${item.agentId}:${item.template.id}`}
@@ -116,7 +118,7 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
             className="text-sm underline"
             to={selected ? `/agents/${selected.agentId}?agentTab=to-dos` : '/agents'}
           >
-            Manage this agent’s templates
+            {t('checklist.manageTemplates')}
           </Link>
           <button
             className="admin-button admin-button-primary"
@@ -133,14 +135,14 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
                   })
                 } catch (cause) {
                   if (activeTaskId.current === taskId) {
-                    setApplyError(formErrorMessage(cause, 'The checklist could not be applied.'))
+                    setApplyError(formErrorMessage(cause, t('checklist.applyError')))
                   }
                 }
               })()
             }}
             type="button"
           >
-            Apply checklist
+            {t('checklist.apply')}
           </button>
         </div>
       </section>
@@ -190,18 +192,18 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
                   resultsRef.current = next
                   return next
                 })
-                setSaveStatus((current) => ({ ...current, [step.key]: 'Saved.' }))
+                setSaveStatus((current) => ({ ...current, [step.key]: t('checklist.saved') }))
               } else {
                 setSaveStatus((current) => ({
                   ...current,
-                  [step.key]: 'Saved an earlier version. Save again to keep your latest edit.',
+                  [step.key]: t('checklist.savedEarlier'),
                 }))
               }
             } catch (cause) {
               if (activeTaskId.current === taskId) {
                 setStepErrors((current) => ({
                   ...current,
-                  [step.key]: formErrorMessage(cause, 'The checklist result could not be saved.'),
+                  [step.key]: formErrorMessage(cause, t('checklist.saveError')),
                 }))
               }
             } finally {
@@ -218,7 +220,7 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
           <div className="grid gap-2 border-b border-[color:var(--sep)] pb-4" key={step.id}>
             <label className="flex gap-2 text-sm">
               <input
-                aria-label={`Complete ${step.title}`}
+                aria-label={t('checklist.completeStep', { title: step.title })}
                 checked={Boolean(step.completedAt)}
                 className="mt-0.5 h-4 w-4 flex-none accent-[color:var(--accent)]"
                 disabled={pending}
@@ -233,7 +235,7 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
               </span>
             </label>
             <Textarea
-              aria-label={`Result for ${step.title}`}
+              aria-label={t('checklist.resultFor', { title: step.title })}
               onChange={(event) => {
                 resultsDraft.setDraft((current) => {
                   const next = { ...current, [step.key]: event.target.value }
@@ -246,7 +248,7 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
                   return next
                 })
               }}
-              placeholder="What did you find?"
+              placeholder={t('checklist.resultPlaceholder')}
               rows={2}
               value={result}
             />
@@ -257,7 +259,7 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
                 onClick={() => save()}
                 type="button"
               >
-                {pending ? 'Saving…' : 'Save result'}
+                {pending ? t('checklist.saving') : t('checklist.saveResult')}
               </button>
             </div>
             {saveStatus[step.key] ? (

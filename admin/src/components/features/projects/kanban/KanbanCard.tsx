@@ -1,4 +1,5 @@
 import { useMemo, useRef, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { faComment, faGripVertical, faPaperclip, faSignal } from '@fortawesome/free-solid-svg-icons'
@@ -58,6 +59,7 @@ export const KanbanCardContent = ({
   archived,
   work,
 }: Pick<KanbanCardProps, 'task' | 'showProject' | 'projectName' | 'work'> & { archived?: boolean }) => {
+  const { t } = useTranslation('projects')
   const excerpt = buildCardExcerpt(task.title ? task.purpose : null)
     ?? buildCardExcerpt(task.detail)
   const { data: fieldDefinitions = [] } = useTaskFields(task.projectId ?? undefined)
@@ -151,7 +153,7 @@ export const KanbanCardContent = ({
                 {formatDueDate(task.dueDate)}
               </Pill>
             ) : null}
-            {archived ? <Pill size="sm">{statusLabel(task.status)}</Pill> : null}
+            {archived ? <Pill size="sm">{statusLabel(task.status, t)}</Pill> : null}
           </span>
         ) : null}
       </div>

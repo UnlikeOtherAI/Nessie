@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { TaskExternalLinkRecord } from '@nessie/schemas'
 import { Notice } from '../../../primitives/Notice'
 import { SectionLabel } from '../../../primitives/SectionLabel'
@@ -25,6 +26,7 @@ const AudienceLine = ({
   externalLink: TaskExternalLinkRecord
   projectId: string | null
 }) => {
+  const { t } = useTranslation('projects')
   // Only a read & write source sends the comment anywhere, so only then is
   // there an owner to name.
   const source = useProjectSource(
@@ -32,12 +34,12 @@ const AudienceLine = ({
     externalLink.writeMode === 'read_only' ? undefined : externalLink.sourceId,
   )
   const provider = PROVIDER_LABEL[externalLink.provider]
-  const owner = source.data?.connectionOwnerDisplayName ?? 'the connection owner'
+  const owner = source.data?.connectionOwnerDisplayName ?? t('comments.connectionOwner')
   return (
     <p className="text-xs text-[color:var(--tx3)]">
       {externalLink.writeMode === 'read_only'
-        ? `This ticket mirrors ${provider} read-only. Comments stay in Nessie.`
-        : `Comments post to ${provider} as ${owner}.`}
+        ? t('comments.readOnlyAudience', { provider })
+        : t('comments.writeAudience', { provider, owner })}
     </p>
   )
 }
@@ -48,6 +50,7 @@ const AudienceLine = ({
  * without a reload.
  */
 export const TaskCommentsSection = ({ canComment, externalLink, projectId, taskId }: TaskCommentsSectionProps) => {
+  const { t } = useTranslation('projects')
   const { token } = useAuthSession()
   const commentsQuery = useTaskComments(taskId)
   // Rendered inside the ticket dialog (a modal): see TaskAttachmentsSection.
@@ -65,22 +68,22 @@ export const TaskCommentsSection = ({ canComment, externalLink, projectId, taskI
   }, [comments, justPosted])
 
   return (
-    <section aria-label="Comments" className="grid gap-1" data-testid="task-comments">
+    <section aria-label={t('comments.title')} className="grid gap-1" data-testid="task-comments">
       <SectionLabel as="span" size="sm">
-        Comments{total > 0 ? ` · ${total}` : ''}
+        {t('comments.title')}{total > 0 ? ` · ${total}` : ''}
       </SectionLabel>
 
       {commentsQuery.isLoading ? (
         <Skeleton count={3} variant="feed" />
       ) : commentsQuery.isError ? (
         <Notice size="sm" tone="danger">
-          Couldn't load comments.{' '}
+          {t('comments.loadError')}{' '}
           <button className="underline" onClick={() => void commentsQuery.refetch()} type="button">
-            Retry
+            {t('comments.retry')}
           </button>
         </Notice>
       ) : comments.length === 0 ? (
-        <p className="py-2 text-sm text-[color:var(--tx3)]">No comments yet.</p>
+        <p className="py-2 text-sm text-[color:var(--tx3)]">{t('comments.empty')}</p>
       ) : (
         <ul className="grid divide-y divide-[color:var(--sep)]" ref={listRef}>
           {comments.map((comment) => (
@@ -102,7 +105,7 @@ export const TaskCommentsSection = ({ canComment, externalLink, projectId, taskI
           onClick={() => void commentsQuery.fetchNextPage()}
           type="button"
         >
-          {commentsQuery.isFetchingNextPage ? 'Loading…' : 'Show more comments'}
+          {commentsQuery.isFetchingNextPage ? t('comments.loading') : t('comments.showMore')}
         </button>
       ) : null}
 
@@ -112,7 +115,7 @@ export const TaskCommentsSection = ({ canComment, externalLink, projectId, taskI
           {externalLink ? <AudienceLine externalLink={externalLink} projectId={projectId} /> : null}
         </div>
       ) : (
-        <p className="pt-2 text-xs text-[color:var(--tx3)]">You can read this ticket but not comment on it.</p>
+        <p className="pt-2 text-xs text-[color:var(--tx3)]">{t('comments.readOnly')}</p>
       )}
       {attachmentViewer}
     </section>

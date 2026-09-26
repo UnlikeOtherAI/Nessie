@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import {
   projectNavigationTiles,
 } from '../src/components/features/projects/project-navigation-tiles'
+import i18n, { initializeLocalization } from '../src/i18n/i18n'
 import { projectSections } from '../src/navigation/project-sections'
 
 /**
@@ -16,6 +17,10 @@ import { projectSections } from '../src/navigation/project-sections'
 
 const source = (path: string): string =>
   readFileSync(fileURLToPath(new URL(`../src/${path}`, import.meta.url)), 'utf8')
+
+await initializeLocalization()
+await i18n.changeLanguage('en-GB')
+const t = i18n.getFixedT('en-GB', 'projects')
 
 const tiles = (overrides: Partial<Parameters<typeof projectNavigationTiles>[0]> = {}) =>
   projectNavigationTiles({
@@ -29,7 +34,7 @@ const tiles = (overrides: Partial<Parameters<typeof projectNavigationTiles>[0]> 
     openWorkCount: 5,
     projectId: 'p1',
     ...overrides,
-  })
+  }, t)
 
 test('every section of the project has a tile, and Overview does not link to itself', () => {
   for (const isScrum of [false, true]) {

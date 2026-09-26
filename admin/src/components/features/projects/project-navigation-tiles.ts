@@ -21,6 +21,7 @@
 
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 import { faChartPie, faHashtag, faUsers } from '@fortawesome/free-solid-svg-icons'
+import type { TFunction } from 'i18next'
 import { projectSections, type ProjectSectionId } from '../../../navigation/project-sections'
 
 /** Everything a project section is, except Overview: a doorway does not link to itself. */
@@ -68,14 +69,14 @@ export type ProjectNavigationTile = {
  * `projectSections` without a line of copy here fails to compile, rather than
  * rendering an unexplained coloured square.
  */
-const SECTION_COPY: Record<ProjectTileSectionId, { blurb: string; tone: ProjectTileTone }> = {
-  backlog: { blurb: 'Shape what comes next and fill the sprint.', tone: 'plan' },
-  board: { blurb: 'Every piece of work, who holds it, what is late.', tone: 'work' },
-  dashboards: { blurb: 'Live numbers from the services this project connects.', tone: 'insight' },
-  docs: { blurb: 'The knowledge this project writes down and searches.', tone: 'knowledge' },
-  executors: { blurb: 'The machines this project’s agents run work on.', tone: 'compute' },
-  insights: { blurb: 'Velocity, burndown and where the time goes.', tone: 'insight' },
-  settings: { blurb: 'Name, teams, boards, fields and custom work states.', tone: 'config' },
+const SECTION_TONE: Record<ProjectTileSectionId, ProjectTileTone> = {
+  backlog: 'plan',
+  board: 'work',
+  dashboards: 'insight',
+  docs: 'knowledge',
+  executors: 'compute',
+  insights: 'insight',
+  settings: 'config',
 }
 
 type ProjectNavigationTilesInput = {
@@ -96,28 +97,39 @@ type ProjectNavigationTilesInput = {
   projectId: string
 }
 
-const count = (value: number, one: string, many: string): string | undefined => {
+const count = (
+  t: TFunction<'projects'>,
+  value: number,
+  key: 'open' | 'waiting' | 'dashboards' | 'channels' | 'people',
+): string | undefined => {
   // Nothing, or still loading: a tile says nothing rather than "0 people".
   if (value <= 0) return undefined
-  return value === 1 ? `1 ${one}` : `${value} ${many}`
+  switch (key) {
+    case 'open': return t('navigation.meta.open', { count: value })
+    case 'waiting': return t('navigation.meta.waiting', { count: value })
+    case 'dashboards': return t('navigation.meta.dashboards', { count: value })
+    case 'channels': return t('navigation.meta.channels', { count: value })
+    case 'people': return t('navigation.meta.people', { count: value })
+  }
 }
 
 const sectionMeta = (
   id: ProjectTileSectionId,
   input: ProjectNavigationTilesInput,
+  t: TFunction<'projects'>,
 ): string | undefined => {
   switch (id) {
     case 'board':
-      return count(input.openWorkCount, 'open', 'open')
+      return count(t, input.openWorkCount, 'open')
     case 'backlog':
-      return count(input.backlogCount, 'waiting', 'waiting')
+      return count(t, input.backlogCount, 'waiting')
     // A count here would be a lie: the recent-pages read is capped, so it
     // knows the newest document but not how many there are. Recency is the
     // honest signal, and the one a person is looking for.
     case 'docs':
-      return input.documentsUpdatedAge ? `updated ${input.documentsUpdatedAge}` : undefined
+      return input.documentsUpdatedAge ? t('navigation.meta.updated', { age: input.documentsUpdatedAge }) : undefined
     case 'dashboards':
-      return count(input.dashboards.length, 'dashboard', 'dashboards')
+      return count(t, input.dashboards.length, 'dashboards')
     // Insights is a view of the counts beside it; Executors are an
     // organisation-wide pool, so a project-scoped number would be invented;
     // Settings has nothing to count.
@@ -130,6 +142,7 @@ const sectionMeta = (
 
 export const projectNavigationTiles = (
   input: ProjectNavigationTilesInput,
+  t: TFunction<'projects'>,
 ): ProjectNavigationTile[] => {
   // No counts passed to `projectSections`: it bakes an assigned-work total into
   // its label for the sidebar, and a tile carries its own, so `Boards (3)`
@@ -138,27 +151,58 @@ export const projectNavigationTiles = (
     .filter((section) => section.id !== 'overview')
     .map((section): ProjectNavigationTile => {
       const id = section.id as ProjectTileSectionId
-      const copy = SECTION_COPY[id]
+      let label: string
+      let blurb: string
+      switch (id) {
+        case 'backlog':
+          label = t('navigation.tileLabels.backlog')
+          blurb = t('navigation.tileBlurbs.backlog')
+          break
+        case 'board':
+          label = t('navigation.tileLabels.board')
+          blurb = t('navigation.tileBlurbs.board')
+          break
+        case 'dashboards':
+          label = t('navigation.tileLabels.dashboards')
+          blurb = t('navigation.tileBlurbs.dashboards')
+          break
+        case 'docs':
+          label = t('navigation.tileLabels.docs')
+          blurb = t('navigation.tileBlurbs.docs')
+          break
+        case 'executors':
+          label = t('navigation.tileLabels.executors')
+          blurb = t('navigation.tileBlurbs.executors')
+          break
+        case 'insights':
+          label = t('navigation.tileLabels.insights')
+          blurb = t('navigation.tileBlurbs.insights')
+          break
+        case 'settings':
+          label = t('navigation.tileLabels.settings')
+          blurb = t('navigation.tileBlurbs.settings')
+          break
+      }
       return {
-        blurb: copy.blurb,
+        blurb,
         icon: section.icon,
         key: id,
-        label: section.label,
-        ...(sectionMeta(id, input) ? { meta: sectionMeta(id, input) } : {}),
+        label,
+        ...(sectionMeta(id, input, t) ? { meta: sectionMeta(id, input, t) } : {}),
         to: section.to,
-        tone: copy.tone,
+        tone: SECTION_TONE[id],
       }
     })
 
   const firstChannel = input.channels[0]
   const channels: ProjectNavigationTile = {
     blurb: firstChannel
-      ? 'Where this project talks — people and its agents together.'
-      : 'No rooms yet. Channels created under this project’s teams appear here.',
+      ? t('navigation.tiles.channelsDescription')
+      : t('navigation.tiles.noChannelsDescription'),
     icon: faHashtag,
     key: 'channels',
-    label: 'Channels',
-    meta: count(input.channels.length, 'channel', 'channels'),
+    label: t('navigation.tileLabels.channels'),
+    meta: count(t, input.channels.length, 'channels'),
     // The most active room, which is where a person going "to the channels"
     // means to end up. With none there is nowhere to send them, and a tile
     // that navigates to an empty list is worse than one that says so.
@@ -168,12 +212,12 @@ export const projectNavigationTiles = (
 
   const people: ProjectNavigationTile = {
     blurb: input.canManageMembers
-      ? 'Add and remove the people working in this project.'
-      : 'Who is working in this project.',
+      ? t('navigation.tiles.peopleCanManageDescription')
+      : t('navigation.tiles.peopleDescription'),
     icon: faUsers,
     key: 'people',
-    label: 'People',
-    meta: count(input.memberCount, 'person', 'people'),
+    label: t('navigation.tileLabels.people'),
+    meta: count(t, input.memberCount, 'people'),
     opensMembers: true,
     tone: 'people',
   }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   TASK_ATTACHMENT_REMOVE_REASON_MAX_CHARS,
   type TaskAttachmentRecord,
@@ -34,6 +35,7 @@ export const RemoveAttachmentDialog = ({
   onConfirm,
   pending = false,
 }: RemoveAttachmentDialogProps) => {
+  const { t } = useTranslation('projects')
   const reasonRef = useRef<HTMLTextAreaElement>(null)
   const [reason, setReason] = useState('')
   const open = attachment !== null
@@ -47,7 +49,7 @@ export const RemoveAttachmentDialog = ({
     if (!pending) onConfirm(reason)
   }
 
-  const where = attachment?.commentId ? 'a comment' : 'the description'
+  const where = attachment?.commentId ? t('attachments.comment') : t('attachments.description')
 
   return (
     <Dialog
@@ -56,26 +58,26 @@ export const RemoveAttachmentDialog = ({
       initialFocusRef={reasonRef}
       onClose={onCancel}
       open={open}
-      title={attachment ? `Remove “${attachment.filename}”?` : 'Remove this file?'}
+      title={attachment ? t('attachments.removeTitle', { name: attachment.filename }) : t('attachments.removeFileTitle')}
     >
       <div className="grid gap-4" data-testid="remove-attachment-dialog">
         <div className="grid gap-1 text-sm text-[color:var(--tx3)]">
-          <p>It stays on the ticket, marked as removed by you, and can still be downloaded.</p>
-          {attachment?.inline ? <p>It is shown in {where} and keeps rendering there.</p> : null}
+          <p>{t('attachments.removeBody')}</p>
+          {attachment?.inline ? <p>{t('attachments.inlineBody', { where })}</p> : null}
         </div>
         <FormField
           help={(
             <span className="flex items-center justify-between gap-3">
-              <span>Optional — why it is being removed</span>
+              <span>{t('attachments.optionalReason')}</span>
               <span data-testid="remove-attachment-reason-count">
                 {reason.length}/{TASK_ATTACHMENT_REMOVE_REASON_MAX_CHARS}
               </span>
             </span>
           )}
-          label="Reason"
+          label={t('attachments.reason')}
         >
           <Textarea
-            aria-label="Reason"
+            aria-label={t('attachments.reason')}
             disabled={pending}
             maxLength={TASK_ATTACHMENT_REMOVE_REASON_MAX_CHARS}
             onChange={(event) => setReason(event.target.value)}
@@ -101,7 +103,7 @@ export const RemoveAttachmentDialog = ({
           onClick={onCancel}
           type="button"
         >
-          Cancel
+          {t('attachments.cancel')}
         </button>
         <button
           className="admin-button admin-button-danger"
@@ -110,7 +112,7 @@ export const RemoveAttachmentDialog = ({
           onClick={submit}
           type="button"
         >
-          Remove
+          {t('attachments.remove')}
         </button>
       </div>
     </Dialog>

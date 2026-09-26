@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { isArchivedStatus, statusLabel } from '../../components/features/projects/kanban/kanban-config'
 import { NewTaskButton } from '../../components/features/projects/kanban/NewTaskButton'
 import { taskStatusTone } from '../../components/features/projects/kanban/task-status-presentation'
@@ -23,6 +24,7 @@ import {
 import { useCanModifyProject } from '../../facades/projects/administration'
 
 const PointsInput = ({ task }: { task: TaskRecord }) => {
+  const { t } = useTranslation('projects')
   const update = useUpdateTaskPoints()
   const [value, setValue] = useState(task.storyPoints?.toString() ?? '')
   const commit = () => {
@@ -34,7 +36,7 @@ const PointsInput = ({ task }: { task: TaskRecord }) => {
   }
   return (
     <input
-      aria-label="Story points"
+      aria-label={t('backlog.storyPoints')}
       className="admin-input admin-input-compact max-w-12 text-center"
       onBlur={commit}
       onChange={(event) => setValue(event.target.value)}
@@ -51,25 +53,26 @@ const TaskRow = ({
   task: TaskRecord
   moveTargets: { id: string; name: string }[]
 }) => {
+  const { t } = useTranslation('projects')
   const setIteration = useSetTaskIteration()
   return (
     <div className="flex items-center gap-2 rounded-md bg-[color:var(--sb)] px-2 py-1.5">
       <span className="min-w-0 flex-1 truncate text-sm text-[color:var(--tx)]">
-        {task.title ?? task.purpose ?? 'Untitled task'}
+        {task.title ?? task.purpose ?? t('task.untitled')}
       </span>
       <Pill size="sm" tone={taskStatusTone(task.status)}>
-        {statusLabel(task.status)}
+        {statusLabel(task.status, t)}
       </Pill>
       <PointsInput task={task} />
       <select
-        aria-label="Move to sprint"
+        aria-label={t('backlog.moveToSprint')}
         className="admin-input admin-input-compact max-w-[150px]"
         onChange={(event) =>
           setIteration.mutate({ id: task.id, iterationId: event.target.value || null })
         }
         value={task.iterationId ?? ''}
       >
-        <option value="">Backlog</option>
+        <option value="">{t('backlog.backlog')}</option>
         {moveTargets.map((target) => (
           <option key={target.id} value={target.id}>
             {target.name}
@@ -93,18 +96,24 @@ const IterationCard = ({
   tasks: TaskRecord[]
   moveTargets: { id: string; name: string }[]
 }) => {
+  const { t } = useTranslation('projects')
   const update = useUpdateIteration(projectId)
   const remove = useDeleteIteration(projectId)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const iterationStatus = iteration.status === 'active'
+    ? t('backlog.status.active')
+    : iteration.status === 'completed'
+      ? t('backlog.status.completed')
+      : t('backlog.status.planned')
 
   return (
     <>
       <div className="admin-card grid gap-2 p-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold text-[color:var(--tx)]">{iteration.name}</span>
-          <Pill size="sm">{iteration.status}</Pill>
+          <Pill size="sm">{iterationStatus}</Pill>
           <span className="text-xs text-[color:var(--tx3)]">
-            {iteration.pointsDone}/{iteration.pointsTotal} pts · {iteration.taskCount} tasks
+            {t('backlog.iterationSummary', { done: iteration.pointsDone, total: iteration.pointsTotal, tasks: iteration.taskCount })}
           </span>
           {canAdminister ? (
             <div className="ml-auto flex gap-2">
@@ -115,7 +124,7 @@ const IterationCard = ({
                   onClick={() => update.mutate({ id: iteration.id, action: 'start' })}
                   type="button"
                 >
-                  Start
+                  {t('backlog.start')}
                 </button>
               ) : null}
               {iteration.status === 'active' ? (
@@ -125,7 +134,7 @@ const IterationCard = ({
                   onClick={() => update.mutate({ id: iteration.id, action: 'complete' })}
                   type="button"
                 >
-                  Complete
+                  {t('backlog.complete')}
                 </button>
               ) : null}
               <button
@@ -133,7 +142,7 @@ const IterationCard = ({
                 onClick={() => setDeleteOpen(true)}
                 type="button"
               >
-                Delete
+                {t('backlog.delete')}
               </button>
             </div>
           ) : null}
@@ -143,7 +152,7 @@ const IterationCard = ({
         ) : null}
         <div className="grid gap-1">
           {tasks.length === 0 ? (
-            <div className="text-xs text-[color:var(--tx3)]">No tasks in this iteration.</div>
+            <div className="text-xs text-[color:var(--tx3)]">{t('backlog.noTasksInSprint')}</div>
           ) : (
             tasks.map((task) => <TaskRow key={task.id} moveTargets={moveTargets} task={task} />)
           )}
@@ -151,8 +160,8 @@ const IterationCard = ({
       </div>
 
       <ConfirmDialog
-        body="Its tasks return to the backlog."
-        confirmLabel="Delete"
+        body={t('backlog.deleteSprintBody')}
+        confirmLabel={t('backlog.delete')}
         destructive
         onCancel={() => setDeleteOpen(false)}
         onConfirm={() => {
@@ -160,7 +169,7 @@ const IterationCard = ({
           remove.mutate(iteration.id)
         }}
         open={canAdminister && deleteOpen}
-        title={`Delete "${iteration.name}"?`}
+        title={t('backlog.deleteSprintTitle', { name: iteration.name })}
       />
     </>
   )
@@ -171,6 +180,7 @@ type ProjectBacklogTabProps = {
 }
 
 export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
+  const { t } = useTranslation('projects')
   const canAdminister = useCanModifyProject(projectId)
   const iterationsQuery = useIterations(projectId)
   const tasksQuery = useTasks(projectId)
@@ -216,15 +226,15 @@ export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
   return (
     <PageBody>
       <QueryState
-        errorLabel="Couldn't load the backlog."
-        loadingLabel="Loading backlog…"
+        errorLabel={t('backlog.error')}
+        loadingLabel={t('backlog.loading')}
         query={backlogQuery}
       >
         {() => (
           <>
-            <Section title="Sprints">
+            <Section title={t('backlog.sprints')}>
               {planning.length === 0 ? (
-                <div className="text-xs text-[color:var(--tx3)]">No sprints yet.</div>
+                <div className="text-xs text-[color:var(--tx3)]">{t('backlog.noSprints')}</div>
               ) : (
                 <div className="grid gap-2">
                   {planning.map((iteration) => (
@@ -248,10 +258,10 @@ export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
                   }}
                 >
                   <Input
-                    aria-label="Sprint name"
+                    aria-label={t('backlog.sprintName')}
                     className="min-w-0 flex-1"
                     onChange={(event) => setNewName(event.target.value)}
-                    placeholder="New sprint name…"
+                    placeholder={t('backlog.newSprintPlaceholder')}
                     size="compact"
                     value={newName}
                   />
@@ -260,13 +270,13 @@ export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
                     disabled={!newName.trim() || createIteration.isPending}
                     type="submit"
                   >
-                    Add sprint
+                    {t('backlog.addSprint')}
                   </button>
                 </form>
               ) : null}
             </Section>
 
-            <Section title={`Backlog (${backlogTasks.length})`}>
+            <Section title={t('backlog.title', { count: backlogTasks.length })}>
               <NewTaskButton projectId={projectId} />
               <div className="grid gap-1">
                 {backlogTasks.map((task) => (
@@ -276,7 +286,7 @@ export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
             </Section>
 
             {completed.length > 0 ? (
-              <Section title="Completed">
+              <Section title={t('backlog.completed')}>
                 <div className="grid gap-2">
                   {completed.map((iteration) => (
                     <div
@@ -285,7 +295,7 @@ export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
                     >
                       <span className="font-semibold text-[color:var(--tx2)]">{iteration.name}</span>
                       <span>
-                        {iteration.pointsDone}/{iteration.pointsTotal} pts delivered
+                        {t('backlog.pointsDelivered', { done: iteration.pointsDone, total: iteration.pointsTotal })}
                       </span>
                     </div>
                   ))}

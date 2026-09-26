@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useProjectRecentPages } from '../../../facades/knowledge/recent-pages-hooks'
 import { Skeleton } from '../../primitives/Skeleton'
 import {
@@ -27,6 +28,7 @@ export const ProjectDocumentsSection = ({
   className,
   projectId,
 }: ProjectDocumentsSectionProps) => {
+  const { t } = useTranslation('projects')
   const navigate = useNavigate()
   const docsHref = `/projects/${projectId}/docs`
   const { data: pages, isError, isPending } = useProjectRecentPages(projectId, RECENT_PAGE_LIMIT)
@@ -36,11 +38,11 @@ export const ProjectDocumentsSection = ({
       className={className}
       count={isPending ? undefined : (pages ?? []).length}
       links={[{ label: 'Open docs', to: docsHref }]}
-      title="Latest documents"
+      title={t('projectDocuments.title')}
     >
       {isPending ? <Skeleton className="p-2" variant="list" /> : null}
       {isError ? (
-        <SectionNotice>Recent documents could not be loaded. Please refresh.</SectionNotice>
+        <SectionNotice>{t('projectDocuments.error')}</SectionNotice>
       ) : null}
       {!isPending && !isError && (pages ?? []).length === 0 ? (
         <SectionNotice>
@@ -69,7 +71,7 @@ export const ProjectDocumentsSection = ({
             {page.spaceName}
           </span>
           <span className="ml-auto whitespace-nowrap text-xs text-[color:var(--tx3)]">
-            {formatRelativeAge(page.updatedAt)}
+            {formatRelativeAge(page.updatedAt, Date.now(), t)}
           </span>
         </button>
       ))}
