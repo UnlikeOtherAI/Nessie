@@ -145,12 +145,7 @@ export {
   type TaskFieldType,
 } from '@nessie/schemas'
 
-/** A task as one board renders it: the record plus its resolved placement. */
-export const BoardTaskRecordSchema = TaskRecordSchema.extend({
-  columnId: z.string().uuid().nullable(),
-  position: z.number().int().nullable(),
-})
-export type BoardTaskRecord = z.infer<typeof BoardTaskRecordSchema>
+export { BoardTaskRecordSchema, type BoardTaskRecord } from '@nessie/schemas'
 
 // ─── Iterations (scrum sprints) ───────────────────────────────────────────
 

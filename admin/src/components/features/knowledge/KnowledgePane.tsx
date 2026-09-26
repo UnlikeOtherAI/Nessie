@@ -10,6 +10,8 @@ import {
 
 type KnowledgePaneProps = {
   actions?: PageHeaderAction[]
+  bottomActions?: PageHeaderAction[]
+  bottomActionLabel?: string
   /**
    * A pane's own toolbar, rendered **inside** the header block rather than as a
    * second bordered bar under it (`ResponsivePageHeader`'s `below` slot: "one
@@ -30,7 +32,9 @@ type KnowledgePaneProps = {
 // `onBack`: native iOS publishes that action into its bar, while web and
 // Android render the same action in this header. The route header underneath
 // the stage is retained off-screen and cannot be the visible doorway.
-export const KnowledgePane = ({ actions, below, children, onBack, title }: KnowledgePaneProps) => {
+export const KnowledgePane = ({
+  actions, below, bottomActionLabel = 'Item actions', bottomActions, children, onBack, title,
+}: KnowledgePaneProps) => {
   // Only a pane that *is* an open stage publishes. The same component also
   // renders in a route layer — the space's root listing beneath an open
   // folder, a project's Docs tab — and publishing there would win by mount
@@ -46,7 +50,7 @@ export const KnowledgePane = ({ actions, below, children, onBack, title }: Knowl
     title,
   }, isStage)
   return (
-    <div className="flex h-full flex-col bg-[color:var(--main)]">
+    <div className="relative flex h-full flex-col bg-[color:var(--main)]">
       {hidden
         // The native bar has taken the title and the actions, but it cannot
         // take a pane's toolbar: rendering nothing here would delete the
@@ -61,7 +65,10 @@ export const KnowledgePane = ({ actions, below, children, onBack, title }: Knowl
             onBack={onBack}
             title={title}
           />}
-      <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+      <div className={bottomActions?.length ? 'min-h-0 flex-1 overflow-y-auto pb-24' : 'min-h-0 flex-1 overflow-y-auto'}>{children}</div>
+      {bottomActions?.length ? (
+        <ResponsivePageHeader actionBar actionBarLabel={bottomActionLabel} actions={bottomActions} title={title} />
+      ) : null}
     </div>
   )
 }

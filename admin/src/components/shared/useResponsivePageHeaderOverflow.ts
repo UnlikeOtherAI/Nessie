@@ -30,6 +30,7 @@ const sameIds = (left: string[], right: string[]): boolean =>
 
 export type UseResponsivePageHeaderOverflowOptions = {
   actions: PageHeaderAction[]
+  minimumLeadingWidth?: number
   onBack?: () => void
   showHeaderAccountMenu: boolean
 }
@@ -42,6 +43,7 @@ export type UseResponsivePageHeaderOverflowOptions = {
 // `actionClassName`, `toggleClassName`) and the header markup.
 export const useResponsivePageHeaderOverflow = ({
   actions,
+  minimumLeadingWidth = MIN_LEADING_WIDTH,
   onBack,
   showHeaderAccountMenu,
 }: UseResponsivePageHeaderOverflowOptions) => {
@@ -101,7 +103,7 @@ export const useResponsivePageHeaderOverflow = ({
       // title lane's minimum width stays a constant.
       const leadingReserve = Math.max(
         leadingMeasureRef.current?.getBoundingClientRect().width ?? 0,
-        MIN_LEADING_WIDTH,
+        minimumLeadingWidth,
       )
       const next = partitionPageHeaderActions(
         layouts,
@@ -133,7 +135,7 @@ export const useResponsivePageHeaderOverflow = ({
       if (frame !== undefined) cancelAnimationFrame(frame)
       observer?.disconnect()
     }
-  }, [actions, onBack, showHeaderAccountMenu])
+  }, [actions, minimumLeadingWidth, onBack, showHeaderAccountMenu])
 
   // Outside press and Escape belong to the Popover primitive; the header keeps
   // only the menu's own keyboard model — first item focused on open, arrows

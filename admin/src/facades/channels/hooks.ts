@@ -15,7 +15,8 @@ export const useChannels = ({ enabled = true }: { enabled?: boolean } = {}) => {
     enabled,
     queryKey: channelKeys.all,
     queryFn: () => apiClient.get('/api/channels', ChannelRecordSchema.array()),
-    staleTime: Infinity,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
   })
 }
 

@@ -1,17 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   faBoxArchive,
   faClockRotateLeft,
-  faComment,
   faEllipsis,
-  faFileLines,
-  faPaperclip,
   faPen,
 } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { useTabParam } from '../../../navigation/useTabParam'
 import { toFormErrors } from '../../../facades/forms/form-errors'
-import { usePageAttachments } from '../../../facades/knowledge/file-hooks'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { Pill } from '../../primitives/Pill'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
@@ -25,15 +19,6 @@ import { isAgentDraft, pageStatusPillTone } from './page-status'
 import { ReviewPanel } from './ReviewPanel'
 import { AttachmentsDrawer } from './AttachmentsDrawer'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
-import { TabBar, type TabBarItem } from '../../primitives/TabBar'
-
-type DocumentTab = 'content' | 'attachments' | 'comments'
-const DOCUMENT_TABS: ReadonlyArray<TabBarItem<DocumentTab>> = [
-  { icon: <FontAwesomeIcon icon={faFileLines} />, label: 'Content', value: 'content' },
-  { icon: <FontAwesomeIcon icon={faPaperclip} />, label: 'Attachments', value: 'attachments' },
-  { icon: <FontAwesomeIcon icon={faComment} />, label: 'Comments', value: 'comments' },
-]
-const DOCUMENT_TAB_VALUES: readonly DocumentTab[] = ['content', 'attachments', 'comments']
 
 type PagePreviewProps = {
   // The on-demand full-body fetch (the pages list omits bodies): loading gets
@@ -73,25 +58,13 @@ export const PagePreview = ({
   spaceName,
 }: PagePreviewProps) => {
   const commentsComposerRef = useRef<HTMLTextAreaElement>(null)
-  const focusCommentsOnOpen = useRef(false)
-  const [activeTab, setActiveTab] = useTabParam('detail', DOCUMENT_TAB_VALUES, 'content')
-  const { data: attachments = [] } = usePageAttachments(page.id)
-  const tabs = useMemo(() => DOCUMENT_TABS.map((tab) => tab.value === 'attachments'
-    ? { ...tab, count: attachments.length || undefined }
-    : tab), [attachments.length])
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const [archiveError, setArchiveError] = useState<string | null>(null)
   const focusComments = () => {
-    focusCommentsOnOpen.current = true
-    setActiveTab('comments')
-  }
-  useEffect(() => {
-    if (activeTab !== 'comments' || !focusCommentsOnOpen.current) return
-    focusCommentsOnOpen.current = false
     commentsComposerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     commentsComposerRef.current?.focus()
-  }, [activeTab])
-  const headerActions: PageHeaderAction[] = [
+  }
+  const detailActions: PageHeaderAction[] = [
     ...(canWrite
       ? [{
           compact: true,
@@ -147,15 +120,13 @@ export const PagePreview = ({
 
   return (
     <KnowledgePane
-      actions={headerActions}
-      below={(
-        <TabBar ariaLabel="Document sections" idPrefix="knowledge-document" items={tabs} onChange={setActiveTab} value={activeTab} />
-      )}
+      bottomActionLabel="Document actions"
+      bottomActions={detailActions}
       onBack={onBack}
       title={page.title}
     >
-      {activeTab === 'content' ? (
-        <div aria-labelledby="knowledge-document-tab-content" id="knowledge-document-tabpanel-content" role="tabpanel" className="kb-reader mx-auto my-8 w-full max-w-3xl rounded-xl px-8 py-8 shadow-sm">
+      <>
+        <div className="kb-reader mx-auto my-8 w-full max-w-3xl rounded-xl px-8 py-8 shadow-sm">
         <nav aria-label="Page breadcrumbs" className="mb-5 flex flex-wrap items-center gap-1 text-xs text-[color:var(--tx3)]">
           <button className="hover:text-[color:var(--tx)]" onClick={onBrowseRoot} type="button">
             {spaceName}
@@ -225,9 +196,7 @@ export const PagePreview = ({
         </div>
 
         <BacklinksPanel pageId={page.id} />
-        </div>
-      ) : activeTab === 'attachments' ? (
-        <div aria-labelledby="knowledge-document-tab-attachments" id="knowledge-document-tabpanel-attachments" role="tabpanel" className="mx-auto my-8 w-full max-w-4xl px-4">
+        <div className="mt-8 border-t border-[color:var(--sep)] pt-6">
         <AttachmentsDrawer
           canWrite={canWrite}
           inline
@@ -236,11 +205,11 @@ export const PagePreview = ({
           pageId={page.id}
         />
         </div>
-      ) : (
-        <div aria-labelledby="knowledge-document-tab-comments" id="knowledge-document-tabpanel-comments" role="tabpanel" className="mx-auto my-8 w-full max-w-3xl px-8">
+        <div className="mt-8 border-t border-[color:var(--sep)] pt-6" id="knowledge-page-comments">
         <CommentsSection canResolve={canWrite} composerRef={commentsComposerRef} pageId={page.id} />
         </div>
-      )}
+        </div>
+      </>
       <ConfirmDialog
         body={
           <>
