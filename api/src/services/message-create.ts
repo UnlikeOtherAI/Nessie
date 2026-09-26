@@ -5,7 +5,6 @@ import {
   createMentionUserAlerts,
   followReplyThread,
   listOpenChannelMentionCandidates,
-  mentionedAgentIdsFromContent,
   mergeMentionCandidates,
   resolveMessageMentions,
   type ReplyRootMetadata,
@@ -19,12 +18,16 @@ import {
   type MessageEmbedOrigin,
 } from '@nessie/schemas'
 import {
-  buildAgentVisibilityWhere,
   deriveConversationTitle,
   enqueueTicketWorkThreadMessage,
 } from '@nessie/team-admin'
 
 import { messageInclude, type MessageWithReactions } from './message-read-model.js'
+import { canAdminPostInChannel, ChannelPostForbiddenError, prepareChannelMessageInsert } from './channel-posting-policy.js'
+import { listAnnouncementRecipients, persistAnnouncementAudience } from './announcement-audience.js'
+import { findPendingAgentInvites, resolveAgentMentionsForSend,
+  type ChannelAgent } from './message-agent-mentions.js'
+import { enqueuePushDispatch } from '../queue/pgqueue.js'
 
 // ─── Message creation: a person's send ─────────────────────────────────────
 //
@@ -104,16 +107,6 @@ const titleConversationFromFirstMessage = async (
     data: { title },
   })
   return renamed.count > 0 ? title : undefined
-}
-
-export type ChannelAgent = {
-  id: string
-  name: string
-  // Present only for a PA binding placed by this member. It turns the
-  // organization-singleton PA into a distinct orchestration candidate.
-  principalUserId?: string
-  role: string
-  systemPrompt: string | null
 }
 
 export type CreateThreadMessageResult =
@@ -206,6 +199,7 @@ export const createThreadMessage = async (
     userId: string
     rootMessageId?: string
     alsoSendToChannel?: boolean
+    requiresConfirmation?: boolean
     agentMentions?: AgentMention[]
     /**
      * Set only by a route whose request is a signed-in person's composer send
@@ -215,6 +209,7 @@ export const createThreadMessage = async (
      * the voice model's tool call and leaves it unset.
      */
     authorship?: typeof PERSON_MESSAGE_AUTHORSHIP
+    actorContext?: AuthorizedActionContext
     /**
      * Set only by the message route, for a person who can edit the board
      * writing in a ticket's work thread: stamped as `metadata.ticketWorkSteer`,
@@ -268,6 +263,12 @@ export const createThreadMessage = async (
           },
           id: true,
           organizationId: true,
+          teamId: true,
+          organization: { select: { externalOrgId: true } },
+          team: { select: { externalTeamId: true } },
+          project: { select: { channelRoot: true } },
+          adminOnlyPosting: true,
+          mandatoryAnnouncements: true,
           systemChannelType: true,
           type: true,
           visibility: true,
@@ -284,69 +285,32 @@ export const createThreadMessage = async (
   if (!thread) {
     return { kind: 'thread_not_found' }
   }
-
-  // Structured mentions are identities, not hints. Validate every one before
-  // the message write: a forged/stale id must neither persist nor enter
-  // orchestration. An ordinary bound agent is already proven by the channel;
-  // an unbound agent must pass the same visibility gate as the invite
-  // flow. PA presences additionally require their exact live owner binding.
-  const agentMentions = [...new Map(
-    (input.agentMentions ?? []).map((mention) => [
-      `${mention.agentId}:${mention.principalUserId ?? ''}`,
-      mention,
-    ]),
-  ).values()]
-  const validPresenceMentionKeys = new Set(
-    thread.channel.agentBindings.flatMap((binding) =>
-      binding.principalUserId && binding.agent.agentKind === 'personal_assistant'
-        ? [`${binding.agent.id}:${binding.principalUserId}`]
-        : []),
+  const isVerifiedAdmin = await canAdminPostInChannel(
+    prisma, thread.channel, input.userId, input.actorContext,
   )
-  const presenceMentions = agentMentions.filter(
-    (mention): mention is AgentMention & { principalUserId: string } =>
-      mention.principalUserId !== undefined,
+  if (input.requiresConfirmation && (
+    input.rootMessageId || thread.agentId !== null
+    || !thread.channel.adminOnlyPosting || !isVerifiedAdmin
+    || thread.channel.visibility !== 'public'
+    || input.authorship !== PERSON_MESSAGE_AUTHORSHIP
+  )) throw new ChannelPostForbiddenError('Confirmation requires a public read-only administrator post')
+  const isAnnouncement = Boolean(
+    (thread.channel.mandatoryAnnouncements && isVerifiedAdmin && input.authorship === PERSON_MESSAGE_AUTHORSHIP)
+    || input.requiresConfirmation,
   )
-  if (presenceMentions.some(
-    (mention) => !validPresenceMentionKeys.has(`${mention.agentId}:${mention.principalUserId}`),
-  )) {
-    return { kind: 'invalid_agent_mention' }
-  }
-  const ordinaryMentionIds = [...new Set(
-    agentMentions
-      .filter((mention) => mention.principalUserId === undefined)
-      .map((mention) => mention.agentId),
-  )]
-  const boundOrdinaryAgents = thread.channel.agentBindings.flatMap((binding) =>
-    !binding.principalUserId && binding.agent.agentKind !== 'personal_assistant'
-      ? [{ id: binding.agent.id, name: binding.agent.name }]
-      : [],
-  )
-  const boundOrdinaryIds = new Set(boundOrdinaryAgents.map((agent) => agent.id))
-  const unboundMentionIds = ordinaryMentionIds.filter((id) => !boundOrdinaryIds.has(id))
-  if (thread.channel.systemChannelType && unboundMentionIds.length > 0) {
-    return { kind: 'invalid_agent_mention' }
-  }
-  const unboundMentionAgents = unboundMentionIds.length > 0
-    ? await prisma.agent.findMany({
-        where: {
-          AND: [buildAgentVisibilityWhere({
-            organizationId: thread.channel.organizationId,
-            userId: input.userId,
-          })],
-          agentKind: 'shared',
-          executionMode: { not: 'external_mcp' },
-          id: { in: unboundMentionIds },
-          organizationId: thread.channel.organizationId,
-        },
-        select: { id: true, name: true },
-      })
+  const announcementRecipients = isAnnouncement && input.actorContext
+    ? await listAnnouncementRecipients(prisma, thread.channel, input.actorContext, input.userId)
     : []
-  if (unboundMentionAgents.length !== unboundMentionIds.length) {
-    return { kind: 'invalid_agent_mention' }
-  }
-  const structuredOrdinaryAgents = new Map(
-    [...boundOrdinaryAgents, ...unboundMentionAgents].map((agent) => [agent.id, agent]),
-  )
+
+  const resolvedAgentMentions = await resolveAgentMentionsForSend(prisma, {
+    channel: thread.channel,
+    content: input.content,
+    userId: input.userId,
+    agentMentions: input.agentMentions,
+  })
+  if (resolvedAgentMentions.kind === 'invalid') return { kind: 'invalid_agent_mention' }
+  const { agentMentions, channelAgents: resolvedChannelAgents,
+    mentionedAgentIds } = resolvedAgentMentions
 
   // Resolve human + broadcast mentions on the inbound content. Agent mentions
   // are resolved below for engagement; here we record every mention class on
@@ -368,29 +332,6 @@ export const createThreadMessage = async (
     ),
   })
 
-  const channelAgents: ChannelAgent[] = thread.channel.agentBindings.map((b) => ({
-    id: b.agent.id,
-    name: b.agent.name,
-    ...(b.principalUserId ? { principalUserId: b.principalUserId } : {}),
-    role: b.agent.role,
-    systemPrompt: b.agent.systemPrompt,
-  }))
-  const resolvedChannelAgents =
-    thread.channel.systemChannelType === 'personal_assistant'
-      ? channelAgents.slice(0, 1)
-      : channelAgents
-  const ordinaryChannelAgents = resolvedChannelAgents.filter(
-    (agent) => agent.principalUserId === undefined,
-  )
-
-  // Which agents the message @mentioned (bound or freshly resolved), folded
-  // into the mentions the row is created with. This is resolved *before* the
-  // transaction — every input is already known — because a message whose
-  // stored mentions omit its agent mentions is indistinguishable from one that
-  // had none, and that is what clients highlight and orchestration replays.
-  const mentionedAgentIds = agentMentions.length > 0
-    ? ordinaryMentionIds
-    : mentionedAgentIdsFromContent(input.content, ordinaryChannelAgents)
   const mergedMentions = {
     ...mentions,
     agentIds: mentionedAgentIds,
@@ -426,15 +367,26 @@ export const createThreadMessage = async (
     // replies attach to the same root, so a root that is itself a reply is
     // rejected (one level deep). Tombstoned roots reject new replies.
     const txResult = await prisma.$transaction(async (tx) => {
+      const channelPolicy = await prepareChannelMessageInsert(tx, {
+        channelId: thread.channel.id,
+        isVerifiedAdmin,
+        isHumanComposerSend: input.authorship === PERSON_MESSAGE_AUTHORSHIP,
+        userId: input.userId,
+      })
+      if (channelPolicy.mandatoryAnnouncements !== thread.channel.mandatoryAnnouncements
+        || channelPolicy.adminOnlyPosting !== thread.channel.adminOnlyPosting) {
+        throw new ChannelPostForbiddenError('Channel settings changed. Retry this message.')
+      }
       const root = await tx.message.findUnique({
         where: { id: rootMessageId },
-        select: { id: true, threadId: true, rootMessageId: true, deletedAt: true },
+        select: { id: true, threadId: true, rootMessageId: true, deletedAt: true, requiresConfirmation: true },
       })
       if (
         !root
         || root.threadId !== input.threadId
         || root.rootMessageId !== null
         || root.deletedAt !== null
+        || root.requiresConfirmation
       ) {
         return { kind: 'invalid_root' as const }
       }
@@ -447,6 +399,7 @@ export const createThreadMessage = async (
           rootMessageId,
           ...(input.clientMessageId ? { clientMessageId: input.clientMessageId } : {}),
           metadata: messageMetadata,
+          isAnnouncement,
         },
         include: messageInclude,
       })
@@ -491,7 +444,16 @@ export const createThreadMessage = async (
         rootMessageId,
         userIds: [input.userId, ...mentions.userIds],
       })
-      const alerted = await createMentionUserAlerts(tx, {
+      const alerted = isAnnouncement ? await persistAnnouncementAudience(tx, {
+        organizationId: thread.channel.organizationId,
+        messageId: created.id,
+        threadId: input.threadId,
+        rootMessageId,
+        channelId: thread.channel.id,
+        authorUserId: input.userId,
+        recipients: announcementRecipients,
+        mentionedUserIds: mentions.userIds,
+      }) : await createMentionUserAlerts(tx, {
         organizationId: thread.channel.organizationId,
         messageId: created.id,
         threadId: input.threadId,
@@ -499,6 +461,16 @@ export const createThreadMessage = async (
         actorUserId: input.userId,
         mentionedUserIds: mentions.userIds,
       })
+      await enqueuePushDispatch(tx, {
+        messageId: created.id,
+        authorUserId: input.userId,
+        channelId: thread.channel.id,
+        threadId: input.threadId,
+        rootMessageId,
+        organizationId: thread.channel.organizationId,
+        contentSnippet: created.content.slice(0, 140),
+        mentionUserIds: mentions.userIds,
+      }, `push:${created.id}`)
       return {
         alertedUserIds: alerted,
         broadcast,
@@ -526,6 +498,16 @@ export const createThreadMessage = async (
   } else {
     // Top-level posts atomically establish a follow and durable mention alerts.
     const txResult = await prisma.$transaction(async (tx) => {
+      const channelPolicy = await prepareChannelMessageInsert(tx, {
+        channelId: thread.channel.id,
+        isVerifiedAdmin,
+        isHumanComposerSend: input.authorship === PERSON_MESSAGE_AUTHORSHIP,
+        userId: input.userId,
+      })
+      if (channelPolicy.mandatoryAnnouncements !== thread.channel.mandatoryAnnouncements
+        || channelPolicy.adminOnlyPosting !== thread.channel.adminOnlyPosting) {
+        throw new ChannelPostForbiddenError('Channel settings changed. Retry this message.')
+      }
       const created = await tx.message.create({
         data: {
           threadId: input.threadId,
@@ -534,6 +516,8 @@ export const createThreadMessage = async (
           content: input.content,
           ...(input.clientMessageId ? { clientMessageId: input.clientMessageId } : {}),
           metadata: messageMetadata,
+          isAnnouncement,
+          requiresConfirmation: input.requiresConfirmation === true,
         },
         include: messageInclude,
       })
@@ -546,7 +530,15 @@ export const createThreadMessage = async (
         // Threads inbox independent from whether its alert is later read.
         userIds: [input.userId, ...mentions.userIds],
       })
-      const alerted = await createMentionUserAlerts(tx, {
+      const alerted = isAnnouncement ? await persistAnnouncementAudience(tx, {
+        organizationId: thread.channel.organizationId,
+        messageId: created.id,
+        threadId: input.threadId,
+        channelId: thread.channel.id,
+        authorUserId: input.userId,
+        recipients: announcementRecipients,
+        mentionedUserIds: mentions.userIds,
+      }) : await createMentionUserAlerts(tx, {
         organizationId: thread.channel.organizationId,
         messageId: created.id,
         threadId: input.threadId,
@@ -554,6 +546,15 @@ export const createThreadMessage = async (
         actorUserId: input.userId,
         mentionedUserIds: mentions.userIds,
       })
+      await enqueuePushDispatch(tx, {
+        messageId: created.id,
+        authorUserId: input.userId,
+        channelId: thread.channel.id,
+        threadId: input.threadId,
+        organizationId: thread.channel.organizationId,
+        contentSnippet: created.content.slice(0, 140),
+        mentionUserIds: mentions.userIds,
+      }, `push:${created.id}`)
       // Inside this transaction on purpose: a conversation named by a message
       // that then failed to commit would be named after nothing.
       const namedTitle = await titleConversationFromFirstMessage(tx, {
@@ -589,49 +590,12 @@ export const createThreadMessage = async (
     conversationTitle = txResult.conversationTitle
   }
 
-  // An @mention of an agent that is NOT a member (bound) of this channel does
-  // not silently pull it in: only members participate. Such mentions are
-  // surfaced as pending invites so the client can offer to add the agent to the
-  // channel (after which it participates like any other member). Agent names can
-  // contain spaces, so we match each candidate name against the content with the
-  // same escape rule the orchestrator uses rather than splitting on whitespace.
-  const pendingAgentInvites: { id: string; name: string }[] = []
-  if (agentMentions.length > 0) {
-    for (const agentId of ordinaryMentionIds) {
-      if (boundOrdinaryIds.has(agentId)) continue
-      const agent = structuredOrdinaryAgents.get(agentId)
-      if (agent) pendingAgentInvites.push(agent)
-    }
-  } else if (input.content.includes('@')) {
-    const boundIds = new Set(resolvedChannelAgents.map((a) => a.id))
-    const candidates = await prisma.agent.findMany({
-      where: {
-        AND: [buildAgentVisibilityWhere({
-          organizationId: thread.channel.organizationId,
-          userId: input.userId,
-        })],
-        // `agentKind: 'shared'` is what excludes the Personal Assistant, whose
-        // presence is a different act with a different key. `systemManaged` is
-        // deliberately NOT filtered: an app-provided shared agent binds through
-        // the ordinary chokepoint, so mentioning one must offer the same invite
-        // every other agent gets. `executionMode` excludes external-agent
-        // products, which `bindAgentToChannel` refuses.
-        agentKind: 'shared',
-        executionMode: { not: 'external_mcp' },
-        id: { notIn: [...boundIds] },
-        organizationId: thread.channel.organizationId,
-      },
-      select: { id: true, name: true },
-    })
-
-    for (const agent of candidates) {
-      const escaped = agent.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      const mentionRe = new RegExp(`@${escaped}(?:\\s|$|[^\\w])`, 'i')
-      if (mentionRe.test(input.content)) {
-        pendingAgentInvites.push({ id: agent.id, name: agent.name })
-      }
-    }
-  }
+  const pendingAgentInvites = await findPendingAgentInvites(prisma, {
+    channel: thread.channel,
+    content: input.content,
+    userId: input.userId,
+    resolved: resolvedAgentMentions,
+  })
 
   return {
     kind: 'created',

@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import {
   parseChannelId,
   parseUserId,
+  type AuthorizedActionContext,
   type ChannelDirectoryEntry,
   type ProjectDirectoryMember,
 } from '@nessie/schemas'
@@ -44,6 +45,7 @@ type ChannelDirectoryViewer = {
   isOrganizationAdmin: boolean
   organizationId: string
   userId: string
+  actorContext?: AuthorizedActionContext
 }
 
 /**
@@ -176,6 +178,7 @@ export const readChannelForViewer = async (
     access: 'full',
     channel: await mapChannelRecord(prisma, channel, viewer.userId, {
       isOrganizationAdmin: viewer.isOrganizationAdmin,
+      actorContext: viewer.actorContext,
     }),
     viewerIsMember,
   })

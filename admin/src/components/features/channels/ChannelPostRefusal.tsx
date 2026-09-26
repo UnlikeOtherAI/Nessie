@@ -33,7 +33,9 @@ export const ChannelPostRefusal = ({
         className="border-t border-[color:var(--bd)] px-4 py-3 text-xs text-[color:var(--tx3)]"
         role="status"
       >
-        {postRefusal === 'join-to-post'
+        {postRefusal === 'read-only'
+          ? 'This channel is read-only. Only administrators can post.'
+          : postRefusal === 'join-to-post'
           ? 'Join this channel to send messages.'
           : 'You are not a member of this channel, so you cannot send messages in it.'}
       </div>

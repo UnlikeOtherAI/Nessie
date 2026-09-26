@@ -51,6 +51,8 @@ export const ThreadMessageRecordSchema = z.object({
   createdAt: TimestampSchema,
   editedAt: TimestampSchema.nullish(),
   deletedAt: TimestampSchema.nullish(),
+  isAnnouncement: z.boolean().optional(),
+  requiresConfirmation: z.boolean().optional(),
   // Message-level reply threads (#233): set on replies (id of the top-level
   // root they belong to); the metadata fields are materialized on roots.
   rootMessageId: z.string().uuid().nullish(),
@@ -237,6 +239,7 @@ export const CreateThreadMessageBodySchema = z
     // Slack-parity "Also send to #channel": posts an additional top-level copy
     // referencing the reply thread.
     alsoSendToChannel: z.boolean().optional(),
+    requiresConfirmation: z.boolean().optional(),
     // Every composer-selected agent is addressed through this id-keyed entity,
     // never by a display-name match against content.
     agentMentions: AgentMentionSchema.array().optional(),

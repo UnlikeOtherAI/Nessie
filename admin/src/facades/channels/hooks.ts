@@ -141,6 +141,8 @@ export const useUpdateChannel = () => {
       topic?: string | null
       description?: string | null
       decisionPolicy?: ChannelDecisionPolicy | null
+      adminOnlyPosting?: boolean
+      mandatoryAnnouncements?: boolean
     }) => {
       const { channelId, ...body } = input
       return apiClient.patch<ChannelRecord>(

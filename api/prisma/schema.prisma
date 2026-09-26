@@ -1157,6 +1157,7 @@ model User {
   messages                              Message[]
   reactions                             MessageReaction[]
   threadReadStates                      ThreadReadState[]
+  announcementDeliveries                AnnouncementDelivery[]
   startedThreads                        Thread[]                               @relation("ThreadStartedBy")
   messageConversationReadStates         MessageConversationReadState[]
   userAlerts                            UserAlert[]
@@ -2589,6 +2590,8 @@ model Channel {
   projectId                             String                                 @map("project_id") @db.Uuid
   teamId                                String                                 @map("team_id") @db.Uuid
   visibility                            ChannelVisibility                      @default(public)
+  adminOnlyPosting                      Boolean                                @default(false) @map("admin_only_posting")
+  mandatoryAnnouncements                Boolean                                @default(false) @map("mandatory_announcements")
   dmKey                                 String?                                @unique @map("dm_key")
   // sp-channels: channel lifecycle metadata + soft-archive
   topic                                 String?
@@ -2799,6 +2802,7 @@ model UserAlert {
   organizationId            String                   @map("organization_id") @db.Uuid
   userId                    String                   @map("user_id") @db.Uuid
   kind                      UserAlertKind
+  isAnnouncement            Boolean                  @default(false) @map("is_announcement")
   messageId                 String?                  @map("message_id") @db.Uuid
   threadId                  String?                  @map("thread_id") @db.Uuid
   channelId                 String?                  @map("channel_id") @db.Uuid
@@ -2857,6 +2861,29 @@ model UserAlert {
   @@index([localInferenceHostId])
   @@index([localInferenceBindingId])
   @@map("user_alerts")
+}
+
+// A scoped notification entitlement, including UOA members who have never
+// signed in to Nessie. Its UOA subject is a stable reference, not a local
+// identity/profile or membership authority. Exactly one recipient key is set.
+model AnnouncementDelivery {
+  id                  String    @id @default(uuid()) @db.Uuid
+  messageId           String    @map("message_id") @db.Uuid
+  recipientUserId     String?   @map("recipient_user_id") @db.Uuid
+  recipientUoaSub     String?   @map("recipient_uoa_sub")
+  seenAt              DateTime? @map("seen_at")
+  acknowledgedAt      DateTime? @map("acknowledged_at")
+  reminderClaimedAt   DateTime? @map("reminder_claimed_at")
+  reminderMessageId   String?   @map("reminder_message_id") @db.Uuid
+  reminderError       String?   @map("reminder_error")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  message             Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  recipientUser       User?     @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, recipientUserId])
+  @@unique([messageId, recipientUoaSub])
+  @@index([recipientUoaSub, createdAt])
+  @@map("announcement_deliveries")
 }
 
 model ThreadStreamEvent {
@@ -3075,6 +3102,8 @@ model Message {
   onBehalfOfUserId            String?                        @map("on_behalf_of_user_id") @db.Uuid
   userId                      String?                        @map("user_id") @db.Uuid
   role                        MessageRole
+  isAnnouncement              Boolean                        @default(false) @map("is_announcement")
+  requiresConfirmation        Boolean                        @default(false) @map("requires_confirmation")
   content                     String
   metadata                    Json?                          @default("{}")
   // Message-level reply threads: null = top-level post in the container
@@ -3103,6 +3132,7 @@ model Message {
   replies                     Message[]                      @relation("MessageReplies")
   reactions                   MessageReaction[]
   userAlerts                  UserAlert[]
+  announcementDeliveries      AnnouncementDelivery[]
   threadFollows               MessageThreadFollow[]
   productIntegrationRuns      ProductIntegrationRun[]
   productIntegrationResults   ProductIntegrationRun[]        @relation("ProductIntegrationRunResultMessage")

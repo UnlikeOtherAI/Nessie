@@ -222,6 +222,12 @@ export const getAlertLink = (
     return { to: `/channels/${alert.channelId}`, state }
   }
   if (alert.channelId) {
+    if (alert.isAnnouncement && alert.messageId) {
+      if (alert.threadId) {
+        return { to: `/channels/${alert.channelId}/threads/${alert.threadId}/replies/${alert.rootMessageId ?? alert.messageId}` }
+      }
+      return { to: `/channels/${alert.channelId}`, state: { highlightMessageId: alert.messageId } }
+    }
     if (alert.threadId && alert.rootMessageId) {
       return { to: `/channels/${alert.channelId}/threads/${alert.threadId}/replies/${alert.rootMessageId}` }
     }

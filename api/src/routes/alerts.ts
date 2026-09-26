@@ -9,6 +9,8 @@ import {
 } from '../contracts/alerts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { getAttentionSummary, listUserAlerts, markUserAlertsRead } from '../services/alerts.js'
+import { AnnouncementMembershipUnavailableError,
+  currentAnnouncementTeamIds, materializeAnnouncementAlerts } from '../services/announcement-audience.js'
 import type { RouteDeps } from './types.js'
 
 // User alerts (#246): the durable alerts surface. Every read is pinned to the
@@ -34,7 +36,18 @@ export const registerAlertRoutes = (app: FastifyInstance, deps: RouteDeps): void
       limit = parsed
     }
 
+    let currentTeamIds: string[]
+    try {
+      await materializeAnnouncementAlerts(prisma, actorContext)
+      currentTeamIds = await currentAnnouncementTeamIds(prisma, actorContext)
+    } catch (error) {
+      if (error instanceof AnnouncementMembershipUnavailableError) {
+        return sendApiError(reply, 503, 'MEMBERSHIP_UNAVAILABLE', 'Membership could not be verified')
+      }
+      throw error
+    }
     const result = await listUserAlerts(prisma, {
+      currentTeamIds,
       organizationId: actorContext.tenant.organizationId,
       userId: actorContext.actor.actorId,
       cursor: query.cursor,
@@ -49,7 +62,18 @@ export const registerAlertRoutes = (app: FastifyInstance, deps: RouteDeps): void
   app.get('/api/alerts/summary', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
+    let currentTeamIds: string[]
+    try {
+      await materializeAnnouncementAlerts(prisma, actorContext)
+      currentTeamIds = await currentAnnouncementTeamIds(prisma, actorContext)
+    } catch (error) {
+      if (error instanceof AnnouncementMembershipUnavailableError) {
+        return sendApiError(reply, 503, 'MEMBERSHIP_UNAVAILABLE', 'Membership could not be verified')
+      }
+      throw error
+    }
     const summary = await getAttentionSummary(prisma, {
+      currentTeamIds,
       organizationId: actorContext.tenant.organizationId,
       userId: actorContext.actor.actorId,
     })
@@ -69,7 +93,17 @@ export const registerAlertRoutes = (app: FastifyInstance, deps: RouteDeps): void
 
     const organizationId = actorContext.tenant.organizationId
     const userId = actorContext.actor.actorId
+    let currentTeamIds: string[]
+    try {
+      currentTeamIds = await currentAnnouncementTeamIds(prisma, actorContext)
+    } catch (error) {
+      if (error instanceof AnnouncementMembershipUnavailableError) {
+        return sendApiError(reply, 503, 'MEMBERSHIP_UNAVAILABLE', 'Membership could not be verified')
+      }
+      throw error
+    }
     const result = await markUserAlertsRead(prisma, {
+      currentTeamIds,
       organizationId,
       userId,
       ids: body.ids,

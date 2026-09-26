@@ -46,6 +46,22 @@ test('a missed call has an explicit link to its channel message', () => {
   })
 })
 
+test('an announcement alert opens its exact post even without a root reference', () => {
+  const announcement: UserAlertRecord = {
+    ...missedCall,
+    kind: 'mention',
+    isAnnouncement: true,
+    threadId: '55555555-5555-4555-8555-555555555555',
+  }
+  const html = renderToStaticMarkup(createElement(AlertRow, { alert: announcement }))
+  assert.match(html, /Alice posted an announcement in design/)
+  assert.deepEqual(getAlertLink(announcement), {
+    to: `/channels/${announcement.channelId}/threads/${announcement.threadId}/replies/${announcement.messageId}`,
+  })
+  assert.deepEqual(getAlertLink({ ...announcement, rootMessageId: announcement.messageId }),
+    getAlertLink(announcement))
+})
+
 test('team invitation alerts name the inviter and expose acceptance', () => {
   const invitation: UserAlertRecord = {
     ...missedCall,

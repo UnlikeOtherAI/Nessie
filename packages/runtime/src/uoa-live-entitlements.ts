@@ -25,6 +25,7 @@ export type LiveEntitlements =
     organizationId: string
     organizationRole: string
     teamIds: readonly string[]
+    teamRoles: Readonly<Record<string, string>>
     userId: string
   }
   | { kind: 'denied' }
@@ -209,6 +210,10 @@ const resolveLiveEntitlementsInternal = async (
     const resolvedOrgId = text(org?.org_id)
     const organizationRole = text(org?.org_role)
     const externalTeamIds = stringList(org?.teams)
+    const rawTeamRoles = record(org?.team_roles)
+    const teamRoles = Object.fromEntries(Object.entries(rawTeamRoles ?? {}).flatMap(
+      ([teamId, role]) => typeof role === 'string' ? [[teamId, role]] : [],
+    ))
     if (
       resolvedOrgId !== organization.externalOrgId
       || !organizationRole
@@ -218,6 +223,7 @@ const resolveLiveEntitlementsInternal = async (
       kind: 'uoa',
       organizationId: input.organizationId,
       organizationRole,
+      teamRoles,
       teamIds: await localTeamIds(
         prisma,
         input.organizationId,

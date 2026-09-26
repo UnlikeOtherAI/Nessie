@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
+import { useState, type Dispatch, type SetStateAction } from 'react'
 import type { ExternalAgentIdentity } from '../../facades/integrations/hooks'
 import { usePersonalAssistant } from '../../facades/personal-assistant/hooks'
 import type {
@@ -21,8 +21,7 @@ import {
 import { ChannelSearchPanel } from '../../components/features/channels/ChannelSearchPanel'
 import { ChannelTabBar } from '../../components/features/channels/ChannelTabBar'
 import { Pill } from '../../components/primitives/Pill'
-import { agentSelectionLabel } from '../../components/shared/AgentVisibilityPill'
-import { Dialog } from '../../components/shared/Dialog'
+import { ChannelRoutineRecordingDialog } from '../../components/features/channels/ChannelRoutineRecordingDialog'
 import { ChannelTabPanels } from '../../components/features/channels/ChannelTabPanels'
 import { ExternalAgentIntro } from '../../components/features/channels/ExternalAgentIntro'
 import { AgentSessionHome, type AgentSessionHomeProps } from '../../components/features/agents/conversations/AgentSessionHome'
@@ -37,12 +36,7 @@ import { useChannelComposer } from '../../components/features/channels/useChanne
 import { useFileDrop } from '../../hooks/useFileDrop'
 import type { useShareRestrictedMessage } from '../../facades/messages/hooks'
 import { useStickToBottom } from '../../hooks/useStickToBottom'
-import {
-  useActiveDemonstrations,
-  useDemonstrations,
-  useStartDemonstration,
-  useStopDemonstration,
-} from '../../facades/demonstrations/hooks'
+import { useActiveDemonstrations } from '../../facades/demonstrations/hooks'
 import type { DocumentStreamStore } from '../../facades/threads/document-stream-store'
 import type { DocumentStreamEntry } from '../../facades/threads/document-stream-entries'
 import type { PendingStreamMessage } from '../../facades/threads/thinking'
@@ -100,6 +94,8 @@ interface ChannelConversationSurfaceProps {
     | 'sendError'
     | 'mentionRef'
     | 'message'
+    | 'requiresConfirmation'
+    | 'setRequiresConfirmation'
     | 'optimisticMessages'
     | 'pendingAgentInvites'
     | 'sendMessageSubmit'
@@ -249,21 +245,10 @@ export const ChannelConversationSurface = ({
   const roomControls = channelRoomControls({ activeChannel, isPersonalAssistantConversation })
   const callerName = activeCall?.startedByDisplayName ?? null
   const [recordRoutineOpen, setRecordRoutineOpen] = useState(false)
-  const [selectedRoutineAgentId, setSelectedRoutineAgentId] = useState('')
   const { data: activeDemonstrations = [] } = useActiveDemonstrations(activeChannel?.id)
-  const { data: ownDemonstrations = [] } = useDemonstrations()
-  const startDemonstration = useStartDemonstration()
-  const stopDemonstration = useStopDemonstration()
   const recording = activeDemonstrations.find(
     (entry) => entry.threadId === activeThreadId && entry.status === 'recording',
   )
-  const ownRecording = ownDemonstrations.find((entry) => entry.id === recording?.id)
-
-  useEffect(() => {
-    if (!selectedRoutineAgentId && boundAgents[0]) {
-      setSelectedRoutineAgentId(boundAgents[0].id)
-    }
-  }, [boundAgents, selectedRoutineAgentId])
 
   return (
     <div
@@ -329,6 +314,14 @@ export const ChannelConversationSurface = ({
         <CallBanner callerName={callerName} meetingUri={activeCall.meetingUri} />
       ) : null}
 
+      {activeChannel?.type === 'standard' && activeChannel.mandatoryAnnouncements
+        && !isConversationSurface ? (
+          <div className="border-b border-[color:var(--bd)] px-5 py-2 text-xs text-[color:var(--tx2)]"
+            role="status">
+            Admin announcements notify everyone in this channel’s scope. These alerts are always on.
+          </div>
+        ) : null}
+
       <ChannelTabBar
         showAgentTab={agentTabAvailable}
         showAgentsTab={agentsTabAvailable}
@@ -348,6 +341,8 @@ export const ChannelConversationSurface = ({
           {visibleActiveTab === 'messages' && sessionHome ? <AgentSessionHome {...sessionHome} />
             : visibleActiveTab === 'messages' ? (
             <ChannelMessageFeed
+              channelAdminOnlyPosting={activeChannel?.adminOnlyPosting}
+              viewerCanConfigureAnnouncements={activeChannel?.viewerCanConfigureAnnouncements}
               channelId={activeChannel?.id ?? null}
               documentSessions={documentSessions}
               documentStore={documentStore}
@@ -424,6 +419,17 @@ export const ChannelConversationSurface = ({
       ) : null}
 
       {visibleActiveTab === 'messages' && !sessionHome && roomControls.canPost && !workThread?.readOnly ? (
+        <>
+          {activeChannel?.adminOnlyPosting && activeChannel.visibility === 'public'
+            && !isConversationSurface ? (
+              <label className="flex items-center gap-2 px-5 pb-1 text-xs text-[color:var(--tx2)]">
+                <input checked={composer.requiresConfirmation}
+                  className="accent-[var(--accent)]"
+                  onChange={(event) => composer.setRequiresConfirmation(event.target.checked)}
+                  type="checkbox" />
+                Requires confirmation
+              </label>
+            ) : null}
         <ChannelComposer
           attachments={composer.attachments}
           inviteErrors={composer.inviteErrors}
@@ -460,77 +466,18 @@ export const ChannelConversationSurface = ({
           }}
           secretCapture={composer.secretCapture}
         />
+        </>
       ) : null}
 
       {deleteConfirm}
-      <Dialog
-        description="Teach an agent by doing a routine together once. Only completed, redacted structural tool calls are kept; a recording never runs automatically."
-        dismissDisabled={startDemonstration.isPending || stopDemonstration.isPending}
+      <ChannelRoutineRecordingDialog
+        activeChannelId={activeChannel?.id ?? null}
+        activeThreadId={activeThreadId}
+        boundAgents={boundAgents}
         onClose={() => setRecordRoutineOpen(false)}
         open={recordRoutineOpen}
-        title={recording ? 'Routine recording' : 'Record a routine'}
-      >
-        <div className="grid gap-4">
-          {recording ? (
-            <>
-              <p className="text-sm text-[color:var(--tx2)]">
-                Recording is visible to everyone in this channel.
-              </p>
-              {ownRecording ? (
-                <button
-                  className="admin-button admin-button-danger"
-                  disabled={stopDemonstration.isPending}
-                  onClick={() => {
-                    void stopDemonstration
-                      .mutateAsync(ownRecording.id)
-                      .then(() => setRecordRoutineOpen(false))
-                  }}
-                  type="button"
-                >
-                  Stop and generalise to a draft Workflow
-                </button>
-              ) : (
-                <p className="text-sm text-[color:var(--tx3)]">
-                  Another channel member started this recording.
-                </p>
-              )}
-            </>
-          ) : (
-            <>
-              <label className="grid gap-1 text-sm font-medium text-[color:var(--tx)]">
-                Agent to teach
-                <select
-                  className="admin-input"
-                  onChange={(event) => setSelectedRoutineAgentId(event.target.value)}
-                  value={selectedRoutineAgentId}
-                >
-                  {boundAgents.map((agent) => (
-                    <option key={agent.id} value={agent.id}>
-                      {agentSelectionLabel(agent.name, agent.visibility)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                className="admin-button admin-button-primary"
-                disabled={!activeChannel || !activeThreadId || !selectedRoutineAgentId || startDemonstration.isPending}
-                onClick={() => {
-                  if (!activeChannel || !activeThreadId || !selectedRoutineAgentId) return
-                  // The app-wide mutation default surfaces a failure as a toast.
-                  void startDemonstration.mutateAsync({
-                    agentId: selectedRoutineAgentId,
-                    channelId: activeChannel.id,
-                    threadId: activeThreadId,
-                  }).then(() => setRecordRoutineOpen(false)).catch(() => undefined)
-                }}
-                type="button"
-              >
-                Start recording
-              </button>
-            </>
-          )}
-        </div>
-      </Dialog>
+        recording={recording ? { id: recording.id } : null}
+      />
       <DropZoneOverlay active={chatDrop.isDragging} label="Drop files to attach" />
     </div>
   )

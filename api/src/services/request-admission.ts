@@ -131,6 +131,7 @@ export const createRequestAdmission = (deps: RequestAdmissionDependencies) => {
         return reject(403, 'UOA_ACCESS_REVOKED', 'Sign in with UnlikeOtherAI to verify your current access.')
       }
       actorContext.actor.roles = [authorization.role]
+      actorContext.actionContext.uoaTeamRoles = authorization.teamRoles ?? {}
     }
     request.actorContext = actorContext
 

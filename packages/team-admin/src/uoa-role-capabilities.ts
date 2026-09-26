@@ -19,6 +19,7 @@ export type UoaRoleGrants = Partial<Record<UoaRoleGrantScope, Record<string, rea
 export type UoaOrganizationRoleContext = {
   organizationId: string
   role: string
+  teamRoles: Record<string, string>
 }
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -74,5 +75,12 @@ export const readUoaOrganizationRoleContext = async (
       'INSUFFICIENT_ORG_ROLE',
     )
   }
-  return { organizationId: resolvedOrganizationId, role }
+  const rawTeamRoles = asRecord(org?.team_roles)
+  const teamRoles = Object.fromEntries(
+    Object.entries(rawTeamRoles ?? {}).flatMap(([teamId, value]) => {
+      const role = text(value)
+      return role ? [[teamId, role]] : []
+    }),
+  )
+  return { organizationId: resolvedOrganizationId, role, teamRoles }
 }

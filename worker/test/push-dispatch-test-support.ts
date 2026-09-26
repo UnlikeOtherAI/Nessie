@@ -33,7 +33,7 @@ type TokenRow = {
 
 type SecretRow = { ref: string; ciphertext: string; iv: string; authTag: string }
 type MemberRow = { userId: string; muted: boolean }
-type UserRow = { id: string; preferences: unknown; displayName?: string }
+type UserRow = { id: string; preferences: unknown; displayName?: string; uoaSub?: string }
 type DeliveryRow = {
   organizationId: string
   userId: string
@@ -55,6 +55,7 @@ const encrypt = (plaintext: string): Omit<SecretRow, 'ref'> =>
   encryptWithKeyRing(ENCRYPTION_KEY_RING, AT_REST_SECRET_PURPOSE.pushCredential, plaintext)
 
 type FakeMessage = {
+  isAnnouncement?: boolean
   agent: { name: string } | null
   agentId: string | null
   basisScopes: { scopeId: string; scopeType: string }[]
@@ -67,8 +68,9 @@ type FakeState = {
   users?: UserRow[]
   tokens: TokenRow[]
   secrets: SecretRow[]
-  channel: { label: string } | null
+  channel: { label: string; teamId?: string; project?: { channelRoot: boolean } } | null
   message?: FakeMessage | null
+  announcementDeliveries?: { recipientUserId: string | null; recipientUoaSub: string | null }[]
   disclosureGrants?: { grantedByUserId: string }[]
   activeOrganizationMemberIds?: string[]
   deleted: string[]
@@ -122,7 +124,12 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
       },
     },
     channel: {
-      findUnique: async () => state.channel,
+      findUnique: async () => state.channel
+        ? { teamId: 'team-1', project: { channelRoot: true }, ...state.channel }
+        : null,
+    },
+    announcementDelivery: {
+      findMany: async () => state.announcementDeliveries ?? [],
     },
     message: {
       findUnique: async () => state.message ?? {
@@ -135,7 +142,7 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
         })(),
       },
     },
-    teamMember: { findMany: async () => [] },
+    teamMember: { findMany: async () => [], count: async () => 1 },
     projectMember: { findMany: async () => [] },
     organizationMember: {
       findFirst: async ({ where }: { where: { userId: string } }) =>
@@ -153,9 +160,11 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
         state.secrets.find((s) => s.ref === where.ref) ?? null,
     },
     user: {
-      findMany: async ({ where }: { where: { id: { in: string[] } } }) => {
+      findMany: async ({ where }: { where: { id?: { in: string[] }; uoaSub?: { in: string[] } } }) => {
         const users = state.users ?? state.members.map((m) => ({ id: m.userId, preferences: null }))
-        return users.filter((user) => where.id.in.includes(user.id))
+        return users.filter((user) => where.id?.in.includes(user.id)
+          || (where.uoaSub && 'uoaSub' in user && user.uoaSub
+            && where.uoaSub.in.includes(user.uoaSub)))
       },
       findUnique: async ({ where }: { where: { id: string } }) => {
         const user = (state.users ?? []).find((entry) => entry.id === where.id)

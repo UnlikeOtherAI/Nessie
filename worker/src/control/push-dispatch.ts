@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import {
   canUserReadDisclosureBasis,
   isOpenMentionChannel,
+  resolveLiveEntitlementDecision,
   type BasisScopeRow,
 } from '@nessie/runtime'
 import { buildChannelMessagePath, type PushDispatchJobPayload } from '@nessie/schemas'
@@ -45,6 +46,7 @@ export type PushDispatchPrisma = PushDeliveryPrisma &
   PushBadgePrisma &
   Pick<PrismaClient,
     | 'agent'
+    | 'announcementDelivery'
     | 'channelMember'
     | 'channel'
     | 'disclosureGrant'
@@ -77,6 +79,7 @@ export type PushDispatchDeps = {
 }
 
 type PushMessage = {
+  isAnnouncement: boolean
   agentId: string | null
   agent: { name: string } | null
   basisScopes: BasisScopeRow[]
@@ -123,8 +126,47 @@ export const handlePushDispatch = async (
   })
   const channel = await deps.prisma.channel.findUnique({
     where: { id: payload.channelId },
-    select: { label: true, systemChannelType: true, type: true, visibility: true },
+    select: { label: true, systemChannelType: true, type: true, visibility: true,
+      teamId: true, project: { select: { channelRoot: true } },
+    },
   })
+  const announcementMessage = await deps.prisma.message.findUnique({
+    where: { id: payload.messageId }, select: { isAnnouncement: true },
+  })
+  const announcementRecipientIds = new Set<string>()
+  if (announcementMessage?.isAnnouncement && channel) {
+    const deliveries = await deps.prisma.announcementDelivery.findMany({
+      where: { messageId: payload.messageId },
+      select: { recipientUserId: true, recipientUoaSub: true },
+    })
+    const subjects = deliveries.flatMap((delivery) =>
+      delivery.recipientUoaSub ? [delivery.recipientUoaSub] : [],
+    )
+    const subjectUsers = subjects.length > 0 ? await deps.prisma.user.findMany({
+      where: { uoaSub: { in: subjects } }, select: { id: true, uoaSub: true },
+    }) : []
+    const userBySubject = new Map(subjectUsers.flatMap((user) =>
+      user.uoaSub ? [[user.uoaSub, user.id] as const] : [],
+    ))
+    for (const delivery of deliveries) {
+      const userId = delivery.recipientUserId
+        ?? (delivery.recipientUoaSub ? userBySubject.get(delivery.recipientUoaSub) : undefined)
+      if (!userId) continue
+      const decision = await resolveLiveEntitlementDecision(deps.prisma, {
+        allowStoredIdentity: true, organizationId: payload.organizationId, userId,
+      })
+      if (decision.status === 'unavailable') throw new Error('UOA unavailable for announcement push')
+      if (decision.status !== 'allowed') continue
+      const currentMember = channel.project.channelRoot
+        ? true
+        : decision.entitlements.kind === 'uoa'
+          ? decision.entitlements.teamIds.includes(channel.teamId)
+          : (await deps.prisma.teamMember.count({
+            where: { teamId: channel.teamId, userId },
+          })) > 0
+      if (currentMember) announcementRecipientIds.add(userId)
+    }
+  }
   // An open channel (public, not a DM, not a system conversation) is readable
   // by every active organisation member, so a person @mentioned there who never
   // joined is still rung — framed as a mention. A private or protected channel
@@ -151,15 +193,18 @@ export const handlePushDispatch = async (
     })).map((row) => row.userId)
     : []
   const unmutedRecipientIds = [
-    ...members.filter((member) => !member.muted).map((member) => member.userId),
+    ...members.filter((member) => !member.muted && (
+      !announcementMessage?.isAnnouncement || payload.mentionUserIds.includes(member.userId)
+    )).map((member) => member.userId),
     ...openChannelMentionIds,
+    ...announcementRecipientIds,
   ]
   if (unmutedRecipientIds.length === 0) {
     return summary
   }
 
   const users = await deps.prisma.user.findMany({
-    where: { id: { in: unmutedRecipientIds } },
+    where: { id: { in: [...new Set(unmutedRecipientIds)] } },
     select: { id: true, preferences: true },
   })
   // A protected reply never contains content in a notification. Its requester
@@ -175,6 +220,7 @@ export const handlePushDispatch = async (
     where: { id: payload.messageId },
     select: {
       agentId: true,
+      isAnnouncement: true,
       agent: { select: { name: true } },
       basisScopes: { select: { scopeId: true, scopeType: true } },
       disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
@@ -219,17 +265,25 @@ export const handlePushDispatch = async (
   // recipient set above already holds only people the message addresses.
   const mentionUserIds = new Set(payload.mentionUserIds)
   const mentionedRecipientIds = entitledUsers
+    .filter((user) => !announcementRecipientIds.has(user.id))
     .filter((user) => mentionUserIds.has(user.id))
     .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'mentions'))
     .map((user) => user.id)
   const otherRecipientIds = entitledUsers
+    .filter((user) => !announcementRecipientIds.has(user.id))
     .filter((user) => !mentionUserIds.has(user.id))
     .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'messages'))
+    .map((user) => user.id)
+  const mandatoryRecipientIds = entitledUsers
+    .filter((user) => announcementRecipientIds.has(user.id))
+    .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'announcements'))
     .map((user) => user.id)
 
   // A reply panel is the actionable destination for both a top-level message
   // and a reply. Older queued jobs simply use their message as the root.
-  const deepLinkUrl = buildChannelMessagePath(payload)
+  const deepLinkUrl = replyMessage?.isAnnouncement && !payload.rootMessageId
+    ? `/channels/${payload.channelId}/threads/${payload.threadId}/replies/${payload.messageId}`
+    : buildChannelMessagePath(payload)
 
   const buildPayload = (subtitle: string, badge: number): PushPayload => ({
     badge,
@@ -294,6 +348,12 @@ export const handlePushDispatch = async (
 
   if (otherRecipientIds.length > 0) {
     const delivered = await deliver(otherRecipientIds, `# ${channelLabel}`)
+    summary.sent += delivered.sent
+    summary.failed += delivered.failed
+    summary.pruned += delivered.pruned
+  }
+  if (mandatoryRecipientIds.length > 0) {
+    const delivered = await deliver(mandatoryRecipientIds, `# ${channelLabel}`)
     summary.sent += delivered.sent
     summary.failed += delivered.failed
     summary.pruned += delivered.pruned

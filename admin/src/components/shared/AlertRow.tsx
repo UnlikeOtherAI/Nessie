@@ -111,6 +111,9 @@ const describeAlert = (alert: UserAlertRecord): string => {
   if (alert.kind === 'call_missed') {
     return `Missed call from ${actor}${alert.channelLabel ? ` in ${alert.channelLabel}` : ''}`
   }
+  if (alert.isAnnouncement) {
+    return `${actor} posted an announcement${alert.channelLabel ? ` in ${alert.channelLabel}` : ''}`
+  }
   return `${actor} mentioned you${alert.channelLabel ? ` in ${alert.channelLabel}` : ''}`
 }
 

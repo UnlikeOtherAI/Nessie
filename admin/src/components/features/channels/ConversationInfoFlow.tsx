@@ -183,7 +183,14 @@ const ConversationOverview = ({
           onClick={onOpenMembers}
         />
         {canAddPeople ? <Disclosure label="Add people" onClick={onOpenAddPeople} /> : null}
-        <button
+        {activeChannel.mandatoryAnnouncements ? (
+          <div className="px-5 py-4" role="status">
+            <span className="block text-sm font-semibold text-[color:var(--tx)]">Notifications always on</span>
+            <span className="mt-0.5 block text-xs text-[color:var(--tx3)]">
+              Admin announcements create in-app alerts for everyone in scope.
+            </span>
+          </div>
+        ) : <button
           className="flex w-full items-center justify-between px-5 py-4 text-left transition-colors hover:bg-[color:var(--overlay-weak)]"
           disabled={setMute.isPending}
           onClick={() => setMute.mutate({ channelId: activeChannel.id, muted: !activeChannel.muted })}
@@ -198,7 +205,7 @@ const ConversationOverview = ({
           <span className="text-xs font-semibold text-[color:var(--accent)]">
             {activeChannel.muted ? 'Turn on' : 'Mute'}
           </span>
-        </button>
+        </button>}
       </div>
     </>
   )

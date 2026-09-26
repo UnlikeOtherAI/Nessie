@@ -76,6 +76,7 @@ export type TeamInvitationAlertMetadata = z.infer<
 
 export const UserAlertRecordSchema = z.object({
   id: z.string().uuid(),
+  isAnnouncement: z.boolean().optional(),
   kind: UserAlertKindSchema,
   messageId: z.string().uuid().nullable(),
   rootMessageId: z.string().uuid().nullable(),

@@ -22,7 +22,7 @@ export type ChannelRoomControls = {
    */
   canPost: boolean
   /** Why the composer is absent, when it is — so the room can say so. */
-  postRefusal: 'join-to-post' | 'not-a-member' | null
+  postRefusal: 'join-to-post' | 'not-a-member' | 'read-only' | null
 }
 
 /**
@@ -36,6 +36,7 @@ export const channelRoomControls = (input: {
     | Pick<
       ChannelRecord,
       'memberRole' | 'type' | 'viewerCanManage' | 'viewerIsMember' | 'visibility'
+      | 'adminOnlyPosting' | 'viewerCanConfigureAnnouncements' | 'viewerCanPost'
     >
     | null
     | undefined
@@ -54,12 +55,16 @@ export const channelRoomControls = (input: {
     isRoom && activeChannel?.visibility === 'public' && !viewerIsMember,
   )
   return {
-    canManageChannel: isRoom && activeChannel?.viewerCanManage === true,
+    canManageChannel: isRoom && (activeChannel?.viewerCanManage === true
+      || activeChannel?.viewerCanConfigureAnnouncements === true),
     canOpenConversationInfo: Boolean(
       activeChannel && activeChannel.type === 'dm' && !isPersonalAssistantConversation,
     ),
-    canPost: Boolean(activeChannel) && viewerIsMember,
-    postRefusal: !activeChannel || viewerIsMember
+    canPost: Boolean(activeChannel) && viewerIsMember && activeChannel?.viewerCanPost !== false,
+    postRefusal: activeChannel?.adminOnlyPosting && viewerIsMember
+      && activeChannel.viewerCanPost === false
+      ? 'read-only'
+      : !activeChannel || viewerIsMember
       ? null
       : shouldJoin ? 'join-to-post' : 'not-a-member',
     shouldJoin,

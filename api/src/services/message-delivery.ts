@@ -15,7 +15,6 @@ import {
 } from '@nessie/schemas'
 import { enqueueOrchestrateDecide } from '@nessie/db'
 
-import { enqueuePushDispatch } from '../queue/pgqueue.js'
 import type { CreateThreadMessageResult } from './message-create.js'
 
 /**
@@ -299,6 +298,7 @@ export const deliverCreatedMessage = async (
           data: {
             userId: parseUserId(alertedUserId),
             kind: 'mention' as const,
+            ...(result.message.isAnnouncement ? { isAnnouncement: true } : {}),
             messageId: result.message.id,
             threadId: parseThreadId(thread.id),
             channelId: parseChannelId(thread.channel.id),
@@ -314,38 +314,6 @@ export const deliverCreatedMessage = async (
         '[alerts] failed to publish alert.created',
       )
     }
-  }
-
-  try {
-    const mentions =
-      result.message.metadata
-      && typeof result.message.metadata === 'object'
-      && !Array.isArray(result.message.metadata)
-        ? (result.message.metadata as { mentions?: { userIds?: unknown } }).mentions
-        : undefined
-    const mentionUserIds =
-      mentions && Array.isArray(mentions.userIds)
-        ? mentions.userIds.filter((id): id is string => typeof id === 'string')
-        : []
-    await enqueuePushDispatch(
-      prisma,
-      {
-        messageId: result.message.id,
-        authorUserId: actorContext.actor.actorId,
-        channelId: thread.channel.id,
-        threadId: thread.id,
-        ...(result.replyRoot ? { rootMessageId: result.replyRoot.rootMessageId } : {}),
-        organizationId: actorContext.tenant.organizationId,
-        contentSnippet: result.message.content.slice(0, 140),
-        mentionUserIds,
-      },
-      `push:${result.message.id}`,
-    )
-  } catch (error) {
-    log.error(
-      { err: error, messageId: result.message.id },
-      '[push] failed to enqueue dispatch job — recipients will not be notified',
-    )
   }
 
   // The work record's job was enqueued with the message itself

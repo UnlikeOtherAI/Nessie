@@ -43,6 +43,8 @@ export const UpdateChannelBodySchema = z
     topic: z.string().max(500).nullable().optional(),
     description: z.string().max(2000).nullable().optional(),
     visibility: SelectableVisibilitySchema.optional(),
+    adminOnlyPosting: z.boolean().optional(),
+    mandatoryAnnouncements: z.boolean().optional(),
     decisionPolicy: ChannelDecisionPolicySchema.nullable().optional(),
   })
   .refine(
@@ -51,6 +53,8 @@ export const UpdateChannelBodySchema = z
       || body.topic !== undefined
       || body.description !== undefined
       || body.visibility !== undefined
+      || body.adminOnlyPosting !== undefined
+      || body.mandatoryAnnouncements !== undefined
       || body.decisionPolicy !== undefined,
     {
       message:

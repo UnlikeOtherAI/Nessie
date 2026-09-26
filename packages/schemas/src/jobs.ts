@@ -245,6 +245,13 @@ export const PushDispatchJobPayloadSchema = z.object({
 })
 export type PushDispatchJobPayload = z.infer<typeof PushDispatchJobPayloadSchema>
 
+export const AnnouncementReminderJobPayloadSchema = z.object({
+  messageId: z.string().uuid(),
+  senderUserId: z.string().uuid(),
+  organizationId: z.string().uuid(),
+})
+export type AnnouncementReminderJobPayload = z.infer<typeof AnnouncementReminderJobPayloadSchema>
+
 /**
  * A recipient-private durable-attention delivery. The API creates this queue
  * row in the same transaction as its UserAlert, so a source event cannot commit

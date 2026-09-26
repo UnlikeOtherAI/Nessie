@@ -10,6 +10,7 @@ import {
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { createThreadMessage, messageEmbeddingForSender } from '../services/message-create.js'
+import { ChannelPostForbiddenError } from '../services/channel-posting-policy.js'
 import { deliverCreatedMessage } from '../services/message-delivery.js'
 import { listThreadMessages } from '../services/message-read-model.js'
 import { findThreadForUser } from '../services/message-read-state.js'
@@ -123,13 +124,22 @@ export const registerVoiceConversationRoutes = (
           ? headerKey.trim().slice(0, 200)
           : undefined
 
-      const result = await createThreadMessage(prisma, {
+      let result
+      try {
+        result = await createThreadMessage(prisma, {
         content: body.text,
         threadId: thread.id,
         userId: actorContext.actor.actorId,
+        actorContext,
         ...(clientMessageId ? { clientMessageId } : {}),
         embedding: messageEmbeddingForSender(sharedModelClient, actorContext),
-      })
+        })
+      } catch (error) {
+        if (error instanceof ChannelPostForbiddenError) {
+          return sendApiError(reply, 403, 'CHANNEL_READ_ONLY', error.message)
+        }
+        throw error
+      }
 
       if (result.kind === 'replayed') {
         // The retry gets the message the first attempt made. Delivering it a

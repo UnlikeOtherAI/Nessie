@@ -18,10 +18,11 @@ type ChannelMessageActionsProps = {
   content: string
   currentUserId: string
   messageId: string
+  requiresConfirmation?: boolean
   reactions: MessageReaction[]
   resolveReactorName: ResolveReactorName
   onAddReaction: (messageId: string, emoji: string) => void
-  onConfirmDelete: (messageId: string) => void
+  onConfirmDelete: (messageId: string, requiresConfirmation?: boolean) => void
   onReply?: () => void
   onStartEdit: (messageId: string, content: string) => void
 }
@@ -41,6 +42,7 @@ export const ChannelMessageActions = ({
   content,
   currentUserId,
   messageId,
+  requiresConfirmation,
   reactions,
   resolveReactorName,
   onAddReaction,
@@ -127,7 +129,7 @@ export const ChannelMessageActions = ({
         {canDelete ? (
           <SharedActionButton
             aria-label="Delete message"
-            onClick={() => onConfirmDelete(messageId)}
+            onClick={() => onConfirmDelete(messageId, requiresConfirmation)}
             title="Delete message"
             type="button"
           >

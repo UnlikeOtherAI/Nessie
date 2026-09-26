@@ -1,7 +1,10 @@
 import type { PrismaClient } from '@prisma/client'
 import { isAgentCardResponseMessage, isResearchRunRefMessage } from '@nessie/schemas'
+import type { AuthorizedActionContext } from '@nessie/schemas'
+import { writeAuditEntryInTransaction } from '@nessie/db'
 
 import { messageInclude, type MessageWithReactions } from './message-read-model.js'
+import { canAdminPostInChannel } from './channel-posting-policy.js'
 
 /**
  * Changing a message that already exists: an author's edit, and the soft delete
@@ -20,15 +23,22 @@ export type UpdateMessageResult =
   | { kind: 'not_found' }
   | { kind: 'forbidden' }
   /** A card press, or the research card a person's research was started from. */
-  | { kind: 'immutable'; record: 'card_response' | 'research_card' }
+  | { kind: 'immutable'; record: 'card_response' | 'research_card' | 'confirmation' }
 
 export const updateMessage = async (
   prisma: PrismaClient,
-  input: { messageId: string; threadId: string; userId: string; content: string },
+  input: { messageId: string; threadId: string; userId: string; content: string;
+    actorContext?: AuthorizedActionContext },
 ): Promise<UpdateMessageResult> => {
   const existing = await prisma.message.findFirst({
     where: { id: input.messageId, threadId: input.threadId },
-    select: { id: true, userId: true, deletedAt: true, metadata: true },
+    select: { id: true, userId: true, deletedAt: true, metadata: true, requiresConfirmation: true,
+      thread: { select: { channel: { select: {
+        id: true, organizationId: true, teamId: true, type: true, systemChannelType: true,
+        adminOnlyPosting: true, organization: { select: { externalOrgId: true } },
+        team: { select: { externalTeamId: true } },
+      } } } },
+    },
   })
   if (!existing || existing.deletedAt) {
     return { kind: 'not_found' }
@@ -37,6 +47,10 @@ export const updateMessage = async (
   if (existing.userId !== input.userId) {
     return { kind: 'forbidden' }
   }
+  if (existing.thread.channel.adminOnlyPosting && !(await canAdminPostInChannel(
+    prisma, existing.thread.channel, input.userId, input.actorContext,
+  ))) return { kind: 'forbidden' }
+  if (existing.requiresConfirmation) return { kind: 'immutable', record: 'confirmation' }
   // A card press is a record, not a remark: the AgentCard row is the authority
   // and this message is its rendering in the chat and in the agent's
   // transcript. Editing it would put a "Deny" beside a card that says "Allow".
@@ -70,11 +84,19 @@ export const softDeleteMessage = async (
     messageId: string
     threadId: string
     userId: string
+    actorContext?: AuthorizedActionContext
   },
 ): Promise<SoftDeleteMessageResult> => {
   const existing = await prisma.message.findFirst({
     where: { id: input.messageId, threadId: input.threadId },
-    select: { id: true, userId: true, deletedAt: true },
+    select: { id: true, userId: true, deletedAt: true, requiresConfirmation: true,
+      thread: { select: { channel: { select: {
+        id: true, organizationId: true, projectId: true, teamId: true,
+        type: true, systemChannelType: true,
+        adminOnlyPosting: true, organization: { select: { externalOrgId: true } },
+        team: { select: { externalTeamId: true } },
+      } } } },
+    },
   })
   if (!existing || existing.deletedAt) {
     return { kind: 'not_found' }
@@ -86,13 +108,40 @@ export const softDeleteMessage = async (
   if (existing.userId !== input.userId) {
     return { kind: 'forbidden' }
   }
+  if (existing.thread.channel.adminOnlyPosting && !(await canAdminPostInChannel(
+    prisma, existing.thread.channel, input.userId, input.actorContext,
+  ))) return { kind: 'forbidden' }
 
-  const message = await prisma.message.update({
-    where: { id: input.messageId },
-    // Blank the content for privacy; the row remains so the UI can render a
-    // tombstone and pagination keysets stay stable.
-    data: { deletedAt: new Date(), content: '' },
-    include: messageInclude,
+  const message = await prisma.$transaction(async (tx) => {
+    if (existing.requiresConfirmation) {
+      // Lock the outstanding receipts before the message. The reminder worker
+      // takes the same order, so a send and cancellation have one winner.
+      await tx.announcementDelivery.updateMany({
+        where: { messageId: input.messageId, acknowledgedAt: null,
+          reminderMessageId: null },
+        data: { reminderError: 'Announcement removed' },
+      })
+    }
+    const deleted = await tx.message.update({
+      where: { id: input.messageId },
+      // Blank the content for privacy; the row remains so the UI can render a
+      // tombstone and pagination keysets stay stable.
+      data: { deletedAt: new Date(), content: '' },
+      include: messageInclude,
+    })
+    if (existing.requiresConfirmation && input.actorContext) {
+      await writeAuditEntryInTransaction(tx, {
+        organizationId: existing.thread.channel.organizationId,
+        projectId: existing.thread.channel.projectId,
+        teamId: existing.thread.channel.teamId,
+        channelId: existing.thread.channel.id,
+        actorType: 'user', actorId: input.userId,
+        action: 'announcement.cancelled', resourceType: 'announcement',
+        resourceId: input.messageId, outcome: 'success',
+        requestId: input.actorContext.actionContext.requestId,
+      })
+    }
+    return deleted
   })
   return { kind: 'deleted', message }
 }

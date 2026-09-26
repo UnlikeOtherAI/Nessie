@@ -208,6 +208,8 @@ export type MessageAuthor = {
 }
 
 export type ThreadMessageRecord = {
+  isAnnouncement?: boolean
+  requiresConfirmation?: boolean
   agentId?: string | null
   onBehalfOfUserId?: string | null
   // How many files this message carries, so the feed only fetches the

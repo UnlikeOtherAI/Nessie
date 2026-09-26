@@ -178,6 +178,7 @@ export type WsEventMap = {
   // recipient's accessible channel; clients filter on `userId`.
   'alert.created': {
     userId: UserId
+    isAnnouncement?: boolean
     // `knowledge_shared` is the reader side of a person-to-person document
     // share: parseable one deploy before the writer is enabled, because a
     // replica on the previous build would refuse a kind it does not know.
@@ -395,6 +396,7 @@ export type CardUpdatedEvent = z.infer<typeof CardUpdatedEventSchema>
 // User alerts (#246): additive kinds per the #225 realtime registry.
 export const AlertCreatedEventSchema = z.object({
   userId: UserIdSchema,
+  isAnnouncement: z.boolean().optional(),
   kind: z.enum(['mention', 'task_assigned', 'knowledge_published', 'knowledge_shared']),
   messageId: z.string().uuid().optional(),
   threadId: ThreadIdSchema.optional(),

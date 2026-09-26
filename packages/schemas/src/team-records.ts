@@ -55,6 +55,10 @@ export type PersonalAssistantPresenceParticipant = z.infer<
 
 export const ChannelRecordSchema = z.object({
   decisionPolicy: ChannelDecisionPolicySchema.nullish(),
+  adminOnlyPosting: z.boolean().optional(),
+  mandatoryAnnouncements: z.boolean().optional(),
+  viewerCanConfigureAnnouncements: z.boolean().optional(),
+  viewerCanPost: z.boolean().optional(),
   id: ChannelIdSchema,
   label: NonEmptyStringSchema,
   slug: z.string().nullish(),

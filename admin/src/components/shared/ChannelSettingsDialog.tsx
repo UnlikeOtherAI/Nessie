@@ -38,6 +38,8 @@ export const ChannelSettingsDialog = (
   const [label, setLabel] = useState(channel.label)
   const [topic, setTopic] = useState(channel.topic ?? '')
   const [description, setDescription] = useState(channel.description ?? '')
+  const [adminOnlyPosting, setAdminOnlyPosting] = useState(channel.adminOnlyPosting ?? false)
+  const [mandatoryAnnouncements, setMandatoryAnnouncements] = useState(channel.mandatoryAnnouncements ?? false)
   const [initialMetadata, setInitialMetadata] = useState({
     label: channel.label, topic: channel.topic ?? '', description: channel.description ?? '',
   })
@@ -64,6 +66,8 @@ export const ChannelSettingsDialog = (
       setLabel(channel.label)
       setTopic(channel.topic ?? '')
       setDescription(channel.description ?? '')
+      setAdminOnlyPosting(channel.adminOnlyPosting ?? false)
+      setMandatoryAnnouncements(channel.mandatoryAnnouncements ?? false)
       setInitialMetadata({ label: channel.label, topic: channel.topic ?? '', description: channel.description ?? '' })
       setConfirmDelete(false)
       setConfirmArchive(false)
@@ -79,12 +83,12 @@ export const ChannelSettingsDialog = (
     event.preventDefault()
     const nextLabel = toChannelSlug(label)
     if (!nextLabel) return
-    if (policyConflict) {
+    if (channel.viewerCanManage && policyConflict) {
       setTab('decisions')
       return
     }
     const parsed = ChannelDecisionPolicySchema.safeParse(policy)
-    if (policyChanged && !parsed.success) {
+    if (channel.viewerCanManage && policyChanged && !parsed.success) {
       setPolicyErrors(Object.fromEntries(parsed.error.issues.map((issue) => [issue.path.join('.'), issue.message])))
       setTab('decisions')
       return
@@ -93,10 +97,16 @@ export const ChannelSettingsDialog = (
     try {
       await updateChannel.mutateAsync({
         channelId: channel.id,
-        ...(nextLabel !== initialMetadata.label ? { label: nextLabel } : {}),
-        ...(topic !== initialMetadata.topic ? { topic: topic.trim() || null } : {}),
-        ...(description !== initialMetadata.description ? { description: description.trim() || null } : {}),
-        ...(policyChanged && parsed.success ? { decisionPolicy: parsed.data } : {}),
+        ...(channel.viewerCanManage && nextLabel !== initialMetadata.label ? { label: nextLabel } : {}),
+        ...(channel.viewerCanManage && topic !== initialMetadata.topic ? { topic: topic.trim() || null } : {}),
+        ...(channel.viewerCanManage && description !== initialMetadata.description
+          ? { description: description.trim() || null } : {}),
+        ...(channel.viewerCanManage && policyChanged && parsed.success
+          ? { decisionPolicy: parsed.data } : {}),
+        ...(channel.viewerCanConfigureAnnouncements && adminOnlyPosting !== channel.adminOnlyPosting
+          ? { adminOnlyPosting } : {}),
+        ...(channel.viewerCanConfigureAnnouncements && mandatoryAnnouncements !== channel.mandatoryAnnouncements
+          ? { mandatoryAnnouncements } : {}),
       })
       onClose()
     } catch (error) {
@@ -138,25 +148,29 @@ export const ChannelSettingsDialog = (
   // Rendered only for somebody the server lets change this channel. The header
   // gear is gated the same way; this is the second lock, so a stale open state
   // or a future doorway cannot show edit controls that would only be refused.
-  if (!channel.viewerCanManage) return null
+  if (!channel.viewerCanManage && !channel.viewerCanConfigureAnnouncements) return null
+  const nameFieldError = channel.viewerCanManage && tab === 'channel'
+    && adminOnlyPosting === channel.adminOnlyPosting
+    && mandatoryAnnouncements === channel.mandatoryAnnouncements
+    ? formError : null
 
   return (
     <>
       <Dialog description={`#${channel.label}`} onClose={onClose} open={open} size="lg" title="Channel settings">
         <form className="grid min-w-0 gap-4" noValidate onSubmit={handleSubmit}>
-          <TabBar
+          {channel.viewerCanManage ? <TabBar
             ariaLabel="Channel settings sections"
             idPrefix="channel-settings"
             items={[{ label: 'Channel', value: 'channel' }, { label: 'Agent decisions', value: 'decisions' }]}
             onChange={setTab}
             value={tab}
-          />
+          /> : null}
           <div
-            aria-labelledby="channel-settings-tab-channel"
+            aria-labelledby={channel.viewerCanManage ? 'channel-settings-tab-channel' : undefined}
             className="grid gap-4"
-            hidden={tab !== 'channel'}
+            hidden={channel.viewerCanManage && tab !== 'channel'}
             id="channel-settings-tabpanel-channel"
-            role="tabpanel"
+            role={channel.viewerCanManage ? 'tabpanel' : undefined}
           >
             <div className="grid gap-1.5">
               <label
@@ -169,9 +183,10 @@ export const ChannelSettingsDialog = (
                 Name
               </label>
               <input
-                {...fieldErrorAria('channel-settings-name', formError)}
+                {...fieldErrorAria('channel-settings-name', nameFieldError)}
                 autoComplete="off"
                 className="admin-input"
+                disabled={!channel.viewerCanManage}
                 id="channel-settings-name"
                 onChange={(e) => {
                   setLabel(toChannelNameInput(e.target.value))
@@ -188,12 +203,12 @@ export const ChannelSettingsDialog = (
                 only the id + role="alert" pairing it to the input above is new.
                 Written in the save catch, cleared on the next keystroke.
               */}
-              {formError ? (
+              {nameFieldError ? (
                 <div
                   className="text-xs text-[color:var(--danger-text)]"
                   {...fieldErrorProps('channel-settings-name')}
                 >
-                  {formError}
+                  {nameFieldError}
                 </div>
               ) : null}
             </div>
@@ -211,6 +226,7 @@ export const ChannelSettingsDialog = (
               <input
                 autoComplete="off"
                 className="admin-input"
+                disabled={!channel.viewerCanManage}
                 id="channel-settings-topic"
                 onChange={(e) => setTopic(e.target.value)}
                 placeholder="What is this channel about?"
@@ -230,6 +246,7 @@ export const ChannelSettingsDialog = (
               </label>
               <textarea
                 className="admin-input"
+                disabled={!channel.viewerCanManage}
                 id="channel-settings-description"
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Longer description (optional)"
@@ -237,8 +254,30 @@ export const ChannelSettingsDialog = (
                 value={description}
               />
             </div>
+            {channel.viewerCanConfigureAnnouncements && channel.type === 'standard' ? (
+              <fieldset className="grid gap-3 border-t border-[color:var(--bd)] pt-4">
+                <legend className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+                  Announcements
+                </legend>
+                <label className="flex items-start gap-2 text-sm text-[color:var(--tx)]">
+                  <input checked={adminOnlyPosting} className="mt-1 accent-[var(--accent)]"
+                    onChange={(event) => setAdminOnlyPosting(event.target.checked)} type="checkbox" />
+                  <span><strong>Read-only for members</strong><span className="block text-xs text-[color:var(--tx3)]">
+                    Only organisation and team administrators can post. Administrators still join before posting.
+                  </span></span>
+                </label>
+                <label className="flex items-start gap-2 text-sm text-[color:var(--tx)]">
+                  <input checked={mandatoryAnnouncements} className="mt-1 accent-[var(--accent)]"
+                    onChange={(event) => setMandatoryAnnouncements(event.target.checked)} type="checkbox" />
+                  <span><strong>Mandatory admin announcements</strong><span className="block text-xs text-[color:var(--tx3)]">
+                    Every active person in this channel’s team or organisation receives an in-app alert for admin posts.
+                    Channel mute cannot turn these alerts off. This requires a public channel.
+                  </span></span>
+                </label>
+              </fieldset>
+            ) : null}
           </div>
-          <div
+          {channel.viewerCanManage ? <div
             aria-labelledby="channel-settings-tab-decisions"
             hidden={tab !== 'decisions'}
             id="channel-settings-tabpanel-decisions"
@@ -267,12 +306,12 @@ export const ChannelSettingsDialog = (
               onChange={(next) => { setPolicy(next); setPolicyErrors({}); setFormError(null) }}
               policy={policy}
             />
-          </div>
-          {formError && tab === 'decisions' ? (
+          </div> : null}
+          {formError && !nameFieldError ? (
             <p className="text-xs text-[color:var(--danger-text)]" role="alert">{formError}</p>
           ) : null}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--bd)] pt-3">
-            <div className="flex gap-2" hidden={tab !== 'channel'}>
+            <div className="flex gap-2" hidden={tab !== 'channel' || !channel.viewerCanManage}>
               <button
                 className="admin-button admin-button-secondary"
                 disabled={archiveChannel.isPending}

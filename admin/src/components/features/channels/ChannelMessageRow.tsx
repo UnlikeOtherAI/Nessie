@@ -30,9 +30,11 @@ export const StatusBadge = ({ presence }: { presence: PresenceView | null }) => 
 
 interface ChannelMessageRowProps {
   message: ThreadMessageRecord
+  channelAdminOnlyPosting?: boolean
   agentMap: Map<string, AgentRecord>
   meDisplayName: string
   meUserId: string
+  viewerCanConfigureAnnouncements?: boolean
   meAvatar: AvatarSources
   token: string | null
   assistantFallbackName: string
@@ -53,7 +55,7 @@ interface ChannelMessageRowProps {
   onSubmitEdit: (messageId: string) => void
   onCancelEdit: () => void
   onAddReaction: (messageId: string, emoji: string) => void
-  onConfirmDelete: (messageId: string) => void
+  onConfirmDelete: (messageId: string, requiresConfirmation?: boolean) => void
   onOpenThread?: (rootMessageId: string) => void
   onOpenAttachment?: (attachment: AttachmentRecord) => void
   onSelectAgent?: (agent: ChannelAgentParticipant) => void
@@ -69,6 +71,8 @@ interface ChannelMessageRowProps {
 // actions are message payload, so they live in ChannelMessageBody.
 export const ChannelMessageRow = ({
   message, agentMap, meDisplayName, meUserId, meAvatar, token,
+  channelAdminOnlyPosting,
+  viewerCanConfigureAnnouncements,
   assistantFallbackName, personalAssistantPresence, isDedicatedAgentConversation,
   isExternalAgentConversation, renderContent, editingMessageId, editingContent,
   updatePending, onStartEdit, shareRestrictedMessage, onChangeEditingContent,
@@ -90,9 +94,11 @@ export const ChannelMessageRow = ({
     personalAssistantPresence?.displayName,
   )
   const canManageOwnMessage = message.role === 'user' && message.userId === meUserId
+    && (!channelAdminOnlyPosting || viewerCanConfigureAnnouncements === true)
   // A research card is the server's pointer, not the person's words: editing
   // it is refused (`MESSAGE_IMMUTABLE_RESEARCH_CARD`), so it is never offered.
   const canEditOwnMessage = canManageOwnMessage
+    && !message.requiresConfirmation
     && !isAgentCardResponseMessage(message.metadata)
     && !isResearchRunRefMessage(message.metadata)
   const isEditingMessage = editingMessageId === message.id
@@ -132,7 +138,7 @@ export const ChannelMessageRow = ({
     if (personalAssistantPresence) onSelectAgent?.(personalAssistantPresence)
   }
   const openThreadOnKey = (event: KeyboardEvent<HTMLElement>) => {
-    if ((event.key !== 't' && event.key !== 'T') || !onOpenThread) return
+    if ((event.key !== 't' && event.key !== 'T') || !onOpenThread || message.requiresConfirmation) return
     if ((event.target as HTMLElement).closest('input, textarea, [contenteditable="true"]')) return
     event.preventDefault()
     onOpenThread(threadRootMessageId)
@@ -198,6 +204,7 @@ export const ChannelMessageRow = ({
           ) : message.editedAt ? <span className="text-xs italic text-[color:var(--tx3)]">(edited)</span> : null}
         </div>
         <ChannelMessageBody
+          viewerCanConfigureAnnouncements={viewerCanConfigureAnnouncements}
           canDelete={canManageOwnMessage}
           canEdit={canEditOwnMessage}
           editingContent={editingContent}

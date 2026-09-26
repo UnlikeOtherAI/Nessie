@@ -23,6 +23,7 @@ export const useChannelMessageActions = (threadId?: string) => {
   })
   const editingContent = editDraft.draft
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [pendingDeleteRequiresConfirmation, setPendingDeleteRequiresConfirmation] = useState(false)
 
   // The confirm outlives a channel switch: this hook sits at page level while
   // the dialog renders inside a surface that stays mounted. Without this, a
@@ -66,12 +67,14 @@ export const useChannelMessageActions = (threadId?: string) => {
   // answer inline; a themed dialog cannot, so the delete moved to the one place
   // that runs only after a person has said yes — `performDelete`, wired to the
   // dialog's confirm control and referenced nowhere else.
-  const confirmDelete = useCallback((messageId: string) => {
+  const confirmDelete = useCallback((messageId: string, requiresConfirmation = false) => {
     setPendingDeleteId(messageId)
+    setPendingDeleteRequiresConfirmation(requiresConfirmation)
   }, [])
 
   const cancelDelete = useCallback(() => {
     setPendingDeleteId(null)
+    setPendingDeleteRequiresConfirmation(false)
   }, [])
 
   const performDelete = useCallback(() => {
@@ -79,6 +82,7 @@ export const useChannelMessageActions = (threadId?: string) => {
       return
     }
     setPendingDeleteId(null)
+    setPendingDeleteRequiresConfirmation(false)
     deleteMessage(pendingDeleteId)
   }, [deleteMessage, pendingDeleteId])
 
@@ -94,7 +98,9 @@ export const useChannelMessageActions = (threadId?: string) => {
   // at the four call sites would be the fork Rule zero names.
   const deleteConfirm: ReactNode = (
     <ConfirmDialog
-      body="This cannot be undone."
+      body={pendingDeleteRequiresConfirmation
+        ? 'Deleting this announcement cancels outstanding acknowledgements and reminders. This cannot be undone.'
+        : 'This cannot be undone.'}
       confirmLabel="Delete"
       destructive
       onCancel={cancelDelete}

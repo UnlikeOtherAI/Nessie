@@ -32,6 +32,7 @@ test('per-event preferences are enabled by default and suppress only their own e
   const pushKinds = [
     'messages',
     'mentions',
+    'announcements',
     'budgetAlerts',
     'assignedWork',
     'incomingCalls',
@@ -51,6 +52,8 @@ test('per-event preferences are enabled by default and suppress only their own e
   assert.equal(shouldSuppressPushForPreferences({ pushMessages: false }, now, 'messages'), true)
   assert.equal(shouldSuppressPushForPreferences({ pushMessages: false }, now, 'mentions'), false)
   assert.equal(shouldSuppressPushForPreferences({ pushMentions: false }, now, 'mentions'), true)
+  assert.equal(shouldSuppressPushForPreferences({ pushMessages: false, pushMentions: false },
+    now, 'announcements'), false)
   assert.equal(shouldSuppressPushForPreferences({ pushBudgetAlerts: false }, now, 'budgetAlerts'), true)
   assert.equal(shouldSuppressPushForPreferences({ pushAssignedWork: false }, now, 'assignedWork'), true)
   assert.equal(

@@ -66,6 +66,8 @@ export const ActionContextSchema = z.object({
   /// it, and it is what `ApprovalRequest.agentAccessCredentialId` is set from.
   agentCredentialId: NonEmptyStringSchema.optional(),
   uoaIdentity: UoaSessionIdentitySchema.optional(),
+  // Verified by the live UOA /org/me request at admission; never supplied by a client.
+  uoaTeamRoles: z.record(z.string(), z.string()).optional(),
   /// The work record a `ticket.work` run serves (docs/standards/ticket-work.md).
   /// Set only by the platform when it wakes the record, and read by run setup
   /// to admit the ticket tools and by the wake that folds a second event into

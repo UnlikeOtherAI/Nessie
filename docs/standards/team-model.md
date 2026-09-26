@@ -213,8 +213,9 @@ service and assistant tool asks —
 
    Two things stay closed to every role. A **direct message**, group or not, is
    reachable only by its participants. A **system channel** is
-   lifecycle-protected and refused for everybody. A **team** role is still not
-   an arm: a team owner/admin outside a channel changes nothing.
+   lifecycle-protected and refused for everybody. A **team** role does not
+   grant ordinary channel management. The announcement controls below are a
+   narrow exception.
 
    A plain organisation member outside a project or channel reads what its
    visibility allows — a **public** one in full, a **protected** one as name,
@@ -225,6 +226,20 @@ service and assistant tool asks —
 delete, `softDeleteMessage`); a fellow channel member, an organisation owner or
 admin, or a team role may not delete somebody else's message. The function takes
 no role, so no caller can hand one in.
+
+**Read-only posting and mandatory announcements have a separate admin gate.**
+An organisation owner/admin or the exact UOA team's owner/admin may configure
+these flags on a standard, non-system channel; a channel-member role alone
+never grants the gate. For a UOA-bound organisation, request admission carries
+the live subject-asserted organisation and team roles. Local installs use their
+local org/team roles. A read-only channel accepts a human message only from
+one of these administrators, who must also participate in the channel to use
+its composer. Agent and system writes cannot use the human admin path.
+Mandatory announcements require a public channel and notify the active scope
+even when a recipient has not joined the room. Confirmation-required posts
+also require a public read-only channel; the sender and current administrators
+may view its receipt roster. See [user alerts](user-alerts.md#mandatory-announcements-and-confirmations)
+for the notification and reminder behavior.
 
 **The role that decides is the verified request role.** REST callers pass
 `isAdminActor(actorContext)` into `canModifyChannel`, `updateChannel`,

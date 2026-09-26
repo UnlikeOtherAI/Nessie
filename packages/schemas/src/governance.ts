@@ -218,6 +218,8 @@ export const AuditActionSchema = z.enum([
   'channel.member_added',
   'channel.member_removed',
   'channel.visibility_changed',
+  'announcement.reminder_requested',
+  'announcement.cancelled',
   'agent.created',
   'agent.owner_changed',
   'agent.updated',

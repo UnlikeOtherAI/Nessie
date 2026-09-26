@@ -33,6 +33,7 @@ import { loadRunThinkingLog, loadThreadThinking } from '../services/run-thinking
 import { canUserReadRunBasis } from '../services/run-disclosure.js'
 import { registerThreadDocumentStreamRoutes } from './thread-document-streams.js'
 import { registerCreateThreadMessageRoute } from './thread-message-create.js'
+import { registerAnnouncementConfirmationRoutes } from './announcement-confirmations.js'
 import { registerThreadReplyRoutes } from './thread-replies.js'
 import { registerThreadActivityRoutes } from './thread-activity.js'
 import { registerThreadStreamRoute } from './thread-stream.js'
@@ -93,6 +94,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
   })
 
   registerCreateThreadMessageRoute(app, deps)
+  registerAnnouncementConfirmationRoutes(app, deps)
   registerThreadReplyRoutes(app, deps)
   // Live document composition (bootstrap + address-bar retarget). Split out for
   // the same reason as the two above: this module is at its size budget.
@@ -340,6 +342,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       messageId,
       threadId: thread.id,
       userId: actorContext.actor.actorId,
+      actorContext,
     })
     if (result.kind === 'not_found') {
       sendApiError(reply, 404, 'MESSAGE_NOT_FOUND', 'Message not found')
@@ -356,6 +359,10 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
         'MESSAGE_IMMUTABLE_RESEARCH_CARD',
         'This message shows a research and cannot be edited. Delete it instead, or start a new research.',
       )
+      return reply
+    }
+    if (result.kind === 'immutable' && result.record === 'confirmation') {
+      sendApiError(reply, 409, 'MESSAGE_IMMUTABLE_CONFIRMATION', 'A confirmation-required announcement cannot be edited')
       return reply
     }
     if (result.kind === 'immutable') {
@@ -416,6 +423,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       messageId,
       threadId: thread.id,
       userId: actorContext.actor.actorId,
+      actorContext,
     })
     if (result.kind === 'not_found') {
       sendApiError(reply, 404, 'MESSAGE_NOT_FOUND', 'Message not found')

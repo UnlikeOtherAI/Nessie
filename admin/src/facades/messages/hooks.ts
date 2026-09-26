@@ -49,6 +49,7 @@ export const applyConversationTitle = <Record extends { title: string }>(
 export interface SendMessageThreadExtras {
   rootMessageId?: string
   alsoSendToChannel?: boolean
+  requiresConfirmation?: boolean
 }
 
 export const useSendMessage = (threadId?: string) => {

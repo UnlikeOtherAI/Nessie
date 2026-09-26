@@ -13,6 +13,7 @@ import {
   findOrCreateDmChannel,
 } from '../services/channel-dms.js'
 import {
+  ChannelAnnouncementPolicyError,
   ChannelSlugConflictError,
   ChannelValidationError,
   createChannelForUser,
@@ -66,6 +67,7 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       query.includeArchived === 'true',
       {
         isOrganizationAdmin: isAdminActor(actorContext),
+        actorContext,
       },
     )
 
@@ -162,10 +164,15 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         userId: actorContext.actor.actorId,
         channel: { is: { organizationId: actorContext.tenant.organizationId } },
       },
-      select: { id: true },
+      select: { id: true, channel: { select: { mandatoryAnnouncements: true } } },
     })
     if (!membership) {
       sendApiError(reply, 404, 'CHANNEL_MEMBER_NOT_FOUND', 'Channel membership not found')
+      return reply
+    }
+    if (body.muted && membership.channel.mandatoryAnnouncements) {
+      sendApiError(reply, 409, 'CHANNEL_NOTIFICATIONS_REQUIRED',
+        'This channel sends mandatory admin announcements to everyone in its scope')
       return reply
     }
 
@@ -210,9 +217,16 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         ...(body.topic !== undefined ? { topic: body.topic } : {}),
         ...(body.description !== undefined ? { description: body.description } : {}),
         ...(body.visibility !== undefined ? { visibility: body.visibility } : {}),
+        ...(body.adminOnlyPosting !== undefined ? { adminOnlyPosting: body.adminOnlyPosting } : {}),
+        ...(body.mandatoryAnnouncements !== undefined
+          ? { mandatoryAnnouncements: body.mandatoryAnnouncements } : {}),
         ...(body.decisionPolicy !== undefined ? { decisionPolicy: body.decisionPolicy } : {}),
       })
     } catch (error) {
+      if (error instanceof ChannelAnnouncementPolicyError) {
+        sendApiError(reply, 409, 'CHANNEL_ANNOUNCEMENT_POLICY', error.message)
+        return reply
+      }
       if (error instanceof ChannelDecisionPolicyError) {
         sendApiError(reply, 400, 'INVALID_CHANNEL_DECISION_POLICY', error.message)
         return reply

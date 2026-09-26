@@ -22,6 +22,7 @@ import { ListAgentConversationsQuerySchema } from '../contracts/agent-conversati
 import { ThreadMessageRecordSchema } from '../contracts/messaging.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { createThreadMessage } from '../services/message-create.js'
+import { ChannelPostForbiddenError } from '../services/channel-posting-policy.js'
 import { deliverCreatedMessage } from '../services/message-delivery.js'
 import { mapMessageRecord } from '../services/message-read-model.js'
 import { findThreadForUser } from '../services/message-read-state.js'
@@ -172,8 +173,10 @@ export const registerAgentConversationRoutes = (
       return reply
     }
 
-    const message = body.message
-      ? await postOpeningMessage({
+    let message: Awaited<ReturnType<typeof postOpeningMessage>> = null
+    try {
+      message = body.message
+        ? await postOpeningMessage({
         actorContext,
         body: { clientMessageId: body.clientMessageId, message: body.message },
         deps: {
@@ -184,8 +187,15 @@ export const registerAgentConversationRoutes = (
         },
         log: request.log,
         threadId: started.thread.id,
-      })
-      : null
+        })
+        : null
+    } catch (error) {
+      if (error instanceof ChannelPostForbiddenError) {
+        sendApiError(reply, 403, 'CHANNEL_READ_ONLY', error.message)
+        return reply
+      }
+      throw error
+    }
 
     const conversation = await loadConversationForUser(prisma, {
       uoaIdentity: actorContext.actionContext.uoaIdentity,
@@ -325,6 +335,7 @@ const postOpeningMessage = async (input: {
   const result = await createThreadMessage(deps.prisma, {
     // The opening line is typed into the "New conversation" composer.
     authorship: PERSON_MESSAGE_AUTHORSHIP,
+    actorContext,
     content: body.message,
     threadId: thread.id,
     userId: actorContext.actor.actorId,

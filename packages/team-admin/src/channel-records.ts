@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client'
 import type { Channel, PrismaClient } from '@prisma/client'
 import {
   ChannelDecisionPolicySchema,
+  isAdminRole,
   parseChannelId,
   parseOrganizationId,
   parseProjectId,
@@ -9,8 +10,9 @@ import {
   parseThreadId,
   parseUserId,
 } from '@nessie/schemas'
-import type { ChannelRecord } from '@nessie/schemas'
+import type { AuthorizedActionContext, ChannelRecord } from '@nessie/schemas'
 
+import { isAnnouncementAdministrator } from './channel-announcement-authority.js'
 import { canManageChannelAgents } from './channel-agent-authority.js'
 import { canModifyChannel } from './resource-authority.js'
 
@@ -22,6 +24,7 @@ type ChannelWithProject = Channel & {
   }
   team?: {
     name: string
+    externalTeamId?: string | null
   }
 }
 
@@ -78,6 +81,7 @@ export const channelTeamInclude = {
   team: {
     select: {
       name: true,
+      externalTeamId: true,
     },
   },
 } satisfies Prisma.ChannelInclude
@@ -329,7 +333,7 @@ export const mapChannelRecord = async (
    * `isOrganizationAdmin`; omitted, it is read from the membership row, so a
    * caller that has it saves a query rather than deciding the answer.
    */
-  viewer: { isOrganizationAdmin?: boolean } = {},
+  viewer: { isOrganizationAdmin?: boolean; actorContext?: AuthorizedActionContext } = {},
 ): Promise<ChannelRecord> => {
   const defaultThreadId = await ensureDefaultThread(prisma, channel.id)
   const unreadCount = userId
@@ -345,7 +349,7 @@ export const mapChannelRecord = async (
   const [team, project] = await Promise.all([
     channel.team ?? prisma.team.findUniqueOrThrow({
       where: { id: channel.teamId },
-      select: { name: true },
+      select: { name: true, externalTeamId: true },
     }),
     channel.project ?? prisma.project.findUniqueOrThrow({
       where: { id: channel.projectId },
@@ -384,6 +388,35 @@ export const mapChannelRecord = async (
       })
     : false
 
+  const [organization, localOrgMember, localTeamMember] = userId
+    ? await Promise.all([
+      prisma.organization.findUnique({
+        where: { id: channel.organizationId }, select: { externalOrgId: true },
+      }),
+      viewer.isOrganizationAdmin === undefined
+        ? prisma.organizationMember.findUnique({
+          where: { organizationId_userId: { organizationId: channel.organizationId, userId } },
+          select: { role: true },
+        })
+        : Promise.resolve(null),
+      prisma.teamMember.findUnique({
+        where: { teamId_userId: { teamId: channel.teamId, userId } },
+        select: { role: true },
+      }),
+    ])
+    : [null, null, null]
+  const viewerCanConfigureAnnouncements = Boolean(userId) && isAnnouncementAdministrator({
+    channelType: channel.type,
+    systemChannelType: channel.systemChannelType,
+    isOrganizationAdmin: viewer.isOrganizationAdmin ?? (
+      !organization?.externalOrgId && isAdminRole(localOrgMember?.role)
+    ),
+    externalOrgId: organization?.externalOrgId ?? null,
+    externalTeamId: team.externalTeamId ?? null,
+    uoaTeamRoles: viewer.actorContext?.actionContext.uoaTeamRoles,
+    localTeamRole: localTeamMember?.role,
+  })
+
   return {
     defaultThreadId: parseThreadId(defaultThreadId),
     id: parseChannelId(channel.id),
@@ -394,6 +427,8 @@ export const mapChannelRecord = async (
     dmUserId: resolveDmUserId(channel, userId),
     isGroupDm: isGroupDm(channel),
     visibility: channel.visibility,
+    adminOnlyPosting: channel.adminOnlyPosting,
+    mandatoryAnnouncements: channel.mandatoryAnnouncements,
     organizationId: parseOrganizationId(channel.organizationId),
     scope: project.channelRoot ? 'standalone' : 'project',
     projectId: parseProjectId(project.id),
@@ -409,6 +444,8 @@ export const mapChannelRecord = async (
     viewerIsMember,
     viewerCanManage,
     viewerCanManageAgents,
+    viewerCanConfigureAnnouncements,
+    viewerCanPost: viewerIsMember && (!channel.adminOnlyPosting || viewerCanConfigureAnnouncements),
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),
   }

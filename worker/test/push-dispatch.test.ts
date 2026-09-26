@@ -89,6 +89,30 @@ test('delivers to every device when a foreground window is in a different thread
   )
 })
 
+test('a frozen announcement recipient receives one push despite channel mute and message preferences', async () => {
+  const state: FakeState = {
+    channel: { label: 'Announcements' },
+    creds: [apnsCred()],
+    deleted: [],
+    members: [member('u2', true)],
+    users: [{ id: 'u2', preferences: { pushMessages: false, pushMentions: false } }],
+    message: { isAnnouncement: true, agent: null, agentId: null,
+      basisScopes: [], user: { displayName: 'Admin' } },
+    announcementDeliveries: [{ recipientUserId: 'u2', recipientUoaSub: null }],
+    secrets: [apnsSecret()],
+    tokens: [{ id: 'iphone', userId: 'u2', token: 'tok-u2', platform: 'ios' }],
+  }
+  const { senders, apnsCalls, apnsPayloads } = recordingSenders()
+  const result = await handlePushDispatch(
+    { prisma: makeFakePrisma(state), encryptionKeyRing: ENCRYPTION_KEY_RING, senders },
+    payload({ mentionUserIds: ['u2'] }),
+  )
+  assert.equal(result.sent, 1)
+  assert.deepEqual(apnsCalls.map((call) => call.token), ['tok-u2'])
+  assert.equal(apnsPayloads[0]?.data?.url,
+    '/channels/channel-1/threads/thread-1/replies/message-1')
+})
+
 test('delivers when another reply conversation is open in the same thread container', async () => {
   const state: FakeState = {
     channel: { label: 'General' },

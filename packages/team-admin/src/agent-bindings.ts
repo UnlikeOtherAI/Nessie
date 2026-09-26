@@ -24,6 +24,7 @@ export const AGENT_BINDING_ERROR_CODES = {
   PRIVATE_VISIBILITY: 'AGENT_VISIBILITY_PRIVATE',
   BROWSER_LOGINS_PRESENT: 'AGENT_BROWSER_LOGINS_PRESENT',
   CROSS_TEAM: 'AGENT_BINDING_CROSS_TEAM',
+  READ_ONLY_CHANNEL: 'AGENT_BINDING_READ_ONLY_CHANNEL',
 } as const
 
 export class AgentBindingError extends Error {
@@ -66,12 +67,18 @@ export const bindAgentToChannel = async (
         id: input.channelId,
         organizationId: input.organizationId,
       },
-      select: { systemChannelType: true, teamId: true },
+      select: { systemChannelType: true, teamId: true, adminOnlyPosting: true },
     }),
   ])
 
   if (!agent || !channel) {
     return null
+  }
+  if (channel.adminOnlyPosting) {
+    throw new AgentBindingError(
+      AGENT_BINDING_ERROR_CODES.READ_ONLY_CHANNEL,
+      'Agents cannot join a read-only channel because only administrators can post there.',
+    )
   }
 
   if (agent.visibility === 'private') {

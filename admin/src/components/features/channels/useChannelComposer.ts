@@ -52,6 +52,8 @@ interface UseChannelComposerParams {
 
 interface UseChannelComposerResult {
   message: string
+  requiresConfirmation: boolean
+  setRequiresConfirmation: React.Dispatch<React.SetStateAction<boolean>>
   setMessage: React.Dispatch<React.SetStateAction<string>>
   optimisticMessages: OptimisticMessage[]
   oversizePaste: string | null
@@ -112,6 +114,7 @@ export const useChannelComposer = ({
   const [invitingAgentId, setInvitingAgentId] = useState<string | null>(null)
   const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({})
   const [sendError, setSendError] = useState<string | null>(null)
+  const [requiresConfirmation, setRequiresConfirmation] = useState(false)
   const viewerIsOwner = useIsOwner()
   const {
     capture: secretCapture,
@@ -184,6 +187,7 @@ export const useChannelComposer = ({
     setPendingInviteMessageIds({})
     setInviteErrors({})
     setSendError(null)
+    setRequiresConfirmation(false)
     dismissSecretCapture()
     // A different conversation is a different post: never carry one thread's
     // idempotency key into the next. A second conversation with the same agent
@@ -241,6 +245,8 @@ export const useChannelComposer = ({
           content: text,
           ...(agentMentions.length > 0 ? { agentMentions } : {}),
           ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
+          ...(requiresConfirmation && activeChannel.adminOnlyPosting && !getSendExtras
+            ? { requiresConfirmation: true } : {}),
           ...getSendExtras?.(),
         })
         // Staged files are dropped only once they are safely linked, so a
@@ -249,6 +255,7 @@ export const useChannelComposer = ({
         attachments.clearStaged()
         clearDraft()
         clientMessageIdRef.current = null
+        setRequiresConfirmation(false)
         // Surface @mentioned agents that aren't members of this channel so the
         // user can invite them; they were not dispatched.
         if (result.pendingAgentInvites.length > 0) {
@@ -277,7 +284,8 @@ export const useChannelComposer = ({
         )
       }
     },
-    [activeChannel, attachments, clearDraft, interceptSecret, sendMessage, getSendExtras, setMessage],
+    [activeChannel, attachments, clearDraft, interceptSecret, sendMessage,
+      getSendExtras, setMessage, requiresConfirmation],
   )
 
   // A held draft goes back into the editor, so Cancel leaves it where it was.
@@ -401,11 +409,14 @@ export const useChannelComposer = ({
         await sendMessage.mutateAsync({
           attachmentIds: [attachment.id],
           content: `Shared file: ${attachment.filename}`,
+          ...(requiresConfirmation && activeChannel.adminOnlyPosting && !getSendExtras
+            ? { requiresConfirmation: true } : {}),
           // Same routing as a typed reply — without this the escape hatch posted
           // to the channel instead of into the open reply thread.
           ...getSendExtras?.(),
         })
         clearDraft()
+        setRequiresConfirmation(false)
         setOversizePaste(null)
       } catch (error) {
         setSendError(
@@ -415,7 +426,7 @@ export const useChannelComposer = ({
         )
       }
     },
-    [activeChannel, clearDraft, interceptSecret, uploadAttachment, sendMessage, getSendExtras],
+    [activeChannel, clearDraft, interceptSecret, uploadAttachment, sendMessage, getSendExtras, requiresConfirmation],
   )
 
   const confirmSecretCapture = useCallback(
@@ -433,6 +444,8 @@ export const useChannelComposer = ({
 
   return {
     message,
+    requiresConfirmation,
+    setRequiresConfirmation,
     setMessage,
     optimisticMessages,
     oversizePaste,

@@ -16,12 +16,14 @@ import {
 import { CreateThreadMessageBodySchema, ThreadMessageRecordSchema } from '../contracts/messaging.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { createThreadMessage, messageEmbeddingForSender } from '../services/message-create.js'
+import { ChannelPostForbiddenError } from '../services/channel-posting-policy.js'
 import { deliverCreatedMessage } from '../services/message-delivery.js'
 import {
   mapMessageRecord,
   mapMessageRecordWithAttachments,
 } from '../services/message-read-model.js'
 import { findThreadForUser } from '../services/message-read-state.js'
+import { sendAnnouncementAudienceError } from './announcement-audience-errors.js'
 import type { RouteDeps } from './types.js'
 
 export const registerCreateThreadMessageRoute = (
@@ -125,11 +127,14 @@ export const registerCreateThreadMessageRoute = (
         ? headerKey.trim().slice(0, 200)
         : undefined)
 
-    const result = await createThreadMessage(prisma, {
+    let result
+    try {
+      result = await createThreadMessage(prisma, {
       // A signed-in session's composer send — the web admin, the desktop shell
       // and the iOS/Android WebView all post here. Session tokens only: agent
       // and voice credentials are refused on this route by the auth hook.
       authorship: PERSON_MESSAGE_AUTHORSHIP,
+      actorContext,
       ...(workThread ? { ticketWorkSteer: true as const } : {}),
       content,
       threadId: thread.id,
@@ -137,6 +142,7 @@ export const registerCreateThreadMessageRoute = (
       ...(clientMessageId ? { clientMessageId } : {}),
       rootMessageId: body.rootMessageId,
       alsoSendToChannel: body.alsoSendToChannel,
+      requiresConfirmation: body.requiresConfirmation,
       agentMentions: body.agentMentions?.map((mention) => ({
         agentId: parseAgentId(mention.agentId),
         ...(mention.principalUserId
@@ -145,7 +151,15 @@ export const registerCreateThreadMessageRoute = (
         type: mention.type,
       })),
       embedding: messageEmbeddingForSender(sharedModelClient, actorContext),
-    })
+      })
+    } catch (error) {
+      if (error instanceof ChannelPostForbiddenError) {
+        sendApiError(reply, 403, 'CHANNEL_READ_ONLY', error.message)
+        return reply
+      }
+      if (sendAnnouncementAudienceError(reply, error)) return reply
+      throw error
+    }
 
     if (result.kind === 'thread_not_found') {
       sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')

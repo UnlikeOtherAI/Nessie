@@ -44,6 +44,7 @@ export const shouldSuppressPushForPreferences = (
   kind:
     | 'messages'
     | 'mentions'
+    | 'announcements'
     | 'budgetAlerts'
     | 'assignedWork'
     | 'publishedKnowledge'
@@ -64,6 +65,7 @@ export const shouldSuppressPushForPreferences = (
   }
 
   const enabledForKind = {
+    announcements: true,
     budgetAlerts: parsed.data.pushBudgetAlerts,
     assignedWork: parsed.data.pushAssignedWork,
     incomingCalls: parsed.data.pushIncomingCalls,

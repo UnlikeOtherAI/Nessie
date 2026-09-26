@@ -60,6 +60,8 @@ const DeletedBubble = () => (
 )
 
 interface ChannelMessageFeedProps {
+  channelAdminOnlyPosting?: boolean
+  viewerCanConfigureAnnouncements?: boolean
   /**
    * The conversation this feed shows, for the cards that act on their own
    * message's place (`feed-conversation.ts`); null while there is none yet.
@@ -114,7 +116,7 @@ interface ChannelMessageFeedProps {
   onSubmitEdit: (messageId: string) => void
   onCancelEdit: () => void
   onAddReaction: (messageId: string, emoji: string) => void
-  onConfirmDelete: (messageId: string) => void
+  onConfirmDelete: (messageId: string, requiresConfirmation?: boolean) => void
   // Opens the reply-thread panel for a message's root (#233); when absent the
   // feed renders no thread affordances.
   onOpenThread?: (rootMessageId: string) => void
@@ -141,6 +143,8 @@ interface ChannelMessageFeedProps {
 }
 
 export const ChannelMessageFeed = ({
+  channelAdminOnlyPosting,
+  viewerCanConfigureAnnouncements,
   channelId,
   documentSessions,
   documentStore,
@@ -380,6 +384,8 @@ export const ChannelMessageFeed = ({
             return (
               <Fragment key={item.message.id}>
                 <ChannelMessageRow
+                  channelAdminOnlyPosting={channelAdminOnlyPosting}
+                  viewerCanConfigureAnnouncements={viewerCanConfigureAnnouncements}
                   activeActionMessageId={activeActionMessageId}
                   agentMap={agentMap}
                   assistantFallbackName={assistantFallbackName}

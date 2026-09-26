@@ -60,13 +60,23 @@ const mapAlertRecord = (alert: AlertWithRelations): UserAlertRecord => ({
   actorDisplayName: alert.actorUser?.displayName ?? alert.actorAgent?.name ?? null,
   readAt: alert.readAt ? alert.readAt.toISOString() : null,
   createdAt: alert.createdAt.toISOString(),
+  isAnnouncement: alert.isAnnouncement,
 })
 
 const unreadCount = (
   prisma: PrismaClient,
-  input: { organizationId: string; userId: string },
+  input: { organizationId: string; userId: string; currentTeamIds?: string[] },
 ): Promise<number> =>
-  prisma.userAlert.count({ where: { ...visibleUserAlertWhere(input), readAt: null } })
+  prisma.userAlert.count({ where: { AND: [visibleUserAlertWhere(input),
+    announcementVisibilityWhere(input.currentTeamIds), { readAt: null }],
+  } })
+
+const announcementVisibilityWhere = (teamIds?: string[]): Prisma.UserAlertWhereInput =>
+  teamIds === undefined ? {} : { OR: [
+    { isAnnouncement: false },
+    { channel: { is: { project: { is: { channelRoot: true } } } } },
+    { channel: { is: { teamId: { in: teamIds } } } },
+  ] }
 
 export const listUserAlerts = async (
   prisma: PrismaClient,
@@ -77,6 +87,7 @@ export const listUserAlerts = async (
     direction?: PaginationDirection
     limit?: number
     unreadOnly?: boolean
+    currentTeamIds?: string[]
   },
 ): Promise<{
   // The paged-list contract: `data` IS the page of records and `meta` carries
@@ -91,6 +102,7 @@ export const listUserAlerts = async (
   const limit = resolvePageLimit(input.limit)
   const conditions: Prisma.UserAlertWhereInput[] = [
     visibleUserAlertWhere(input),
+    announcementVisibilityWhere(input.currentTeamIds),
     ...(input.unreadOnly ? [{ readAt: null }] : []),
   ]
 
@@ -165,7 +177,7 @@ const finalizeAttentionSummary = (
 
 export const getAttentionSummary = async (
   prisma: PrismaClient,
-  input: { organizationId: string; userId: string },
+  input: { organizationId: string; userId: string; currentTeamIds?: string[] },
 ): Promise<{
   assignedWork: AttentionSummarySection
   knowledge: AttentionSummarySection
@@ -173,7 +185,7 @@ export const getAttentionSummary = async (
 }> => {
   const rows = await prisma.userAlert.findMany({
     where: {
-      ...visibleUserAlertWhere(input),
+      AND: [visibleUserAlertWhere(input), announcementVisibilityWhere(input.currentTeamIds)],
       readAt: null,
       kind: { in: ['task_assigned', 'knowledge_published'] },
     },
@@ -212,6 +224,7 @@ export const markUserAlertsRead = async (
       kind: 'task_assigned' | 'knowledge_published'
       projectId: string
     }
+    currentTeamIds?: string[]
   },
 ): Promise<MarkUserAlertsReadResult> => {
   const surfaceWhere: Prisma.UserAlertWhereInput | null = input.surface
@@ -223,6 +236,7 @@ export const markUserAlertsRead = async (
   const where: Prisma.UserAlertWhereInput = {
     AND: [
       visibleUserAlertWhere(input),
+      announcementVisibilityWhere(input.currentTeamIds),
       { readAt: null },
       ...(surfaceWhere ? [surfaceWhere] : input.all ? [] : [{ id: { in: input.ids ?? [] } }]),
     ],

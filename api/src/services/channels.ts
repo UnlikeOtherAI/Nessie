@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import {
   ChannelDecisionPolicySchema,
   isAdminRole,
+  type AuthorizedActionContext,
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
@@ -13,6 +14,7 @@ import {
 import type { ChannelRecord, PersonalAssistantPresenceParticipant } from '../contracts/team.js'
 import {
   canModifyChannel,
+  ChannelAnnouncementPolicyError,
   channelTeamInclude,
   ChannelSlugConflictError,
   ChannelValidationError,
@@ -22,6 +24,7 @@ import {
   loadLastMessageAtByThread,
   loadUnreadCountsByThread,
   mapChannelRecord,
+  isAnnouncementAdministrator,
   resolveDmUserId,
   setChannelArchived,
   updateChannel,
@@ -32,6 +35,7 @@ import {
 // `channel_archive` tools); the routes keep importing them from here.
 export {
   canModifyChannel,
+  ChannelAnnouncementPolicyError,
   ChannelSlugConflictError,
   ChannelValidationError,
   createChannelForUser,
@@ -51,7 +55,7 @@ export const listChannelsForUser = async (
    * (`isAdminActor(actorContext)`). Omitted only by callers with no request
    * role, which fall back to the `OrganizationMember` row.
    */
-  viewer: { isOrganizationAdmin?: boolean } = {},
+  viewer: { isOrganizationAdmin?: boolean; actorContext?: AuthorizedActionContext } = {},
 ): Promise<ChannelRecord[]> => {
   const where: Record<string, unknown> = {
     organizationId,
@@ -113,7 +117,7 @@ export const listChannelsForUser = async (
         select: { channelRoot: true, id: true, name: true },
       },
       team: {
-        select: { name: true },
+        select: { name: true, externalTeamId: true },
       },
     },
   })
@@ -169,24 +173,27 @@ export const listChannelsForUser = async (
   // — for the direct messages on this page, which keep their own rule — the
   // team roles across their distinct teams are fetched, once each, instead of
   // once per channel.
-  const dmTeamIds = [...new Set(
-    channels.filter((channel) => channel.type === 'dm').map((channel) => channel.teamId),
-  )]
-  const [viewerOrgMember, viewerTeamMembers] = await Promise.all([
+  const teamIds = [...new Set(channels.map((channel) => channel.teamId))]
+  const [organization, viewerOrgMember, viewerTeamMembers] = await Promise.all([
+    prisma.organization.findUnique({
+      where: { id: organizationId }, select: { externalOrgId: true },
+    }),
     viewer.isOrganizationAdmin !== undefined
       ? Promise.resolve(null)
       : prisma.organizationMember.findFirst({
         where: { organizationId, userId },
         select: { role: true },
       }),
-    dmTeamIds.length === 0
+    teamIds.length === 0
       ? Promise.resolve([])
       : prisma.teamMember.findMany({
-        where: { userId, teamId: { in: dmTeamIds } },
+        where: { userId, teamId: { in: teamIds } },
         select: { role: true, teamId: true },
       }),
   ])
-  const viewerIsOrgAdmin = viewer.isOrganizationAdmin ?? isAdminRole(viewerOrgMember?.role)
+  const viewerIsOrgAdmin = viewer.isOrganizationAdmin ?? (
+    !organization?.externalOrgId && isAdminRole(viewerOrgMember?.role)
+  )
   const viewerTeamRoleByTeamId = new Map(
     viewerTeamMembers.map((teamMember) => [teamMember.teamId, teamMember.role]),
   )
@@ -208,6 +215,16 @@ export const listChannelsForUser = async (
     // gives the same answer as `canModifyChannel` if the query ever widens.
     return viewerIsOrgAdmin && channel.type === 'standard'
   }
+  const viewerMayConfigureAnnouncements = (channel: (typeof channels)[number]): boolean =>
+    isAnnouncementAdministrator({
+      channelType: channel.type,
+      systemChannelType: channel.systemChannelType,
+      isOrganizationAdmin: viewerIsOrgAdmin,
+      externalOrgId: organization?.externalOrgId ?? null,
+      externalTeamId: channel.team.externalTeamId,
+      uoaTeamRoles: viewer.actorContext?.actionContext.uoaTeamRoles,
+      localTeamRole: viewerTeamRoleByTeamId.get(channel.teamId),
+    })
 
   const principalUserIds = [...new Set(
     channels.flatMap((channel) =>
@@ -254,6 +271,8 @@ export const listChannelsForUser = async (
     systemChannelType: channel.systemChannelType ?? undefined,
     dmUserId: resolveDmUserId(channel, userId),
     visibility: channel.visibility,
+    adminOnlyPosting: channel.adminOnlyPosting,
+    mandatoryAnnouncements: channel.mandatoryAnnouncements,
     organizationId: parseOrganizationId(channel.organizationId),
     scope: channel.project.channelRoot ? 'standalone' : 'project',
     projectId: parseProjectId(channel.project.id),
@@ -276,6 +295,9 @@ export const listChannelsForUser = async (
     muted: channel.members[0]?.muted ?? false,
     viewerIsMember: channel.members[0] !== undefined,
     viewerCanManage: viewerMayModify(channel),
+    viewerCanConfigureAnnouncements: viewerMayConfigureAnnouncements(channel),
+    viewerCanPost: channel.members[0] !== undefined
+      && (!channel.adminOnlyPosting || viewerMayConfigureAnnouncements(channel)),
     // The binding routes' pre-policy gate, in their order: a standard
     // non-system channel, and an organisation owner or admin. Membership is
     // deliberately absent — management is not participation, so an admin

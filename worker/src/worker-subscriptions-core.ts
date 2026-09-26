@@ -32,6 +32,7 @@ import {
   TaskEmbedJobPayloadSchema,
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
+  AnnouncementReminderJobPayloadSchema,
   RUN_AUTO_CONTINUATION_TOPIC,
   RUN_COMPLETION_FOLLOWUP_TOPIC,
   RunAutoContinuationJobPayloadSchema,
@@ -62,6 +63,7 @@ import { executeKnowledgeTransferJob } from './control/knowledge-transfer.js'
 import { executeMessageEmbedJob } from './control/message-embed.js'
 import { executeTaskEmbedJob } from './control/task-embed.js'
 import { handlePushDispatch } from './control/push-dispatch.js'
+import { handleAnnouncementReminders } from './control/announcement-reminders.js'
 import { handleBudgetAlertDispatch } from './control/budget-alert-dispatch.js'
 import { handleTriggerHealthAlert } from './control/trigger-health-dispatch.js'
 import { handleWorkflowRunFailureDispatch } from './control/workflow-failure-dispatch.js'
@@ -323,6 +325,14 @@ subscribe(
       },
       payload,
     )
+  },
+  { signal: abortSignal },
+)
+subscribe(
+  'announcement.remind',
+  async (job) => {
+    const payload = AnnouncementReminderJobPayloadSchema.parse(job.payload)
+    await handleAnnouncementReminders({ prisma, realtimeTransport }, payload)
   },
   { signal: abortSignal },
 )

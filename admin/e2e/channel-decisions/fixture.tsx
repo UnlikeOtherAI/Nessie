@@ -15,6 +15,8 @@ let stored = ChannelRecordSchema.parse({
   type: 'standard', visibility: 'public', organizationId: uuid(2), projectId: uuid(3),
   projectName: 'Product', teamId: uuid(4), teamName: 'Design', defaultThreadId: uuid(5),
   viewerCanManage: true, viewerCanManageAgents: true, viewerIsMember: true,
+  viewerCanConfigureAnnouncements: true, viewerCanPost: true,
+  adminOnlyPosting: false, mandatoryAnnouncements: false,
   decisionPolicy: null, createdAt: '2026-09-21T10:00:00.000Z', updatedAt: '2026-09-21T10:00:00.000Z',
 })
 let emitChannel: (channel: ChannelRecord) => void = () => {}

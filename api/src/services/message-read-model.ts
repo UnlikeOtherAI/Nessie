@@ -110,6 +110,8 @@ const mapThreadMessageRecord = (
       }
     : undefined,
   role: message.role,
+  isAnnouncement: message.isAnnouncement,
+  requiresConfirmation: message.requiresConfirmation,
   // Soft-deleted rows are returned as tombstones — content is already blanked
   // at delete time, but never surface stale content even if that changes.
   // A withheld message is the same shape: the row exists, the content does not.

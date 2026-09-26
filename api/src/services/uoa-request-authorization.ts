@@ -10,7 +10,7 @@ import {
 import { mapUoaMemberRole } from './uoa-roles.js'
 
 export type UoaRequestAuthorization =
-  | { status: 'allowed'; role: string }
+  | { status: 'allowed'; role: string; teamRoles?: Record<string, string> }
   | { status: 'forbidden' }
   | { status: 'unavailable' }
 
@@ -29,7 +29,7 @@ export const authorizeUoaRequest = async (
   try {
     const current = await readUoaOrganizationRoleContext(organizationId, identity, deps)
     const role = mapUoaMemberRole(current.role)
-    return role ? { status: 'allowed', role } : { status: 'forbidden' }
+    return role ? { status: 'allowed', role, teamRoles: current.teamRoles } : { status: 'forbidden' }
   } catch (error) {
     if (error instanceof UoaRosterUnavailableError) return { status: 'unavailable' }
     if (error instanceof UoaRosterIdentityError || error instanceof UoaRosterRejectedError) {

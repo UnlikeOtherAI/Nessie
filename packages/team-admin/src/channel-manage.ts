@@ -6,6 +6,7 @@ import type { ResolveLiveEntitlementsDeps } from '@nessie/runtime'
 import type { AuthorizedActionContext, ChannelRecord, ChannelDecisionPolicy } from '@nessie/schemas'
 
 import { channelTeamInclude, mapChannelRecord } from './channel-records.js'
+import { isAnnouncementAdministrator } from './channel-announcement-authority.js'
 import type { ChannelSlugScope } from './channel-slugs.js'
 import {
   ensureChannelSlugAvailable,
@@ -17,6 +18,13 @@ import { canModifyChannel } from './resource-authority.js'
 import { ChannelDecisionPolicyError, validateChannelDecisionPolicy } from './channel-decision-policy.js'
 import { captureChannelPolicyAuthorizer, resolveChannelPolicyAuthorizer } from './channel-policy-authority.js'
 import { endStandingPoliciesForChannelInTransaction } from './standing-policy-fences.js'
+
+export class ChannelAnnouncementPolicyError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ChannelAnnouncementPolicyError'
+  }
+}
 
 /**
  * The channel writes `canModifyChannel` gates (`resource-authority.ts`: any
@@ -40,6 +48,8 @@ export const updateChannel = async (
     label?: string
     topic?: string | null
     description?: string | null
+    adminOnlyPosting?: boolean
+    mandatoryAnnouncements?: boolean
     decisionPolicy?: ChannelDecisionPolicy | null
     actorContext?: AuthorizedActionContext
     /**
@@ -51,12 +61,79 @@ export const updateChannel = async (
   },
   authorityDeps: ResolveLiveEntitlementsDeps = {},
 ): Promise<ChannelRecord | null> => {
+  const changingAnnouncements = input.adminOnlyPosting !== undefined
+    || input.mandatoryAnnouncements !== undefined
+  const changingOrdinaryFields = input.label !== undefined
+    || input.topic !== undefined
+    || input.description !== undefined
+    || input.visibility !== undefined
+    || input.decisionPolicy !== undefined
   const manage = await canModifyChannel(prisma, input)
-  if (!manage) {
+  const channel = manage?.channel ?? (changingAnnouncements
+    ? await prisma.channel.findUnique({ where: { id: input.channelId } })
+    : null)
+  if (!channel || channel.organizationId !== input.organizationId || channel.deletedAt
+    || (changingOrdinaryFields && !manage)) {
     return null
   }
-  if (input.decisionPolicy !== undefined && manage.channel.type !== 'standard') {
+  if (input.decisionPolicy !== undefined && channel.type !== 'standard') {
     throw new ChannelDecisionPolicyError('Decision policies are available only for standard channels')
+  }
+  if (changingAnnouncements) {
+    const [organization, team, localTeamMember] = await Promise.all([
+      prisma.organization.findUnique({
+        where: { id: input.organizationId }, select: { externalOrgId: true },
+      }),
+      prisma.team.findUnique({
+        where: { id: channel.teamId }, select: { externalTeamId: true },
+      }),
+      prisma.teamMember.findUnique({
+        where: { teamId_userId: { teamId: channel.teamId, userId: input.userId } },
+        select: { role: true },
+      }),
+    ])
+    if (organization?.externalOrgId && (
+      input.actorContext?.actor.actorType !== 'user'
+      || input.actorContext.actor.actorId !== input.userId
+      || !input.actorContext.actionContext.uoaIdentity
+    )) return null
+    if (!isAnnouncementAdministrator({
+      channelType: channel.type,
+      systemChannelType: channel.systemChannelType,
+      isOrganizationAdmin: input.isOrganizationAdmin === true,
+      externalOrgId: organization?.externalOrgId ?? null,
+      externalTeamId: team?.externalTeamId ?? null,
+      uoaTeamRoles: input.actorContext?.actionContext.uoaTeamRoles,
+      localTeamRole: localTeamMember?.role,
+    })) return null
+    if ((input.mandatoryAnnouncements ?? channel.mandatoryAnnouncements)
+      && (input.visibility ?? channel.visibility) !== 'public') {
+      throw new ChannelAnnouncementPolicyError('Mandatory announcements require a public channel')
+    }
+    if (input.adminOnlyPosting === true && !channel.adminOnlyPosting) {
+      const [bindings, triggers, workflows] = await Promise.all([
+        prisma.agentBinding.count({ where: { channelId: channel.id } }),
+        prisma.agentTrigger.count({ where: { OR: [
+          { targetChannelId: channel.id },
+          { targetThread: { is: { channelId: channel.id } } },
+        ] } }),
+        prisma.workflowInstallation.count({ where: { channelId: channel.id } }),
+      ])
+      if (bindings || triggers || workflows) {
+        throw new ChannelAnnouncementPolicyError(
+          'Remove agents, triggers and workflows targeting this channel before making it read-only',
+        )
+      }
+    }
+  }
+  if (input.visibility && input.visibility !== 'public' && channel.mandatoryAnnouncements) {
+    throw new ChannelAnnouncementPolicyError('Disable mandatory announcements before protecting this channel')
+  }
+  if (input.visibility && input.visibility !== 'public' && await prisma.message.count({
+    where: { requiresConfirmation: true, deletedAt: null,
+      thread: { channelId: channel.id } },
+  }) > 0) {
+    throw new ChannelAnnouncementPolicyError('Resolve confirmation-required announcements before protecting this channel')
   }
   const authorizer = input.decisionPolicy ? captureChannelPolicyAuthorizer(input.actorContext, input) : null
   if (authorizer) await resolveChannelPolicyAuthorizer(prisma, { ...input, authorizer }, authorityDeps)
@@ -68,10 +145,10 @@ export const updateChannel = async (
   let scope: ChannelSlugScope = 'project'
   if (input.label !== undefined) {
     const label = validateChannelLabel(input.label)
-    scope = await resolveChannelSlugScope(prisma, manage.channel.projectId)
+    scope = await resolveChannelSlugScope(prisma, channel.projectId)
     await ensureChannelSlugAvailable(prisma, {
       excludeChannelId: input.channelId,
-      projectId: manage.channel.projectId,
+      projectId: channel.projectId,
       scope,
       slug: label.slug,
     })
@@ -91,11 +168,13 @@ export const updateChannel = async (
     // message to `public` — which the `channels_personal_assistant_surface_chk`
     // CHECK constraint would reject as a raw 500, and which is not a thing a
     // person should be able to ask for in the first place.
-    if (manage.channel.type !== 'standard') {
+    if (channel.type !== 'standard') {
       return null
     }
     data.visibility = input.visibility
   }
+  if (input.adminOnlyPosting !== undefined) data.adminOnlyPosting = input.adminOnlyPosting
+  if (input.mandatoryAnnouncements !== undefined) data.mandatoryAnnouncements = input.mandatoryAnnouncements
 
   try {
     const channel = await prisma.$transaction(async (tx) => {
@@ -145,6 +224,7 @@ export const updateChannel = async (
     })
     return mapChannelRecord(prisma, channel, input.userId, {
       isOrganizationAdmin: input.isOrganizationAdmin,
+      actorContext: input.actorContext,
     })
   } catch (error) {
     if (input.label !== undefined) {

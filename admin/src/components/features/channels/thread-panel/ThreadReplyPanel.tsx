@@ -153,7 +153,9 @@ export const ThreadReplyPanel = ({
   // The panel is its own drop target in every responsive mode (in-flow pane,
   // overlay, full screen) — files land on the reply composer, not the channel.
   // Disabled while there is no composer to stage them in.
-  const replyDrop = useFileDrop(attachments.addFiles, !root || Boolean(root.deletedAt))
+  const replyDrop = useFileDrop(attachments.addFiles,
+    !root || Boolean(root.deletedAt) || root.requiresConfirmation === true
+    || activeChannel.viewerCanPost === false)
   const {
     addReaction,
     cancelEdit,
@@ -235,13 +237,13 @@ export const ThreadReplyPanel = ({
   const { hidden: nativeBarOwnsHeader } = useNativeBarHeader({
     actions: [],
     back: { label: 'Back to channel', onBack: closeThread },
-    title: 'Thread',
+    title: root?.requiresConfirmation ? 'Announcement' : 'Thread',
   })
 
   return (
     <>
       <SidePanelShell
-        ariaLabel="Thread"
+        ariaLabel={root?.requiresConfirmation ? 'Announcement' : 'Thread'}
         containerProps={replyDrop.dropHandlers}
         isClosing={isClosing}
         onClose={closeThread}
@@ -275,7 +277,9 @@ export const ThreadReplyPanel = ({
             </button>
           )}
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-[var(--tx)]">Thread</h2>
+            <h2 className="text-sm font-semibold text-[var(--tx)]">
+              {root?.requiresConfirmation ? 'Announcement' : 'Thread'}
+            </h2>
             <div className="truncate text-xs text-[color:var(--tx3)]">
               {channelLabel(activeChannel)}
             </div>
@@ -312,6 +316,8 @@ export const ThreadReplyPanel = ({
                   </div>
                 ) : null}
                 <ChannelMessageFeed
+                  channelAdminOnlyPosting={activeChannel.adminOnlyPosting}
+                  viewerCanConfigureAnnouncements={activeChannel.viewerCanConfigureAnnouncements}
                   channelId={activeChannel.id}
                   agentById={agentMap}
                   agentMap={agentMap}
@@ -352,6 +358,16 @@ export const ThreadReplyPanel = ({
             {rootDeleted ? (
               <div className="flex-shrink-0 px-5 pb-[14px] text-xs text-[color:var(--tx3)]">
                 You can’t reply to a deleted message.
+              </div>
+            ) : root.requiresConfirmation ? (
+              <div className="flex-shrink-0 px-5 pb-[14px] text-xs text-[color:var(--tx3)]">
+                Confirm this announcement above. Replies are turned off.
+              </div>
+            ) : activeChannel.viewerCanPost === false ? (
+              <div className="flex-shrink-0 px-5 pb-[14px] text-xs text-[color:var(--tx3)]">
+                {activeChannel.adminOnlyPosting
+                  ? 'Only administrators can reply in this read-only channel.'
+                  : 'Join this channel to reply.'}
               </div>
             ) : (
               <>

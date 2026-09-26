@@ -112,3 +112,33 @@ notification goes through — a deterministic enqueue idempotency key, then a
 `push_send_claims` row claimed per endpoint before any provider is called, so a
 redelivered job never rings a device twice for a send that was accepted, while a
 send that never reached the provider is still retried.
+
+## Mandatory announcements and confirmations
+
+A public standard channel may have `mandatoryAnnouncements` enabled by an
+organisation or exact-team administrator. An admin-authored post then freezes
+the active organisation audience for a standalone channel, or the active team
+audience for a project channel, in `AnnouncementDelivery` rows. A
+confirmation-required post in a read-only channel uses the same audience even
+when the mandatory setting is off. The author is excluded. UOA recipients are
+keyed by subject, including those without a Nessie principal; their bell row
+materialises when they sign in. No channel join is required to receive the
+alert or read the public post.
+
+`UserAlert.isAnnouncement` distinguishes the durable bell row from an ordinary
+mention while preserving the `mention` wire kind for older clients. The alert
+opens the exact post. One row per message/recipient also covers a direct
+mention in that post. Current team or organisation membership is checked on
+alert reads and push dispatch, so a removed person does not retain access to
+an earlier announcement. Channel mute and ordinary message/mention push
+preferences do not suppress an announcement push; global push off, focus,
+quiet hours and unavailable device endpoints still do. The in-app alert is
+the durable notification.
+
+`AnnouncementDelivery.seenAt` means the exact post reached a foreground
+viewport. `acknowledgedAt` records an explicit button press and also sets
+`seenAt`. The post's author and current admins can see acknowledged, seen but
+unacknowledged, and unseen people. The author can manually request one direct
+message reminder to each currently eligible person who has not acknowledged;
+the reminder is authored by the original sender and links to the exact post. Queue
+retries use the receipt's `reminderMessageId` to avoid duplicate DMs.

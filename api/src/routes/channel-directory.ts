@@ -69,6 +69,7 @@ export const registerChannelDirectoryRoutes = (app: FastifyInstance, deps: Route
         isOrganizationAdmin: isAdminActor(actorContext),
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
+        actorContext,
       },
       channelId,
     )

@@ -34,6 +34,7 @@ import { DashboardPresentation } from '../dashboards/DashboardPresentation'
 import { TaskPresentation } from './TaskPresentation'
 import { EmbeddedWidget, readMessageEmbedIds } from '../dashboards/EmbeddedWidget'
 import { ReplySummaryBar } from './thread-panel/ReplySummaryBar'
+import { AnnouncementConfirmationControl } from './AnnouncementConfirmationControl'
 import { getReplyBroadcastRootId, type ThreadParticipant } from './thread-panel/thread-replies'
 
 interface ChannelMessageBodyProps {
@@ -41,6 +42,7 @@ interface ChannelMessageBodyProps {
   canDelete: boolean
   canEdit: boolean
   meUserId: string
+  viewerCanConfigureAnnouncements?: boolean
   token: string | null
   isExternalAgentConversation: boolean
   renderContent: (text: string) => ReactNode
@@ -56,7 +58,7 @@ interface ChannelMessageBodyProps {
   onSubmitEdit: (messageId: string) => void
   onCancelEdit: () => void
   onAddReaction: (messageId: string, emoji: string) => void
-  onConfirmDelete: (messageId: string) => void
+  onConfirmDelete: (messageId: string, requiresConfirmation?: boolean) => void
   onOpenThread?: (rootMessageId: string) => void
   onOpenAttachment?: (attachment: AttachmentRecord) => void
   resolveReactorName: ResolveReactorName
@@ -72,6 +74,7 @@ export const ChannelMessageBody = ({
   canDelete,
   canEdit,
   meUserId,
+  viewerCanConfigureAnnouncements,
   token,
   isExternalAgentConversation,
   renderContent,
@@ -107,7 +110,8 @@ export const ChannelMessageBody = ({
   const threadRootMessageId = message.rootMessageId ?? message.id
   const broadcastRootId = getReplyBroadcastRootId(message.metadata)
   const openThread =
-    onOpenThread && !isEditingMessage ? () => onOpenThread(threadRootMessageId) : undefined
+    onOpenThread && !isEditingMessage && !message.requiresConfirmation
+      ? () => onOpenThread(threadRootMessageId) : undefined
 
   return (
     <div
@@ -244,10 +248,11 @@ export const ChannelMessageBody = ({
       {!isEditingMessage ? (
         <ChannelMessageActions
           canDelete={canDelete}
-          canEdit={canEdit}
+          canEdit={canEdit && !message.requiresConfirmation}
           content={message.content}
           currentUserId={meUserId}
           messageId={message.id}
+          requiresConfirmation={message.requiresConfirmation}
           reactions={message.reactions ?? []}
           resolveReactorName={resolveReactorName}
           onAddReaction={onAddReaction}
@@ -256,7 +261,12 @@ export const ChannelMessageBody = ({
           onStartEdit={onStartEdit}
         />
       ) : null}
-      {!message.rootMessageId && (message.replyCount ?? 0) > 0 && onOpenThread ? (
+      {message.requiresConfirmation && !message.deletedAt ? (
+        <AnnouncementConfirmationControl messageId={message.id}
+          isAuthor={message.userId === meUserId}
+          canViewStatus={message.userId === meUserId || viewerCanConfigureAnnouncements === true} />
+      ) : null}
+      {!message.requiresConfirmation && !message.rootMessageId && (message.replyCount ?? 0) > 0 && onOpenThread ? (
         <ReplySummaryBar
           lastReplyAt={message.lastReplyAt ?? null}
           participantIds={message.replyParticipantIds ?? []}
