@@ -10,6 +10,7 @@ name: Deploy
 run-name: >-
   ${{
     github.event_name == 'workflow_dispatch' && 'Deploy — manual dispatch'
+    || github.event_name == 'push' && format('Deploy — woken by push of {0}', github.sha)
     || (github.event.workflow_run.conclusion == 'success'
       && github.event.workflow_run.event == 'push'
       && github.event.workflow_run.head_branch == 'main')
@@ -17,13 +18,18 @@ run-name: >-
       || format('No deploy — CI {0} on {1}', github.event.workflow_run.conclusion, github.event.workflow_run.head_branch)
   }}
 
-# Production is woken by completed main CI, then promotes the newest commit on
-# main that has passed that CI — the tip when its own CI is green, otherwise
-# the newest verified ancestor. See docs/deployment.md.
+# Production is woken by completed main CI or by a push to main, then promotes
+# the newest commit on main that CI has verified — the tip when it is verified,
+# otherwise the newest verified ancestor. A push deploys at once when a branch's
+# CI already passed the pushed commit's exact tree; otherwise the commit waits
+# for its own main CI, and the push wake-up ships nothing new. See
+# docs/deployment/redeploying.md.
 on:
   workflow_run:
     workflows: [CI]
     types: [completed]
+    branches: [main]
+  push:
     branches: [main]
   workflow_dispatch:
 
@@ -42,6 +48,7 @@ concurrency:
     ${{
       (
         (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+        || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         || (github.event_name == 'workflow_run'
           && github.event.workflow_run.name == 'CI'
           && github.event.workflow_run.event == 'push'
@@ -69,7 +76,9 @@ jobs:
       eligible: ${{ steps.resolve.outputs.eligible }}
       reason: ${{ steps.resolve.outputs.reason }}
       sha: ${{ steps.resolve.outputs.sha }}
+      source_sha: ${{ steps.resolve.outputs.source_sha }}
       stalled: ${{ steps.resolve.outputs.stalled }}
+      verified_by: ${{ steps.resolve.outputs.verified_by }}
     steps:
       # This checkout carries no deploy credentials. The gate script comes from
       # the trusted main branch rather than an event-provided revision.
@@ -203,6 +212,9 @@ jobs:
           IMAGE_ARCHIVE: ${{ runner.temp }}/production-image/image.tar
           IMAGE_NAME: ${{ matrix.name }}
           IMAGE_SHA: ${{ needs.gate.outputs.sha }}
+          # The commit the selected CI run built: the gated SHA itself, or the
+          # branch commit whose identical tree verified it.
+          IMAGE_SOURCE_SHA: ${{ needs.gate.outputs.source_sha }}
           IMAGE_PREFIX: ${{ steps.repo.outputs.prefix }}
         run: node scripts/promote-ci-image.mjs
 

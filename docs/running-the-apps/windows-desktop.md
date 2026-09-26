@@ -164,7 +164,9 @@ poll, receipts, an allowed selected-folder read, a refused traversal, a COW
 write, and a draft review. The test uses the packaged Windows DACL helper and
 asserts that neither the selected host root nor an outside folder was changed.
 
-Every branch also reports the **Windows Native** CI check. It runs only when
+Every branch also reports the **Windows Native** check, from the Desktop CI
+workflow (`.github/workflows/desktop-ci.yml`, beside Linux Desktop Bundle, so a
+desktop build never holds a server deploy). It runs only when
 `desktop/`, `executor/`, or `assets/` changes (and reports an explicit skip
 otherwise), then tests every Windows Rust crate and the WiX installer authoring.
 Those failures block the affected pull request before a release build is
