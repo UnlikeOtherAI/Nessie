@@ -13,6 +13,7 @@ This is a client loading audit, not a production API latency measurement.
 | Reload and app reopen | Query memory is lost, so directories and boards start blank | Bounded, validated local snapshots hydrate the canonical query cache after live authentication |
 | Projects and channels | Directories used infinite freshness and could miss changes while away | One minute freshness with focus revalidation, plus existing realtime invalidation |
 | Project board entry | Prewarm fetched only the directory, then mounting started the card request | Prewarm selected cards too; explicit board ids allow parallel requests |
+| Other project sections | The shared header queried board cards even on Docs, Settings and Overview | Fetch cards only when the board section is showing |
 | Project board | Cold tickets rendered empty columns; a transient refresh failure removed cards | Cold skeleton; retain last cards with Retry on refresh failures |
 | Scrum board | An unresolved sprint read could say “No active sprint” | Wait for that project's sprint result |
 | Channel swaps | Previous-room messages could appear under the destination; missing ids fell back to the first room | Exact-entity cache reuse; no fallback room for an explicit URL |

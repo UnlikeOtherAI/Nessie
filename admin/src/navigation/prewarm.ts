@@ -127,7 +127,7 @@ export const PREWARM_REGISTRY: PrewarmEntry[] = [
     ),
     run: (projectId, context, destination = `/projects/${projectId}/board`) => {
       const url = new URL(destination, 'https://navigation.invalid')
-      const onBoard = url.pathname.endsWith('/board') || url.pathname === `/projects/${projectId}`
+      const onBoard = url.pathname.endsWith('/board')
       const selectedBoardId = url.searchParams.get('board')
       const warmTasks = (boardId: string) => prefetch(context, taskKeys.forBoard(projectId, boardId), () =>
         fetchBoardTasks(context.apiClient, projectId, boardId))

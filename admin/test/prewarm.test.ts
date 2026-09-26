@@ -35,7 +35,7 @@ const runFor = async (
 ): Promise<void> => {
   const matched = matchPrewarm(to)
   assert.ok(matched, `${to} resolves to a prewarm entry`)
-  matched.entry.run(matched.id, { apiClient, queryClient })
+  matched.entry.run(matched.id, { apiClient, queryClient }, to)
   // `prefetchQuery` resolves on a microtask chain; one turn of the loop is
   // enough for the fetcher to have been called and the cache written.
   await new Promise((resolve) => setTimeout(resolve, 0))
@@ -90,6 +90,9 @@ test('project intent warms default-board cards and respects an explicit board wi
   await new Promise((resolve) => setTimeout(resolve, 0))
   assert.deepEqual(queryClient.getQueryData(taskKeys.forBoard('project-a', 'other-board')),
     { tasks: [], truncated: false })
+  calls.length = 0
+  await runFor('/projects/project-b/docs', queryClient, apiClient)
+  assert.deepEqual(calls, ['/api/projects/project-b/boards'], 'a Documents entry does not fetch hidden board cards')
   queryClient.clear()
 })
 
