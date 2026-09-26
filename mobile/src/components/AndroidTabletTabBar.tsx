@@ -82,7 +82,7 @@ export const AndroidTabletTabBar = ({
           const active = index === activeIndex
           const color = active ? activeTintColor : inactiveTintColor
           const badge = badgeCounts[tab.key] ?? 0
-  
+
           return (
             <Pressable
               accessible
