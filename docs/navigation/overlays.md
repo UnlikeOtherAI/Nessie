@@ -190,7 +190,9 @@ placement step, the primitive passes the trigger's position relative to the
 panel into the shared overlay motion. Its reveal grows from that point even
 after a viewport flip or clamp, and opening, closing, and reduced-motion
 behavior stay on the same timeline as other popovers. Its translucent surface
-and blur are scoped to that menu.
+and blur are shared with the account menu and the knowledge detail action bar
+through `.frosted-menu-panel`: a 70%-opaque theme panel, with text and icons
+remaining fully opaque.
 
 An anchored control inside a modal takes the modal-owned popover layer (75),
 above its owner and below `blocking` (80). It also owns Back ahead of that

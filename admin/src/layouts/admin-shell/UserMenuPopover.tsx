@@ -29,9 +29,7 @@ const rowClassName = [
 ].join(' ')
 
 const panelClassName = [
-  'w-[252px] overflow-hidden rounded-xl border',
-  'border-[color:var(--sep)] bg-[color:var(--panel)] p-1.5',
-  'shadow-[0_16px_48px_var(--scrim-strong)]',
+  'frosted-menu-panel w-[272px] overflow-hidden rounded-xl border p-2',
 ].join(' ')
 
 // Avatar menu: shared by the desktop rail and native-shell top bar. It keeps

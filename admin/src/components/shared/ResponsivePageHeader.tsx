@@ -243,7 +243,7 @@ export const ResponsivePageHeader = ({
         className="knowledge-floating-action-bar"
         ref={(element) => { headerRef.current = element }}
       >
-        <div aria-label={actionBarLabel} className="create-menu-panel knowledge-floating-action-bar-inner" data-testid="knowledge-detail-action-bar" role="toolbar">
+        <div aria-label={actionBarLabel} className="frosted-menu-panel knowledge-floating-action-bar-inner" data-testid="knowledge-detail-action-bar" role="toolbar">
         {visibleActions.map((action) => (
           <div className="relative" key={action.id}>
             {renderAction(action)}
