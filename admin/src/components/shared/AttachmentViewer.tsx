@@ -7,6 +7,7 @@ import {
 } from '../../lib/uploads'
 import { OverlayPortal } from '../overlays/OverlayPortal'
 import { useOverlay } from '../overlays/useOverlay'
+import { PdfPreview } from './PdfPreview'
 
 /**
  * Full-size view of one attachment: the ORIGINAL bytes, not the feed's
@@ -156,11 +157,9 @@ const AttachmentViewerDialog = ({
             {!url ? (
               <p className="p-8 text-sm text-[color:var(--tx3)]">Loading…</p>
             ) : pdf ? (
-              <iframe
-                className="h-[calc(100dvh-10rem)] w-full rounded border-0 bg-[var(--panel)]"
-                src={url}
-                title={attachment.filename}
-              />
+              <div className="h-[calc(100dvh-10rem)] w-full overflow-hidden rounded bg-[var(--panel)]">
+                <PdfPreview title={attachment.filename} url={url} />
+              </div>
             ) : (
               <img
                 alt={attachment.filename}
