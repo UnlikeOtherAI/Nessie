@@ -10,9 +10,9 @@ const leafPaths = (value: unknown, prefix = ''): string[] => {
 }
 
 test('every supported language has the same registered catalog keys', () => {
-  const expected = leafPaths(catalogs['en-GB'])
+  const expected = leafPaths(catalogs['en-GB']).sort()
   for (const { code } of LANGUAGES) {
-    assert.deepEqual(leafPaths(catalogs[code]), expected, `${code} catalog keys`)
+    assert.deepEqual(leafPaths(catalogs[code]).sort(), expected, `${code} catalog keys`)
   }
 })
 
