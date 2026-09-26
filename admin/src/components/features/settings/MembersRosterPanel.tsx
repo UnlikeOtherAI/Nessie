@@ -42,28 +42,37 @@ const ROSTER_TABS = [
 
 const AUTOMATIC_TAB = { label: 'members.automaticLogins', value: 'automatic', compactLabel: 'members.access' } as const
 
-const dateLabel = (value: string | undefined) => {
+const dateLabel = (value: string | undefined, locale: string) => {
   if (!value) return '—'
   const date = new Date(value)
-  return Number.isNaN(date.valueOf()) ? '—' : date.toLocaleDateString()
+  return Number.isNaN(date.valueOf()) ? '—' : date.toLocaleDateString(locale)
 }
 
 const disclosure = <span aria-hidden="true" className="text-xl leading-none text-[color:var(--tx3)]">›</span>
 
-const memberSubtitle = (member: TeamMemberRecord, scope: MemberRosterScope) => {
+const memberSubtitle = (
+  member: TeamMemberRecord,
+  scope: MemberRosterScope,
+  t: (key: string) => string,
+) => {
   const role = member[scope === 'organization' ? 'orgRole' : 'teamRole']
-  return [member.email, role].filter(Boolean).join(' · ')
+  return [member.email, role ? t(`members.roles.${role}`) : undefined].filter(Boolean).join(' · ')
 }
 
-const invitationSubtitle = (invite: TeamInvitationRecord, scope: MemberRosterScope) => [
+const invitationSubtitle = (
+  invite: TeamInvitationRecord,
+  scope: MemberRosterScope,
+  locale: string,
+  t: (key: string, options?: Record<string, unknown>) => string,
+) => [
   invite.email,
   scope === 'organization' ? invite.team?.name : undefined,
-  invite.expiresAt ? `Expires ${dateLabel(invite.expiresAt)}` : undefined,
+  invite.expiresAt ? t('members.teamSection.expires', { date: dateLabel(invite.expiresAt, locale) }) : undefined,
 ].filter(Boolean).join(' · ')
 
 /** The single Members page used at organisation and team scope. */
 export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
-  const { t } = useTranslation('settings')
+  const { t, i18n } = useTranslation('settings')
   const { me, token } = useAuthSession()
   const [searchParams, setSearchParams] = useSearchParams()
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -179,7 +188,7 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
                         ariaLabel={t('members.openInvitation', { name: invite.name ?? invite.email ?? t('members.member') })}
                         key={invite.inviteId}
                         onClick={() => setSelectedInvitation(invite)}
-                        subtitle={invitationSubtitle(invite, scope)}
+                        subtitle={invitationSubtitle(invite, scope, i18n.resolvedLanguage ?? i18n.language, t)}
                         title={<span className="font-medium">{name}</span>}
                         trailing={disclosure}
                       />
@@ -212,7 +221,7 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
                           />
                         )}
                         onClick={() => setSelectedMember(member)}
-                        subtitle={memberSubtitle(member, scope)}
+                        subtitle={memberSubtitle(member, scope, t)}
                         title={<span className="font-medium">{name}</span>}
                         trailing={disclosure}
                       />

@@ -12,6 +12,7 @@
  */
 
 import type { AutomaticMembershipReconcileRecord } from '@nessie/schemas'
+import { useTranslation } from 'react-i18next'
 
 import { Notice } from '../../primitives/Notice'
 import { Pill, type PillTone } from '../../primitives/Pill'
@@ -22,15 +23,6 @@ type Props = {
   pending: boolean
   onCancel: () => void
   onRerun: () => void
-}
-
-const STATUS_LABEL: Record<AutomaticMembershipReconcileRecord['status'], string> = {
-  cancelled: 'Stopped',
-  completed: 'Finished',
-  failed: 'Stopped early',
-  queued: 'Starting',
-  running: 'Adding people',
-  superseded: 'Replaced by a newer run',
 }
 
 const STATUS_TONE: Record<AutomaticMembershipReconcileRecord['status'], PillTone> = {
@@ -51,15 +43,16 @@ export const AutomaticMembershipReconcileStatus = ({
   onRerun,
   pending,
   run,
-}: Props) => (
+}: Props) => {
+  const { t } = useTranslation('settings')
+  return (
   <div className="grid gap-2 border-t border-[color:var(--border)] pt-3">
     <div className="flex flex-wrap items-center gap-2">
       <Pill radius="chip" size="sm" tone={STATUS_TONE[run.status]} uppercase={false}>
-        {STATUS_LABEL[run.status]}
+        {t(`automaticMembership.runStatuses.${run.status}`)}
       </Pill>
       <p aria-live="polite" className="text-xs text-[color:var(--tx2)]" role="status">
-        {`${run.scanned} checked · ${run.matched} matched · ${run.granted} added · `
-          + `${run.skipped} already had access${run.failed > 0 ? ` · ${run.failed} failed` : ''}`}
+        {t('automaticMembership.runSummary', { scanned: run.scanned, matched: run.matched, granted: run.granted, skipped: run.skipped, failed: run.failed })}
       </p>
     </div>
     {run.lastError ? (
@@ -74,7 +67,7 @@ export const AutomaticMembershipReconcileStatus = ({
             onClick={onCancel}
             type="button"
           >
-            Stop adding
+            {t('automaticMembership.stopAdding')}
           </button>
         ) : (
           <button
@@ -83,10 +76,11 @@ export const AutomaticMembershipReconcileStatus = ({
             onClick={onRerun}
             type="button"
           >
-            Run again
+            {t('automaticMembership.runAgain')}
           </button>
         )}
       </div>
     ) : null}
   </div>
-)
+  )
+}

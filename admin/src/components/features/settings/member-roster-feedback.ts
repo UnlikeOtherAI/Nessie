@@ -13,32 +13,42 @@ import type { ToastInput } from '../../../providers/ToastProvider'
  * ellipsised line, and the part a person checks is the part that runs long.
  */
 
-const LIST = new Intl.ListFormat('en-GB', { style: 'long', type: 'conjunction' })
-
 /** "Design", "Design and Support", "Design, Research and Support". */
-export const joinNames = (names: readonly string[]): string => LIST.format(names)
+export const joinNames = (names: readonly string[], locale: string): string =>
+  new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(names)
 
 // At team scope the roster is always the viewer's current team, whose name is
 // known only when the session lists it.
-const teamsPhrase = (teamNames: readonly string[]): string =>
-  teamNames.length > 0 ? joinNames(teamNames) : 'your team'
+const teamsPhrase = (
+  teamNames: readonly string[],
+  locale: string,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string =>
+  teamNames.length > 0 ? joinNames(teamNames, locale) : t('members.feedback.yourTeam')
 
-export const invitationSentToast = (email: string, teamNames: readonly string[]): ToastInput => ({
-  body: `${email} is invited to ${teamsPhrase(teamNames)}.`,
-  title: 'Invitation sent',
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
+export const invitationSentToast = (
+  email: string,
+  teamNames: readonly string[],
+  locale: string,
+  t: Translate,
+): ToastInput => ({
+  body: t('members.feedback.invitationSentBody', { email, teams: teamsPhrase(teamNames, locale, t) }),
+  title: t('members.feedback.invitationSent'),
 })
 
-export const invitationResentToast = (who: string): ToastInput => ({
-  body: `We’ve emailed ${who} again.`,
-  title: 'Invitation sent again',
+export const invitationResentToast = (who: string, t: Translate): ToastInput => ({
+  body: t('members.feedback.invitationResentBody', { who }),
+  title: t('members.feedback.invitationResent'),
 })
 
-export const invitationCancelledToast = (who: string): ToastInput => ({
-  body: `You can invite ${who} again at any time.`,
-  title: 'Invitation cancelled',
+export const invitationCancelledToast = (who: string, t: Translate): ToastInput => ({
+  body: t('members.feedback.invitationCancelledBody', { who }),
+  title: t('members.feedback.invitationCancelled'),
 })
 
-export const memberAddedToast = (name: string, teamName: string | undefined): ToastInput => ({
-  body: `${name} is now in ${teamName ?? 'your team'}.`,
-  title: 'Member added',
+export const memberAddedToast = (name: string, teamName: string | undefined, t: Translate): ToastInput => ({
+  body: t('members.feedback.memberAddedBody', { name, team: teamName ?? t('members.feedback.yourTeam') }),
+  title: t('members.feedback.memberAdded'),
 })

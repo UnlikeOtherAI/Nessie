@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 
 import { Checkbox } from '../../primitives/Checkbox'
@@ -33,6 +34,7 @@ type MemberInvitationDialogProps = {
 
 /** One invite dialog for both roster scopes; only teams can add an existing person. */
 export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitationDialogProps) => {
+  const { t, i18n } = useTranslation('settings')
   const { me, token } = useAuthSession()
   const { pushToast } = useToasts()
   const [, setSearchParams] = useSearchParams()
@@ -90,7 +92,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
     event.preventDefault()
     setTargetError(null)
     if (scope === 'organization' && targetIds.length === 0) {
-      setTargetError('Choose at least one team.')
+      setTargetError(t('members.invite.chooseTeam'))
       return
     }
     const address = email.trim()
@@ -110,6 +112,8 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
       pushToast(invitationSentToast(
         address,
         scope === 'organization' ? invitedNames : currentTeam ? [currentTeam] : [],
+        i18n.resolvedLanguage ?? i18n.language,
+        t,
       ))
       onClose()
       return
@@ -118,8 +122,10 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
     // error when it refused all of them). Keep only the refused ones selected
     // so a retry cannot re-send the invitations that went out.
     setTargetIds(failedTeamIds)
-    setTargetError(`Invited to ${joinNames(invitedNames)}, but not to `
-      + `${joinNames(failedTeamIds.map(nameOf))}. Send again to retry.`)
+    setTargetError(t('members.invite.partialFailure', {
+      invited: joinNames(invitedNames, i18n.resolvedLanguage ?? i18n.language),
+      failed: joinNames(failedTeamIds.map(nameOf), i18n.resolvedLanguage ?? i18n.language),
+    }))
   }
 
   const targetItems = targets.items
@@ -150,7 +156,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
   const addCandidate = async (uoaSub: string, candidateName: string) => {
     const result = await addCandidateForm.submit({ uoaSub })
     if (!result) return
-    pushToast(memberAddedToast(candidateName, activeTeam(me)?.label))
+    pushToast(memberAddedToast(candidateName, activeTeam(me)?.label, t))
     onClose()
   }
 
@@ -159,14 +165,12 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
 
   return (
     <Dialog
-      description={scope === 'team'
-        ? 'Add someone from your organisation, or invite someone new by email.'
-        : 'Invite someone by email and choose the teams they’ll join.'}
+      description={t(scope === 'team' ? 'members.invite.teamDescription' : 'members.invite.organizationDescription')}
       dismissDisabled={busy}
       initialFocusRef={scope === 'team' && mode === 'existing' ? undefined : emailRef}
       onClose={onClose}
       open={open}
-      title="Invite people"
+      title={t('members.invite.title')}
     >
       <div className="space-y-4 p-4">
         {/*
@@ -176,7 +180,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
           would have to already know about.
         */}
         {me?.features?.automaticMembership === true ? <p className="text-xs text-[color:var(--tx3)]">
-          Adding lots of people from one company?{' '}
+          {t('members.invite.manyPeople')}{' '}
           <button
             className="underline underline-offset-2"
             onClick={() => {
@@ -189,17 +193,17 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
             }}
             type="button"
           >
-            Set up automatic team access
+            {t('members.invite.setupAutomatic')}
           </button>{' '}
-          instead.
+          {t('members.invite.instead')}
         </p> : null}
         {scope === 'team' ? (
           <TabBar
-            ariaLabel="How to add someone"
+            ariaLabel={t('members.invite.method')}
             idPrefix="member-invite"
             items={[
-              { compactLabel: 'Organisation', label: 'From your organisation', value: 'existing' },
-              { compactLabel: 'By email', label: 'Invite by email', value: 'workspace' },
+              { compactLabel: t('members.invite.organization'), label: t('members.invite.fromOrganization'), value: 'existing' },
+              { compactLabel: t('members.invite.byEmail'), label: t('members.invite.inviteByEmail'), value: 'workspace' },
             ]}
             onChange={selectMode}
             value={mode}
@@ -209,21 +213,21 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
         {scope === 'team' && mode === 'existing' ? (
           <div className="space-y-3" id="member-invite-tabpanel-existing" role="tabpanel">
             <label className="block text-sm font-medium text-[color:var(--tx)]" htmlFor="member-search">
-              Search your organisation
+              {t('members.invite.searchOrganization')}
             </label>
             <Input
               autoComplete="off"
               id="member-search"
               onChange={(event) => setCandidateQuery(event.target.value)}
-              placeholder="Start typing a name"
+              placeholder={t('members.invite.namePlaceholder')}
               value={candidateQuery}
             />
             {debouncedCandidateQuery.trim() ? <QueryState
               className="py-2"
-              emptyLabel="No one to add by that name. Try inviting them by email."
-              errorLabel="Members could not be searched."
+              emptyLabel={t('members.invite.searchEmpty')}
+              errorLabel={t('members.invite.searchFailed')}
               isEmpty={candidateItems.length === 0}
-              loadingLabel="Searching members…"
+              loadingLabel={t('members.invite.searching')}
               query={candidates}
             >
             {() => (
@@ -235,19 +239,19 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
                     className="flex w-full items-center gap-3 py-3 text-left hover:bg-[color:var(--main-hover)]"
                     disabled={busy || candidates.data?.data.permissions.addMember !== true}
                     key={candidate.uoaSub}
-                    onClick={() => void addCandidate(candidate.uoaSub, candidateName ?? 'The new member')}
+                    onClick={() => void addCandidate(candidate.uoaSub, candidateName ?? t('members.invite.newMember'))}
                     type="button"
                   >
                     <UserAvatar
                       avatarUrl={candidate.avatarImageUrl}
-                      displayName={candidateName ?? 'Member'}
+                      displayName={candidateName ?? t('members.member')}
                       size={32}
                       token={token}
                       uoaSub={candidate.uoaSub}
                     />
                     <span className="min-w-0">
                       <span className="block truncate font-medium text-[color:var(--tx)]">
-                        {candidateName ?? 'Unnamed member'}
+                        {candidateName ?? t('members.unnamed')}
                       </span>
                       {candidate.email ? <span className="block truncate text-sm text-[color:var(--tx3)]">{candidate.email}</span> : null}
                     </span>
@@ -265,9 +269,9 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
               <fieldset className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <legend className="text-sm font-medium text-[color:var(--tx)]">
-                    Teams
+                    {t('members.invite.teams')}
                     {targetIds.length > 0 ? (
-                      <span className="ml-1 font-normal text-[color:var(--tx3)]">({targetIds.length} selected)</span>
+                      <span className="ml-1 font-normal text-[color:var(--tx3)]">({t('members.invite.selected', { count: targetIds.length })})</span>
                     ) : null}
                   </legend>
                   {targetItems.length > 1 ? (
@@ -277,13 +281,13 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
                       onClick={toggleAllTargets}
                       type="button"
                     >
-                      {allTargetsSelected ? 'Deselect all' : 'Select all'}
+                      {t(allTargetsSelected ? 'members.invite.deselectAll' : 'members.invite.selectAll')}
                     </button>
                   ) : null}
                 </div>
-                <QueryState className="py-2" emptyLabel="There are no teams you can invite people to."
-                  errorLabel="Teams could not be loaded." isEmpty={targetItems.length === 0}
-                  loadingLabel="Loading teams…" query={targets.query}>
+                <QueryState className="py-2" emptyLabel={t('members.invite.noTeams')}
+                  errorLabel={t('members.invite.teamsLoadFailed')} isEmpty={targetItems.length === 0}
+                  loadingLabel={t('members.invite.loadingTeams')} query={targets.query}>
                 {() => <div className="grid max-h-64 gap-1 overflow-y-auto">
                   {targetItems.map((target) => (
                     <div className="rounded px-1.5 py-1 hover:bg-[color:var(--overlay)]" key={target.id}>
@@ -311,7 +315,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
               </fieldset>
             ) : null}
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-[color:var(--tx)]" htmlFor="invite-email">Email</label>
+              <label className="block text-sm font-medium text-[color:var(--tx)]" htmlFor="invite-email">{t('members.invite.email')}</label>
               <Input
                 autoComplete="email"
                 id="invite-email"
@@ -323,16 +327,16 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
               />
             </div>
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-[color:var(--tx)]" htmlFor="invite-name">Name (optional)</label>
+              <label className="block text-sm font-medium text-[color:var(--tx)]" htmlFor="invite-name">{t('members.invite.nameOptional')}</label>
               <Input id="invite-name" maxLength={120} onChange={(event) => setName(event.target.value)} value={name} />
             </div>
             <FormError>{targetError ?? inviteForm.formError}</FormError>
             <FormActions>
-              <button className="admin-button admin-button-secondary" disabled={busy} onClick={onClose} type="button">Cancel</button>
+              <button className="admin-button admin-button-secondary" disabled={busy} onClick={onClose} type="button">{t('common.cancel')}</button>
               <button className="admin-button admin-button-primary"
                 disabled={busy || (scope === 'organization' && (targets.query.isError
                   || targets.query.data?.data.permissions.createInvitation !== true))}
-                type="submit">{inviteForm.isPending ? 'Sending…' : 'Send invitation'}</button>
+                type="submit">{inviteForm.isPending ? t('members.invite.sending') : t('members.invite.send')}</button>
             </FormActions>
           </form>
         )}

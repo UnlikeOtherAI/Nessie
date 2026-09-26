@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { MemberRosterPermissions, TeamMemberRecord } from '@nessie/schemas'
 
 import { Checkbox } from '../../primitives/Checkbox'
@@ -41,6 +42,7 @@ export const MemberDetailsDialog = ({
   permissions,
   scope,
 }: MemberDetailsDialogProps) => {
+  const { t } = useTranslation('settings')
   const roleMutation = useUpdateTeamMemberRole()
   const organizationRoleMutation = useUpdateOrganizationMemberRole()
   const teamMutation = useUpdateMemberTeamAccess()
@@ -118,7 +120,7 @@ export const MemberDetailsDialog = ({
       }
       onClose()
     } catch (caught) {
-      setError(formErrorMessage(caught, 'Couldn’t save your changes. Try again.'))
+      setError(formErrorMessage(caught, t('members.details.saveFailed')))
     }
   }
 
@@ -128,11 +130,11 @@ export const MemberDetailsDialog = ({
       : current.filter((id) => id !== teamId))
   }
 
-  const name = memberDisplayName(member?.displayName, member?.email) ?? 'Member'
-  const actionLabel = action === 'remove' ? 'Remove from team'
-    : action === 'deactivate' ? 'Deactivate' : 'Reactivate'
-  const actionTitle = action === 'remove' ? `Remove ${name} from this team?`
-    : action === 'deactivate' ? `Deactivate ${name}?` : `Reactivate ${name}?`
+  const name = memberDisplayName(member?.displayName, member?.email) ?? t('members.member')
+  const actionLabel = action === 'remove' ? t('members.details.removeFromTeam')
+    : action === 'deactivate' ? t('members.details.deactivate') : t('members.details.reactivate')
+  const actionTitle = action === 'remove' ? t('members.details.removeTitle', { name })
+    : action === 'deactivate' ? t('members.details.deactivateTitle', { name }) : t('members.details.reactivateTitle', { name })
   const changeMembership = async () => {
     if (!member || !action) return
     setError(null)
@@ -142,7 +144,7 @@ export const MemberDetailsDialog = ({
       setAction(null)
       onClose()
     } catch (caught) {
-      setError(formErrorMessage(caught, 'Couldn’t make that change. Try again.'))
+      setError(formErrorMessage(caught, t('members.details.actionFailed')))
     }
   }
   const hasRoleChange = role !== (currentRole ?? '')
@@ -153,9 +155,7 @@ export const MemberDetailsDialog = ({
   return (
     <>
     <Dialog
-      description={scope === 'team'
-        ? 'Change their role in this team.'
-        : 'Change their role in your organisation and choose which teams they’re in.'}
+      description={t(scope === 'team' ? 'members.details.teamDescription' : 'members.details.organizationDescription')}
       dismissDisabled={busy}
       onClose={onClose}
       open={open && member !== null}
@@ -165,7 +165,7 @@ export const MemberDetailsDialog = ({
         {scope === 'team' || member?.orgRole !== 'owner' ? (
           <div className="space-y-2">
             <label className="block text-sm font-medium text-[color:var(--tx)]" htmlFor="member-role">
-              {scope === 'team' ? 'Role' : 'Organisation role'}
+              {t(scope === 'team' ? 'members.details.role' : 'members.details.organizationRole')}
             </label>
             <Select
               disabled={!canChangeRole || busy}
@@ -173,33 +173,33 @@ export const MemberDetailsDialog = ({
               onChange={(event) => setRole(event.target.value)}
               value={role}
             >
-              {roleOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+              {roleOptions.map((option) => <option key={option} value={option}>{t(`members.roles.${option}`)}</option>)}
             </Select>
             {!canChangeRole ? (
               <p className="text-xs text-[color:var(--tx3)]">
-                {permissions?.changeMemberRole === true
-                  ? 'There are no other roles you can give them.'
-                  : 'You don’t have permission to change their role.'}
+                {t(permissions?.changeMemberRole === true
+                  ? 'members.details.noOtherRoles'
+                  : 'members.details.rolePermissionDenied')}
               </p>
             ) : null}
           </div>
         ) : (
           <p className="text-sm text-[color:var(--tx3)]">
-            They own this organisation. Ownership can only be handed over in UnlikeOtherAI.
+            {t('members.details.ownsOrganization')}
           </p>
         )}
         {scope === 'organization' ? (
           <div className="space-y-3">
             <div>
-              <p className="text-sm font-medium text-[color:var(--tx)]">Team access</p>
-              <p className="text-xs text-[color:var(--tx3)]">Only teams you manage are listed.</p>
+              <p className="text-sm font-medium text-[color:var(--tx)]">{t('members.details.teamAccess')}</p>
+              <p className="text-xs text-[color:var(--tx3)]">{t('members.details.managedTeamsOnly')}</p>
             </div>
             <QueryState
               className="py-2"
-              emptyLabel="You don’t manage any teams."
-              errorLabel="Team access could not be loaded."
+              emptyLabel={t('members.details.noManagedTeams')}
+              errorLabel={t('members.details.teamAccessLoadFailed')}
               isEmpty={teams.length === 0}
-              loadingLabel="Loading teams…"
+              loadingLabel={t('members.details.loadingTeams')}
               query={teamAccess}
             >
             {() => <div className="grid max-h-64 gap-1 overflow-y-auto">
@@ -216,7 +216,7 @@ export const MemberDetailsDialog = ({
             </div>}
             </QueryState>
             {!teamAccess.isLoading && !canChangeTeams && teams.length > 0 ? (
-              <p className="text-xs text-[color:var(--tx3)]">You don’t have permission to change their teams.</p>
+              <p className="text-xs text-[color:var(--tx3)]">{t('members.details.teamPermissionDenied')}</p>
             ) : null}
           </div>
         ) : null}
@@ -226,8 +226,7 @@ export const MemberDetailsDialog = ({
             <LocalInferenceEnablement scope="user" userId={member.userId} />
           ) : (
             <Notice tone="neutral">
-              You can set their own Local Ollama policy after they first sign in to Nessie. Until
-              then, any team policy applies.
+              {t('members.details.localOllamaHint')}
             </Notice>
           )
         ) : null}
@@ -238,21 +237,21 @@ export const MemberDetailsDialog = ({
             {permissions?.removeMember === true ? (
               <button className="admin-button admin-button-danger" disabled={busy}
                 onClick={() => { setError(null); setAction('remove') }} type="button">
-                Remove from team
+                {t('members.details.removeFromTeam')}
               </button>
             ) : null}
             {(member?.status === 'DEACTIVATED' ? permissions?.reactivateMember : permissions?.deactivateMember) === true ? (
               <button className="admin-button admin-button-secondary" disabled={busy}
                 onClick={() => { setError(null); setAction(member?.status === 'DEACTIVATED' ? 'reactivate' : 'deactivate') }}
                 type="button">
-                {member?.status === 'DEACTIVATED' ? 'Reactivate in organisation' : 'Deactivate in organisation'}
+                {t(member?.status === 'DEACTIVATED' ? 'members.details.reactivateInOrganization' : 'members.details.deactivateInOrganization')}
               </button>
             ) : null}
           </div>
         ) : null}
         <FormActions>
           <button className="admin-button admin-button-secondary" disabled={busy} onClick={onClose} type="button">
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             className="admin-button admin-button-primary"
@@ -260,7 +259,7 @@ export const MemberDetailsDialog = ({
               || (scope === 'organization' && !sameIds(teamIds, initialTeamIds) && !canChangeTeams)}
             type="submit"
           >
-            {busy ? 'Saving…' : 'Save changes'}
+            {busy ? t('common.saving') : t('members.details.saveChanges')}
           </button>
         </FormActions>
       </form>
@@ -268,9 +267,8 @@ export const MemberDetailsDialog = ({
     <ConfirmDialog
       blocking
       body={<>
-        <p>{action === 'remove' ? 'They’ll lose access to this team. Their other teams aren’t affected.'
-          : action === 'deactivate' ? 'They won’t be able to use any team in your organisation until you reactivate them.'
-            : 'They’ll be able to use your organisation again.'}</p>
+        <p>{t(action === 'remove' ? 'members.details.removeBody'
+          : action === 'deactivate' ? 'members.details.deactivateBody' : 'members.details.reactivateBody')}</p>
         <FormError>{error}</FormError>
       </>}
       confirmLabel={actionLabel}
