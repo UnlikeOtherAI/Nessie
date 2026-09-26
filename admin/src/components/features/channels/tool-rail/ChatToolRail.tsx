@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import type { ChatTool, ChatToolId } from './chat-tools'
 
@@ -58,11 +59,6 @@ const TOOL_MARKS: Record<ChatToolId, () => ReactElement> = {
 }
 
 /** What a live dot on each tool means, read out to a screen reader. */
-const LIVE_LABELS: Record<ChatToolId, string> = {
-  browser: 'Browsing now',
-  conversations: 'Another conversation is running',
-}
-
 /**
  * The agent's tools, standing beside its conversation.
  *
@@ -81,9 +77,19 @@ export const ChatToolRail = ({
   onToggle,
   openTool,
   tools,
-}: ChatToolRailProps) => (
+}: ChatToolRailProps) => {
+  const { t } = useTranslation('channels')
+  const labels: Record<ChatToolId, string> = {
+    browser: t('child.toolRail.browser'),
+    conversations: t('child.toolRail.conversations'),
+  }
+  const liveLabels: Record<ChatToolId, string> = {
+    browser: t('child.toolRail.browsingNow'),
+    conversations: t('child.toolRail.conversationRunning'),
+  }
+  return (
   <aside
-    aria-label="Agent tools"
+    aria-label={t('child.toolRail.agentTools')}
     className={[
       // 84px rather than the shell rail's 65: this rail clips its overflow, and
       // "Conversations" is 69px at the rail's 10px label size, so at 65 the
@@ -119,11 +125,12 @@ export const ChatToolRail = ({
               />
             ) : null}
           </span>
-          <span className="admin-rail-btn-label">{tool.label}</span>
-          {live ? <span className="sr-only">{LIVE_LABELS[tool.id]}</span> : null}
+          <span className="admin-rail-btn-label">{labels[tool.id]}</span>
+          {live ? <span className="sr-only">{liveLabels[tool.id]}</span> : null}
           {blockedReason === null ? null : <span className="sr-only">{blockedReason}</span>}
         </button>
       )
     })}
   </aside>
-)
+  )
+}

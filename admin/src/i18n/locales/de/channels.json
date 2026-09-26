@@ -344,6 +344,18 @@
       "image": "Bild",
       "notLoaded": "— nicht geladen",
       "messageTable": "Nachrichtentabelle"
+    },
+    "messageDelete": {
+      "body": "Das kann nicht rückgängig gemacht werden.",
+      "confirm": "Löschen",
+      "title": "Diese Nachricht löschen?"
+    },
+    "toolRail": {
+      "agentTools": "Agentenwerkzeuge",
+      "conversations": "Unterhaltungen",
+      "browser": "Browser",
+      "browsingNow": "Durchsucht gerade",
+      "conversationRunning": "Eine andere Unterhaltung läuft"
     }
   }
 }

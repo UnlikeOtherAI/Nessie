@@ -344,6 +344,18 @@
       "image": "Obrázek",
       "notLoaded": "— se nepodařilo načíst",
       "messageTable": "Tabulka zprávy"
+    },
+    "messageDelete": {
+      "body": "Tuto akci nelze vrátit zpět.",
+      "confirm": "Smazat",
+      "title": "Smazat tuto zprávu?"
+    },
+    "toolRail": {
+      "agentTools": "Nástroje agenta",
+      "conversations": "Konverzace",
+      "browser": "Prohlížeč",
+      "browsingNow": "Právě prohlíží",
+      "conversationRunning": "Probíhá jiná konverzace"
     }
   }
 }

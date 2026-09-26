@@ -344,6 +344,18 @@
       "image": "Immagine",
       "notLoaded": "— non caricata",
       "messageTable": "Tabella del messaggio"
+    },
+    "messageDelete": {
+      "body": "Questa azione non può essere annullata.",
+      "confirm": "Elimina",
+      "title": "Eliminare questo messaggio?"
+    },
+    "toolRail": {
+      "agentTools": "Strumenti dell’agente",
+      "conversations": "Conversazioni",
+      "browser": "Browser",
+      "browsingNow": "Sta navigando",
+      "conversationRunning": "È in corso un’altra conversazione"
     }
   }
 }

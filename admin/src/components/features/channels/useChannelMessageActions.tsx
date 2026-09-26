@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { draftKey, useDraft } from '../../../navigation/useDraft'
 import {
@@ -8,6 +9,7 @@ import {
 } from '../../../facades/messages/hooks'
 
 export const useChannelMessageActions = (threadId?: string) => {
+  const { t } = useTranslation('channels')
   const { mutate: addMessageReaction } = useAddMessageReaction(threadId)
   const { isPending: updatePending, mutateAsync: updateMessage } =
     useUpdateMessage(threadId)
@@ -94,13 +96,13 @@ export const useChannelMessageActions = (threadId?: string) => {
   // at the four call sites would be the fork Rule zero names.
   const deleteConfirm: ReactNode = (
     <ConfirmDialog
-      body="This cannot be undone."
-      confirmLabel="Delete"
+      body={t('child.messageDelete.body')}
+      confirmLabel={t('child.messageDelete.confirm')}
       destructive
       onCancel={cancelDelete}
       onConfirm={performDelete}
       open={pendingDeleteId !== null}
-      title="Delete this message?"
+      title={t('child.messageDelete.title')}
     />
   )
 

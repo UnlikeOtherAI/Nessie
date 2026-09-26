@@ -344,6 +344,18 @@
       "image": "Imagen",
       "notLoaded": "— no se ha cargado",
       "messageTable": "Tabla del mensaje"
+    },
+    "messageDelete": {
+      "body": "Esta acción no se puede deshacer.",
+      "confirm": "Eliminar",
+      "title": "¿Eliminar este mensaje?"
+    },
+    "toolRail": {
+      "agentTools": "Herramientas del agente",
+      "conversations": "Conversaciones",
+      "browser": "Navegador",
+      "browsingNow": "Navegando ahora",
+      "conversationRunning": "Hay otra conversación en curso"
     }
   }
 }

@@ -344,6 +344,18 @@
       "image": "Image",
       "notLoaded": "— non chargée",
       "messageTable": "Tableau du message"
+    },
+    "messageDelete": {
+      "body": "Cette action est irréversible.",
+      "confirm": "Supprimer",
+      "title": "Supprimer ce message ?"
+    },
+    "toolRail": {
+      "agentTools": "Outils de l’agent",
+      "conversations": "Conversations",
+      "browser": "Navigateur",
+      "browsingNow": "Navigation en cours",
+      "conversationRunning": "Une autre conversation est en cours"
     }
   }
 }

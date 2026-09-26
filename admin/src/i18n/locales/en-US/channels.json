@@ -344,6 +344,18 @@
       "image": "Image",
       "notLoaded": "— not loaded",
       "messageTable": "Message table"
+    },
+    "messageDelete": {
+      "body": "This cannot be undone.",
+      "confirm": "Delete",
+      "title": "Delete this message?"
+    },
+    "toolRail": {
+      "agentTools": "Agent tools",
+      "conversations": "Conversations",
+      "browser": "Browser",
+      "browsingNow": "Browsing now",
+      "conversationRunning": "Another conversation is running"
     }
   }
 }
