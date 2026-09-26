@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Card } from '../../../components/shared/Card'
 import { FormActions, FormError, FormSuccess } from '../../../components/shared/FormActions'
@@ -27,13 +28,15 @@ const currentAddress = (me: MeResponse | null, teamId: string | undefined) => {
   return { orgSlug: entry.orgSlug, teamSlug: entry.teamSlug }
 }
 
-const renameHelp = (externallyManaged: boolean, renamable: boolean): string | undefined => {
+const renameHelp = (
+  externallyManaged: boolean,
+  renamable: boolean,
+  t: (key: string) => string,
+): string | undefined => {
   if (!externallyManaged) return undefined
   return renamable
-    ? 'This name belongs to your UnlikeOtherAI team. Saving renames it there, so it '
-      + 'changes in every other UnlikeOtherAI product too.'
-    : 'This name belongs to your UnlikeOtherAI team, and UnlikeOtherAI only accepts the '
-      + 'change from inside it. Switch to this team to rename it.'
+    ? t('team.renameHelp')
+    : t('team.renameInactiveHelp')
 }
 
 /**
@@ -48,6 +51,7 @@ const renameHelp = (externallyManaged: boolean, renamable: boolean): string | un
  */
 
 export const TeamProfilePage = ({ tabs, team }: SettingsTabHostProps & { team?: TeamRecord }) => {
+  const { t } = useTranslation('settings')
   const rename = useRenameTeam()
   const { me, reconcileSession } = useAuthSession()
   const [name, setName] = useState('')
@@ -103,20 +107,20 @@ export const TeamProfilePage = ({ tabs, team }: SettingsTabHostProps & { team?: 
       await reconcileSession()
       setSaved(true)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not save this team.')
+      setError(cause instanceof Error ? cause.message : t('team.saveFailed'))
     }
   }
 
   return (
-    <SettingsPanel eyebrow="Team" title="Profile">
+    <SettingsPanel eyebrow={t('team.team')} title={t('profile.title')}>
       {tabs}
       <div className="grid gap-4">
         <Card as="section">
-          <SectionLabel>Name</SectionLabel>
+          <SectionLabel>{t('team.name')}</SectionLabel>
           <form className="mt-4 grid gap-3" onSubmit={save}>
             <FormField
-              help={renameHelp(externallyManaged, renamable)}
-              label="Team name"
+              help={renameHelp(externallyManaged, renamable, t)}
+              label={t('team.teamName')}
             >
               <Input
                 disabled={!team || !renamable || rename.isPending}
@@ -124,18 +128,19 @@ export const TeamProfilePage = ({ tabs, team }: SettingsTabHostProps & { team?: 
                   setName(event.target.value)
                   setSaved(false)
                 }}
-                placeholder="Team name"
+                placeholder={t('team.teamName')}
                 value={name}
               />
             </FormField>
             {address ? (
               <FormField
                 help={
-                  'This is your team’s address. Changing it changes the web address people '
-                  + `use to reach it, and the old one stops working — ${slug.trim() || '…'}.`
-                  + `${address.orgSlug}.${window.location.hostname.split('.').slice(-2).join('.')}`
+                  t('team.addressHelp', {
+                    slug: slug.trim() || '…',
+                    domain: `${address.orgSlug}.${window.location.hostname.split('.').slice(-2).join('.')}`,
+                  })
                 }
-                label="Team address"
+                label={t('team.address')}
               >
                 <Input
                   disabled={!team || !renamable || rename.isPending}
@@ -143,13 +148,13 @@ export const TeamProfilePage = ({ tabs, team }: SettingsTabHostProps & { team?: 
                     setSlug(event.target.value)
                     setSaved(false)
                   }}
-                  placeholder="team-address"
+                  placeholder={t('team.addressPlaceholder')}
                   value={slug}
                 />
               </FormField>
             ) : null}
             <FormError>{error ?? undefined}</FormError>
-            <FormSuccess>{saved ? 'Team saved.' : undefined}</FormSuccess>
+            <FormSuccess>{saved ? t('team.saved') : undefined}</FormSuccess>
             {renamable ? (
               <FormActions>
                 <button
@@ -157,7 +162,7 @@ export const TeamProfilePage = ({ tabs, team }: SettingsTabHostProps & { team?: 
                   disabled={!dirty || name.trim().length === 0 || rename.isPending}
                   type="submit"
                 >
-                  {rename.isPending ? 'Saving…' : 'Save'}
+                  {rename.isPending ? t('common.saving') : t('team.save')}
                 </button>
               </FormActions>
             ) : null}

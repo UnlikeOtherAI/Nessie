@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   useCurrentOrganization,
   useUpdateOrganizationLogo,
@@ -15,6 +16,7 @@ import { IdentityTile } from '../../../components/primitives/IdentityTile'
 const ADMIN_ROLES = new Set(['owner', 'admin'])
 
 export const LogoPanel = () => {
+  const { t } = useTranslation('settings')
   const { token } = useAuthSession()
   const { data: organization, isLoading } = useCurrentOrganization()
   const updateLogo = useUpdateOrganizationLogo()
@@ -46,9 +48,9 @@ export const LogoPanel = () => {
       const attachment = await uploadAttachment(file, token)
       await updateLogo.mutateAsync(attachment.id)
       setSelectedFile(null)
-      setNotice('Logo saved.')
+      setNotice(t('organization.logoSaved'))
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Failed to save logo')
+      setError(saveError instanceof Error ? saveError.message : t('organization.logoSaveFailed'))
     } finally {
       setUploading(false)
     }
@@ -59,25 +61,25 @@ export const LogoPanel = () => {
     setNotice(null)
     updateLogo.mutate(null, {
       onError: (removeError) =>
-        setError(removeError instanceof Error ? removeError.message : 'Failed to remove logo'),
-      onSuccess: () => setNotice('Logo removed.'),
+        setError(removeError instanceof Error ? removeError.message : t('organization.logoRemoveFailed')),
+      onSuccess: () => setNotice(t('organization.logoRemoved')),
     })
   }
 
   if (isLoading || !organization) {
     return (
       <Card as="section">
-        <SectionLabel>Logo</SectionLabel>
-        <div className="mt-2 text-sm text-[color:var(--tx2)]">Loading…</div>
+        <SectionLabel>{t('organization.logo')}</SectionLabel>
+        <div className="mt-2 text-sm text-[color:var(--tx2)]">{t('common.loading')}</div>
       </Card>
     )
   }
 
   return (
     <Card as="section">
-      <SectionLabel>Logo</SectionLabel>
+      <SectionLabel>{t('organization.logo')}</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
-        The logo for {organization.name}, shown in the sidebar and on the sign-in screen.
+        {t('organization.logoDescription', { organization: organization.name })}
       </div>
 
       <div className="mt-4 flex items-center gap-5">
@@ -87,7 +89,7 @@ export const LogoPanel = () => {
           color="var(--accent)"
           fallback={{ kind: 'initials', text: getInitials(organization.name) }}
           imageUrl={logoUrl ?? null}
-          label="Company logo"
+          label={t('organization.companyLogo')}
           size={96}
         />
 
@@ -100,7 +102,7 @@ export const LogoPanel = () => {
                 onClick={() => inputRef.current?.click()}
                 type="button"
               >
-                {organization.logoAttachmentId ? 'Replace logo' : 'Upload logo'}
+                {organization.logoAttachmentId ? t('organization.replaceLogo') : t('organization.uploadLogo')}
               </button>
               {organization.logoAttachmentId && (
                 <button
@@ -113,7 +115,7 @@ export const LogoPanel = () => {
                 </button>
               )}
             </div>
-            <div className="text-xs text-[color:var(--tx3)]">PNG or JPG. Square images work best.</div>
+            <div className="text-xs text-[color:var(--tx3)]">{t('organization.logoFileHint')}</div>
             <input
               accept="image/*"
               className="hidden"
@@ -135,13 +137,13 @@ export const LogoPanel = () => {
       {selectedFile && (
         <CircleImageCropper
           busy={busy}
-          description="Drag to reposition, scroll or use the slider to zoom. The framed area becomes your logo."
+          description={t('organization.logoCropDescription')}
           file={selectedFile}
           onCancel={() => setSelectedFile(null)}
           onSave={handleSave}
-          saveLabel="Save logo"
+          saveLabel={t('organization.saveLogo')}
           shape="rounded"
-          title="Edit logo"
+          title={t('organization.editLogo')}
         />
       )}
     </Card>

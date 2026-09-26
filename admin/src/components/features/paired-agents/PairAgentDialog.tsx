@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   useDecideAgentAuthorization,
   usePendingAgentAuthorization,
@@ -27,6 +28,7 @@ type PairAgentDialogProps = {
  * and the decision is the whole point of typing one.
  */
 export const PairAgentDialog = ({ initialCode, onClose, open }: PairAgentDialogProps) => {
+  const { t } = useTranslation('settings')
   // Held compact (no dash): the input renders the grouping, and the server
   // normalises either shape.
   const [code, setCode] = useState('')
@@ -82,7 +84,7 @@ export const PairAgentDialog = ({ initialCode, onClose, open }: PairAgentDialogP
           setActionError(
             error instanceof Error
               ? error.message
-              : 'That decision could not be recorded. Try again.',
+              : t('pairedAgents.decisionFailed'),
           ),
         onSuccess: () => setDecided(approve ? 'allowed' : 'refused'),
       },
@@ -91,16 +93,16 @@ export const PairAgentDialog = ({ initialCode, onClose, open }: PairAgentDialogP
 
   return (
     <Dialog
-      description="Ask the agent to connect to Nessie. It prints a link and a short code — open the link, or type the code here."
+      description={t('pairedAgents.dialogDescription')}
       dismissDisabled={decide.isPending}
       onClose={close}
       open={open}
       size="lg"
-      title="Pair an agent"
+      title={t('pairedAgents.pair')}
     >
       <div className="grid gap-4">
         <CodeInput
-          label="Pairing code"
+          label={t('pairedAgents.code')}
           onChange={(next) => {
             setDecided(null)
             setActionError(null)
@@ -111,8 +113,7 @@ export const PairAgentDialog = ({ initialCode, onClose, open }: PairAgentDialogP
 
         {!tenantReady ? (
           <p className="text-sm text-[color:var(--tx3)]">
-            Pick an active project and team first — a paired agent is scoped to one, and
-            pairing cannot be completed without it.
+            {t('pairedAgents.chooseContext')}
           </p>
         ) : null}
 
@@ -121,14 +122,14 @@ export const PairAgentDialog = ({ initialCode, onClose, open }: PairAgentDialogP
         {decided ? (
           <FormSuccess>
             {decided === 'allowed'
-              ? 'Paired. The agent picks up its credential within a few seconds.'
-              : 'Refused. The agent was told to stop asking.'}
+              ? t('pairedAgents.allowed')
+              : t('pairedAgents.refused')}
           </FormSuccess>
         ) : null}
 
         <FormError>
           {code.trim().length > 0 && !decided && pending.isError
-            ? 'That code is not valid. It may have expired, or already been used — ask the agent for a new one.'
+            ? t('pairedAgents.invalidCode')
             : undefined}
         </FormError>
 
@@ -136,12 +137,11 @@ export const PairAgentDialog = ({ initialCode, onClose, open }: PairAgentDialogP
           <div className="grid gap-3 rounded-lg border border-[var(--bd)] p-3">
             <div className="text-sm font-medium text-[var(--tx)]">
               <span className="font-semibold">{pending.data.clientName}</span>
-              {' wants to work as you until '}
-              {formatCredentialDate(pending.data.credentialExpiresAt)}.
+              {t('pairedAgents.wantsToWorkUntil', { date: formatCredentialDate(pending.data.credentialExpiresAt) })}
             </div>
 
             <p className="text-xs uppercase tracking-wide text-[color:var(--tx3)]">
-              It will be able to
+              {t('pairedAgents.ableTo')}
             </p>
             <div className="grid gap-2">
               {SCOPE_ORDER.filter((scope) => requested.includes(scope)).map((scope) => (
@@ -161,8 +161,7 @@ export const PairAgentDialog = ({ initialCode, onClose, open }: PairAgentDialogP
                 calls itself", which is exactly right and reads as jargon. The
                 fact survives; the word does not. */}
             <p className="text-xs text-[color:var(--tx3)]">
-              Only allow this if you just ran a tool that printed this code. The name above is
-              whatever that tool calls itself, and nothing checks it.
+              {t('pairedAgents.verifyClient')}
             </p>
           </div>
         ) : null}
@@ -170,7 +169,7 @@ export const PairAgentDialog = ({ initialCode, onClose, open }: PairAgentDialogP
         <FormActions>
           {decided ? (
             <button className="admin-button admin-button-primary" onClick={close} type="button">
-              Done
+              {t('pairedAgents.done')}
             </button>
           ) : (
             <>
@@ -180,7 +179,7 @@ export const PairAgentDialog = ({ initialCode, onClose, open }: PairAgentDialogP
                 onClick={() => submit(false)}
                 type="button"
               >
-                Don&rsquo;t allow
+                {t('pairedAgents.dontAllow')}
               </button>
               <button
                 className="admin-button admin-button-primary"
@@ -188,7 +187,7 @@ export const PairAgentDialog = ({ initialCode, onClose, open }: PairAgentDialogP
                 onClick={() => submit(true)}
                 type="button"
               >
-                {decide.isPending ? 'Pairing…' : 'Allow'}
+                {decide.isPending ? t('pairedAgents.pairing') : t('pairedAgents.allow')}
               </button>
             </>
           )}

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   useChangePassword,
   useSessions,
@@ -10,6 +11,7 @@ import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { ActiveSessionsTable } from '../../components/features/settings/ActiveSessionsTable'
 
 const ChangePasswordCard = () => {
+  const { t } = useTranslation('settings')
   const changePassword = useChangePassword()
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -20,56 +22,56 @@ const ChangePasswordCard = () => {
     event.preventDefault()
     setFeedback(null)
     if (newPassword !== confirmPassword) {
-      setFeedback({ kind: 'error', message: 'New passwords do not match.' })
+      setFeedback({ kind: 'error', message: t('security.passwordMismatch') })
       return
     }
     try {
       await changePassword.mutateAsync({ currentPassword, newPassword })
-      setFeedback({ kind: 'success', message: 'Password changed.' })
+      setFeedback({ kind: 'success', message: t('security.passwordChanged') })
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
     } catch (error) {
       setFeedback({
         kind: 'error',
-        message: error instanceof Error ? error.message : 'Failed to change password.',
+        message: error instanceof Error ? error.message : t('security.passwordChangeFailed'),
       })
     }
   }
 
   return (
     <section className="admin-card p-4">
-      <SectionLabel>Password</SectionLabel>
+      <SectionLabel>{t('security.password')}</SectionLabel>
       <form className="mt-4 grid max-w-sm gap-3" onSubmit={submit}>
         <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-          Current password
+          {t('security.currentPassword')}
           <input
             autoComplete="current-password"
             className="admin-input"
             onChange={(event) => setCurrentPassword(event.target.value)}
-            placeholder="Current password"
+            placeholder={t('security.currentPassword')}
             type="password"
             value={currentPassword}
           />
         </label>
         <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-          New password
+          {t('security.newPassword')}
           <input
             autoComplete="new-password"
             className="admin-input"
             onChange={(event) => setNewPassword(event.target.value)}
-            placeholder="At least 8 characters"
+            placeholder={t('security.passwordMinimum')}
             type="password"
             value={newPassword}
           />
         </label>
         <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-          Confirm new password
+          {t('security.confirmNewPassword')}
           <input
             autoComplete="new-password"
             className="admin-input"
             onChange={(event) => setConfirmPassword(event.target.value)}
-            placeholder="Re-enter new password"
+            placeholder={t('security.confirmNewPassword')}
             type="password"
             value={confirmPassword}
           />
@@ -83,7 +85,7 @@ const ChangePasswordCard = () => {
           }
           type="submit"
         >
-          {changePassword.isPending ? 'Saving…' : 'Change password'}
+          {changePassword.isPending ? t('common.saving') : t('security.changePassword')}
         </button>
         <FeedbackBanner feedback={feedback} />
       </form>
@@ -92,6 +94,7 @@ const ChangePasswordCard = () => {
 }
 
 export const SecuritySettingsPage = ({ tabs }: SettingsTabHostProps) => {
+  const { t } = useTranslation('settings')
   const { me } = useAuthSession()
   const { data: sessions = [], isLoading } = useSessions()
 
@@ -102,14 +105,13 @@ export const SecuritySettingsPage = ({ tabs }: SettingsTabHostProps) => {
   const isLocalAccount = me.auth.providerType === 'local-bootstrap'
 
   return (
-    <SettingsPanel eyebrow="User" title="Security">
+    <SettingsPanel eyebrow={t('common.user')} title={t('security.title')}>
       {tabs}
       <div className="grid w-full gap-4">
         <section className="admin-card p-4">
-          <SectionLabel>Active sessions</SectionLabel>
+          <SectionLabel>{t('security.activeSessions')}</SectionLabel>
           <div className="mt-2 text-sm text-[color:var(--tx2)]">
-            Devices currently signed in to your account. Revoking a session signs
-            that device out.
+            {t('security.sessionsDescription')}
           </div>
           <div className="mt-4">
             <ActiveSessionsTable isLoading={isLoading} sessions={sessions} />
@@ -121,10 +123,9 @@ export const SecuritySettingsPage = ({ tabs }: SettingsTabHostProps) => {
             <ChangePasswordCard />
           ) : (
             <section className="admin-card p-4">
-              <SectionLabel>Password</SectionLabel>
+              <SectionLabel>{t('security.password')}</SectionLabel>
               <div className="mt-2 text-sm text-[color:var(--tx2)]">
-                Your account signs in through an identity provider. Manage your
-                password with that provider.
+                {t('security.identityProviderPassword')}
               </div>
             </section>
           )}

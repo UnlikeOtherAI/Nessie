@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { TeamAvatar } from '../../../components/primitives/TeamAvatar'
 import { useCurrentOrganization } from '../../../facades/organization/hooks'
 import {
@@ -41,6 +42,7 @@ type TeamAvatarPanelProps = {
  * the team the person happens to be standing in.
  */
 export const TeamAvatarPanel = ({ team }: TeamAvatarPanelProps = {}) => {
+  const { t } = useTranslation('settings')
   const { me, token } = useAuthSession()
   const { data: organization } = useCurrentOrganization()
   const revision = useTeamAvatarRevision()
@@ -53,8 +55,8 @@ export const TeamAvatarPanel = ({ team }: TeamAvatarPanelProps = {}) => {
   const currentTeam = activeTeam(me)
   const active = !team || team.id === me?.context.teamId
   const teamName = active
-    ? currentTeam?.label ?? organization?.name ?? 'Team'
-    : team?.name ?? 'Team'
+    ? currentTeam?.label ?? organization?.name ?? t('team.team')
+    : team?.name ?? t('team.team')
   const canEdit = active && (organization ? ADMIN_ROLES.has(organization.role) : false)
   const busy = uploadAvatar.isPending || removeAvatar.isPending
 
@@ -66,20 +68,20 @@ export const TeamAvatarPanel = ({ team }: TeamAvatarPanelProps = {}) => {
     setNotice(null)
 
     if (!ACCEPTED_TYPES.has(file.type)) {
-      setError('Choose a PNG, JPEG or WebP image.')
+      setError(t('team.avatarTypeError'))
       return
     }
     if (file.size > MAX_BYTES) {
-      setError('The image must be under 1 MB.')
+      setError(t('team.avatarSizeError'))
       return
     }
 
     try {
       await uploadAvatar.mutateAsync(file)
-      setNotice('Team avatar updated.')
+      setNotice(t('team.avatarUpdated'))
     } catch (uploadError) {
       setError(
-        uploadError instanceof Error ? uploadError.message : 'Failed to save the avatar',
+        uploadError instanceof Error ? uploadError.message : t('team.avatarSaveFailed'),
       )
     }
   }
@@ -89,22 +91,19 @@ export const TeamAvatarPanel = ({ team }: TeamAvatarPanelProps = {}) => {
     setNotice(null)
     try {
       await removeAvatar.mutateAsync()
-      setNotice('Team avatar removed.')
+      setNotice(t('team.avatarRemoved'))
     } catch (removeError) {
       setError(
-        removeError instanceof Error ? removeError.message : 'Failed to remove the avatar',
+        removeError instanceof Error ? removeError.message : t('team.avatarRemoveFailed'),
       )
     }
   }
 
   return (
     <Card as="section">
-      <SectionLabel>Team avatar</SectionLabel>
+      <SectionLabel>{t('team.avatar')}</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
-        The company picture for {teamName}, held by UnlikeOtherAI and shown
-        anywhere the team appears &mdash; including in every other
-        UnlikeOtherAI product. Separate from the organisation logo, which is the
-        whole tenant&rsquo;s brand mark.
+        {t('team.avatarDescription', { team: teamName })}
       </div>
 
       <div className="mt-4 flex items-center gap-5">
@@ -135,7 +134,7 @@ export const TeamAvatarPanel = ({ team }: TeamAvatarPanelProps = {}) => {
                 onClick={() => inputRef.current?.click()}
                 type="button"
               >
-                {uploadAvatar.isPending ? 'Uploading…' : 'Upload image'}
+                {uploadAvatar.isPending ? t('team.uploading') : t('team.uploadImage')}
               </button>
               <button
                 className="admin-button admin-button-secondary"
@@ -143,12 +142,11 @@ export const TeamAvatarPanel = ({ team }: TeamAvatarPanelProps = {}) => {
                 onClick={() => void handleRemove()}
                 type="button"
               >
-                {removeAvatar.isPending ? 'Removing…' : 'Remove'}
+                {removeAvatar.isPending ? t('team.removing') : t('common.remove')}
               </button>
             </div>
             <div className="text-xs text-[color:var(--tx3)]">
-              PNG, JPEG or WebP, up to 1 MB. Square images work best. Removing it
-              falls back to the team icon or a generated image.
+              {t('team.avatarFileHint')}
             </div>
             <input
               accept="image/png,image/jpeg,image/webp"
@@ -161,9 +159,8 @@ export const TeamAvatarPanel = ({ team }: TeamAvatarPanelProps = {}) => {
         ) : (
           <div className="text-sm text-[color:var(--tx3)]">
             {active
-              ? 'Only organisation owners and admins can change the team avatar.'
-              : 'UnlikeOtherAI only accepts this change from inside the team. '
-                + 'Switch to it to change its picture.'}
+              ? t('team.avatarOwnerOnly')
+              : t('team.avatarActiveTeamOnly')}
           </div>
         )}
       </div>

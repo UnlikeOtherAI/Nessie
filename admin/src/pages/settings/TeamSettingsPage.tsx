@@ -1,4 +1,5 @@
 import { Navigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 import { Select } from '../../components/shared/FormControls'
 import { TabBar } from '../../components/primitives/TabBar'
@@ -14,11 +15,6 @@ const TEAM_SETTINGS_TABS = ['profile', 'agents'] as const
 
 type TeamSettingsTab = (typeof TEAM_SETTINGS_TABS)[number]
 
-const TABS: ReadonlyArray<{ label: string; value: TeamSettingsTab }> = [
-  { label: 'Profile', value: 'profile' },
-  { label: 'Agents', value: 'agents' },
-]
-
 const PAGES: Record<
   TeamSettingsTab,
   (props: { tabs?: React.ReactNode; team?: TeamRecord }) => React.JSX.Element | null
@@ -28,6 +24,7 @@ const PAGES: Record<
 }
 
 export const TeamSettingsPage = () => {
+  const { t } = useTranslation('settings')
   const { me } = useAuthSession()
   const isOwner = useIsOwner()
   const canManage = isOwner || (me?.user.roleIds.includes('admin') ?? false)
@@ -55,14 +52,17 @@ export const TeamSettingsPage = () => {
   const tabs = (
     <div className="-mt-1 mb-4 flex flex-wrap items-center gap-3">
       <TabBar
-        ariaLabel="Team settings sections"
-        items={TABS}
+        ariaLabel={t('team.settingsSections')}
+        items={[
+          { label: t('profile.title'), value: 'profile' as const },
+          { label: t('team.agents'), value: 'agents' as const },
+        ]}
         onChange={setActiveTab}
         value={activeTab}
       />
       {rows.length > 1 ? (
         <Select
-          aria-label="Team"
+          aria-label={t('team.team')}
           onChange={(event) => setTeamId(event.target.value)}
           value={team?.id ?? ''}
         >

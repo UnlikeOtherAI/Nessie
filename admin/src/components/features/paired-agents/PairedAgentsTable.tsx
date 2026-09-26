@@ -1,5 +1,6 @@
 import { faChevronRight } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { useTranslation } from 'react-i18next'
 import type { AgentAccessScope } from '../../../facades/agent-access/hooks'
 import { Pill } from '../../primitives/Pill'
 import { Skeleton } from '../../primitives/Skeleton'
@@ -41,11 +42,11 @@ type PairedAgentsTableProps = {
 
 const SKELETON_ROWS = 4
 
-const TableFrame = ({ children }: { children: React.ReactNode }) => (
+const TableFrame = ({ children, label }: { children: React.ReactNode; label: string }) => (
   <ExpandableTable
     className="overflow-hidden rounded-xl border border-[color:var(--sep)]"
     expandable={false}
-    label="Paired agents table"
+    label={label}
   >
     <table className="admin-table w-full border-collapse">{children}</table>
   </ExpandableTable>
@@ -65,26 +66,27 @@ export const PairedAgentsTable = ({
   revokePending,
   showOwner,
 }: PairedAgentsTableProps) => {
+  const { t } = useTranslation('settings')
   const columnCount = showOwner ? 6 : 5
 
   const header = (
     <thead>
       <tr className="border-b border-[color:var(--sep)]">
-        <th className={`${headerClass} pl-4`} scope="col">Agent</th>
-        <th className={headerClass} scope="col">Status</th>
+        <th className={`${headerClass} pl-4`} scope="col">{t('pairedAgents.agent')}</th>
+        <th className={headerClass} scope="col">{t('pairedAgents.status')}</th>
         {showOwner ? (
-          <th className={`${headerClass} hidden md:table-cell`} scope="col">Works as</th>
+          <th className={`${headerClass} hidden md:table-cell`} scope="col">{t('pairedAgents.worksAsLabel')}</th>
         ) : null}
-        <th className={`${headerClass} hidden lg:table-cell`} scope="col">Expires</th>
-        <th className={headerClass} scope="col"><span className="sr-only">Revoke</span></th>
-        <th className={headerClass} scope="col"><span className="sr-only">Open</span></th>
+        <th className={`${headerClass} hidden lg:table-cell`} scope="col">{t('pairedAgents.expires')}</th>
+        <th className={headerClass} scope="col"><span className="sr-only">{t('pairedAgents.revoke')}</span></th>
+        <th className={headerClass} scope="col"><span className="sr-only">{t('pairedAgents.open')}</span></th>
       </tr>
     </thead>
   )
 
   if (isLoading) {
     return (
-      <TableFrame>
+      <TableFrame label={t('pairedAgents.table')}>
         {header}
         <tbody>
           <tr>
@@ -99,7 +101,7 @@ export const PairedAgentsTable = ({
 
   if (credentials.length === 0) {
     return (
-      <TableFrame>
+      <TableFrame label={t('pairedAgents.table')}>
         {header}
         <tbody>
           <tr>
@@ -116,7 +118,7 @@ export const PairedAgentsTable = ({
   }
 
   return (
-    <TableFrame>
+    <TableFrame label={t('pairedAgents.table')}>
       {header}
       <tbody>
         {credentials.map((credential) => {
@@ -169,7 +171,7 @@ export const PairedAgentsTable = ({
                     }}
                     type="button"
                   >
-                    Revoke
+                    {t('pairedAgents.revoke')}
                   </button>
                 ) : null}
               </td>

@@ -4,7 +4,11 @@
     "saving": "Ukládání…",
     "retry": "Zkusit znovu",
     "enabled": "Zapnuto",
-    "disabled": "Vypnuto"
+    "disabled": "Vypnuto",
+    "cancel": "Zrušit",
+    "remove": "Odebrat",
+    "delete": "Smazat",
+    "loading": "Načítání…"
   },
   "profile": {
     "title": "Profil",
@@ -89,5 +93,560 @@
     "browserUpdateFailed": "Oznámení v prohlížeči se nepodařilo aktualizovat.",
     "browserNotifications": "Oznámení v prohlížeči",
     "toggleBrowser": "Přepnout oznámení v prohlížeči"
+  },
+  "appearance": {
+    "title": "Vzhled",
+    "default": "Výchozí",
+    "editOrganisationTheme": "Upravit motiv organizace →",
+    "setupOrganisationTheme": "Nastavit barvy motivu organizace →",
+    "theme": {
+      "title": "Motiv",
+      "description": "Vyberte barevnou paletu administrace pro svůj účet.",
+      "legend": "Motiv administrace",
+      "organisation": "Organizace",
+      "organisationDescription": "Barvy vaší organizace."
+    },
+    "themes": {
+      "nessie": {
+        "label": "Nessie",
+        "description": "Tmavě modrá navigace na bílé pracovní ploše."
+      },
+      "sandstone": {
+        "label": "Pískovec",
+        "description": "Teplé pískové plochy a terakotové ovládací prvky."
+      },
+      "nebula": {
+        "label": "Klasický",
+        "description": "Klasická fialová paleta Nessie na tmavém pozadí."
+      },
+      "midnight": {
+        "label": "Půlnoc",
+        "description": "Neutrální břidlicová plocha s jasně modrým akcentem."
+      },
+      "daylight": {
+        "label": "Denní světlo",
+        "description": "Světlé plochy, tmavý text a dobře čitelné modré akcenty."
+      },
+      "forest": {
+        "label": "Les",
+        "description": "Tmavě zelenošedé plochy s klidným smaragdovým akcentem."
+      },
+      "ocean": {
+        "label": "Oceán",
+        "description": "Tmavě modrá a tyrkysová s jasnými azurovými ovládacími prvky a odkazy."
+      },
+      "sunset": {
+        "label": "Západ slunce",
+        "description": "Teplé tmavě hnědé plochy s oranžovým akcentem."
+      },
+      "rose": {
+        "label": "Růže",
+        "description": "Tmavě švestková s růžovým a purpurovým zvýrazněním."
+      },
+      "graphite": {
+        "label": "Grafit",
+        "description": "Neutrální odstíny šedi s decentními ocelovými akcenty."
+      },
+      "contrast": {
+        "label": "Vysoký kontrast",
+        "description": "Maximální rozlišení textu, ovládacích prvků a ploch."
+      },
+      "system": {
+        "label": "Systém",
+        "description": "Přizpůsobit světlému nebo tmavému režimu operačního systému."
+      }
+    },
+    "textSize": {
+      "title": "Velikost textu",
+      "description": "Nastaví velikost textu na všech stránkách. Uloží se do vašeho účtu."
+    },
+    "textSizes": {
+      "small": {
+        "label": "Malá",
+        "description": "Kompaktní text — vejde se ho více na obrazovku."
+      },
+      "medium": {
+        "label": "Střední",
+        "description": "Vyvážená výchozí velikost."
+      },
+      "large": {
+        "label": "Velká",
+        "description": "Větší text pro snadnější čtení."
+      }
+    },
+    "appIcon": {
+      "title": "Ikona aplikace",
+      "description": "Nastaví ikonu Nessie na ploše tohoto telefonu.",
+      "dark": "Tmavá",
+      "light": "Světlá"
+    }
+  },
+  "statuses": {
+    "title": "Stavy",
+    "description": "Co právě děláte, zobrazené vedle vašeho jména. Každý stav může mít plán, který jej automaticky zapne, a pravidla kontaktů určující, kdo se vám dovolá.",
+    "clearActive": "Zrušit aktivní stav",
+    "clearFailed": "Aktivní stav se nepodařilo zrušit. Stále se zobrazuje.",
+    "newStatus": "Nový stav",
+    "noStatuses": "Žádné stavy",
+    "pageRange": "{{start}}–{{end}} z {{count}}",
+    "empty": "Zatím žádné stavy. Přidejte stav, který popíše, co právě děláte.",
+    "status": "Stav",
+    "schedules": "Plány",
+    "contactRules": "Pravidla kontaktů",
+    "open": "Otevřít",
+    "tableLabel": "Tabulka stavů",
+    "active": "Aktivní",
+    "responseAgentActive": "Agent odpovídá během tohoto stavu",
+    "createFailed": "Stav se nepodařilo vytvořit.",
+    "createDescription": "Stav popisuje, co právě děláte. Jeho plány a pravidla kontaktů nastavíte na samostatné stránce.",
+    "icon": "Ikona",
+    "newStatusIcon": "Ikona nového stavu",
+    "label": "Název",
+    "labelPlaceholder": "např. Soustředím se",
+    "adding": "Přidávání…",
+    "addStatus": "Přidat stav",
+    "clearIcon": "Vymazat ikonu",
+    "addRuleFailed": "Pravidlo se nepodařilo přidat.",
+    "appliesTo": "Platí pro",
+    "everyone": "Všichni",
+    "channel": "Kanál",
+    "project": "Projekt",
+    "selectChannel": "Vybrat kanál",
+    "selectProject": "Vybrat projekt",
+    "agent": "Agent",
+    "defaultAgent": "Výchozí agent stavu",
+    "agentReplies": "Odpovědi agenta",
+    "enableRuleAgent": "Zapnout agenta pravidla",
+    "instructions": "Pokyny",
+    "ruleInstructionsPlaceholder": "Pokyny pro toto pravidlo",
+    "addRule": "Přidat pravidlo",
+    "noContactRules": "Zatím bez pravidel kontaktů — agent odpovědí používá výchozí pokyny.",
+    "anyContact": "Libovolný kontakt",
+    "unknown": "Neznámý",
+    "dateRangeBetween": "až",
+    "weekly": "Týdně",
+    "weeklyScheduleDescription": "{{day}}, {{start}} až {{end}} ({{timezone}})",
+    "type": "Typ",
+    "dateRangeType": "Rozmezí dat",
+    "optionalLabel": "Název (volitelné)",
+    "scheduleLabelPlaceholder": "Název plánu",
+    "starts": "Začíná",
+    "ends": "Končí",
+    "day": "Den",
+    "startTime": "Čas začátku",
+    "endTime": "Čas konce",
+    "addScheduleFailed": "Plán se nepodařilo přidat.",
+    "addSchedule": "Přidat plán",
+    "noSchedules": "Zatím bez plánů — tento stav platí jen při ruční aktivaci.",
+    "back": "Zpět na stavy",
+    "notFound": "Tento stav nebyl nalezen. Možná byl smazán.",
+    "loadFailed": "Stavy se nepodařilo načíst.",
+    "loading": "Načítání stavu…",
+    "saveFailed": "Stav se nepodařilo uložit.",
+    "deleting": "Mazání…",
+    "deleteStatus": "Smazat stav",
+    "setActive": "Aktivovat",
+    "currentlyVisible": "Právě viditelný",
+    "notCurrentlyVisible": "Právě není viditelný",
+    "scheduleCount": "Plány: {{count}}",
+    "contactRuleCount": "Pravidla kontaktů: {{count}}",
+    "statusDetail": "Podrobnosti stavu",
+    "statusIcon": "Ikona stavu",
+    "statusLabelPlaceholder": "Název stavu",
+    "enableResponseAgent": "Zapnout agenta odpovědí",
+    "responseAgentDescription": "Používat tyto pokyny, když vás někdo kontaktuje v tomto stavu.",
+    "agentInstructions": "Pokyny agenta",
+    "agentInstructionsPlaceholder": "Pokyny agenta",
+    "saveStatus": "Uložit stav",
+    "deleteConfirmation": "Tím se smažou také jeho plány a pravidla kontaktů.",
+    "deleteConfirmationTitle": "Smazat „{{label}}“?"
+  },
+  "team": {
+    "settingsSections": "Sekce nastavení týmu",
+    "agents": "Agenti",
+    "team": "Tým",
+    "teams": "Týmy",
+    "name": "Název",
+    "teamName": "Název týmu",
+    "renameHelp": "Tento název patří vašemu týmu v UnlikeOtherAI. Uložením jej přejmenujete tam a změna se projeví i v ostatních produktech UnlikeOtherAI.",
+    "renameInactiveHelp": "Tento název patří vašemu týmu v UnlikeOtherAI a změnit jej můžete pouze přímo v tomto týmu. Přepněte na něj a přejmenujte ho.",
+    "addressHelp": "Toto je adresa vašeho týmu. Změníte-li ji, změní se webová adresa týmu a stará přestane fungovat — {{slug}}.{{domain}}.",
+    "address": "Adresa týmu",
+    "addressPlaceholder": "adresa-tymu",
+    "saveFailed": "Tým se nepodařilo uložit.",
+    "saved": "Tým byl uložen.",
+    "save": "Uložit",
+    "avatarTypeError": "Vyberte obrázek PNG, JPEG nebo WebP.",
+    "avatarSizeError": "Obrázek musí mít méně než 1 MB.",
+    "avatarUpdated": "Avatar týmu byl aktualizován.",
+    "avatarSaveFailed": "Avatar se nepodařilo uložit",
+    "avatarRemoved": "Avatar týmu byl odebrán.",
+    "avatarRemoveFailed": "Avatar se nepodařilo odebrat",
+    "avatar": "Avatar týmu",
+    "avatarDescription": "Firemní obrázek týmu {{team}} spravuje UnlikeOtherAI a zobrazuje jej všude, kde se tým objeví — včetně ostatních produktů UnlikeOtherAI. Liší se od loga organizace, které označuje celý tenant.",
+    "uploading": "Nahrávání…",
+    "uploadImage": "Nahrát obrázek",
+    "removing": "Odebírání…",
+    "avatarFileHint": "PNG, JPEG nebo WebP do 1 MB. Nejlépe fungují čtvercové obrázky. Po odebrání se zobrazí ikona týmu nebo vygenerovaný obrázek.",
+    "avatarOwnerOnly": "Avatar týmu mohou změnit pouze vlastníci a správci organizace.",
+    "avatarActiveTeamOnly": "UnlikeOtherAI přijímá tuto změnu pouze přímo v daném týmu. Přepněte na něj a změňte obrázek."
+  },
+  "organization": {
+    "settingsSections": "Sekce nastavení organizace",
+    "appearance": "Vzhled",
+    "organisation": "Organizace",
+    "name": "Název",
+    "organisationName": "Název organizace",
+    "managedNameHelp": "Tento název patří organizaci UnlikeOtherAI. Uložením jej přejmenujete tam; změna se projeví na přihlašovací stránce i v ostatních produktech UnlikeOtherAI.",
+    "nameSaveFailed": "Název organizace se nepodařilo uložit.",
+    "nameSaved": "Název organizace byl uložen.",
+    "saveName": "Uložit název",
+    "logo": "Logo",
+    "logoSaved": "Logo bylo uloženo.",
+    "logoSaveFailed": "Logo se nepodařilo uložit",
+    "logoRemoveFailed": "Logo se nepodařilo odebrat",
+    "logoRemoved": "Logo bylo odebráno.",
+    "logoDescription": "Logo organizace {{organization}} zobrazené v postranním panelu a na přihlašovací stránce.",
+    "companyLogo": "Logo společnosti",
+    "replaceLogo": "Nahradit logo",
+    "uploadLogo": "Nahrát logo",
+    "logoFileHint": "PNG nebo JPG. Nejlépe fungují čtvercové obrázky.",
+    "logoCropDescription": "Přetažením obrázek přemístěte, posouváním nebo posuvníkem přibližte. Ohraničená oblast bude logem.",
+    "saveLogo": "Uložit logo",
+    "editLogo": "Upravit logo",
+    "themeSaved": "Motiv byl uložen. Nyní je výchozí pro všechny v organizaci {{organization}}, kteří si nevybrali vlastní.",
+    "themeSaveFailed": "Motiv se nepodařilo uložit.",
+    "themeRemoved": "Motiv byl odebrán.",
+    "themeRemoveFailed": "Motiv se nepodařilo odebrat.",
+    "saveTheme": "Uložit motiv",
+    "removeTheme": "Odebrat motiv",
+    "themeDescription": "Vlastní barvy organizace {{organization}} jsou dostupné všem jako motiv a použijí se jako výchozí, pokud si někdo nevybere jiný. Stále lze zvolit libovolný motiv včetně vysokého kontrastu.",
+    "noTheme": "Zatím bez motivu. Začněte barvami níže a nahraďte zvýrazňující barvu barvou značky.",
+    "appearanceHelp": "Zda je text tmavý na světlém nebo světlý na tmavém pozadí. Pozadí a postranní panel musí odpovídat.",
+    "light": "Světlý",
+    "dark": "Tmavý",
+    "accent": "Zvýraznění",
+    "accentHelp": "Tlačítka, odkazy, výběr a aktivní položka. Hlavní barva vaší značky.",
+    "background": "Pozadí",
+    "backgroundHelp": "Barva plochy stránek. Pro světlý motiv ji nastavte téměř na bílou, pro tmavý téměř na černou. Výrazné barvy zhoršují čitelnost textu.",
+    "sidebar": "Postranní panel",
+    "sidebarHelp": "Navigační sloupec. Pokud barvu nenastavíte, odvodí se ze zvýraznění.",
+    "deriveSidebar": "Odvodit ze zvýraznění",
+    "resetToSaved": "Obnovit uložené",
+    "previewNotice": "Zobrazuje se vám koncept. Po opuštění stránky se vrátí váš motiv — chcete-li jej zachovat, vyberte {{organization}} v Účet → Vzhled.",
+    "removeThemeConfirmation": "Lidem bez vlastního motivu se obnoví motiv Pískovec. Ti, kdo zvolili {{organization}}, uvidí Pískovec, dokud neuložíte nový motiv.",
+    "removeThemeTitle": "Odebrat motiv organizace?",
+    "calls": "Hovory",
+    "callsDescription": "Vyberte poskytovatele, který se použije při zahájení hovoru v každém týmu.",
+    "noTeams": "Nejsou dostupné žádné týmy.",
+    "teamsLoadFailed": "Týmy se nepodařilo načíst.",
+    "teamsLoading": "Načítání týmů…",
+    "providerUnavailable": "{{provider}} není pro toto nasazení nakonfigurován.",
+    "callProviderFor": "Poskytovatel hovorů pro {{team}}",
+    "noCallProviders": "Pro toto nasazení nejsou nakonfigurováni žádní poskytovatelé hovorů.",
+    "providerSaveFailed": "Poskytovatele hovorů se nepodařilo uložit.",
+    "callsCreateLink": "Hovory v tomto týmu vytvoří odkaz {{provider}}.",
+    "checks": {
+      "title": "Kontroly",
+      "text": "Text na pozadí",
+      "secondaryText": "Sekundární text na pozadí",
+      "link": "Odkaz na pozadí",
+      "button": "Popisek tlačítka na zvýraznění",
+      "accentMain": "Zvýraznění na pozadí",
+      "blocked": "Blokováno",
+      "check": "Kontrola",
+      "surface-band": {
+        "label": "Pozadí",
+        "light": "Pro světlý motiv musí být pozadí světlé — například #f8fafc.",
+        "dark": "Pro tmavý motiv musí být pozadí tmavé — například #14171c."
+      },
+      "surface-chroma": {
+        "label": "Pozadí",
+        "detail": "Pozadí je příliš barevné, aby na něm byl text čitelný. Použijte neutrální odstín a barvu přidejte do zvýraznění nebo postranního panelu."
+      },
+      "sidebar-band": {
+        "label": "Postranní panel",
+        "detail": "Postranní panel musí být stejně tmavý (nebo světlý) jako pozadí, protože sdílejí barvy textu."
+      },
+      "accent-on-main": {
+        "label": "Zvýraznění na pozadí",
+        "detail": "Zvýraznění na pozadí dostatečně nevyniká ({{ratio}}:1; potřeba je 3:1). Zvolte světlejší či tmavší barvu nebo upravte pozadí."
+      },
+      "accent-on-panel": {
+        "label": "Zvýraznění na kartách",
+        "detail": "Zvýraznění na kartách dostatečně nevyniká ({{ratio}}:1; potřeba je 3:1). Zvolte světlejší či tmavší barvu nebo upravte pozadí."
+      },
+      "accent-on-sidebar": {
+        "label": "Zvýraznění na postranním panelu",
+        "detail": "Zvýrazněná položka navigace bude málo viditelná ({{ratio}}:1)."
+      },
+      "accent-near-danger": {
+        "label": "Zvýraznění a chyby",
+        "detail": "Zvýraznění je podobné červené pro chyby, takže destruktivní tlačítka budou vypadat jako běžná."
+      }
+    },
+    "checkingAccess": "Ověřování přístupu k organizaci…",
+    "unavailable": "Organizace není dostupná",
+    "accessLoadFailed": "Přístup k organizaci se nepodařilo načíst. Zkuste to za chvíli znovu.",
+    "accessCheckFailed": "Nepodařilo se ověřit, zda jste správcem organizace. Zkuste to za chvíli znovu.",
+    "adminOnlyPage": "Tuto stránku mohou zobrazit pouze správci organizace."
+  },
+  "security": {
+    "title": "Zabezpečení",
+    "password": "Heslo",
+    "activeSessions": "Aktivní relace",
+    "sessionsDescription": "Zařízení aktuálně přihlášená k vašemu účtu. Zrušením relace toto zařízení odhlásíte.",
+    "currentPassword": "Současné heslo",
+    "newPassword": "Nové heslo",
+    "confirmNewPassword": "Potvrdit nové heslo",
+    "passwordMinimum": "Alespoň 8 znaků",
+    "passwordMismatch": "Nová hesla se neshodují.",
+    "passwordChanged": "Heslo bylo změněno.",
+    "passwordChangeFailed": "Heslo se nepodařilo změnit.",
+    "changePassword": "Změnit heslo",
+    "identityProviderPassword": "K účtu se přihlašujete přes poskytovatele identity. Heslo spravujte u něj.",
+    "device": "Zařízení",
+    "thisDevice": "Toto zařízení",
+    "lastActive": "Naposledy aktivní",
+    "action": "Akce",
+    "current": "Aktuální",
+    "noSessions": "Žádné aktivní relace.",
+    "sessionsTable": "Tabulka aktivních relací",
+    "sessionRange": "{{start}}–{{end}} z {{count}}",
+    "revoke": "Zrušit",
+    "revokeSessionTitle": "Zrušit tuto relaci?",
+    "revokeFailed": "Relaci se nepodařilo zrušit."
+  },
+  "secrets": {
+    "saveFailed": "Tajemství se nepodařilo uložit.",
+    "dialogDescription": "Uložte hodnotu do trezoru tajemství. Po uložení se už znovu nezobrazí.",
+    "newSecret": "Nové tajemství",
+    "keyHelp": "Velká písmena, číslice a podtržítka. Integrace podle něj vyhledají hodnotu.",
+    "keyPlaceholder": "API_KEY",
+    "secretKey": "Klíč tajemství",
+    "value": "Hodnota",
+    "chooseProject": "Vyberte projekt…",
+    "lockCopy": "Přepíše všechny hodnoty v nižších rozsazích {{scope}}.",
+    "scopes": {
+      "personal": "Osobní",
+      "project": "Projekt",
+      "team": "Tým",
+      "organization": "Organizace"
+    },
+    "tabs": {
+      "active": "Aktivní",
+      "revoked": "Odebrané"
+    },
+    "intro": {
+      "personal": "Tajemství dostupná vám.",
+      "team": "Tajemství dostupná tomuto týmu.",
+      "organization": "Tajemství dostupná v celé organizaci."
+    },
+    "cascade": {
+      "personal": "Hodnoty mohou přepsat tajemství z vyšších úrovní.",
+      "team": "Platí zde i organizační tajemství; týmové hodnoty je mohou přepsat.",
+      "organization": "Tyto hodnoty dědí týmy a lidé, pokud nejsou přepsány."
+    },
+    "revoked": "Tajemství odebráno.",
+    "revokeFailed": "Tajemství se nepodařilo odebrat.",
+    "noSecrets": "Žádná tajemství",
+    "pageRange": "{{start}}–{{end}} z {{count}}",
+    "metadataNotice": "Hodnoty se zobrazí pouze při vytvoření. Tato tabulka obsahuje jen metadata.",
+    "status": "Stav",
+    "saved": "Tajemství uloženo.",
+    "saveSecurely": "Bezpečně uložit",
+    "title": "Tajemství",
+    "reference": "Reference",
+    "secretReference": "Reference tajemství",
+    "scope": "Rozsah",
+    "precedence": "Priorita",
+    "actions": "Akce",
+    "revoking": "Odebírání…",
+    "revoke": "Odebrat",
+    "table": "Tabulka tajemství",
+    "revokeTitle": "Odebrat toto tajemství?",
+    "revokeConfirmation": "Tajemství „{{name}}“ přestane fungovat všude, kde se používá.",
+    "statuses_active": "Aktivní",
+    "statuses_expired": "Expirované",
+    "statuses_revoked": "Odebrané",
+    "effective": "Používá se",
+    "locked": "Uzamčeno",
+    "lockedBy": "Uzamčeno v rozsahu: {{scope}}",
+    "overriddenBy": "Přepsáno rozsahem: {{scope}}",
+    "copy": "Kopírovat",
+    "copied": "Zkopírováno",
+    "retry": "Zkusit znovu",
+    "copyCopied": "{{label}} copied",
+    "copyFailed": "Could not copy {{label}}",
+    "copiedMessage": "{{label}} copied to clipboard.",
+    "useEverywhere": "Použít všude",
+    "withheldScope": "Uloženo jako vaše vlastní tajemství. Jen vlastník organizace může uložit tajemství pro rozsah {{scopes}}.",
+    "statuses": {
+      "active": "Aktivní",
+      "expired": "Expirované",
+      "revoked": "Odebrané"
+    },
+    "empty": {
+      "organization": {
+        "active": "Zatím tu nejsou žádná organizační tajemství. Přidejte nové a budou dostupná všem.",
+        "revoked": "Žádné organizační tajemství nebylo odebráno."
+      },
+      "personal": {
+        "active": "Zatím k vám nedosahují žádná tajemství. Uložte si vlastní.",
+        "revoked": "Zatím tu nebylo nic odebráno."
+      },
+      "team": {
+        "active": "K tomuto týmu zatím nedosahují žádná tajemství. Přidejte nové.",
+        "revoked": "Žádné tajemství v tomto týmu nebylo odebráno."
+      }
+    },
+    "copyLabel": "Copy {{label}}",
+    "project": "Projekt"
+  },
+  "pairedAgents": {
+    "pair": "Spárovat agenta",
+    "title": "Spárovaní agenti",
+    "agent": "Spárovaný agent",
+    "back": "Zpět na spárované agenty",
+    "nothingPaired": "Nic není spárováno",
+    "range": "{{start}}–{{end}} z {{count}}",
+    "description": "Claude Code, Codex a další klienti MCP pracují v Nessie jako vy. Spárovaný agent má přístup ke všemu, k čemu máte přístup vy, a nikdy k ničemu navíc. Nemůže sám publikovat dokumenty — požádá vás o schválení. Vše, co zde zpřístupníte, můžete zase odebrat.",
+    "empty": "Zatím není nic spárováno. Žádný program nemá přihlašovací údaj k vašemu účtu.",
+    "revokeFailed": "Přihlašovací údaj se nepodařilo odebrat. Stále je aktivní.",
+    "notFound": "Tento přihlašovací údaj nebyl nalezen. Možná už byl odebrán.",
+    "loadFailed": "Spárované agenty se nepodařilo načíst.",
+    "loading": "Načítání spárovaného agenta…",
+    "revoking": "Odebírání…",
+    "revoke": "Odebrat",
+    "worksAs": "Jedná jako {{name}}",
+    "worksAsYou": "Jedná jako vy",
+    "status": "Stav",
+    "worksAsLabel": "Jedná jako",
+    "expires": "Platnost do",
+    "open": "Otevřít",
+    "table": "Tabulka spárovaných agentů",
+    "decisionFailed": "Rozhodnutí se nepodařilo zaznamenat. Zkuste to znovu.",
+    "dialogDescription": "Požádejte agenta o připojení k Nessie. Zobrazí odkaz a krátký kód — otevřete odkaz nebo kód zadejte sem.",
+    "code": "Párovací kód",
+    "chooseContext": "Nejprve vyberte aktivní projekt a tým — agent je omezen na jeden z nich a bez toho párování nelze dokončit.",
+    "allowed": "Spárováno. Agent získá přihlašovací údaj během několika sekund.",
+    "refused": "Odmítnuto. Agent dostal pokyn, aby už nežádal.",
+    "invalidCode": "Kód není platný. Platnost možná vypršela nebo už byl použit — požádejte agenta o nový.",
+    "wantsToWorkUntil": " chce pracovat jako vy do {{date}}.",
+    "ableTo": "Bude mít možnost",
+    "verifyClient": "Povolte to pouze tehdy, pokud jste právě spustili nástroj, který tento kód zobrazil. Název výše si nástroj zvolil sám a není ověřený.",
+    "done": "Hotovo",
+    "dontAllow": "Nepovolit",
+    "pairing": "Párování…",
+    "allow": "Povolit",
+    "permissions": "Oprávnění agenta",
+    "credential": "Přihlašovací údaj",
+    "notGranted": "nepovoleno",
+    "you": "Vy",
+    "pairedOn": "Spárováno",
+    "revoked": "Odebráno",
+    "lastUsed": "Naposledy použito",
+    "scopes": {
+      "boards_read": {
+        "label": "Číst nástěnky",
+        "detail": "Zobrazit vaše nástěnky a úkoly na nich, včetně nástěnek synchronizovaných z Linear."
+      },
+      "boards_write": {
+        "label": "Měnit nástěnky",
+        "detail": "Vytvářet a upravovat úkoly a přesouvat je mezi sloupci."
+      },
+      "documents_read": {
+        "label": "Číst dokumenty",
+        "detail": "Číst znalostní prostory a dokumenty, ke kterým máte přístup."
+      },
+      "documents_write": {
+        "label": "Vytvářet koncepty dokumentů",
+        "detail": "Vytvářet a upravovat koncepty. Publikování stále vyžaduje vaše schválení — agent o něj může požádat, ale sám publikovat nemůže."
+      }
+    }
+  },
+  "settingsGate": {
+    "lockedAt": "Toto nastavení bylo určeno na úrovni {{scope}} a zde jej nelze změnit.",
+    "locked": "Toto zde nelze změnit.",
+    "scopes": {
+      "organization": "Organizace",
+      "team": "Tým",
+      "user": "Osobní"
+    },
+    "teamsAndPeople": "Týmy a lidé",
+    "people": "Lidé",
+    "useEverywhere": "Použít všude.",
+    "cannotOverride": "Níže uvedení {{below}} si nemohou zvolit vlastní nastavení; ovládací prvek je pro ně neaktivní a zobrazuje vysvětlení."
+  },
+  "push": {
+    "platform": "Platforma",
+    "title": "Přihlašovací údaje push oznámení",
+    "google": "Google (FCM)",
+    "apple": "Apple (APNs)",
+    "configured": "Nastaveno",
+    "projectId": "ID projektu",
+    "clientEmail": "E-mail klienta",
+    "updated": "Aktualizováno",
+    "serviceAccount": "JSON účtu služby",
+    "save": "Uložit",
+    "validate": "Ověřit účet",
+    "removeFcmBody": "Push oznámení přes Google se zastaví, dokud nenahrajete nový účet služby.",
+    "removeFcmTitle": "Odebrat přihlašovací údaj FCM?",
+    "keyId": "ID klíče",
+    "teamId": "ID týmu",
+    "topic": "Téma",
+    "environment": "Prostředí",
+    "signingKey": "Podpisový klíč (.p8)",
+    "bundleId": "ID balíčku (téma)",
+    "environments": {
+      "production": "Produkční",
+      "sandbox": "Testovací"
+    },
+    "sendTest": "Odeslat test na tento iPhone",
+    "removeApnsBody": "Push oznámení přes Apple se zastaví, dokud nenahrajete nový klíč.",
+    "removeApnsTitle": "Odebrat přihlašovací údaj APNs?"
+  },
+  "members": {
+    "active": "Aktivní",
+    "activeMembers": "Aktivní členové",
+    "pendingInvitations": "Nevyřízená pozvání",
+    "pending": "Čekající",
+    "deactivatedMembers": "Deaktivovaní členové",
+    "inactive": "Neaktivní",
+    "automaticLogins": "Automatická přihlášení",
+    "access": "Přístup",
+    "invitePeople": "Pozvat lidi",
+    "title": "Členové",
+    "status": "Stav členů",
+    "total": "Celkem: {{count}}",
+    "invitationsLoadFailed": "Pozvání se nepodařilo načíst.",
+    "loadFailed": "Členy se nepodařilo načíst.",
+    "loadingInvitations": "Načítání pozvání…",
+    "loadingMembers": "Načítání členů…",
+    "noPendingInvitations": "Žádná nevyřízená pozvání",
+    "pendingHelp": "Pozvání se zde zobrazují, dokud nejsou přijata.",
+    "invitation": "Pozvání",
+    "openInvitation": "Otevřít pozvání pro {{name}}",
+    "member": "člen",
+    "noActiveMembers": "Žádní aktivní členové",
+    "noDeactivatedMembers": "Žádní deaktivovaní členové",
+    "inviteFirst": "Pozvěte někoho jako prvního člena.",
+    "deactivatedHelp": "Zde se zobrazí členové, které deaktivujete.",
+    "unnamed": "Nepojmenovaný člen",
+    "openMember": "Otevřít {{name}}",
+    "descriptions": {
+      "active": {
+        "organization": "Lidé ve vaší organizaci.",
+        "team": "Lidé v tomto týmu."
+      },
+      "pending": {
+        "organization": "Lidé, které jste pozvali a kteří se ještě nepřipojili.",
+        "team": "Lidé, které jste pozvali a kteří se ještě nepřipojili."
+      },
+      "deactivated": {
+        "organization": "Lidé s pozastaveným přístupem k organizaci.",
+        "team": "Lidé s pozastaveným přístupem k tomuto týmu."
+      }
+    }
   }
 }

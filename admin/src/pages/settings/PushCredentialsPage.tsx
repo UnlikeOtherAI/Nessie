@@ -1,4 +1,5 @@
 import { Navigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { usePushStatus } from '../../facades/platform-push/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { ApnsCard } from './push/ApnsCard'
@@ -6,6 +7,7 @@ import { FcmCard } from './push/FcmCard'
 import { SettingsPanel } from '../../components/shared/SettingsPanel'
 
 export const PushCredentialsPage = () => {
+  const { t } = useTranslation('settings')
   const { me } = useAuthSession()
   const isSuperAdmin = me?.user.superAdmin ?? false
   const { data: status } = usePushStatus(isSuperAdmin)
@@ -20,7 +22,7 @@ export const PushCredentialsPage = () => {
   }
 
   return (
-    <SettingsPanel eyebrow="Platform" title="Push credentials">
+    <SettingsPanel eyebrow={t('push.platform')} title={t('push.title')}>
       <div className="grid gap-4 xl:grid-cols-2">
         <ApnsCard status={status?.apns} />
         <FcmCard status={status?.fcm} />

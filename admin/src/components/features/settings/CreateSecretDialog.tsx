@@ -1,10 +1,11 @@
 import { useRef, useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { SecretScopeType } from '@nessie/schemas'
 
 import type { ProjectRecord } from '../../../lib/api-client'
 import { secretScopeWritable } from '../../../lib/secret-scopes'
 import type { CreateSecretInput } from '../../../facades/secrets/hooks'
-import { SECRET_SCOPE_LABEL, type SecretPageScope } from './SecretMetadataTable'
+import { secretScopeLabel, type SecretPageScope } from './SecretMetadataTable'
 import { toFormErrors } from '../../../facades/forms/form-errors'
 import { Dialog } from '../../shared/Dialog'
 import { FormActions, FormError } from '../../shared/FormActions'
@@ -83,12 +84,6 @@ export const buildSecretCreateInput = ({
   }
 }
 
-const lockCopy: Partial<Record<SecretScopeType, string>> = {
-  organization: 'Teams and people below cannot save their own; they still see this one, greyed out.',
-  project: 'Teams and people below cannot save their own; they still see this one, greyed out.',
-  team: 'People in this team cannot save their own; they still see this one, greyed out.',
-}
-
 /**
  * The settings entry point for a new vault secret, used by all three Secrets
  * pages. The mutation remains owned by the secrets facade at the page boundary;
@@ -114,6 +109,7 @@ export const CreateSecretDialog = ({
   scopeId: pageScopeId,
   viewerIsOwner,
 }: CreateSecretDialogProps) => {
+  const { t } = useTranslation('settings')
   const scopes = secretCreationScopes(pageScope, { viewerIsOwner })
   // What this page writes but the viewer may not, said where the choice would be.
   const withheld = SECRET_CREATION_SCOPES[pageScope].filter((scope) => !scopes.includes(scope))
@@ -154,7 +150,7 @@ export const CreateSecretDialog = ({
       resetForm()
       onSaved()
     } catch (caught) {
-      setFormError(toFormErrors(caught).formError ?? 'Could not save secret.')
+      setFormError(toFormErrors(caught).formError ?? t('secrets.saveFailed'))
     }
   }
 
@@ -171,25 +167,25 @@ export const CreateSecretDialog = ({
 
   return (
     <Dialog
-      description="Secret values go directly to Infisical and are never stored in Nessie, chat, or agent context."
+      description={t('secrets.dialogDescription')}
       dismissDisabled={pending}
       initialFocusRef={nameRef}
       onClose={handleClose}
       open={open}
-      title="New secret"
+      title={t('secrets.newSecret')}
     >
       <form className="grid gap-4" onSubmit={(event) => void handleSubmit(event)}>
-        <FormField help="Use uppercase letters, numbers, and underscores." label="Secret key">
+        <FormField help={t('secrets.keyHelp')} label={t('secrets.secretKey')}>
           <Input
             autoComplete="off"
             onChange={(event) => setName(event.target.value.toUpperCase())}
-            placeholder="STRIPE_API_KEY"
+            placeholder={t('secrets.keyPlaceholder')}
             ref={nameRef}
             value={name}
           />
         </FormField>
 
-        <FormField label="Value">
+        <FormField label={t('secrets.value')}>
           <Input
             autoComplete="off"
             onChange={(event) => setValue(event.target.value)}
@@ -199,13 +195,13 @@ export const CreateSecretDialog = ({
         </FormField>
 
         {scopes.length > 1 ? (
-          <FormField label="Scope">
+          <FormField label={t('secrets.scope')}>
             <Select
               onChange={(event) => setScopeType(event.target.value as SecretScopeType)}
               value={scopeType}
             >
               {scopes.map((scope) => (
-                <option key={scope} value={scope}>{SECRET_SCOPE_LABEL[scope]}</option>
+                <option key={scope} value={scope}>{secretScopeLabel(scope, t)}</option>
               ))}
             </Select>
           </FormField>
@@ -213,19 +209,18 @@ export const CreateSecretDialog = ({
           // Where Project would have been: this one is theirs alone, and a
           // project's is someone else's to save, so they know whom to ask.
           <p className="text-sm text-[color:var(--tx3)]">
-            Saved as your own secret. Only an organisation owner can save
-            a {withheld.map((scope) => SECRET_SCOPE_LABEL[scope].toLowerCase()).join(' or ')} secret.
+            {t('secrets.withheldScope', { scopes: withheld.map((scope) => secretScopeLabel(scope, t).toLowerCase()).join(' or ') })}
           </p>
         ) : null}
 
         {scopeType === 'project' ? (
-          <FormField label="Project" required>
+          <FormField label={t('secrets.project')} required>
             <Select
               onChange={(event) => setProjectId(event.target.value)}
               required
               value={projectId}
             >
-              <option value="">Choose a project</option>
+              <option value="">{t('secrets.chooseProject')}</option>
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>{project.name}</option>
               ))}
@@ -237,12 +232,12 @@ export const CreateSecretDialog = ({
           <div className="flex items-start gap-3">
             <Switch
               checked={locked}
-              label="Use this everywhere"
+              label={t('secrets.useEverywhere')}
               onChange={setLocked}
             />
             <div className="grid gap-0.5 text-sm">
-              <span className="text-[color:var(--tx2)]">Use this everywhere</span>
-              <span className="text-[color:var(--tx3)]">{lockCopy[scopeType]}</span>
+              <span className="text-[color:var(--tx2)]">{t('secrets.useEverywhere')}</span>
+              <span className="text-[color:var(--tx3)]">{t('secrets.lockCopy', { scope: secretScopeLabel(scopeType, t).toLowerCase() })}</span>
             </div>
           </div>
         ) : null}
@@ -251,14 +246,14 @@ export const CreateSecretDialog = ({
 
         <FormActions>
           <button className="admin-button admin-button-secondary" onClick={handleClose} type="button">
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             className="admin-button admin-button-primary"
             disabled={pending || !canSave}
             type="submit"
           >
-            {pending ? 'Saving…' : 'Save securely'}
+            {pending ? t('common.saving') : t('secrets.saveSecurely')}
           </button>
         </FormActions>
       </form>

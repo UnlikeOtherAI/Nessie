@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { DEFAULT_PAGE_LIMIT } from '@nessie/schemas'
 
 import {
@@ -29,44 +30,6 @@ import { FeedbackBanner, type SettingsFeedback } from './FeedbackBanner'
 import { SettingsPanel } from '../../components/shared/SettingsPanel'
 
 const SECRETS_TABS = ['active', 'revoked'] as const
-
-const TAB_LABEL: Record<SecretsTab, string> = {
-  active: 'Active',
-  revoked: 'Revoked',
-}
-
-type SecretsPanelCopy = {
-  cascade: string
-  eyebrow: string
-  intro: string
-}
-
-/**
- * One page per level, each saying what its own level is rather than restating
- * the whole cascade three times. The eyebrow is the nav group the page lives
- * in (`User`, `Team`, `Organization`), so the three read as one family.
- */
-const COPY: Record<SecretPageScope, SecretsPanelCopy> = {
-  organization: {
-    cascade: 'A team or a person can save their own secret with the same key and theirs wins — '
-      + 'unless this one is locked, in which case theirs is refused and this one applies everywhere.',
-    eyebrow: 'Organisation',
-    intro: 'The company\'s credentials. Every team and every person inherits these unless they '
-      + 'save their own under the same key.',
-  },
-  personal: {
-    cascade: 'Your own secret beats your project\'s, which beats your team\'s, which beats the '
-      + 'organisation\'s. A key locked at a level above cannot be overridden, and is greyed out here.',
-    eyebrow: 'User',
-    intro: 'Everything that reaches you: your own secrets, plus what your team and organisation set.',
-  },
-  team: {
-    cascade: 'A team secret beats the organisation\'s, and a person\'s own beats both — unless a '
-      + 'key is locked, which pins it for everybody below and greys it out there.',
-    eyebrow: 'Team',
-    intro: 'What this team\'s work runs on: the team\'s own secrets, plus what the organisation set.',
-  },
-}
 
 type SecretsPanelProps = { scope: SecretPageScope }
 
@@ -124,6 +87,7 @@ export const secretsPageWindow = (
  * contract — Page X of Y, the result range and the 10/25/50/100 picker.
  */
 export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
+  const { t } = useTranslation('settings')
   const { data: secrets = [], isLoading } = useSecrets()
   const { data: projects = [] } = useProjects()
   const { me } = useAuthSession()
@@ -140,7 +104,11 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
   // that has one page, and returning to a tab keeps the page they left on.
   const [pageByTab, setPageByTab] = useState<Record<SecretsTab, number>>({ active: 0, revoked: 0 })
   const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_LIMIT)
-  const copy = COPY[scope]
+  const copy = {
+    cascade: t(`secrets.${scope}.cascade`),
+    eyebrow: t(scope === 'personal' ? 'common.user' : scope === 'team' ? 'team.team' : 'organization.organisation'),
+    intro: t(`secrets.${scope}.intro`),
+  }
   const viewerIsOwner = useIsOwner()
   // Nothing this viewer may write here means no "New secret" at all: the
   // upper pages are owner doorways, but their addresses still open for anyone.
@@ -162,7 +130,7 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
   }, [projectId, scope, secrets, teamId, userId])
 
   const tabRows = rowsByTab[tab]
-  const { end, label, page, pageCount, start } = secretsPageWindow(
+  const { end, page, pageCount, start } = secretsPageWindow(
     tabRows.length,
     pageByTab[tab],
     pageSize,
@@ -173,16 +141,16 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
     setFeedback(null)
     try {
       await revokeSecret.mutateAsync(reference)
-      setFeedback({ kind: 'success', message: 'Secret revoked.' })
+      setFeedback({ kind: 'success', message: t('secrets.revoked') })
       setPendingRevoke(null)
     } catch (caught) {
-      setFeedback({ kind: 'error', message: caught instanceof Error ? caught.message : 'Could not revoke secret.' })
+      setFeedback({ kind: 'error', message: caught instanceof Error ? caught.message : t('secrets.revokeFailed') })
     }
   }
 
   const tabItems: ReadonlyArray<TabBarItem<SecretsTab>> = SECRETS_TABS.map((value) => ({
     count: rowsByTab[value].length,
-    label: TAB_LABEL[value],
+    label: t(`secrets.tabs.${value}`),
     value,
   }))
 
@@ -191,7 +159,7 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
       actions={canCreate ? [
         {
           id: 'new-secret',
-          label: 'New secret',
+          label: t('secrets.newSecret'),
           onSelect: () => {
             setFeedback(null)
             setCreateOpen(true)
@@ -207,7 +175,7 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
         <PaginationFooter
           canNext={page < pageCount - 1}
           canPrevious={page > 0}
-          label={label}
+          label={tabRows.length === 0 ? t('secrets.noSecrets') : t('secrets.pageRange', { start: start + 1, end, count: tabRows.length })}
           onPageChange={(next) => setPageByTab((previous) => ({ ...previous, [tab]: next }))}
           onPageSizeChange={(next) => {
             setPageSize(next)
@@ -222,22 +190,21 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
         <div className="grid gap-1">
           <p className="text-sm text-[color:var(--tx2)]">{copy.intro}</p>
           <p className="text-sm text-[color:var(--tx3)]">
-            Values go directly to Infisical and are never displayed here. Copy a secret key or
-            reference when you need to bind it elsewhere.
+            {t('secrets.metadataNotice')}
           </p>
           <p className="text-sm text-[color:var(--tx3)]">{copy.cascade}</p>
         </div>
       }
       tabs={
         <TabBar
-          ariaLabel="Secret status"
+          ariaLabel={t('secrets.status')}
           idPrefix={`secrets-${scope}`}
           items={tabItems}
           onChange={setTab}
           value={tab}
         />
       }
-      title="Secrets"
+      title={t('secrets.title')}
     >
       <div className="space-y-5">
         <FeedbackBanner feedback={feedback} />
@@ -266,7 +233,7 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
           onCreate={(input) => createSecret.mutateAsync(input)}
           onSaved={() => {
             setCreateOpen(false)
-            setFeedback({ kind: 'success', message: 'Saved to the vault. Nessie retained only its metadata.' })
+            setFeedback({ kind: 'success', message: t('secrets.saved') })
           }}
           open={createOpen}
           pageScope={scope}
@@ -277,8 +244,8 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
         />
       ) : null}
       <ConfirmDialog
-        body="Anything still using this secret reference will stop working."
-        confirmLabel="Revoke secret"
+        body={t('secrets.revokeConfirmation')}
+        confirmLabel={t('secrets.revokeSecret')}
         destructive
         onCancel={() => setPendingRevoke(null)}
         onConfirm={() => {
@@ -286,7 +253,7 @@ export const SecretsPanel = ({ scope }: SecretsPanelProps) => {
         }}
         open={pendingRevoke != null}
         pending={revokeSecret.isPending}
-        title="Revoke this secret?"
+        title={t('secrets.revokeTitle')}
       />
     </SettingsPanel>
   )

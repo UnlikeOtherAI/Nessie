@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useEffect, useState } from 'react'
 
 import { DEFAULT_PAGE_LIMIT, type SessionSummary } from '@nessie/schemas'
@@ -19,6 +20,7 @@ const formatWhen = (iso: string): string => new Date(iso).toLocaleString()
 
 /** A screen-bounded session list: paging keeps every revoke decision in view. */
 export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTableProps) => {
+  const { t } = useTranslation('settings')
   const revokeSession = useRevokeSession()
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_LIMIT)
@@ -38,7 +40,7 @@ export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTable
     try {
       await revokeSession.mutateAsync(session.sessionId)
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Failed to revoke session.')
+      setError(caught instanceof Error ? caught.message : t('security.revokeFailed'))
     }
   }
 
@@ -47,7 +49,7 @@ export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTable
 
   const columns: DataTableColumn<SessionSummary>[] = [
     {
-      header: 'Device',
+      header: t('security.device'),
       key: 'device',
       render: (session) => {
         const device = describeSessionDevice(session)
@@ -63,25 +65,25 @@ export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTable
               </div>
             </div>
             {session.current ? (
-              <Pill radius="chip" size="sm" tone="accent" uppercase={false}>This device</Pill>
+          <Pill radius="chip" size="sm" tone="accent" uppercase={false}>{t('security.thisDevice')}</Pill>
             ) : null}
           </div>
         )
       },
     },
     {
-      header: 'Last active',
+      header: t('security.lastActive'),
       key: 'lastActive',
       render: (session) => <time dateTime={session.lastUsedAt}>{formatWhen(session.lastUsedAt)}</time>,
       secondary: true,
     },
     {
       align: 'right',
-      header: 'Action',
+      header: t('security.action'),
       key: 'action',
       render: (session) => (
         session.current ? (
-          <span className="text-sm text-[color:var(--tx3)]">Current</span>
+        <span className="text-sm text-[color:var(--tx3)]">{t('security.current')}</span>
         ) : (
           <button
             className="admin-button admin-button-secondary admin-button-compact"
@@ -101,9 +103,9 @@ export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTable
     <div>
       <DataTable
         columns={columns}
-        empty={<EmptyState>No active sessions.</EmptyState>}
+        empty={<EmptyState>{t('security.noSessions')}</EmptyState>}
         expandable={false}
-        label="Active sessions table"
+        label={t('security.sessionsTable')}
         loading={isLoading}
         rowKey={(session) => session.sessionId}
         rows={pageSessions}
@@ -115,7 +117,7 @@ export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTable
           canNext={visiblePage < totalPages - 1}
           canPrevious={visiblePage > 0}
           className="mt-2 border-t-0 px-0 py-0"
-          label={`${rangeStart}–${rangeEnd} of ${sessions.length}`}
+          label={t('security.sessionRange', { start: rangeStart, end: rangeEnd, count: sessions.length })}
           onPageChange={setPage}
           onPageSizeChange={(nextPageSize) => {
             setPageSize(nextPageSize)
@@ -133,14 +135,14 @@ export const ActiveSessionsTable = ({ isLoading, sessions }: ActiveSessionsTable
             ? `This signs "${describeSessionDevice(pendingRevoke).name}" out immediately.`
             : undefined
         }
-        confirmLabel="Revoke"
+          confirmLabel={t('security.revoke')}
         destructive
         onCancel={() => setPendingRevoke(null)}
         onConfirm={() => {
           if (pendingRevoke) void confirmRevoke(pendingRevoke)
         }}
         open={pendingRevoke !== null}
-        title="Revoke this session?"
+          title={t('security.revokeSessionTitle')}
       />
     </div>
   )

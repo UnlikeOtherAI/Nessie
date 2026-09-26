@@ -4,13 +4,17 @@
     "saving": "Saving…",
     "retry": "Retry",
     "enabled": "Enabled",
-    "disabled": "Disabled"
+    "disabled": "Disabled",
+    "cancel": "Cancel",
+    "remove": "Remove",
+    "delete": "Delete",
+    "loading": "Loading…"
   },
   "profile": {
     "title": "Profile",
     "signOut": "Sign out",
     "loadFailed": "Some account details failed to load.",
-    "organisation": "Organization",
+    "organisation": "Organisation",
     "team": "Team",
     "provider": "Provider",
     "session": "Session",
@@ -82,12 +86,567 @@
     "checkingAvailability": "Checking availability…",
     "browserNotConfigured": "Browser notifications are not configured on this instance.",
     "browserBlocked": "Notifications are blocked. Allow them in your browser settings to enable.",
-    "browserEnabled": "Enabled for this organization on this browser",
+    "browserEnabled": "Enabled for this organisation on this browser",
     "browserDisabled": "Disabled for this organisation",
     "browserEnabledToast": "Browser notifications enabled.",
-    "browserDisabledToast": "Browser notifications disabled for this organization.",
+    "browserDisabledToast": "Browser notifications disabled for this organisation.",
     "browserUpdateFailed": "Failed to update browser notifications.",
     "browserNotifications": "Browser notifications",
     "toggleBrowser": "Toggle browser notifications"
+  },
+  "appearance": {
+    "title": "Appearance",
+    "default": "Default",
+    "editOrganisationTheme": "Edit your organization's theme →",
+    "setupOrganisationTheme": "Set up a theme in your organization's colours →",
+    "theme": {
+      "title": "Theme",
+      "description": "Choose the admin color palette for your account.",
+      "legend": "Admin theme",
+      "organisation": "Organization",
+      "organisationDescription": "Your organization's colors."
+    },
+    "themes": {
+      "nessie": {
+        "label": "Nessie",
+        "description": "Navy navigation around a white work surface."
+      },
+      "sandstone": {
+        "label": "Sandstone",
+        "description": "Warm sand surfaces with terracotta controls."
+      },
+      "nebula": {
+        "label": "Classic",
+        "description": "Classic purple-on-dark Nessie palette."
+      },
+      "midnight": {
+        "label": "Midnight",
+        "description": "Neutral slate surfaces with a clear blue accent."
+      },
+      "daylight": {
+        "label": "Daylight",
+        "description": "Light surfaces, dark text, and readable blue accents."
+      },
+      "forest": {
+        "label": "Forest",
+        "description": "Deep green-charcoal surfaces with a calm emerald accent."
+      },
+      "ocean": {
+        "label": "Ocean",
+        "description": "Navy-teal depth with clear cyan controls and links."
+      },
+      "sunset": {
+        "label": "Sunset",
+        "description": "Warm dark brown surfaces with a grounded orange accent."
+      },
+      "rose": {
+        "label": "Rose",
+        "description": "Dark plum surfaces with rose and magenta emphasis."
+      },
+      "graphite": {
+        "label": "Graphite",
+        "description": "Neutral grayscale surfaces with restrained steel accents."
+      },
+      "contrast": {
+        "label": "High Contrast",
+        "description": "Maximum separation for text, controls, and surfaces."
+      },
+      "system": {
+        "label": "System",
+        "description": "Follow your OS light/dark setting."
+      }
+    },
+    "textSize": {
+      "title": "Text size",
+      "description": "Sets the text size across every page. Saved to your account."
+    },
+    "textSizes": {
+      "small": {
+        "label": "Small",
+        "description": "Compact text — fit more on screen."
+      },
+      "medium": {
+        "label": "Medium",
+        "description": "The balanced default size."
+      },
+      "large": {
+        "label": "Large",
+        "description": "Larger text for easier reading."
+      }
+    },
+    "appIcon": {
+      "title": "App icon",
+      "description": "Sets the Nessie icon on this phone's Home Screen.",
+      "dark": "Dark",
+      "light": "Light"
+    }
+  },
+  "statuses": {
+    "title": "Statuses",
+    "description": "What you are doing, shown beside your name. Each one can carry a schedule that turns it on by itself, and contact rules that decide who still reaches you.",
+    "clearActive": "Clear active",
+    "clearFailed": "Your active status could not be cleared. It is still showing.",
+    "newStatus": "New status",
+    "noStatuses": "No statuses",
+    "pageRange": "{{start}}–{{end}} of {{count}}",
+    "empty": "No statuses yet. Add one to say what you are doing.",
+    "status": "Status",
+    "schedules": "Schedules",
+    "contactRules": "Contact rules",
+    "open": "Open",
+    "tableLabel": "Statuses table",
+    "active": "Active",
+    "responseAgentActive": "Response agent answers during this status",
+    "createFailed": "Failed to create status.",
+    "createDescription": "A status says what you are doing. Its schedules and contact rules are set on its own screen.",
+    "icon": "Icon",
+    "newStatusIcon": "New status icon",
+    "label": "Label",
+    "labelPlaceholder": "e.g. Heads down",
+    "adding": "Adding…",
+    "addStatus": "Add status",
+    "clearIcon": "Clear icon",
+    "addRuleFailed": "Failed to add rule.",
+    "appliesTo": "Applies to",
+    "everyone": "Everyone",
+    "channel": "Channel",
+    "project": "Project",
+    "selectChannel": "Select channel",
+    "selectProject": "Select project",
+    "agent": "Agent",
+    "defaultAgent": "Default status agent",
+    "agentReplies": "Agent replies",
+    "enableRuleAgent": "Enable rule agent",
+    "instructions": "Instructions",
+    "ruleInstructionsPlaceholder": "Rule-specific instructions",
+    "addRule": "Add rule",
+    "noContactRules": "No contact rules yet — the response agent uses its default instructions.",
+    "anyContact": "Any contact",
+    "unknown": "Unknown",
+    "dateRangeBetween": "to",
+    "weekly": "Weekly",
+    "weeklyScheduleDescription": "{{day}}, {{start}} to {{end}} ({{timezone}})",
+    "type": "Type",
+    "dateRangeType": "Date range",
+    "optionalLabel": "Label (optional)",
+    "scheduleLabelPlaceholder": "Schedule label",
+    "starts": "Starts",
+    "ends": "Ends",
+    "day": "Day",
+    "startTime": "Start time",
+    "endTime": "End time",
+    "addScheduleFailed": "Failed to add schedule.",
+    "addSchedule": "Add schedule",
+    "noSchedules": "No schedules yet — this status only applies when set active.",
+    "back": "Back to Statuses",
+    "notFound": "This status could not be found. It may have been deleted.",
+    "loadFailed": "Could not load statuses.",
+    "loading": "Loading status…",
+    "saveFailed": "Failed to save status.",
+    "deleting": "Deleting…",
+    "deleteStatus": "Delete status",
+    "setActive": "Set active",
+    "currentlyVisible": "Currently visible",
+    "notCurrentlyVisible": "Not currently visible",
+    "scheduleCount": "Schedules: {{count}}",
+    "contactRuleCount": "Contact rules: {{count}}",
+    "statusDetail": "Status detail",
+    "statusIcon": "Status icon",
+    "statusLabelPlaceholder": "Status label",
+    "enableResponseAgent": "Enable response agent",
+    "responseAgentDescription": "Use these instructions when someone contacts you during this status.",
+    "agentInstructions": "Agent instructions",
+    "agentInstructionsPlaceholder": "Agent instructions",
+    "saveStatus": "Save status",
+    "deleteConfirmation": "This also removes its schedules and contact rules.",
+    "deleteConfirmationTitle": "Delete “{{label}}”?"
+  },
+  "team": {
+    "settingsSections": "Team settings sections",
+    "agents": "Agents",
+    "team": "Team",
+    "teams": "Teams",
+    "name": "Name",
+    "teamName": "Team name",
+    "renameHelp": "This name belongs to your UnlikeOtherAI team. Saving renames it there, so it changes in every other UnlikeOtherAI product too.",
+    "renameInactiveHelp": "This name belongs to your UnlikeOtherAI team, and UnlikeOtherAI only accepts the change from inside it. Switch to this team to rename it.",
+    "addressHelp": "This is your team’s address. Changing it changes the web address people use to reach it, and the old one stops working — {{slug}}.{{domain}}.",
+    "address": "Team address",
+    "addressPlaceholder": "team-address",
+    "saveFailed": "Could not save this team.",
+    "saved": "Team saved.",
+    "save": "Save",
+    "avatarTypeError": "Choose a PNG, JPEG, or WebP image.",
+    "avatarSizeError": "The image must be under 1 MB.",
+    "avatarUpdated": "Team avatar updated.",
+    "avatarSaveFailed": "Failed to save the avatar",
+    "avatarRemoved": "Team avatar removed.",
+    "avatarRemoveFailed": "Failed to remove the avatar",
+    "avatar": "Team avatar",
+    "avatarDescription": "The company picture for {{team}}, held by UnlikeOtherAI and shown anywhere the team appears — including in every other UnlikeOtherAI product. Separate from the organization logo, which is the whole tenant’s brand mark.",
+    "uploading": "Uploading…",
+    "uploadImage": "Upload image",
+    "removing": "Removing…",
+    "avatarFileHint": "PNG, JPEG, or WebP, up to 1 MB. Square images work best. Removing it falls back to the team icon or a generated image.",
+    "avatarOwnerOnly": "Only organization owners and admins can change the team avatar.",
+    "avatarActiveTeamOnly": "UnlikeOtherAI only accepts this change from inside the team. Switch to it to change its picture."
+  },
+  "organization": {
+    "settingsSections": "Organization settings sections",
+    "appearance": "Appearance",
+    "organisation": "Organization",
+    "name": "Name",
+    "organisationName": "Organization name",
+    "managedNameHelp": "This name belongs to your UnlikeOtherAI organization. Saving renames it there, so it changes on the sign-in screen and in every other UnlikeOtherAI product too.",
+    "nameSaveFailed": "Failed to save organization name.",
+    "nameSaved": "Organization name saved.",
+    "saveName": "Save name",
+    "logo": "Logo",
+    "logoSaved": "Logo saved.",
+    "logoSaveFailed": "Failed to save logo",
+    "logoRemoveFailed": "Failed to remove logo",
+    "logoRemoved": "Logo removed.",
+    "logoDescription": "The logo for {{organization}}, shown in the sidebar and on the sign-in screen.",
+    "companyLogo": "Company logo",
+    "replaceLogo": "Replace logo",
+    "uploadLogo": "Upload logo",
+    "logoFileHint": "PNG or JPG. Square images work best.",
+    "logoCropDescription": "Drag to reposition, scroll, or use the slider to zoom. The framed area becomes your logo.",
+    "saveLogo": "Save logo",
+    "editLogo": "Edit logo",
+    "themeSaved": "Theme saved. It's now the default for everyone in {{organization}} who hasn't chosen one.",
+    "themeSaveFailed": "Could not save the theme.",
+    "themeRemoved": "Theme removed.",
+    "themeRemoveFailed": "Could not remove the theme.",
+    "saveTheme": "Save theme",
+    "removeTheme": "Remove theme",
+    "themeDescription": "Your organization’s own colors, offered to everyone in {{organization}} as a theme and used by default for anyone who hasn’t chosen one. People can still pick any theme, including High Contrast.",
+    "noTheme": "No theme yet. Start from the colors below and replace the accent with your brand color.",
+    "appearanceHelp": "Whether text is dark on light, or light on dark. The background and sidebar must match this.",
+    "light": "Light",
+    "dark": "Dark",
+    "accent": "Accent",
+    "accentHelp": "Buttons, links, selection, and the active item. Your brand's primary color.",
+    "background": "Background",
+    "backgroundHelp": "The color pages sit on. Keep it near-white for a light theme or near-black for a dark one — strong color here makes text hard to read.",
+    "sidebar": "Sidebar",
+    "sidebarHelp": "The navigation column. Derived from your accent unless you set it.",
+    "deriveSidebar": "Derive from the accent",
+    "resetToSaved": "Reset to saved",
+    "previewNotice": "You’re seeing the draft. Your own theme comes back when you leave this page — choose {{organization}} under Account → Appearance to keep it.",
+    "removeThemeConfirmation": "Everyone who hasn’t chosen a theme goes back to Sandstone. People who chose {{organization}} will see Sandstone until a theme is saved again.",
+    "removeThemeTitle": "Remove the organization theme?",
+    "calls": "Calls",
+    "callsDescription": "Choose the provider used when someone starts a call in each team.",
+    "noTeams": "No teams are available.",
+    "teamsLoadFailed": "Could not load teams.",
+    "teamsLoading": "Loading teams…",
+    "providerUnavailable": "{{provider}} is not configured for this deployment.",
+    "callProviderFor": "Call provider for {{team}}",
+    "noCallProviders": "No call providers are configured for this deployment.",
+    "providerSaveFailed": "Failed to save the call provider.",
+    "callsCreateLink": "Calls in this team create a {{provider}} link.",
+    "checks": {
+      "title": "Checks",
+      "text": "Text on background",
+      "secondaryText": "Secondary text on background",
+      "link": "Link on background",
+      "button": "Button label on accent",
+      "accentMain": "Accent on background",
+      "blocked": "Blocked",
+      "check": "Check",
+      "surface-band": {
+        "label": "Background",
+        "light": "For a light theme the background must be light — something like #f8fafc.",
+        "dark": "For a dark theme the background must be dark — something like #14171c."
+      },
+      "surface-chroma": {
+        "label": "Background",
+        "detail": "The background is too colourful for text to sit on. Keep it near neutral and put the colour in the accent or the sidebar."
+      },
+      "sidebar-band": {
+        "label": "Sidebar",
+        "detail": "The sidebar must be as dark (or light) as the background — they share the same text colours."
+      },
+      "accent-on-main": {
+        "label": "Accent on background",
+        "detail": "The accent doesn’t stand out against the background ({{ratio}}:1; needs 3:1). Choose a brighter or darker accent, or adjust the background."
+      },
+      "accent-on-panel": {
+        "label": "Accent on cards",
+        "detail": "The accent doesn’t stand out against cards ({{ratio}}:1; needs 3:1). Choose a brighter or darker accent, or adjust the background."
+      },
+      "accent-on-sidebar": {
+        "label": "Accent on sidebar",
+        "detail": "The highlighted item in the navigation will be faint ({{ratio}}:1)."
+      },
+      "accent-near-danger": {
+        "label": "Accent and errors",
+        "detail": "Your accent is close to the red used for errors, so destructive buttons will look like ordinary ones."
+      }
+    },
+    "checkingAccess": "Checking organization access…",
+    "unavailable": "Organization unavailable",
+    "accessLoadFailed": "We couldn’t load your organization access. Try again in a moment.",
+    "accessCheckFailed": "We couldn’t check whether you’re an organization admin. Try again in a moment.",
+    "adminOnlyPage": "Only organization admins can see this page."
+  },
+  "security": {
+    "title": "Security",
+    "password": "Password",
+    "activeSessions": "Active sessions",
+    "sessionsDescription": "Devices currently signed in to your account. Revoking a session signs that device out.",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "confirmNewPassword": "Confirm new password",
+    "passwordMinimum": "At least 8 characters",
+    "passwordMismatch": "New passwords do not match.",
+    "passwordChanged": "Password changed.",
+    "passwordChangeFailed": "Failed to change password.",
+    "changePassword": "Change password",
+    "identityProviderPassword": "Your account signs in through an identity provider. Manage your password with that provider.",
+    "device": "Device",
+    "thisDevice": "This device",
+    "lastActive": "Last active",
+    "action": "Action",
+    "current": "Current",
+    "noSessions": "No active sessions.",
+    "sessionsTable": "Active sessions table",
+    "sessionRange": "{{start}}–{{end}} of {{count}}",
+    "revoke": "Revoke",
+    "revokeSessionTitle": "Revoke this session?",
+    "revokeFailed": "Failed to revoke session."
+  },
+  "secrets": {
+    "saveFailed": "Could not save this secret.",
+    "dialogDescription": "Store a value in the secret vault. The value is never shown again after saving.",
+    "newSecret": "New secret",
+    "keyHelp": "Uppercase letters, numbers and underscores. Used by integrations to look up the value.",
+    "keyPlaceholder": "API_KEY",
+    "secretKey": "Secret key",
+    "value": "Value",
+    "chooseProject": "Choose a project…",
+    "lockCopy": "Overrides every {{scope}} value below it.",
+    "scopes": {
+      "personal": "Personal",
+      "project": "Project",
+      "team": "Team",
+      "organization": "Organization"
+    },
+    "tabs": {
+      "active": "Active",
+      "revoked": "Revoked"
+    },
+    "intro": {
+      "personal": "Secrets available to you.",
+      "team": "Secrets available to this team.",
+      "organization": "Secrets available across this organization."
+    },
+    "cascade": {
+      "personal": "Higher-level secrets can override these values.",
+      "team": "Organization secrets apply here too; team values can override them.",
+      "organization": "These values are inherited by teams and people unless overridden."
+    },
+    "revoked": "Secret revoked.",
+    "revokeFailed": "Could not revoke this secret.",
+    "noSecrets": "No secrets",
+    "pageRange": "{{start}}–{{end}} of {{count}}",
+    "metadataNotice": "Values are shown only once, when they are created. This table contains metadata only.",
+    "status": "Status",
+    "saved": "Secret saved.",
+    "saveSecurely": "Save secret",
+    "title": "Secret",
+    "reference": "Reference",
+    "secretReference": "Secret reference",
+    "scope": "Scope",
+    "precedence": "Precedence",
+    "actions": "Actions",
+    "revoking": "Revoking…",
+    "revoke": "Revoke",
+    "table": "Secrets table",
+    "revokeTitle": "Revoke this secret?",
+    "revokeConfirmation": "“{{name}}” will stop working anywhere it is bound.",
+    "statuses_active": "Active",
+    "statuses_expired": "Expired",
+    "statuses_revoked": "Revoked",
+    "effective": "Effective",
+    "locked": "Locked",
+    "lockedBy": "Locked by {{scope}}",
+    "overriddenBy": "Overridden by {{scope}}",
+    "copy": "Copy",
+    "copied": "Copied",
+    "retry": "Try again",
+    "copyCopied": "{{label}} copied",
+    "copyFailed": "Could not copy {{label}}",
+    "copiedMessage": "{{label}} copied to clipboard.",
+    "useEverywhere": "Use everywhere",
+    "withheldScope": "Saved as your own secret. Only an organization owner can save a {{scopes}} secret.",
+    "statuses": {
+      "active": "Active",
+      "expired": "Expired",
+      "revoked": "Revoked"
+    },
+    "empty": {
+      "organization": {
+        "active": "No organization secrets yet. Use “New secret” to add one everybody inherits.",
+        "revoked": "No organization secret has been revoked."
+      },
+      "personal": {
+        "active": "No secrets reach you yet. Use “New secret” to save one of your own.",
+        "revoked": "Nothing here has been revoked."
+      },
+      "team": {
+        "active": "No secrets reach this team yet. Use “New secret” to add one.",
+        "revoked": "No secret in this team has been revoked."
+      }
+    },
+    "copyLabel": "Copy {{label}}",
+    "project": "Project"
+  },
+  "pairedAgents": {
+    "pair": "Pair an agent",
+    "title": "Paired agents",
+    "agent": "Paired agent",
+    "back": "Back to Paired agents",
+    "nothingPaired": "Nothing paired",
+    "range": "{{start}}–{{end}} of {{count}}",
+    "description": "Claude Code, Codex and other MCP clients, working in Nessie as you. A paired agent reaches exactly what you reach and never more, and it cannot publish a document on its own — that comes back to you as an approval. Everything you lend here you can take back here.",
+    "empty": "Nothing paired yet. No program is holding a credential for your account.",
+    "revokeFailed": "That credential could not be revoked. It is still live.",
+    "notFound": "This credential could not be found. It may already have been removed.",
+    "loadFailed": "Could not load paired agents.",
+    "loading": "Loading paired agent…",
+    "revoking": "Revoking…",
+    "revoke": "Revoke",
+    "worksAs": "Works as {{name}}",
+    "worksAsYou": "Works as you",
+    "status": "Status",
+    "worksAsLabel": "Works as",
+    "expires": "Expires",
+    "open": "Open",
+    "table": "Paired agents table",
+    "decisionFailed": "That decision could not be recorded. Try again.",
+    "dialogDescription": "Ask the agent to connect to Nessie. It prints a link and a short code — open the link, or type the code here.",
+    "code": "Pairing code",
+    "chooseContext": "Pick an active project and team first — a paired agent is scoped to one, and pairing cannot be completed without it.",
+    "allowed": "Paired. The agent picks up its credential within a few seconds.",
+    "refused": "Refused. The agent was told to stop asking.",
+    "invalidCode": "That code is not valid. It may have expired, or already been used — ask the agent for a new one.",
+    "wantsToWorkUntil": " wants to work as you until {{date}}.",
+    "ableTo": "It will be able to",
+    "verifyClient": "Only allow this if you just ran a tool that printed this code. The name above is whatever that tool calls itself, and nothing checks it.",
+    "done": "Done",
+    "dontAllow": "Don’t allow",
+    "pairing": "Pairing…",
+    "allow": "Allow",
+    "permissions": "What it can do",
+    "credential": "Credential",
+    "notGranted": "not granted",
+    "you": "You",
+    "pairedOn": "Paired",
+    "revoked": "Revoked",
+    "lastUsed": "Last used",
+    "scopes": {
+      "boards_read": {
+        "label": "Read boards",
+        "detail": "See your boards and the tasks on them, including boards mirrored from Linear."
+      },
+      "boards_write": {
+        "label": "Change boards",
+        "detail": "Create tasks, edit them, and move them between columns."
+      },
+      "documents_read": {
+        "label": "Read documents",
+        "detail": "Read the knowledge spaces and documents you can read."
+      },
+      "documents_write": {
+        "label": "Write documents as drafts",
+        "detail": "Create and edit documents as drafts. Publishing one still comes to you as an approval — an agent can ask, but it cannot publish."
+      }
+    }
+  },
+  "settingsGate": {
+    "lockedAt": "This has been set at the {{scope}} level and cannot be changed here.",
+    "locked": "This cannot be changed here.",
+    "scopes": {
+      "organization": "Organization",
+      "team": "Team",
+      "user": "Personal"
+    },
+    "teamsAndPeople": "Teams and people",
+    "people": "People",
+    "useEverywhere": "Use this everywhere.",
+    "cannotOverride": "{{below}} cannot choose their own; the control is greyed out for them with an explanation."
+  },
+  "push": {
+    "platform": "Platform",
+    "title": "Push credentials",
+    "google": "Google (FCM)",
+    "apple": "Apple (APNs)",
+    "configured": "Configured",
+    "projectId": "Project ID",
+    "clientEmail": "Client email",
+    "updated": "Updated",
+    "serviceAccount": "Service-account JSON",
+    "save": "Save",
+    "validate": "Validate account",
+    "removeFcmBody": "Push notifications through Google will stop until a new service account is uploaded.",
+    "removeFcmTitle": "Remove the FCM credential?",
+    "keyId": "Key ID",
+    "teamId": "Team ID",
+    "topic": "Topic",
+    "environment": "Environment",
+    "signingKey": "Signing key (.p8)",
+    "bundleId": "Bundle ID (topic)",
+    "environments": {
+      "production": "Production",
+      "sandbox": "Sandbox"
+    },
+    "sendTest": "Send test to this iPhone",
+    "removeApnsBody": "Push notifications through Apple will stop until a new key is uploaded.",
+    "removeApnsTitle": "Remove the APNs credential?"
+  },
+  "members": {
+    "active": "Active",
+    "activeMembers": "Active members",
+    "pendingInvitations": "Pending invitations",
+    "pending": "Pending",
+    "deactivatedMembers": "Deactivated members",
+    "inactive": "Inactive",
+    "automaticLogins": "Automatic logins",
+    "access": "Access",
+    "invitePeople": "Invite people",
+    "title": "Members",
+    "status": "Member status",
+    "total": "{{count}} total",
+    "invitationsLoadFailed": "Invitations could not be loaded.",
+    "loadFailed": "Members could not be loaded.",
+    "loadingInvitations": "Loading invitations…",
+    "loadingMembers": "Loading members…",
+    "noPendingInvitations": "No pending invitations",
+    "pendingHelp": "Invitations show up here until they’re accepted.",
+    "invitation": "Invitation",
+    "openInvitation": "Open invitation for {{name}}",
+    "member": "member",
+    "noActiveMembers": "No active members",
+    "noDeactivatedMembers": "No deactivated members",
+    "inviteFirst": "Invite someone to add the first member.",
+    "deactivatedHelp": "Members you deactivate show up here.",
+    "unnamed": "Unnamed member",
+    "openMember": "Open {{name}}",
+    "descriptions": {
+      "active": {
+        "organization": "People in your organization.",
+        "team": "People on this team."
+      },
+      "pending": {
+        "organization": "People you’ve invited who haven’t joined yet.",
+        "team": "People you’ve invited who haven’t joined yet."
+      },
+      "deactivated": {
+        "organization": "People whose access to your organization is paused.",
+        "team": "People whose access to this team is paused."
+      }
+    }
   }
 }

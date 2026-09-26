@@ -1,4 +1,5 @@
 import { faChevronRight } from '@fortawesome/free-solid-svg-icons'
+import { useTranslation } from 'react-i18next'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { UserStatusRecord } from '../../../lib/api-client'
 import { Pill } from '../../../components/primitives/Pill'
@@ -15,11 +16,11 @@ type StatusesTableProps = {
 const SKELETON_ROWS = 4
 const COLUMN_COUNT = 5
 
-const TableFrame = ({ children }: { children: React.ReactNode }) => (
+const TableFrame = ({ children, label }: { children: React.ReactNode; label: string }) => (
   <ExpandableTable
     className="overflow-hidden rounded-xl border border-[color:var(--sep)]"
     expandable={false}
-    label="Statuses table"
+    label={label}
   >
     <table className="admin-table w-full border-collapse">{children}</table>
   </ExpandableTable>
@@ -30,13 +31,13 @@ const headerClass = [
   'tracking-[0.12em] text-[color:var(--tx3)]',
 ].join(' ')
 
-const HeaderRow = () => (
+const HeaderRow = ({ t }: { t: (key: string) => string }) => (
   <thead>
     <tr className="border-b border-[color:var(--sep)]">
-      <th className={`${headerClass} pl-4`} colSpan={2} scope="col">Status</th>
-      <th className={`${headerClass} hidden md:table-cell`} scope="col">Schedules</th>
-      <th className={`${headerClass} hidden md:table-cell`} scope="col">Contact rules</th>
-      <th className={headerClass} scope="col"><span className="sr-only">Open</span></th>
+      <th className={`${headerClass} pl-4`} colSpan={2} scope="col">{t('statuses.status')}</th>
+      <th className={`${headerClass} hidden md:table-cell`} scope="col">{t('statuses.schedules')}</th>
+      <th className={`${headerClass} hidden md:table-cell`} scope="col">{t('statuses.contactRules')}</th>
+      <th className={headerClass} scope="col"><span className="sr-only">{t('statuses.open')}</span></th>
     </tr>
   </thead>
 )
@@ -50,10 +51,12 @@ export const StatusesTable = ({
   onOpen,
   statuses,
 }: StatusesTableProps) => {
+  const { t } = useTranslation('settings')
+  const label = t('statuses.tableLabel')
   if (isLoading) {
     return (
-      <TableFrame>
-        <HeaderRow />
+      <TableFrame label={label}>
+        <HeaderRow t={t} />
         <tbody>
           <tr>
             <td className="px-4 py-4" colSpan={COLUMN_COUNT}>
@@ -67,8 +70,8 @@ export const StatusesTable = ({
 
   if (statuses.length === 0) {
     return (
-      <TableFrame>
-        <HeaderRow />
+      <TableFrame label={label}>
+        <HeaderRow t={t} />
         <tbody>
           <tr>
             <td
@@ -84,8 +87,8 @@ export const StatusesTable = ({
   }
 
   return (
-    <TableFrame>
-      <HeaderRow />
+    <TableFrame label={label}>
+      <HeaderRow t={t} />
       <tbody>
         {statuses.map((status) => (
           <tr
@@ -109,12 +112,12 @@ export const StatusesTable = ({
                   {status.label}
                 </span>
                 {status.activeNow ? (
-                  <Pill height="control" tone="success" uppercase={false}>Active</Pill>
+                  <Pill height="control" tone="success" uppercase={false}>{t('statuses.active')}</Pill>
                 ) : null}
               </div>
               {status.agentEnabled ? (
                 <div className="truncate text-xs text-[color:var(--tx3)]">
-                  Response agent answers during this status
+                  {t('statuses.responseAgentActive')}
                 </div>
               ) : null}
             </td>

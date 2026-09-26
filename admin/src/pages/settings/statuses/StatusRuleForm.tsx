@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import type {
   AgentRecord,
   ChannelRecord,
@@ -42,6 +43,7 @@ export const StatusRuleForm = ({
   projects,
   selectedStatus,
 }: StatusRuleFormProps) => {
+  const { t } = useTranslation('settings')
   const [ruleScope, setRuleScope] = useState<UserStatusRuleScope>('fallback')
   const [ruleChannelId, setRuleChannelId] = useState('')
   const [ruleProjectId, setRuleProjectId] = useState('')
@@ -71,32 +73,32 @@ export const StatusRuleForm = ({
       })
       setRuleInstructions('')
     } catch (error) {
-      setRuleError(toFormErrors(error).formError ?? 'Failed to add rule.')
+      setRuleError(toFormErrors(error).formError ?? t('statuses.addRuleFailed'))
     }
   }
 
   return (
     <Card as="section">
-      <SectionLabel>Contact rules</SectionLabel>
+      <SectionLabel>{t('statuses.contactRules')}</SectionLabel>
       <form className="mt-4 grid gap-3" onSubmit={ruleSubmit}>
         <div className="grid gap-2 md:grid-cols-3">
-          <FormField label="Applies to">
+          <FormField label={t('statuses.appliesTo')}>
             <Select
               onChange={(event) => setRuleScope(event.target.value as UserStatusRuleScope)}
               value={ruleScope}
             >
-              <option value="fallback">Everyone</option>
-              <option value="channel">Channel</option>
-              <option value="project">Project</option>
+              <option value="fallback">{t('statuses.everyone')}</option>
+              <option value="channel">{t('statuses.channel')}</option>
+              <option value="project">{t('statuses.project')}</option>
             </Select>
           </FormField>
           {ruleScope === 'channel' && (
-            <FormField className="md:col-span-2" label="Channel">
+            <FormField className="md:col-span-2" label={t('statuses.channel')}>
               <Select
                 onChange={(event) => setRuleChannelId(event.target.value)}
                 value={ruleChannelId}
               >
-                <option value="">Select channel</option>
+                <option value="">{t('statuses.selectChannel')}</option>
                 {channels.map((channel) => (
                   <option key={channel.id} value={channel.id}>
                     {channel.label}
@@ -106,12 +108,12 @@ export const StatusRuleForm = ({
             </FormField>
           )}
           {ruleScope === 'project' && (
-            <FormField className="md:col-span-2" label="Project">
+            <FormField className="md:col-span-2" label={t('statuses.project')}>
               <Select
                 onChange={(event) => setRuleProjectId(event.target.value)}
                 value={ruleProjectId}
               >
-                <option value="">Select project</option>
+                <option value="">{t('statuses.selectProject')}</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>
                     {project.name}
@@ -122,12 +124,12 @@ export const StatusRuleForm = ({
           )}
         </div>
         <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-          <FormField label="Agent">
+          <FormField label={t('statuses.agent')}>
             <Select
               onChange={(event) => setRuleAgentId(event.target.value)}
               value={ruleAgentId}
             >
-              <option value="">Default status agent</option>
+              <option value="">{t('statuses.defaultAgent')}</option>
               {agents.map((agent) => (
                 <option key={agent.id} value={agent.id}>
                   {agentSelectionLabel(agent.name, agent.visibility)}
@@ -136,19 +138,19 @@ export const StatusRuleForm = ({
             </Select>
           </FormField>
           <div className="flex items-center gap-3 self-end pb-2">
-            <span className="text-sm text-[color:var(--tx2)]">Agent replies</span>
+            <span className="text-sm text-[color:var(--tx2)]">{t('statuses.agentReplies')}</span>
             <Switch
               checked={ruleAgentEnabled}
-              label="Enable rule agent"
+              label={t('statuses.enableRuleAgent')}
               onChange={setRuleAgentEnabled}
             />
           </div>
         </div>
-        <FormField label="Instructions">
+        <FormField label={t('statuses.instructions')}>
           <Textarea
             className="min-h-24"
             onChange={(event) => setRuleInstructions(event.target.value)}
-            placeholder="Rule-specific instructions"
+            placeholder={t('statuses.ruleInstructionsPlaceholder')}
             value={ruleInstructions}
           />
         </FormField>
@@ -159,13 +161,13 @@ export const StatusRuleForm = ({
             disabled={!ruleTargetReady || !ruleInstructions.trim()}
             type="submit"
           >
-            Add rule
+            {t('statuses.addRule')}
           </button>
         </FormActions>
       </form>
       <div className="mt-4">
         {selectedStatus.rules.length > 0 ? (
-          <RowList label="Contact rules">
+          <RowList label={t('statuses.contactRules')}>
             {selectedStatus.rules.map((rule) => (
               <Row
                 key={rule.id}
@@ -180,14 +182,14 @@ export const StatusRuleForm = ({
                       deleteRule.mutate({ ruleId: rule.id, statusId: selectedStatus.id })}
                     type="button"
                   >
-                    Remove
+                    {t('common.remove')}
                   </button>
                 }
               />
             ))}
           </RowList>
         ) : (
-          <EmptyState>No contact rules yet — the response agent uses its default instructions.</EmptyState>
+          <EmptyState>{t('statuses.noContactRules')}</EmptyState>
         )}
       </div>
     </Card>

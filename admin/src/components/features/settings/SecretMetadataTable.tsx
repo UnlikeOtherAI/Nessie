@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   computeSecretPrecedence,
   type SecretPrecedenceContext,
@@ -31,38 +32,13 @@ type SecretMetadataTableProps = {
 }
 
 /** One spelling of each scope, shared with the creation form's picker. */
-export const SECRET_SCOPE_LABEL: Record<SecretScopeType, string> = {
-  personal: 'Personal',
-  project: 'Project',
-  team: 'Team',
-  organization: 'Organisation',
-}
+export const secretScopeLabel = (scope: SecretScopeType, t: (key: string) => string): string =>
+  t(`secrets.scopes.${scope}`)
 
 const statusTone: Record<SecretRecord['status'], PillTone> = {
   active: 'success',
   expired: 'warning',
   revoked: 'danger',
-}
-
-const statusLabel: Record<SecretRecord['status'], string> = {
-  active: 'Active',
-  expired: 'Expired',
-  revoked: 'Revoked',
-}
-
-const emptyCopy: Record<SecretPageScope, Record<SecretsTab, string>> = {
-  organization: {
-    active: 'No organisation secrets yet. Use “New secret” to add one everybody inherits.',
-    revoked: 'No organisation secret has been revoked.',
-  },
-  personal: {
-    active: 'No secrets reach you yet. Use “New secret” to save one of your own.',
-    revoked: 'Nothing here has been revoked.',
-  },
-  team: {
-    active: 'No secrets reach this team yet. Use “New secret” to add one.',
-    revoked: 'No secret in this team has been revoked.',
-  },
 }
 
 /**
@@ -111,6 +87,7 @@ type CopySecretMetadataButtonProps = {
 }
 
 const CopySecretMetadataButton = ({ label, value }: CopySecretMetadataButtonProps) => {
+  const { t } = useTranslation('settings')
   const feedbackId = useId()
   const [feedback, setFeedback] = useState<'copied' | 'error' | null>(null)
 
@@ -130,24 +107,20 @@ const CopySecretMetadataButton = ({ label, value }: CopySecretMetadataButtonProp
     }
   }
 
-  const buttonLabel = feedback === 'copied'
-    ? `${label} copied`
-    : feedback === 'error'
-      ? `Could not copy ${label.toLowerCase()}`
-      : `Copy ${label.toLowerCase()}`
+  const buttonLabel = t(feedback === 'copied' ? 'secrets.copyCopied' : feedback === 'error' ? 'secrets.copyFailed' : 'secrets.copyLabel', { label })
   // The visible label is just "Copy": the column header beside it already says
   // *what* is being copied, and spelling it out twice per row pushed the
   // Precedence and Actions columns off the side of a 1440px viewport. The full
   // sentence stays in the accessible name and the tooltip.
   const visibleLabel = feedback === 'copied'
-    ? 'Copied'
+    ? t('secrets.copied')
     : feedback === 'error'
-      ? 'Try again'
-      : 'Copy'
+      ? t('common.retry')
+      : t('secrets.copy')
   const message = feedback === 'copied'
-    ? `${label} copied to clipboard.`
+    ? t('secrets.copiedMessage', { label })
     : feedback === 'error'
-      ? `Could not copy ${label.toLowerCase()}.`
+      ? t('secrets.copyFailed', { label })
       : ''
 
   return (
@@ -175,19 +148,20 @@ const MetadataCell = ({ label, value }: { label: string; value: string }) => (
 )
 
 const PrecedenceCell = ({ secret }: { secret: SecretRow }) => {
+  const { t } = useTranslation('settings')
   if (secret.lockedBy) {
     return (
       <span className="text-sm text-[color:var(--tx3)]">
-        Locked by {SECRET_SCOPE_LABEL[secret.lockedBy.scopeType].toLowerCase()}
+        {t('secrets.lockedBy', { scope: secretScopeLabel(secret.lockedBy.scopeType, t).toLowerCase() })}
       </span>
     )
   }
   if (secret.isEffective) {
     return (
       <span className="inline-flex items-center gap-1.5">
-        <Pill radius="chip" size="sm" tone="success" uppercase={false}>Effective</Pill>
+        <Pill radius="chip" size="sm" tone="success" uppercase={false}>{t('secrets.effective')}</Pill>
         {secret.locked ? (
-          <Pill radius="chip" size="sm" tone="muted" uppercase={false}>Locked</Pill>
+          <Pill radius="chip" size="sm" tone="muted" uppercase={false}>{t('secrets.locked')}</Pill>
         ) : null}
       </span>
     )
@@ -195,7 +169,7 @@ const PrecedenceCell = ({ secret }: { secret: SecretRow }) => {
   if (secret.overriddenBy) {
     return (
       <span className="text-sm text-[color:var(--tx3)]">
-        Overridden by {SECRET_SCOPE_LABEL[secret.overriddenBy.scopeType].toLowerCase()}
+        {t('secrets.overriddenBy', { scope: secretScopeLabel(secret.overriddenBy.scopeType, t).toLowerCase() })}
       </span>
     )
   }
@@ -223,47 +197,48 @@ export const SecretMetadataTable = ({
   rows,
   tab,
 }: SecretMetadataTableProps) => {
+  const { t } = useTranslation('settings')
   const [pendingRevoke, setPendingRevoke] = useState<SecretRow | null>(null)
 
   const active = tab === 'active'
   const columns: (DataTableColumn<SecretRow> | null)[] = [
     {
-      header: 'Secret key',
+      header: t('secrets.secretKey'),
       key: 'name',
-      render: (secret) => <MetadataCell label="Secret key" value={secret.name} />,
+      render: (secret) => <MetadataCell label={t('secrets.secretKey')} value={secret.name} />,
     },
     {
-      header: 'Reference',
+      header: t('secrets.reference'),
       key: 'reference',
-      render: (secret) => <MetadataCell label="Secret reference" value={secret.reference} />,
+      render: (secret) => <MetadataCell label={t('secrets.secretReference')} value={secret.reference} />,
     },
     // The organisation page is a single level, so every row would read
     // "Organisation" — the page title already says it.
     pageScope === 'organization' ? null : {
-      header: 'Scope',
+      header: t('secrets.scope'),
       key: 'scope',
-      render: (secret) => SECRET_SCOPE_LABEL[secret.scopeType],
+      render: (secret) => secretScopeLabel(secret.scopeType, t),
       secondary: true,
     },
     active ? {
-      header: 'Precedence',
+      header: t('secrets.precedence'),
       key: 'precedence',
       render: (secret) => <PrecedenceCell secret={secret} />,
       secondary: true,
     } : {
       // Revoked and expired are different facts and the tab holds both; on the
       // Active tab the tab itself is the status and a column would only repeat it.
-      header: 'Status',
+      header: t('secrets.status'),
       key: 'status',
       render: (secret) => (
         <Pill radius="chip" size="sm" tone={statusTone[secret.status]} uppercase={false}>
-          {statusLabel[secret.status]}
+          {t(`secrets.statuses.${secret.status}`)}
         </Pill>
       ),
     },
     active ? {
       align: 'right',
-      header: 'Actions',
+      header: t('secrets.actions'),
       key: 'actions',
       render: (secret) => (
         <button
@@ -272,7 +247,7 @@ export const SecretMetadataTable = ({
           onClick={() => setPendingRevoke(secret)}
           type="button"
         >
-          {revokingReference === secret.reference ? 'Revoking…' : 'Revoke'}
+          {revokingReference === secret.reference ? t('secrets.revoking') : t('secrets.revoke')}
         </button>
       ),
       width: '7rem',
@@ -283,9 +258,9 @@ export const SecretMetadataTable = ({
     <>
       <DataTable
         columns={columns.filter((column): column is DataTableColumn<SecretRow> => column !== null)}
-        empty={<EmptyState>{emptyCopy[pageScope][tab]}</EmptyState>}
+        empty={<EmptyState>{t(`secrets.empty.${pageScope}.${tab}`)}</EmptyState>}
         expandable={false}
-        label="Secrets table"
+        label={t('secrets.table')}
         loading={isLoading}
         minWidth="46rem"
         rowClassName={(secret) => (secret.lockedBy ? 'opacity-60' : undefined)}
@@ -295,8 +270,8 @@ export const SecretMetadataTable = ({
       />
 
       <ConfirmDialog
-        body={pendingRevoke ? `"${pendingRevoke.name}" will stop working anywhere it is bound.` : undefined}
-        confirmLabel="Revoke"
+        body={pendingRevoke ? t('secrets.revokeConfirmation', { name: pendingRevoke.name }) : undefined}
+        confirmLabel={t('secrets.revoke')}
         destructive
         onCancel={() => setPendingRevoke(null)}
         onConfirm={() => {
@@ -304,7 +279,7 @@ export const SecretMetadataTable = ({
           setPendingRevoke(null)
         }}
         open={pendingRevoke !== null}
-        title="Revoke this secret?"
+        title={t('secrets.revokeTitle')}
       />
     </>
   )

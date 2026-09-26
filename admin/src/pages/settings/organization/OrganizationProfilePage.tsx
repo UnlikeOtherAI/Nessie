@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useCurrentOrganization, useUpdateOrganization } from '../../../facades/organization/hooks'
 import { Card } from '../../../components/shared/Card'
 import { FormActions, FormSuccess } from '../../../components/shared/FormActions'
@@ -19,6 +20,7 @@ import { toFormErrors } from '../../../facades/forms/form-errors'
  * them.
  */
 export const OrganizationProfilePage = ({ tabs }: SettingsTabHostProps) => {
+  const { t } = useTranslation('settings')
   const { data: organization, isLoading } = useCurrentOrganization()
   const updateOrganization = useUpdateOrganization()
 
@@ -47,7 +49,7 @@ export const OrganizationProfilePage = ({ tabs }: SettingsTabHostProps) => {
       setSaved(true)
     } catch (error) {
       const { fieldErrors, formError } = toFormErrors(error)
-      setNameError(fieldErrors.name ?? formError ?? 'Failed to save organisation name.')
+      setNameError(fieldErrors.name ?? formError ?? t('organization.nameSaveFailed'))
     }
   }
 
@@ -55,22 +57,20 @@ export const OrganizationProfilePage = ({ tabs }: SettingsTabHostProps) => {
   const canSave = dirty && name.trim().length > 0 && !updateOrganization.isPending
 
   return (
-    <SettingsPanel eyebrow="Organisation" title="Profile">
+    <SettingsPanel eyebrow={t('organization.organisation')} title={t('profile.title')}>
       {tabs}
       <div className="grid gap-4">
         <Card as="section">
-          <SectionLabel>Name</SectionLabel>
+          <SectionLabel>{t('organization.name')}</SectionLabel>
           <form className="mt-4 grid gap-3" onSubmit={saveName}>
             <FormField
               error={nameError}
               help={
                 organization?.nameManagedExternally
-                  ? 'This name belongs to your UnlikeOtherAI organisation. Saving renames it '
-                    + 'there, so it changes on the sign-in screen and in every other '
-                    + 'UnlikeOtherAI product too.'
+                  ? t('organization.managedNameHelp')
                   : undefined
               }
-              label="Organisation name"
+              label={t('organization.organisationName')}
             >
               <Input
                 disabled={isLoading || updateOrganization.isPending}
@@ -78,18 +78,18 @@ export const OrganizationProfilePage = ({ tabs }: SettingsTabHostProps) => {
                   setName(event.target.value)
                   setSaved(false)
                 }}
-                placeholder="Organisation name"
+                placeholder={t('organization.organisationName')}
                 value={name}
               />
             </FormField>
-            <FormSuccess>{saved ? 'Organisation name saved.' : undefined}</FormSuccess>
+            <FormSuccess>{saved ? t('organization.nameSaved') : undefined}</FormSuccess>
             <FormActions>
               <button
                 className="admin-button admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={!canSave}
                 type="submit"
               >
-                {updateOrganization.isPending ? 'Saving…' : 'Save name'}
+                {updateOrganization.isPending ? t('common.saving') : t('organization.saveName')}
               </button>
             </FormActions>
           </form>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 import type { TeamInvitationRecord, TeamMemberRecord } from '@nessie/schemas'
 
@@ -34,14 +35,12 @@ type RosterTab = 'active' | 'pending' | 'deactivated' | 'automatic'
 const ROSTER_TAB_VALUES: readonly RosterTab[] = ['active', 'pending', 'deactivated', 'automatic']
 
 const ROSTER_TABS = [
-  { compactLabel: 'Active', label: 'Active members', value: 'active' },
-  { compactLabel: 'Pending', label: 'Pending invitations', value: 'pending' },
-  { compactLabel: 'Inactive', label: 'Deactivated members', value: 'deactivated' },
+  { compactLabel: 'members.active', label: 'members.activeMembers', value: 'active' },
+  { compactLabel: 'members.pending', label: 'members.pendingInvitations', value: 'pending' },
+  { compactLabel: 'members.inactive', label: 'members.deactivatedMembers', value: 'deactivated' },
 ] as const
 
-const AUTOMATIC_TAB = {
-  label: 'Automatic logins', value: 'automatic', compactLabel: 'Access',
-} as const
+const AUTOMATIC_TAB = { label: 'members.automaticLogins', value: 'automatic', compactLabel: 'members.access' } as const
 
 const dateLabel = (value: string | undefined) => {
   if (!value) return '—'
@@ -62,18 +61,9 @@ const invitationSubtitle = (invite: TeamInvitationRecord, scope: MemberRosterSco
   invite.expiresAt ? `Expires ${dateLabel(invite.expiresAt)}` : undefined,
 ].filter(Boolean).join(' · ')
 
-const rosterTitle = (tab: Exclude<RosterTab, 'automatic'>) => tab === 'active'
-  ? 'Active members'
-  : tab === 'pending' ? 'Pending invitations' : 'Deactivated members'
-
-const rosterSubtitle = (tab: Exclude<RosterTab, 'automatic'>, scope: MemberRosterScope) => {
-  if (tab === 'active') return scope === 'organization' ? 'People in your organisation.' : 'People in this team.'
-  if (tab === 'pending') return 'People you’ve invited who haven’t joined yet.'
-  return 'People whose access to your organisation is paused.'
-}
-
 /** The single Members page used at organisation and team scope. */
 export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
+  const { t } = useTranslation('settings')
   const { me, token } = useAuthSession()
   const [searchParams, setSearchParams] = useSearchParams()
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -102,7 +92,8 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
   // permissions read cannot make it vanish under the person using it.
   const canSeeAutomatic = me?.features?.automaticMembership === true
     && (permissions?.addMember === true || tab === 'automatic')
-  const tabs = canSeeAutomatic ? [...ROSTER_TABS, AUTOMATIC_TAB] : ROSTER_TABS
+  const tabs = (canSeeAutomatic ? [...ROSTER_TABS, AUTOMATIC_TAB] : ROSTER_TABS)
+    .map((item) => ({ ...item, compactLabel: t(item.compactLabel), label: t(item.label) }))
 
   // A different tab is a different list, so its cursor means nothing here —
   // cleared alongside the write rather than left to point at the wrong page.
@@ -129,17 +120,17 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
     <SettingsPanel
       actions={canInvite ? [{
         id: 'invite-member',
-        label: 'Invite people',
+        label: t('members.invitePeople'),
         onSelect: () => setInviteOpen(true),
         primary: true,
         priority: 1,
       }] : undefined}
-      eyebrow={scope === 'organization' ? 'Organisation' : 'Team'}
-      title="Members"
+      eyebrow={t(scope === 'organization' ? 'organization.organisation' : 'team.team')}
+      title={t('members.title')}
     >
       <div className="mx-auto grid w-full max-w-[1040px] gap-8 py-4">
         <TabBar
-          ariaLabel="Member status"
+          ariaLabel={t('members.status')}
           collapse="never"
           fullWidth
           idPrefix={`members-${scope}`}
@@ -159,33 +150,33 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
           <div className="mb-3.5 flex items-end justify-between gap-4">
             <div>
               <h2 className="text-[17px] font-semibold text-[color:var(--tx)]">
-                {visibleTab ? rosterTitle(visibleTab) : null}
+                {visibleTab ? t(visibleTab === 'active' ? 'members.activeMembers' : visibleTab === 'pending' ? 'members.pendingInvitations' : 'members.deactivatedMembers') : null}
               </h2>
               <p className="mt-1 text-sm text-[color:var(--tx2)]">
-                {visibleTab ? rosterSubtitle(visibleTab, scope) : null}
+                {visibleTab ? t(`members.descriptions.${visibleTab}.${scope}`) : null}
               </p>
             </div>
             {current?.total !== undefined ? (
               <span className="shrink-0 text-sm tabular-nums text-[color:var(--tx3)]">
-                {current.total} total
+                {t('members.total', { count: current.total })}
               </span>
             ) : null}
           </div>
           <QueryState
-            errorLabel={tab === 'pending' ? 'Invitations could not be loaded.' : 'Members could not be loaded.'}
-            loadingLabel={tab === 'pending' ? 'Loading invitations…' : 'Loading members…'}
+            errorLabel={t(tab === 'pending' ? 'members.invitationsLoadFailed' : 'members.loadFailed')}
+            loadingLabel={t(tab === 'pending' ? 'members.loadingInvitations' : 'members.loadingMembers')}
             query={(current ?? roster).query}
           >
             {() => tab === 'pending' ? (
               invitationsRows.length === 0 ? (
-                <EmptyState title="No pending invitations">Invitations show up here until they’re accepted.</EmptyState>
+                <EmptyState title={t('members.noPendingInvitations')}>{t('members.pendingHelp')}</EmptyState>
               ) : (
-                <ul aria-label="Pending invitations" className="divide-y divide-[color:var(--sep)] border-y border-[color:var(--sep)]">
+                <ul aria-label={t('members.pendingInvitations')} className="divide-y divide-[color:var(--sep)] border-y border-[color:var(--sep)]">
                   {invitationsRows.map((invite) => {
-                    const name = memberDisplayName(invite.name, invite.email) ?? 'Invitation'
+                    const name = memberDisplayName(invite.name, invite.email) ?? t('members.invitation')
                     return (
                       <Row
-                        ariaLabel={`Open invitation for ${invite.name ?? invite.email ?? 'member'}`}
+                        ariaLabel={t('members.openInvitation', { name: invite.name ?? invite.email ?? t('members.member') })}
                         key={invite.inviteId}
                         onClick={() => setSelectedInvitation(invite)}
                         subtitle={invitationSubtitle(invite, scope)}
@@ -198,17 +189,17 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
               )
             ) : (
               members.length === 0 ? (
-                <EmptyState title={tab === 'active' ? 'No active members' : 'No deactivated members'}>
-                  {tab === 'active' ? 'Invite someone to add the first member.' : 'Members you deactivate show up here.'}
+                <EmptyState title={t(tab === 'active' ? 'members.noActiveMembers' : 'members.noDeactivatedMembers')}>
+                  {t(tab === 'active' ? 'members.inviteFirst' : 'members.deactivatedHelp')}
                 </EmptyState>
               ) : (
-                <ul aria-label={tab === 'active' ? 'Active members' : 'Deactivated members'}
+                <ul aria-label={t(tab === 'active' ? 'members.activeMembers' : 'members.deactivatedMembers')}
                   className="divide-y divide-[color:var(--sep)] border-y border-[color:var(--sep)]">
                   {members.map((member) => {
-                    const name = memberDisplayName(member.displayName, member.email) ?? 'Unnamed member'
+                    const name = memberDisplayName(member.displayName, member.email) ?? t('members.unnamed')
                     return (
                       <Row
-                        ariaLabel={`Open ${name}`}
+                        ariaLabel={t('members.openMember', { name })}
                         key={member.uoaSub}
                         leading={(
                           <UserAvatar

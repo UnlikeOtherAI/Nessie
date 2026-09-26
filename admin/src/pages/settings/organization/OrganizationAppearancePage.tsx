@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   evaluateOrganizationTheme,
   type EvaluatedTheme,
@@ -40,12 +41,8 @@ const STARTING_THEME: OrganizationTheme = {
   sidebar: null,
 }
 
-const APPEARANCES = [
-  { label: 'Light', value: 'light' as const },
-  { label: 'Dark', value: 'dark' as const },
-]
-
 export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
+  const { t } = useTranslation('settings')
   const { data: organization, isLoading } = useCurrentOrganization()
   const updateTheme = useUpdateOrganizationTheme()
   const { setPreview } = useTheme()
@@ -69,6 +66,10 @@ export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
 
   const evaluated = useMemo(() => evaluateOrganizationTheme(draft), [draft])
   const blocking = evaluated.checks.find((check) => check.level === 'blocking')
+  const blockingMessage = blocking
+    ? t(`organization.checks.${blocking.id}.${blocking.id === 'surface-band'
+      ? draft.appearance : 'detail'}`, { ratio: blocking.ratio })
+    : undefined
 
   // The app is the preview: a valid draft is painted onto the real shell, so
   // the sidebar, header, cards and status colours an admin is judging are the
@@ -98,10 +99,9 @@ export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
     setFeedback({})
     try {
       await updateTheme.mutateAsync(draft)
-      setFeedback({ success: `Theme saved. It's now the default for everyone in `
-        + `${organization?.name ?? 'your organisation'} who hasn't chosen one.` })
+      setFeedback({ success: t('organization.themeSaved', { organization: organization?.name ?? t('organization.organisation') }) })
     } catch (error) {
-      setFeedback({ error: error instanceof Error ? error.message : 'Could not save the theme.' })
+      setFeedback({ error: error instanceof Error ? error.message : t('organization.themeSaveFailed') })
     }
   }
 
@@ -110,9 +110,9 @@ export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
     setFeedback({})
     try {
       await updateTheme.mutateAsync(null)
-      setFeedback({ success: 'Theme removed.' })
+      setFeedback({ success: t('organization.themeRemoved') })
     } catch (error) {
-      setFeedback({ error: error instanceof Error ? error.message : 'Could not remove the theme.' })
+      setFeedback({ error: error instanceof Error ? error.message : t('organization.themeRemoveFailed') })
     }
   }
 
@@ -120,7 +120,7 @@ export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
     {
       disabled: !evaluated.valid || updateTheme.isPending || (!dirty && saved !== null),
       id: 'save-theme',
-      label: updateTheme.isPending ? 'Saving…' : 'Save theme',
+      label: updateTheme.isPending ? t('common.saving') : t('organization.saveTheme'),
       onSelect: () => void save(),
       primary: true,
       priority: 1,
@@ -129,7 +129,7 @@ export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
       ? [{
         disabled: updateTheme.isPending,
         id: 'remove-theme',
-        label: 'Remove theme',
+        label: t('organization.removeTheme'),
         onSelect: () => setConfirmingRemove(true),
         priority: 2,
         tone: 'danger' as const,
@@ -138,34 +138,29 @@ export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
   ]
 
   return (
-    <SettingsPanel actions={actions} eyebrow="Organisation" title="Appearance">
+    <SettingsPanel actions={actions} eyebrow={t('organization.organisation')} title={t('organization.appearance')}>
       {tabs}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card as="section">
-          <SectionLabel>Theme</SectionLabel>
+          <SectionLabel>{t('appearance.theme.title')}</SectionLabel>
           {isLoading ? (
-            <div className="mt-2 text-sm text-[color:var(--tx2)]">Loading…</div>
+            <div className="mt-2 text-sm text-[color:var(--tx2)]">{t('common.loading')}</div>
           ) : (
             <>
               <div className="mt-2 text-sm text-[color:var(--tx2)]">
-                Your organisation&rsquo;s own colours, offered to everyone in{' '}
-                {organization?.name ?? 'your organisation'} as a theme and used by default for
-                anyone who hasn&rsquo;t chosen one. People can still pick any theme, including
-                High Contrast.
+                {t('organization.themeDescription', { organization: organization?.name ?? t('organization.organisation') })}
               </div>
 
               {saved ? null : (
                 <Notice className="mt-4" tone="neutral">
-                  No theme yet. Start from the colours below and replace the accent with your
-                  brand colour.
+                  {t('organization.noTheme')}
                 </Notice>
               )}
 
               <div className="mt-4 grid gap-4">
                 <FormField
-                  help="Whether text is dark on light, or light on dark. The background and
-                    sidebar must match this."
-                  label="Appearance"
+                  help={t('organization.appearanceHelp')}
+                  label={t('organization.appearance')}
                 >
                   {/* One field of an unsaved draft, so its value is component
                       state rather than a URL param: this page is already
@@ -174,9 +169,12 @@ export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
                       admin/test/tab-param.test.ts. */}
                   <div className="flex">
                     <TabBar
-                      ariaLabel="Appearance"
+                      ariaLabel={t('organization.appearance')}
                       collapse="never"
-                      items={APPEARANCES}
+                      items={[
+                        { label: t('organization.light'), value: 'light' as const },
+                        { label: t('organization.dark'), value: 'dark' as const },
+                      ]}
                       onChange={(appearance) => update({ appearance })}
                       role="radiogroup"
                       value={draft.appearance}
@@ -185,31 +183,30 @@ export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
                 </FormField>
 
                 <FormField
-                  help="Buttons, links, selection and the active item. Your brand's primary colour."
-                  label="Accent"
+                  help={t('organization.accentHelp')}
+                  label={t('organization.accent')}
                 >
                   <ColourField
-                    label="Accent"
+                    label={t('organization.accent')}
                     onChange={(accent) => update({ accent })}
                     value={draft.accent}
                   />
                 </FormField>
 
                 <FormField
-                  help="The colour pages sit on. Keep it near-white for a light theme or
-                    near-black for a dark one — strong colour here makes text hard to read."
-                  label="Background"
+                  help={t('organization.backgroundHelp')}
+                  label={t('organization.background')}
                 >
                   <ColourField
-                    label="Background"
+                    label={t('organization.background')}
                     onChange={(surface) => update({ surface })}
                     value={draft.surface}
                   />
                 </FormField>
 
                 <FormField
-                  help="The navigation column. Derived from your accent unless you set it."
-                  label="Sidebar"
+                  help={t('organization.sidebarHelp')}
+                  label={t('organization.sidebar')}
                 >
                   <div className="grid gap-2">
                     <label className="flex items-center gap-2 text-sm text-[color:var(--tx2)]">
@@ -223,11 +220,11 @@ export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
                         }}
                         type="checkbox"
                       />
-                      Derive from the accent
+                      {t('organization.deriveSidebar')}
                     </label>
                     <ColourField
                       disabled={deriveSidebar}
-                      label="Sidebar"
+                      label={t('organization.sidebar')}
                       onChange={(sidebar) => update({ sidebar })}
                       value={draft.sidebar ?? evaluated.tokens.sb}
                     />
@@ -236,7 +233,7 @@ export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
               </div>
 
               <div className="mt-4 grid gap-2">
-                <FormError>{feedback.error ?? blocking?.message}</FormError>
+                <FormError>{feedback.error ?? blockingMessage}</FormError>
                 <FormSuccess>{feedback.success}</FormSuccess>
                 {dirty ? (
                   <button
@@ -248,7 +245,7 @@ export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
                     }}
                     type="button"
                   >
-                    Reset to saved
+                    {t('organization.resetToSaved')}
                   </button>
                 ) : null}
               </div>
@@ -258,25 +255,21 @@ export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
 
         <section className="grid gap-4 content-start">
           <Notice tone="info">
-            You&rsquo;re seeing the draft. Your own theme comes back when you leave this page —
-            choose {organization?.name ?? 'your organisation'} under Account &rarr; Appearance to
-            keep it.
+            {t('organization.previewNotice', { organization: organization?.name ?? t('organization.organisation') })}
           </Notice>
           <ThemeChecks evaluated={evaluated} />
         </section>
       </div>
 
       <ConfirmDialog
-        body={`Everyone who hasn't chosen a theme goes back to Sandstone. People who chose `
-          + `${organization?.name ?? 'your organisation'} will see Sandstone until a theme is `
-          + 'saved again.'}
-        confirmLabel="Remove theme"
+        body={t('organization.removeThemeConfirmation', { organization: organization?.name ?? t('organization.organisation') })}
+        confirmLabel={t('organization.removeTheme')}
         destructive
         onCancel={() => setConfirmingRemove(false)}
         onConfirm={() => void remove()}
         open={confirmingRemove}
         pending={updateTheme.isPending}
-        title="Remove the organisation theme?"
+        title={t('organization.removeThemeTitle')}
       />
     </SettingsPanel>
   )

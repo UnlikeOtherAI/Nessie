@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { faPlus } from '@fortawesome/free-solid-svg-icons'
 import { useNavigate } from 'react-router-dom'
 import { useClearActiveStatus, useStatuses } from '../../facades/statuses/hooks'
@@ -22,6 +23,7 @@ const statusesListStore = createListPageStore()
  * the route it already had.
  */
 export const StatusesPage = () => {
+  const { t } = useTranslation('settings')
   const navigate = useNavigate()
   const statuses = useStatuses()
   // Memoised so the empty-array fallback is not a fresh literal every render.
@@ -51,7 +53,7 @@ export const StatusesPage = () => {
     {
       disabled: clearActiveStatus.isPending,
       id: 'clear-active',
-      label: 'Clear active',
+      label: t('statuses.clearActive'),
       onSelect: () => {
         setActionError(null)
         clearActiveStatus.mutate(undefined, {
@@ -59,7 +61,7 @@ export const StatusesPage = () => {
             setActionError(
               error instanceof Error
                 ? error.message
-                : 'Your active status could not be cleared. It is still showing.',
+                : t('statuses.clearFailed'),
             ),
         })
       },
@@ -68,7 +70,7 @@ export const StatusesPage = () => {
     {
       icon: faPlus,
       id: 'new-status',
-      label: 'New status',
+      label: t('statuses.newStatus'),
       onSelect: () => setCreateOpen(true),
       primary: true,
       priority: 100,
@@ -78,7 +80,7 @@ export const StatusesPage = () => {
   return (
     <SettingsPanel
       actions={actions}
-      eyebrow="User"
+      eyebrow={t('common.user')}
       // Always visible: an empty or single-page list keeps its size control,
       // and the table above it does not grow and shrink as pages change.
       footer={
@@ -87,8 +89,8 @@ export const StatusesPage = () => {
           canPrevious={page > 0}
           label={
             statusRows.length === 0
-              ? 'No statuses'
-              : `${rangeStart}–${rangeEnd} of ${statusRows.length}`
+              ? t('statuses.noStatuses')
+              : t('statuses.pageRange', { start: rangeStart, end: rangeEnd, count: statusRows.length })
           }
           onPageChange={setRequestedPage}
           onPageSizeChange={(next) => {
@@ -102,16 +104,15 @@ export const StatusesPage = () => {
       }
       subtitle={
         <p className="max-w-3xl text-sm text-[color:var(--tx3)]">
-          What you are doing, shown beside your name. Each one can carry a schedule that turns
-          it on by itself, and contact rules that decide who still reaches you.
+          {t('statuses.description')}
         </p>
       }
-      title="Statuses"
+      title={t('statuses.title')}
     >
       <FormError className="mb-3">{actionError}</FormError>
 
       <StatusesTable
-        emptyMessage="No statuses yet. Add one to say what you are doing."
+        emptyMessage={t('statuses.empty')}
         isLoading={statuses.isPending}
         onOpen={(statusId) => void navigate(`/settings/statuses/${statusId}`)}
         statuses={pageStatuses}

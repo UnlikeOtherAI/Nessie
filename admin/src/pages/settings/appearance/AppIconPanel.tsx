@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 import {
   requestNativeAppIcon,
@@ -6,8 +7,8 @@ import {
 } from '../../../facades/native-app-icon'
 
 const OPTIONS: Array<{ id: AppIconVariant; label: string; src: string }> = [
-  { id: 'dark', label: 'Dark', src: '/app-icon-dark.png' },
-  { id: 'light', label: 'Light', src: '/app-icon-light.png' },
+  { id: 'dark', label: 'dark', src: '/app-icon-dark.png' },
+  { id: 'light', label: 'light', src: '/app-icon-light.png' },
 ]
 
 /**
@@ -15,18 +16,19 @@ const OPTIONS: Array<{ id: AppIconVariant; label: string; src: string }> = [
  * The selection follows what the phone reports, not the tap: iOS may refuse.
  */
 export const AppIconPanel = () => {
+  const { t } = useTranslation('settings')
   const { available, icon } = useNativeAppIcon()
   if (!available) return null
 
   return (
     <section className="admin-card p-4">
-      <SectionLabel>App icon</SectionLabel>
+      <SectionLabel>{t('appearance.appIcon.title')}</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
-        Sets the Nessie icon on this phone&apos;s Home Screen.
+        {t('appearance.appIcon.description')}
       </div>
 
       <fieldset className="mt-4 flex flex-wrap gap-3 border-0 p-0">
-        <legend className="sr-only">App icon</legend>
+        <legend className="sr-only">{t('appearance.appIcon.title')}</legend>
         {OPTIONS.map((option) => {
           const selected = icon === option.id
 
@@ -55,7 +57,7 @@ export const AppIconPanel = () => {
                 className="h-16 w-16 rounded-[22%] shadow-[0_0_0_1px_var(--border)]"
                 src={option.src}
               />
-              <div className="font-semibold text-[color:var(--tx)]">{option.label}</div>
+              <div className="font-semibold text-[color:var(--tx)]">{t(`appearance.appIcon.${option.label}`)}</div>
             </label>
           )
         })}

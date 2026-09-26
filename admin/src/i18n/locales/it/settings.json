@@ -4,7 +4,11 @@
     "saving": "Salvataggio…",
     "retry": "Riprova",
     "enabled": "Attivato",
-    "disabled": "Disattivato"
+    "disabled": "Disattivato",
+    "cancel": "Annulla",
+    "remove": "Rimuovi",
+    "delete": "Elimina",
+    "loading": "Caricamento…"
   },
   "profile": {
     "title": "Profilo",
@@ -89,5 +93,560 @@
     "browserUpdateFailed": "Impossibile aggiornare le notifiche del browser.",
     "browserNotifications": "Notifiche del browser",
     "toggleBrowser": "Attiva o disattiva le notifiche del browser"
+  },
+  "appearance": {
+    "title": "Aspetto",
+    "default": "Predefinito",
+    "editOrganisationTheme": "Modifica il tema dell’organizzazione →",
+    "setupOrganisationTheme": "Imposta un tema con i colori dell’organizzazione →",
+    "theme": {
+      "title": "Tema",
+      "description": "Scegli la palette colori dell’amministrazione per il tuo account.",
+      "legend": "Tema amministrazione",
+      "organisation": "Organizzazione",
+      "organisationDescription": "I colori della tua organizzazione."
+    },
+    "themes": {
+      "nessie": {
+        "label": "Nessie",
+        "description": "Navigazione blu navy su una superficie di lavoro bianca."
+      },
+      "sandstone": {
+        "label": "Arenaria",
+        "description": "Superfici color sabbia con controlli color terracotta."
+      },
+      "nebula": {
+        "label": "Classico",
+        "description": "Palette classica Nessie viola su sfondo scuro."
+      },
+      "midnight": {
+        "label": "Mezzanotte",
+        "description": "Superfici ardesia neutre con accento blu intenso."
+      },
+      "daylight": {
+        "label": "Luce diurna",
+        "description": "Superfici chiare, testo scuro e accenti blu ben leggibili."
+      },
+      "forest": {
+        "label": "Foresta",
+        "description": "Superfici antracite verde scuro con un calmo accento smeraldo."
+      },
+      "ocean": {
+        "label": "Oceano",
+        "description": "Profondità blu navy e verde acqua con controlli e link ciano."
+      },
+      "sunset": {
+        "label": "Tramonto",
+        "description": "Superfici marrone scuro calde con accento arancione."
+      },
+      "rose": {
+        "label": "Rosa",
+        "description": "Prugna scuro con accenti rosa e magenta."
+      },
+      "graphite": {
+        "label": "Grafite",
+        "description": "Tonalità di grigio neutre con accenti acciaio discreti."
+      },
+      "contrast": {
+        "label": "Contrasto elevato",
+        "description": "Massima distinzione tra testo, controlli e superfici."
+      },
+      "system": {
+        "label": "Sistema",
+        "description": "Segui la modalità chiara o scura del sistema operativo."
+      }
+    },
+    "textSize": {
+      "title": "Dimensione del testo",
+      "description": "Imposta la dimensione del testo in tutte le pagine. Viene salvata nel tuo account."
+    },
+    "textSizes": {
+      "small": {
+        "label": "Piccola",
+        "description": "Testo compatto — mostra più contenuti sullo schermo."
+      },
+      "medium": {
+        "label": "Media",
+        "description": "La dimensione predefinita equilibrata."
+      },
+      "large": {
+        "label": "Grande",
+        "description": "Testo più grande per facilitare la lettura."
+      }
+    },
+    "appIcon": {
+      "title": "Icona app",
+      "description": "Imposta l’icona Nessie nella schermata Home di questo telefono.",
+      "dark": "Scura",
+      "light": "Chiara"
+    }
+  },
+  "statuses": {
+    "title": "Stati",
+    "description": "Cosa stai facendo, mostrato accanto al tuo nome. Ogni stato può avere una pianificazione che lo attiva automaticamente e regole di contatto che decidono chi può raggiungerti.",
+    "clearActive": "Cancella stato attivo",
+    "clearFailed": "Impossibile cancellare lo stato attivo. È ancora visibile.",
+    "newStatus": "Nuovo stato",
+    "noStatuses": "Nessuno stato",
+    "pageRange": "{{start}}–{{end}} di {{count}}",
+    "empty": "Ancora nessuno stato. Aggiungine uno per indicare cosa stai facendo.",
+    "status": "Stato",
+    "schedules": "Pianificazioni",
+    "contactRules": "Regole di contatto",
+    "open": "Apri",
+    "tableLabel": "Tabella degli stati",
+    "active": "Attivo",
+    "responseAgentActive": "L’agente di risposta risponde durante questo stato",
+    "createFailed": "Impossibile creare lo stato.",
+    "createDescription": "Uno stato indica cosa stai facendo. Pianificazioni e regole di contatto si configurano nella pagina dedicata.",
+    "icon": "Icona",
+    "newStatusIcon": "Icona del nuovo stato",
+    "label": "Etichetta",
+    "labelPlaceholder": "es. Concentrato",
+    "adding": "Aggiunta…",
+    "addStatus": "Aggiungi stato",
+    "clearIcon": "Cancella icona",
+    "addRuleFailed": "Impossibile aggiungere la regola.",
+    "appliesTo": "Si applica a",
+    "everyone": "Tutti",
+    "channel": "Canale",
+    "project": "Progetto",
+    "selectChannel": "Seleziona canale",
+    "selectProject": "Seleziona progetto",
+    "agent": "Agente",
+    "defaultAgent": "Agente stato predefinito",
+    "agentReplies": "Risposte dell’agente",
+    "enableRuleAgent": "Abilita agente regola",
+    "instructions": "Istruzioni",
+    "ruleInstructionsPlaceholder": "Istruzioni specifiche della regola",
+    "addRule": "Aggiungi regola",
+    "noContactRules": "Nessuna regola di contatto — l’agente di risposta usa le istruzioni predefinite.",
+    "anyContact": "Qualsiasi contatto",
+    "unknown": "Sconosciuto",
+    "dateRangeBetween": "a",
+    "weekly": "Ogni settimana",
+    "weeklyScheduleDescription": "{{day}}, dalle {{start}} alle {{end}} ({{timezone}})",
+    "type": "Tipo",
+    "dateRangeType": "Intervallo di date",
+    "optionalLabel": "Etichetta (facoltativa)",
+    "scheduleLabelPlaceholder": "Etichetta pianificazione",
+    "starts": "Inizio",
+    "ends": "Fine",
+    "day": "Giorno",
+    "startTime": "Ora di inizio",
+    "endTime": "Ora di fine",
+    "addScheduleFailed": "Impossibile aggiungere la pianificazione.",
+    "addSchedule": "Aggiungi pianificazione",
+    "noSchedules": "Nessuna pianificazione: questo stato si applica solo quando viene attivato.",
+    "back": "Torna agli stati",
+    "notFound": "Stato non trovato. Potrebbe essere stato eliminato.",
+    "loadFailed": "Impossibile caricare gli stati.",
+    "loading": "Caricamento stato…",
+    "saveFailed": "Impossibile salvare lo stato.",
+    "deleting": "Eliminazione…",
+    "deleteStatus": "Elimina stato",
+    "setActive": "Attiva",
+    "currentlyVisible": "Attualmente visibile",
+    "notCurrentlyVisible": "Attualmente non visibile",
+    "scheduleCount": "Pianificazioni: {{count}}",
+    "contactRuleCount": "Regole di contatto: {{count}}",
+    "statusDetail": "Dettagli stato",
+    "statusIcon": "Icona stato",
+    "statusLabelPlaceholder": "Etichetta stato",
+    "enableResponseAgent": "Abilita agente di risposta",
+    "responseAgentDescription": "Usa queste istruzioni quando qualcuno ti contatta durante questo stato.",
+    "agentInstructions": "Istruzioni agente",
+    "agentInstructionsPlaceholder": "Istruzioni agente",
+    "saveStatus": "Salva stato",
+    "deleteConfirmation": "Verranno eliminate anche le pianificazioni e le regole di contatto.",
+    "deleteConfirmationTitle": "Eliminare “{{label}}”?"
+  },
+  "team": {
+    "settingsSections": "Sezioni impostazioni team",
+    "agents": "Agenti",
+    "team": "Team",
+    "teams": "Team",
+    "name": "Nome",
+    "teamName": "Nome del team",
+    "renameHelp": "Questo nome appartiene al tuo team UnlikeOtherAI. Salvandolo lo rinomini lì e la modifica si applica anche agli altri prodotti UnlikeOtherAI.",
+    "renameInactiveHelp": "Questo nome appartiene al tuo team UnlikeOtherAI e può essere modificato solo dall’interno del team. Passa a questo team per rinominarlo.",
+    "addressHelp": "Questo è l’indirizzo del team. Se lo cambi, cambia anche l’indirizzo web e quello precedente smette di funzionare — {{slug}}.{{domain}}.",
+    "address": "Indirizzo team",
+    "addressPlaceholder": "indirizzo-team",
+    "saveFailed": "Impossibile salvare il team.",
+    "saved": "Team salvato.",
+    "save": "Salva",
+    "avatarTypeError": "Scegli un’immagine PNG, JPEG o WebP.",
+    "avatarSizeError": "L’immagine deve essere inferiore a 1 MB.",
+    "avatarUpdated": "Avatar del team aggiornato.",
+    "avatarSaveFailed": "Impossibile salvare l’avatar",
+    "avatarRemoved": "Avatar del team rimosso.",
+    "avatarRemoveFailed": "Impossibile rimuovere l’avatar",
+    "avatar": "Avatar del team",
+    "avatarDescription": "L’immagine aziendale di {{team}}, gestita da UnlikeOtherAI, viene mostrata ovunque compaia il team, anche negli altri prodotti UnlikeOtherAI. È distinta dal logo dell’organizzazione, che rappresenta l’intero tenant.",
+    "uploading": "Caricamento…",
+    "uploadImage": "Carica immagine",
+    "removing": "Rimozione…",
+    "avatarFileHint": "PNG, JPEG o WebP fino a 1 MB. Le immagini quadrate sono ideali. Dopo la rimozione viene mostrata l’icona del team o un’immagine generata.",
+    "avatarOwnerOnly": "Solo i proprietari e gli amministratori dell’organizzazione possono modificare l’avatar del team.",
+    "avatarActiveTeamOnly": "UnlikeOtherAI accetta questa modifica solo dall’interno del team. Passa al team per cambiare la sua immagine."
+  },
+  "organization": {
+    "settingsSections": "Sezioni impostazioni organizzazione",
+    "appearance": "Aspetto",
+    "organisation": "Organizzazione",
+    "name": "Nome",
+    "organisationName": "Nome dell’organizzazione",
+    "managedNameHelp": "Questo nome appartiene alla tua organizzazione UnlikeOtherAI. Salvandolo lo rinomini lì e la modifica appare nella schermata di accesso e negli altri prodotti UnlikeOtherAI.",
+    "nameSaveFailed": "Impossibile salvare il nome dell’organizzazione.",
+    "nameSaved": "Nome dell’organizzazione salvato.",
+    "saveName": "Salva nome",
+    "logo": "Logo",
+    "logoSaved": "Logo salvato.",
+    "logoSaveFailed": "Impossibile salvare il logo",
+    "logoRemoveFailed": "Impossibile rimuovere il logo",
+    "logoRemoved": "Logo rimosso.",
+    "logoDescription": "Logo di {{organization}}, mostrato nella barra laterale e nella schermata di accesso.",
+    "companyLogo": "Logo aziendale",
+    "replaceLogo": "Sostituisci logo",
+    "uploadLogo": "Carica logo",
+    "logoFileHint": "PNG o JPG. Le immagini quadrate sono ideali.",
+    "logoCropDescription": "Trascina per riposizionare, scorri o usa il cursore per ingrandire. L’area incorniciata diventa il logo.",
+    "saveLogo": "Salva logo",
+    "editLogo": "Modifica logo",
+    "themeSaved": "Tema salvato. Ora è predefinito per tutte le persone di {{organization}} che non ne hanno scelto uno.",
+    "themeSaveFailed": "Impossibile salvare il tema.",
+    "themeRemoved": "Tema rimosso.",
+    "themeRemoveFailed": "Impossibile rimuovere il tema.",
+    "saveTheme": "Salva tema",
+    "removeTheme": "Rimuovi tema",
+    "themeDescription": "I colori di {{organization}} sono disponibili a tutti come tema predefinito per chi non ne sceglie uno. È comunque possibile scegliere qualsiasi tema, incluso Contrasto elevato.",
+    "noTheme": "Nessun tema. Inizia dai colori qui sotto e sostituisci l’accento con il colore del brand.",
+    "appearanceHelp": "Stabilisce se il testo è scuro su chiaro o chiaro su scuro. Sfondo e barra laterale devono essere coerenti.",
+    "light": "Chiaro",
+    "dark": "Scuro",
+    "accent": "Accento",
+    "accentHelp": "Pulsanti, link, selezione ed elemento attivo. Il colore principale del brand.",
+    "background": "Sfondo",
+    "backgroundHelp": "Il colore delle pagine. Quasi bianco per un tema chiaro, quasi nero per uno scuro: colori intensi rendono il testo difficile da leggere.",
+    "sidebar": "Barra laterale",
+    "sidebarHelp": "La colonna di navigazione. Derivata dall’accento se non la imposti.",
+    "deriveSidebar": "Deriva dall’accento",
+    "resetToSaved": "Ripristina i valori salvati",
+    "previewNotice": "Stai vedendo la bozza. Il tuo tema torna quando esci da questa pagina. Scegli {{organization}} in Account → Aspetto per mantenerlo.",
+    "removeThemeConfirmation": "Chi non ha scelto un tema tornerà ad Arenaria. Chi ha scelto {{organization}} vedrà Arenaria finché non verrà salvato un nuovo tema.",
+    "removeThemeTitle": "Rimuovere il tema dell’organizzazione?",
+    "calls": "Chiamate",
+    "callsDescription": "Scegli il provider usato quando qualcuno avvia una chiamata in ogni team.",
+    "noTeams": "Nessun team disponibile.",
+    "teamsLoadFailed": "Impossibile caricare i team.",
+    "teamsLoading": "Caricamento team…",
+    "providerUnavailable": "{{provider}} non è configurato per questa distribuzione.",
+    "callProviderFor": "Provider di chiamata per {{team}}",
+    "noCallProviders": "Nessun provider di chiamata è configurato per questa distribuzione.",
+    "providerSaveFailed": "Impossibile salvare il provider di chiamata.",
+    "callsCreateLink": "Le chiamate in questo team creano un link {{provider}}.",
+    "checks": {
+      "title": "Controlli",
+      "text": "Testo sullo sfondo",
+      "secondaryText": "Testo secondario sullo sfondo",
+      "link": "Link sullo sfondo",
+      "button": "Etichetta pulsante sull’accento",
+      "accentMain": "Accento sullo sfondo",
+      "blocked": "Bloccato",
+      "check": "Controlla",
+      "surface-band": {
+        "label": "Sfondo",
+        "light": "Per un tema chiaro, lo sfondo deve essere chiaro, ad esempio #f8fafc.",
+        "dark": "Per un tema scuro, lo sfondo deve essere scuro, ad esempio #14171c."
+      },
+      "surface-chroma": {
+        "label": "Sfondo",
+        "detail": "Lo sfondo è troppo colorato per rendere leggibile il testo. Mantienilo neutro e usa il colore per l’accento o la barra laterale."
+      },
+      "sidebar-band": {
+        "label": "Barra laterale",
+        "detail": "La barra laterale deve essere scura (o chiara) quanto lo sfondo, perché condividono i colori del testo."
+      },
+      "accent-on-main": {
+        "label": "Accento sullo sfondo",
+        "detail": "L’accento non risalta abbastanza sullo sfondo ({{ratio}}:1; servono 3:1). Scegli un accento più chiaro o scuro oppure modifica lo sfondo."
+      },
+      "accent-on-panel": {
+        "label": "Accento sulle schede",
+        "detail": "L’accento non risalta abbastanza sulle schede ({{ratio}}:1; servono 3:1). Scegli un accento più chiaro o scuro oppure modifica lo sfondo."
+      },
+      "accent-on-sidebar": {
+        "label": "Accento sulla barra laterale",
+        "detail": "L’elemento evidenziato nella navigazione sarà poco visibile ({{ratio}}:1)."
+      },
+      "accent-near-danger": {
+        "label": "Accento ed errori",
+        "detail": "L’accento è simile al rosso degli errori, quindi i pulsanti distruttivi sembreranno normali."
+      }
+    },
+    "checkingAccess": "Verifica dell’accesso all’organizzazione…",
+    "unavailable": "Organizzazione non disponibile",
+    "accessLoadFailed": "Impossibile caricare l’accesso all’organizzazione. Riprova tra poco.",
+    "accessCheckFailed": "Impossibile verificare se sei un amministratore dell’organizzazione. Riprova tra poco.",
+    "adminOnlyPage": "Solo gli amministratori dell’organizzazione possono vedere questa pagina."
+  },
+  "security": {
+    "title": "Sicurezza",
+    "password": "Password",
+    "activeSessions": "Sessioni attive",
+    "sessionsDescription": "Dispositivi attualmente connessi al tuo account. Revocando una sessione disconnetti il dispositivo.",
+    "currentPassword": "Password attuale",
+    "newPassword": "Nuova password",
+    "confirmNewPassword": "Conferma nuova password",
+    "passwordMinimum": "Almeno 8 caratteri",
+    "passwordMismatch": "Le nuove password non corrispondono.",
+    "passwordChanged": "Password modificata.",
+    "passwordChangeFailed": "Impossibile modificare la password.",
+    "changePassword": "Cambia password",
+    "identityProviderPassword": "Accedi tramite un provider di identità. Gestisci la password con quel provider.",
+    "device": "Dispositivo",
+    "thisDevice": "Questo dispositivo",
+    "lastActive": "Ultima attività",
+    "action": "Azione",
+    "current": "Attuale",
+    "noSessions": "Nessuna sessione attiva.",
+    "sessionsTable": "Tabella sessioni attive",
+    "sessionRange": "{{start}}–{{end}} di {{count}}",
+    "revoke": "Revoca",
+    "revokeSessionTitle": "Revocare questa sessione?",
+    "revokeFailed": "Impossibile revocare la sessione."
+  },
+  "secrets": {
+    "saveFailed": "Impossibile salvare il segreto.",
+    "dialogDescription": "Salva un valore nel deposito dei segreti. Dopo il salvataggio non verrà più mostrato.",
+    "newSecret": "Nuovo segreto",
+    "keyHelp": "Lettere maiuscole, numeri e trattini bassi. Le integrazioni usano questa chiave per recuperare il valore.",
+    "keyPlaceholder": "API_KEY",
+    "secretKey": "Chiave del segreto",
+    "value": "Valore",
+    "chooseProject": "Scegli un progetto…",
+    "lockCopy": "Sostituisce tutti i valori {{scope}} nei livelli inferiori.",
+    "scopes": {
+      "personal": "Personale",
+      "project": "Progetto",
+      "team": "Team",
+      "organization": "Organizzazione"
+    },
+    "tabs": {
+      "active": "Attivi",
+      "revoked": "Revocati"
+    },
+    "intro": {
+      "personal": "Segreti disponibili per te.",
+      "team": "Segreti disponibili per questo team.",
+      "organization": "Segreti disponibili in tutta questa organizzazione."
+    },
+    "cascade": {
+      "personal": "I segreti dei livelli superiori possono sostituire questi valori.",
+      "team": "Qui si applicano anche i segreti dell’organizzazione; quelli del team possono sostituirli.",
+      "organization": "Team e persone ereditano questi valori, salvo sostituzione."
+    },
+    "revoked": "Segreto revocato.",
+    "revokeFailed": "Impossibile revocare il segreto.",
+    "noSecrets": "Nessun segreto",
+    "pageRange": "{{start}}–{{end}} di {{count}}",
+    "metadataNotice": "I valori vengono mostrati solo al momento della creazione. Questa tabella contiene solo metadati.",
+    "status": "Stato",
+    "saved": "Segreto salvato.",
+    "saveSecurely": "Salva in modo sicuro",
+    "title": "Segreto",
+    "reference": "Riferimento",
+    "secretReference": "Riferimento del segreto",
+    "scope": "Ambito",
+    "precedence": "Priorità",
+    "actions": "Azioni",
+    "revoking": "Revoca in corso…",
+    "revoke": "Revoca",
+    "table": "Tabella dei segreti",
+    "revokeTitle": "Revocare questo segreto?",
+    "revokeConfirmation": "“{{name}}” smetterà di funzionare ovunque sia utilizzato.",
+    "statuses_active": "Attivo",
+    "statuses_expired": "Scaduto",
+    "statuses_revoked": "Revocato",
+    "effective": "Effettivo",
+    "locked": "Bloccato",
+    "lockedBy": "Bloccato da {{scope}}",
+    "overriddenBy": "Sostituito da {{scope}}",
+    "copy": "Copia",
+    "copied": "Copiato",
+    "retry": "Riprova",
+    "copyCopied": "{{label}} copied",
+    "copyFailed": "Could not copy {{label}}",
+    "copiedMessage": "{{label}} copied to clipboard.",
+    "useEverywhere": "Usa ovunque",
+    "withheldScope": "Salvato come segreto personale. Solo un proprietario dell’organizzazione può salvare un segreto {{scopes}}.",
+    "statuses": {
+      "active": "Attivo",
+      "expired": "Scaduto",
+      "revoked": "Revocato"
+    },
+    "empty": {
+      "organization": {
+        "active": "Non ci sono ancora segreti dell’organizzazione. Aggiungine uno per renderlo disponibile a tutti.",
+        "revoked": "Nessun segreto dell’organizzazione è stato revocato."
+      },
+      "personal": {
+        "active": "Non hai ancora segreti disponibili. Salva un segreto personale.",
+        "revoked": "Non è stato revocato nulla."
+      },
+      "team": {
+        "active": "Non ci sono ancora segreti disponibili per questo team. Aggiungine uno.",
+        "revoked": "Nessun segreto di questo team è stato revocato."
+      }
+    },
+    "copyLabel": "Copy {{label}}",
+    "project": "Progetto"
+  },
+  "pairedAgents": {
+    "pair": "Associa un agente",
+    "title": "Agenti associati",
+    "agent": "Agente associato",
+    "back": "Torna agli agenti associati",
+    "nothingPaired": "Nessun agente associato",
+    "range": "{{start}}–{{end}} di {{count}}",
+    "description": "Claude Code, Codex e gli altri client MCP usano Nessie per tuo conto. Un agente associato accede esattamente a ciò a cui accedi tu, senza andare oltre. Non può pubblicare documenti da solo: serve la tua approvazione. Puoi revocare qui ogni accesso concesso.",
+    "empty": "Non è ancora associato alcun agente. Nessun programma possiede una credenziale per il tuo account.",
+    "revokeFailed": "Impossibile revocare la credenziale. È ancora attiva.",
+    "notFound": "Credenziale non trovata. Potrebbe essere già stata rimossa.",
+    "loadFailed": "Impossibile caricare gli agenti associati.",
+    "loading": "Caricamento dell’agente associato…",
+    "revoking": "Revoca in corso…",
+    "revoke": "Revoca",
+    "worksAs": "Opera come {{name}}",
+    "worksAsYou": "Opera come te",
+    "status": "Stato",
+    "worksAsLabel": "Opera come",
+    "expires": "Scade",
+    "open": "Apri",
+    "table": "Tabella degli agenti associati",
+    "decisionFailed": "Impossibile registrare la decisione. Riprova.",
+    "dialogDescription": "Chiedi all’agente di connettersi a Nessie. Mostrerà un link e un codice breve: apri il link o inserisci qui il codice.",
+    "code": "Codice di associazione",
+    "chooseContext": "Prima seleziona un progetto e un team attivi. L’agente associato è limitato a uno di essi e non può essere associato senza questa scelta.",
+    "allowed": "Agente associato. Riceverà la credenziale entro pochi secondi.",
+    "refused": "Richiesta rifiutata. È stato chiesto all’agente di non riprovare.",
+    "invalidCode": "Codice non valido. Potrebbe essere scaduto o già usato. Chiedi all’agente di generarne uno nuovo.",
+    "wantsToWorkUntil": " vuole operare come te fino al {{date}}.",
+    "ableTo": "Potrà",
+    "verifyClient": "Consenti solo se hai appena avviato uno strumento che ha mostrato questo codice. Il nome sopra è scelto dallo strumento e non viene verificato.",
+    "done": "Fatto",
+    "dontAllow": "Non consentire",
+    "pairing": "Associazione…",
+    "allow": "Consenti",
+    "permissions": "Azioni consentite",
+    "credential": "Credenziale",
+    "notGranted": "non concesso",
+    "you": "Tu",
+    "pairedOn": "Associato",
+    "revoked": "Revocato",
+    "lastUsed": "Ultimo utilizzo",
+    "scopes": {
+      "boards_read": {
+        "label": "Leggere le board",
+        "detail": "Visualizzare le tue board e le attività, incluse quelle sincronizzate da Linear."
+      },
+      "boards_write": {
+        "label": "Modificare le board",
+        "detail": "Creare e modificare attività e spostarle tra le colonne."
+      },
+      "documents_read": {
+        "label": "Leggere i documenti",
+        "detail": "Leggere gli spazi di conoscenza e i documenti a cui hai accesso."
+      },
+      "documents_write": {
+        "label": "Creare bozze di documenti",
+        "detail": "Creare e modificare bozze. La pubblicazione richiede comunque la tua approvazione: l’agente può chiederla, ma non pubblicare."
+      }
+    }
+  },
+  "settingsGate": {
+    "lockedAt": "Questa impostazione è stata definita a livello {{scope}} e non può essere modificata qui.",
+    "locked": "Non è possibile modificare questa impostazione qui.",
+    "scopes": {
+      "organization": "Organizzazione",
+      "team": "Team",
+      "user": "Personale"
+    },
+    "teamsAndPeople": "Team e persone",
+    "people": "Persone",
+    "useEverywhere": "Usa ovunque.",
+    "cannotOverride": "I {{below}} non possono scegliere un’impostazione personale; il controllo è disattivato e mostra una spiegazione."
+  },
+  "push": {
+    "platform": "Piattaforma",
+    "title": "Credenziali push",
+    "google": "Google (FCM)",
+    "apple": "Apple (APNs)",
+    "configured": "Configurato",
+    "projectId": "ID progetto",
+    "clientEmail": "Email client",
+    "updated": "Aggiornato",
+    "serviceAccount": "JSON dell’account di servizio",
+    "save": "Salva",
+    "validate": "Verifica account",
+    "removeFcmBody": "Le notifiche push tramite Google si interromperanno finché non verrà caricato un nuovo account di servizio.",
+    "removeFcmTitle": "Rimuovere la credenziale FCM?",
+    "keyId": "ID chiave",
+    "teamId": "ID team",
+    "topic": "Argomento",
+    "environment": "Ambiente",
+    "signingKey": "Chiave di firma (.p8)",
+    "bundleId": "ID bundle (argomento)",
+    "environments": {
+      "production": "Produzione",
+      "sandbox": "Sandbox"
+    },
+    "sendTest": "Invia un test a questo iPhone",
+    "removeApnsBody": "Le notifiche push tramite Apple si interromperanno finché non verrà caricata una nuova chiave.",
+    "removeApnsTitle": "Rimuovere la credenziale APNs?"
+  },
+  "members": {
+    "active": "Attivi",
+    "activeMembers": "Membri attivi",
+    "pendingInvitations": "Inviti in attesa",
+    "pending": "In attesa",
+    "deactivatedMembers": "Membri disattivati",
+    "inactive": "Inattivi",
+    "automaticLogins": "Accessi automatici",
+    "access": "Accesso",
+    "invitePeople": "Invita persone",
+    "title": "Membri",
+    "status": "Stato dei membri",
+    "total": "Totale: {{count}}",
+    "invitationsLoadFailed": "Impossibile caricare gli inviti.",
+    "loadFailed": "Impossibile caricare i membri.",
+    "loadingInvitations": "Caricamento degli inviti…",
+    "loadingMembers": "Caricamento dei membri…",
+    "noPendingInvitations": "Nessun invito in attesa",
+    "pendingHelp": "Gli inviti restano qui finché non vengono accettati.",
+    "invitation": "Invito",
+    "openInvitation": "Apri l’invito per {{name}}",
+    "member": "membro",
+    "noActiveMembers": "Nessun membro attivo",
+    "noDeactivatedMembers": "Nessun membro disattivato",
+    "inviteFirst": "Invita qualcuno per aggiungere il primo membro.",
+    "deactivatedHelp": "Qui appaiono i membri che disattivi.",
+    "unnamed": "Membro senza nome",
+    "openMember": "Apri {{name}}",
+    "descriptions": {
+      "active": {
+        "organization": "Persone nella tua organizzazione.",
+        "team": "Persone in questo team."
+      },
+      "pending": {
+        "organization": "Persone invitate che non hanno ancora aderito.",
+        "team": "Persone invitate che non hanno ancora aderito."
+      },
+      "deactivated": {
+        "organization": "Persone con accesso all’organizzazione sospeso.",
+        "team": "Persone con accesso a questo team sospeso."
+      }
+    }
   }
 }

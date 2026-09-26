@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { useCreateStatus } from '../../../facades/statuses/hooks'
 import { toFormErrors } from '../../../facades/forms/form-errors'
@@ -20,6 +21,7 @@ type CreateStatusDialogProps = {
  * worth having actually live.
  */
 export const CreateStatusDialog = ({ onClose, open }: CreateStatusDialogProps) => {
+  const { t } = useTranslation('settings')
   const navigate = useNavigate()
   const createStatus = useCreateStatus()
   const [label, setLabel] = useState('')
@@ -46,27 +48,27 @@ export const CreateStatusDialog = ({ onClose, open }: CreateStatusDialogProps) =
       void navigate(`/settings/statuses/${created.id}`)
     } catch (cause) {
       const { fieldErrors, formError } = toFormErrors(cause)
-      setError(fieldErrors.label ?? formError ?? 'Failed to create status.')
+      setError(fieldErrors.label ?? formError ?? t('statuses.createFailed'))
     }
   }
 
   return (
     <Dialog
-      description="A status says what you are doing. Its schedules and contact rules are set on its own screen."
+      description={t('statuses.createDescription')}
       dismissDisabled={createStatus.isPending}
       onClose={close}
       open={open}
-      title="New status"
+      title={t('statuses.newStatus')}
     >
       <form className="grid gap-4" onSubmit={submit}>
         <div className="grid grid-cols-[90px_minmax(0,1fr)] gap-2">
-          <FormField label="Icon">
-            <StatusEmojiPicker label="New status icon" onChange={setEmoji} value={emoji} />
+          <FormField label={t('statuses.icon')}>
+            <StatusEmojiPicker label={t('statuses.newStatusIcon')} onChange={setEmoji} value={emoji} />
           </FormField>
-          <FormField label="Label">
+          <FormField label={t('statuses.label')}>
             <Input
               onChange={(event) => setLabel(event.target.value)}
-              placeholder="e.g. Heads down"
+              placeholder={t('statuses.labelPlaceholder')}
               value={label}
             />
           </FormField>
@@ -74,14 +76,14 @@ export const CreateStatusDialog = ({ onClose, open }: CreateStatusDialogProps) =
         <FormError>{error}</FormError>
         <FormActions>
           <button className="admin-button admin-button-secondary" onClick={close} type="button">
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             className="admin-button admin-button-primary"
             disabled={!label.trim() || createStatus.isPending}
             type="submit"
           >
-            {createStatus.isPending ? 'Adding…' : 'Add status'}
+            {createStatus.isPending ? t('statuses.adding') : t('statuses.addStatus')}
           </button>
         </FormActions>
       </form>
