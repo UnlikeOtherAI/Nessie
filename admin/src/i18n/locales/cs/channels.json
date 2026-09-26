@@ -282,5 +282,16 @@
     "change": "Změnit",
     "hideDetails": "Skrýt podrobnosti",
     "showDetails": "Zobrazit podrobnosti"
+  },
+  "agentsPanel": {
+    "title": "Agenti v tomto kanálu",
+    "description": "Otevřete agenta a zobrazte jeho identitu, nástroje, úkoly a spouštěče.",
+    "create": "Vytvořit agenta",
+    "empty": "V tomto kanálu zatím nejsou žádní agenti.",
+    "edit": "Upravit agenta",
+    "instructions": "Pokyny",
+    "noSystemPrompt": "Pro tohoto agenta zatím nejsou nakonfigurovány žádné systémové pokyny.",
+    "tools": "Nástroje",
+    "toolsDescription": "Vše, k čemu má {{name}} při běhu přístup."
   }
 }

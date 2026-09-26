@@ -282,5 +282,16 @@
     "change": "Change this",
     "hideDetails": "Hide the details",
     "showDetails": "Show the details"
+  },
+  "agentsPanel": {
+    "title": "Agents in this channel",
+    "description": "Open one to see its identity, tools, to-dos, and triggers.",
+    "create": "Create agent",
+    "empty": "No agents are bound to this channel yet.",
+    "edit": "Edit agent",
+    "instructions": "Instructions",
+    "noSystemPrompt": "No system prompt configured for this agent yet.",
+    "tools": "Tools",
+    "toolsDescription": "Everything {{name}} can reach in a run."
   }
 }

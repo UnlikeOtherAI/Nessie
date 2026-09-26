@@ -282,5 +282,16 @@
     "change": "Modifica",
     "hideDetails": "Nascondi i dettagli",
     "showDetails": "Mostra i dettagli"
+  },
+  "agentsPanel": {
+    "title": "Agenti in questo canale",
+    "description": "Apri un agente per vederne identità, strumenti, attività e trigger.",
+    "create": "Crea agente",
+    "empty": "Nessun agente è ancora associato a questo canale.",
+    "edit": "Modifica agente",
+    "instructions": "Istruzioni",
+    "noSystemPrompt": "Non è ancora stato configurato un prompt di sistema per questo agente.",
+    "tools": "Strumenti",
+    "toolsDescription": "Tutto ciò a cui {{name}} può accedere durante un’esecuzione."
   }
 }

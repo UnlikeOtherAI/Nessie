@@ -282,5 +282,16 @@
     "change": "Ändern",
     "hideDetails": "Details ausblenden",
     "showDetails": "Details anzeigen"
+  },
+  "agentsPanel": {
+    "title": "Agents in diesem Kanal",
+    "description": "Öffne einen Agent, um Identität, Tools, Aufgaben und Trigger anzuzeigen.",
+    "create": "Agent erstellen",
+    "empty": "Diesem Kanal sind noch keine Agents zugeordnet.",
+    "edit": "Agent bearbeiten",
+    "instructions": "Anweisungen",
+    "noSystemPrompt": "Für diesen Agent ist noch kein System-Prompt konfiguriert.",
+    "tools": "Tools",
+    "toolsDescription": "Alles, worauf {{name}} während einer Ausführung zugreifen kann."
   }
 }

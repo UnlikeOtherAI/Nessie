@@ -282,5 +282,16 @@
     "change": "Cambiar",
     "hideDetails": "Ocultar detalles",
     "showDetails": "Mostrar detalles"
+  },
+  "agentsPanel": {
+    "title": "Agentes de este canal",
+    "description": "Abre uno para ver su identidad, herramientas, tareas y activadores.",
+    "create": "Crear agente",
+    "empty": "Aún no hay agentes asociados a este canal.",
+    "edit": "Editar agente",
+    "instructions": "Instrucciones",
+    "noSystemPrompt": "Este agente aún no tiene instrucciones de sistema configuradas.",
+    "tools": "Herramientas",
+    "toolsDescription": "Todo lo que {{name}} puede usar durante una ejecución."
   }
 }
