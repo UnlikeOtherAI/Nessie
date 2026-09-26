@@ -192,7 +192,9 @@ export const handleRunLoopOutcome = async (
     runUtility: input.inference.runUtility,
   })
   const reactionWasTheAnswer = isContentlessAfterReacting(input.reacted, responseText)
-  const markedDone = isMarkedDone(context.oneOnOnePlan, input.reacted, responseText)
+  // A prepared call that ran on its own has nothing to say: its answer is marked done.
+  const markedDone = (input.loopResult.preparedCompleted === true && !input.reacted)
+    || isMarkedDone(context.oneOnOnePlan, input.reacted, responseText)
   const concludedQuietly = !reactionWasTheAnswer && concludesQuietly(payload, responseText)
 
   await completeRunExecution(deps, payload, context, input.planContext, {

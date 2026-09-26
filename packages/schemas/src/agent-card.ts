@@ -458,11 +458,39 @@ export const AgentCardRespondentsSchema = z.union([
 ])
 export type AgentCardRespondents = z.infer<typeof AgentCardRespondentsSchema>
 
+/**
+ * The exact tool call a card button stands for, prepared by the agent that
+ * posts the card (docs/standards/agent-cards.md → "A prepared button runs its
+ * call"). `tool` is the name the agent calls it by; `arguments` are complete.
+ * Stored server-side only: never part of the spec a viewer receives.
+ */
+export const PreparedCardActionSchema = z
+  .object({
+    tool: z.string().trim().min(1).max(128),
+    arguments: z.record(z.unknown()),
+  })
+  .strict()
+export type PreparedCardAction = z.infer<typeof PreparedCardActionSchema>
+
+/** At most one prepared call per button, keyed by the action's key. */
+export const PreparedCardActionsSchema = z.record(AgentCardKeySchema, PreparedCardActionSchema)
+export type PreparedCardActions = z.infer<typeof PreparedCardActionsSchema>
+
+/** Which run executed a pressed button's prepared call, and how it ended. */
+export const PreparedCardExecutionSchema = z
+  .object({
+    runId: z.string().uuid(),
+    outcome: z.enum(['succeeded', 'handed_to_model']).optional(),
+  })
+  .strict()
+export type PreparedCardExecution = z.infer<typeof PreparedCardExecutionSchema>
+
 export const CardPostToolInputSchema = z
   .object({
     card: AgentCardSpecSchema,
     respondents: AgentCardRespondentsSchema.optional(),
     wait: z.boolean().optional(),
+    prepared: PreparedCardActionsSchema.optional(),
     expiresIn: z
       .number()
       .int()

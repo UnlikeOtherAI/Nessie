@@ -148,6 +148,10 @@ export type AgentCardNoteState = {
   resolutionValues: Record<string, string | number | boolean>
   secretKeys: string[]
   waitingForNames: string[]
+  /** The tool each prepared button runs, by action key (`AgentCard.preparedActions`). */
+  preparedTools?: Record<string, string>
+  /** How the pressed button's prepared call went, once a run has taken it. */
+  preparedOutcome?: 'running' | 'succeeded' | 'handed_to_model'
 }
 
 /**
@@ -157,7 +161,10 @@ export type AgentCardNoteState = {
  * without anybody rewriting the message.
  */
 export const buildAgentCardStateNote = (state: AgentCardNoteState): string => {
-  const buttons = state.spec.actions.map((action) => action.label).join(', ')
+  const buttons = state.spec.actions.map((action) => {
+    const tool = state.preparedTools?.[action.key]
+    return tool ? `${action.label} (runs ${tool})` : action.label
+  }).join(', ')
   const parts = [`card "${state.spec.title}"`, `buttons: ${buttons}`]
 
   if (state.status === 'open') {
@@ -176,6 +183,14 @@ export const buildAgentCardStateNote = (state: AgentCardNoteState): string => {
       parts.push(`${key}=${formatValue(value)}`)
     }
     for (const key of state.secretKeys) parts.push(`secret "${key}": provided`)
+    const tool = state.resolvedActionKey ? state.preparedTools?.[state.resolvedActionKey] : undefined
+    if (tool && state.preparedOutcome) {
+      parts.push(state.preparedOutcome === 'succeeded'
+        ? `${tool} ran as prepared and succeeded`
+        : state.preparedOutcome === 'running'
+        ? `${tool} started as prepared`
+        : `${tool} did not finish as prepared; the agent took over`)
+    }
   } else {
     parts.push(state.status)
   }

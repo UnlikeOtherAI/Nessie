@@ -2,6 +2,7 @@ import type {
   InferenceResult,
   InvocationRecord,
   ProviderMessage,
+  ProviderToolCall,
   ToolSchemaDescriptor,
 } from '@nessie/runtime'
 import type { BudgetExhaustionReason, BudgetLimits } from './loop-budget.js'
@@ -45,6 +46,8 @@ export type LoopResult = {
   pendingInput?: AgentCardSuspension | null
   /** Cooperative cancellation keeps any partial answer without a budget stop. */
   cancelled: boolean
+  /** The prepared calls ran and all succeeded, so the model was never asked. */
+  preparedCompleted?: boolean
   woundDown: boolean
   invocations: InvocationRecord[]
 }
@@ -84,5 +87,11 @@ export type AgenticLoopInput = {
   drainSignal?: AbortSignal
   /** Machine checkpoint from the same run; restored calls are never re-dispatched. */
   resume?: LoopResumeState
+  /**
+   * Calls to run before the first inference, as if the model had asked for
+   * them: a pressed card button's prepared call. Ignored on `resume`, whose
+   * checkpoint already holds them.
+   */
+  preparedToolCalls?: ProviderToolCall[]
   maxOutputTokens?: number
 }

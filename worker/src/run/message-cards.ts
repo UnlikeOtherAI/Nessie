@@ -1,5 +1,9 @@
 import type { PrismaClient } from '@prisma/client'
-import { AgentCardSpecSchema } from '@nessie/schemas'
+import {
+  AgentCardSpecSchema,
+  PreparedCardActionsSchema,
+  PreparedCardExecutionSchema,
+} from '@nessie/schemas'
 import { buildAgentCardStateNote } from '@nessie/team-admin'
 
 /**
@@ -23,6 +27,8 @@ export const loadMessageCardNotes = async (
     select: {
       expiresAt: true,
       messageId: true,
+      preparedActions: true,
+      preparedExecution: true,
       resolutionValues: true,
       resolvedActionKey: true,
       resolvedAt: true,
@@ -58,6 +64,8 @@ export const loadMessageCardNotes = async (
     if (!spec.success) continue
 
     const values = (card.resolutionValues ?? {}) as Record<string, string | number | boolean>
+    const prepared = PreparedCardActionsSchema.safeParse(card.preparedActions)
+    const execution = PreparedCardExecutionSchema.safeParse(card.preparedExecution)
     const secretOutcomes = (card.secretOutcomes ?? {}) as Record<string, unknown>
     notes.set(
       card.messageId,
@@ -73,6 +81,10 @@ export const loadMessageCardNotes = async (
         waitingForNames: card.respondentUserIds.map(
           (userId) => names.get(userId) ?? 'someone in this conversation',
         ),
+        ...(prepared.success
+          ? { preparedTools: Object.fromEntries(Object.entries(prepared.data).map(([key, call]) => [key, call.tool])) }
+          : {}),
+        ...(execution.success ? { preparedOutcome: execution.data.outcome ?? 'running' } : {}),
       }),
     )
   }

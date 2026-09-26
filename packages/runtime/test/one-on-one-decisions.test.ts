@@ -4,6 +4,7 @@ import test from 'node:test'
 import type { DecisionModelClient } from '../src/decision-model.js'
 import {
   judgeOneOnOneTurn,
+  OFFER_ANSWER_MINIMUM_PROBABILITY,
   ONE_ON_ONE_MINIMUM_PROBABILITY,
 } from '../src/one-on-one-decisions.js'
 
@@ -126,4 +127,54 @@ test('every question comes back with its probability and whether it cleared the 
     ['earlier', 'm1', false],
     ['reference', 'mention', false],
   ])
+})
+
+const offer = {
+  text: 'Book the Aquarium room\nWhich slot?\nButtons: Thu 10:00, Fri 14:00',
+  options: [
+    { key: 'thursday', label: 'Thu 10:00', does: 'runs room_book with {"day":"thursday"}' },
+    { key: 'none', label: 'Neither', does: 'runs room_release with {}' },
+  ],
+}
+
+const answer = (client: DecisionModelClient, content: string) =>
+  judgeOneOnOneTurn(client, {
+    agent, content, earlierMessages: [], offer, recentMessages: [], timeoutMs: 1_500, usage,
+  })
+
+test('an offered card adds which button, and whether it was taken as offered', async () => {
+  const { client, seen } = stub({ response: ['reply', 0.9] })
+  await answer(client, 'jo ten čtvrtek')
+
+  const asked = seen[0]!
+  // A button keyed "none" can never pass for the refusal.
+  assert.deepEqual(Object.keys(asked.questions.offer_answer!.criteria), ['none', 'b_thursday', 'b_none'])
+  assert.equal(asked.questions.offer_answer!.criteria.b_thursday, 'Thu 10:00: runs room_book with {"day":"thursday"}')
+  assert.deepEqual(Object.keys(asked.questions.offer_exact!.criteria), ['exact', 'changed'])
+  assert.equal(asked.state.offered_card, offer.text)
+})
+
+test('only a sure button taken exactly as offered answers the card', async () => {
+  const sure = await answer(stub({
+    response: ['acknowledge', 0.9], offer_answer: ['b_thursday', OFFER_ANSWER_MINIMUM_PROBABILITY],
+    offer_exact: ['exact', 0.97],
+  }).client, 'jj čtvrtek bere')
+  assert.equal(sure.offerAnswer, 'thursday')
+
+  for (const answers of [
+    { offer_answer: ['b_thursday', 0.9], offer_exact: ['exact', 0.99] },
+    { offer_answer: ['b_thursday', 0.99], offer_exact: ['changed', 0.99] },
+    { offer_answer: ['b_thursday', 0.99], offer_exact: ['exact', 0.9] },
+    { offer_answer: ['none', 0.99], offer_exact: ['exact', 0.99] },
+  ] as const) {
+    const judged = await answer(stub({ response: ['reply', 0.9], ...answers }).client, 'čtvrtek ale ve 3?')
+    assert.equal(judged.offerAnswer, undefined, JSON.stringify(answers))
+  }
+})
+
+test('without an offer nothing about cards is asked', async () => {
+  const { client, seen } = stub({ response: ['reply', 0.9] })
+  const judged = await judge(client, 'a co dál?', [])
+  assert.equal(seen[0]!.questions.offer_answer, undefined)
+  assert.equal(judged.offerAnswer, undefined)
 })
