@@ -75,6 +75,14 @@ const menuClassName = (action: PageHeaderAction): string => action.kind === 'men
   ? 'w-[220px] rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] p-1.5 shadow-lg'
   : menuPanelClassName
 
+const actionIcon = (action: PageHeaderAction) => {
+  if (action.outlineIcon) {
+    const OutlineIcon = action.outlineIcon
+    return <OutlineIcon aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={2} />
+  }
+  return action.icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={action.icon} /> : null
+}
+
 // The action's role, not its colours. Which fill a role wears — and what a
 // theme does to it — belongs to `.admin-page-action*` in `styles.css`, where
 // the hover and focus treatment already lives; utilities that stayed here own
@@ -165,7 +173,7 @@ export const ResponsivePageHeader = ({
           target={action.target}
           title={action.title ?? action.label}
         >
-          {action.icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={action.icon} /> : null}
+          {actionIcon(action)}
           {action.compact ? null : <span>{action.label}</span>}
         </a>
       )
@@ -226,7 +234,7 @@ export const ResponsivePageHeader = ({
         title={action.title ?? action.label}
         type={buttonAction?.submit ? 'submit' : 'button'}
       >
-        {action.icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={action.icon} /> : null}
+        {actionIcon(action)}
         {action.compact ? null : <span>{action.label}</span>}
         {isMenu && !action.compact ? (
           <FontAwesomeIcon className="h-2.5 w-2.5" icon={faChevronDown} />

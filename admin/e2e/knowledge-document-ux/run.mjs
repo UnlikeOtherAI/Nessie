@@ -155,7 +155,9 @@ try {
   await page.screenshot({ path: '/private/tmp/nessie-knowledge-project-settings.png', fullPage: true })
   await settings.getByRole('button', { name: 'Close' }).click()
 
-  await page.locator('[data-page-header-action="new"]:visible').last().click()
+  const newAction = page.locator('[data-page-header-action="new"]:visible').last()
+  assert.ok(await newAction.locator('svg.lucide').count(), 'New trigger uses an outline icon')
+  await newAction.click()
   const newMenu = page.getByRole('menu', { name: 'New' })
   await newMenu.waitFor()
   await page.waitForTimeout(250)
@@ -163,6 +165,34 @@ try {
   assert.ok((await newMenu.boundingBox())?.width <= 260, 'New uses the compact sidebar menu width')
   assert.equal(await newMenu.getByText('New', { exact: true }).count(), 0,
     'New does not repeat its trigger label inside the menu')
+  assert.ok(await newMenu.getByRole('menuitem', { name: 'Document' }).locator('svg.lucide').count(),
+    'New uses outlined menu row icons')
+  await page.keyboard.press('Escape')
+  const sortAction = page.locator('[data-page-header-action="sort"]:visible').last()
+  assert.ok(await sortAction.locator('svg.lucide').count(), 'Sort trigger uses an outline icon')
+  await sortAction.click()
+  const sortMenu = page.getByRole('menu', { name: /Sort:/ })
+  await sortMenu.waitFor()
+  assert.ok((await sortMenu.boundingBox())?.width <= 260, 'Sort uses the compact sidebar menu width')
+  assert.equal(await sortMenu.getByText('Sort: Name', { exact: true }).count(), 0,
+    'Sort does not repeat its trigger label inside the menu')
+  assert.ok(await sortMenu.getByRole('menuitemradio', { name: 'Name' }).locator('svg.lucide').count(),
+    'Sort uses outlined menu row icons')
+  await page.screenshot({ path: '/private/tmp/nessie-knowledge-sort-menu.png', fullPage: true })
+  await page.keyboard.press('Escape')
+  const viewAction = page.locator('[data-page-header-action="view"]:visible').last()
+  assert.ok(await viewAction.locator('svg.lucide').count(), 'View trigger uses an outline icon')
+  await viewAction.click()
+  const viewMenu = page.getByRole('menu', { name: /View:/ })
+  await viewMenu.waitFor()
+  assert.ok((await viewMenu.boundingBox())?.width <= 260, 'View uses the compact sidebar menu width')
+  assert.equal(await viewMenu.getByText('View: Tree', { exact: true }).count(), 0,
+    'View does not repeat its trigger label inside the menu')
+  assert.ok(await viewMenu.getByRole('menuitemradio', { name: 'Tree' }).locator('svg.lucide').count(),
+    'View uses outlined menu row icons')
+  await page.screenshot({ path: '/private/tmp/nessie-knowledge-view-menu.png', fullPage: true })
+  await page.keyboard.press('Escape')
+  await newAction.click()
   await page.getByRole('menuitem', { name: 'Document' }).click()
   await page.getByRole('textbox', { name: 'Document title' }).fill(publishedTitle)
   await page.getByRole('button', { name: 'Publish', exact: true }).click()

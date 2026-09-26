@@ -69,6 +69,10 @@ export const PageHeaderMenu = ({ action, onSelect }: PageHeaderMenuProps) => {
           )
         }
         const icon = item.icon
+        const OutlineIcon = item.outlineIcon
+        const menuIcon = OutlineIcon
+          ? <OutlineIcon aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={2} />
+          : icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={icon} /> : null
         if ('href' in item) {
           return (
             <a
@@ -80,7 +84,7 @@ export const PageHeaderMenu = ({ action, onSelect }: PageHeaderMenuProps) => {
               target={item.target}
               title={item.title}
             >
-              {icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={icon} /> : null}
+              {menuIcon}
               {menuRowText(item)}
             </a>
           )
@@ -117,7 +121,7 @@ export const PageHeaderMenu = ({ action, onSelect }: PageHeaderMenuProps) => {
             title={item.title}
             type="button"
           >
-            {icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={icon} /> : null}
+            {menuIcon}
             {menuRowText(item)}
             {checked ? <span aria-hidden="true">✓</span> : null}
           </button>
