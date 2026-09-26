@@ -12,6 +12,7 @@
  */
 
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { AutomaticMembershipDomainRecord } from '@nessie/schemas'
 
 import { formErrorMessage } from '../../../facades/forms/form-errors'
@@ -41,10 +42,6 @@ import {
 } from '../../../facades/automatic-membership/hooks'
 import { AutomaticMembershipDomainRow } from './AutomaticMembershipDomainRow'
 
-const LEDE = 'When someone signs in with an email address at a domain you control, add them '
-  + 'to these teams as a member. Sign-in always verifies who someone is — a domain never '
-  + 'signs anyone in.'
-
 export const AutomaticMembershipRulesPanel = ({
   highlightedRuleId,
   scope,
@@ -52,6 +49,7 @@ export const AutomaticMembershipRulesPanel = ({
   highlightedRuleId?: string | null
   scope: AutomaticMembershipScope
 }) => {
+  const { t } = useTranslation('settings')
   const query = useAutomaticMembership(scope)
   const [domainInput, setDomainInput] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -82,7 +80,7 @@ export const AutomaticMembershipRulesPanel = ({
     input: TInput,
   ): void => {
     setError(null)
-    void mutation.mutateAsync(input).catch((cause: unknown) => setError(formErrorMessage(cause, 'Something went wrong. Try again.')))
+    void mutation.mutateAsync(input).catch((cause: unknown) => setError(formErrorMessage(cause, t('automaticMembership.actionFailed'))))
   }
 
   const submitDomain = (event: React.FormEvent) => {
@@ -93,14 +91,14 @@ export const AutomaticMembershipRulesPanel = ({
     void addDomain
       .mutateAsync({ domain })
       .then(() => setDomainInput(''))
-      .catch((cause: unknown) => setError(formErrorMessage(cause, 'Something went wrong. Try again.')))
+      .catch((cause: unknown) => setError(formErrorMessage(cause, t('automaticMembership.actionFailed'))))
   }
 
   return (
     <div className="grid gap-5">
       <QueryState
-        errorLabel="Automatic access settings could not be loaded."
-        loadingLabel="Loading automatic access…"
+        errorLabel={t('automaticMembership.loadFailed')}
+        loadingLabel={t('automaticMembership.loading')}
         query={query}
       >
         {() => {
@@ -111,8 +109,8 @@ export const AutomaticMembershipRulesPanel = ({
           return (
             <div className="grid gap-5">
               <Section
-                description={LEDE}
-                title="Automatic team access after sign-in"
+                description={t('automaticMembership.lede')}
+                title={t('automaticMembership.title')}
               >
                 {permissions.manageDomains ? (
                   <div className="grid gap-2">
@@ -122,7 +120,7 @@ export const AutomaticMembershipRulesPanel = ({
                       <Switch
                         checked={data.provisioningEnabled}
                         disabled={pending}
-                        label="Add people automatically"
+                        label={t('automaticMembership.addPeopleAutomatically')}
                         onChange={(enabled) => {
                           // Switching it off is the emergency stop, so it asks.
                           if (enabled) run(setEnabled, { enabled })
@@ -130,31 +128,29 @@ export const AutomaticMembershipRulesPanel = ({
                         }}
                       />
                       <span className="text-sm font-medium text-[color:var(--tx)]">
-                        Add people automatically
+                        {t('automaticMembership.addPeopleAutomatically')}
                       </span>
                     </div>
                     <p className="text-xs text-[color:var(--tx3)]">
                       {data.provisioningEnabled
-                        ? 'Turning this off stops new people being added. Nobody is removed.'
-                        : 'Paused for the whole organisation. Nobody is being added, and '
-                          + 'nobody has been removed.'}
+                        ? t('automaticMembership.turnOffHelp')
+                        : t('automaticMembership.pausedOrganization')}
                     </p>
                   </div>
                 ) : !data.provisioningEnabled ? (
                   <Notice role="status" size="sm" tone="warning">
-                    An organisation administrator has paused automatic access.
+                    {t('automaticMembership.pausedByAdmin')}
                   </Notice>
                 ) : null}
               </Section>
 
               {permissions.manageDomains ? (
                 <Section
-                  description="Only a domain your organisation controls. Personal email
-                    providers cannot be used, and each subdomain is verified separately."
-                  title="Add a domain"
+                  description={t('automaticMembership.domainHelp')}
+                  title={t('automaticMembership.addDomainTitle')}
                 >
                   <form className="grid gap-2 sm:max-w-md" onSubmit={submitDomain}>
-                    <FormField label="Email domain">
+                    <FormField label={t('automaticMembership.emailDomain')}>
                       <Input
                         autoComplete="off"
                         disabled={pending}
@@ -169,7 +165,7 @@ export const AutomaticMembershipRulesPanel = ({
                         disabled={pending || domainInput.trim().length === 0}
                         type="submit"
                       >
-                        {addDomain.isPending ? 'Adding…' : 'Add domain'}
+                        {addDomain.isPending ? t('automaticMembership.adding') : t('automaticMembership.addDomainTitle')}
                       </button>
                     </div>
                   </form>
@@ -178,14 +174,12 @@ export const AutomaticMembershipRulesPanel = ({
 
               <FormError>{error}</FormError>
 
-              <Section title="Domains">
+              <Section title={t('automaticMembership.domains')}>
                 {data.domains.length === 0 ? (
-                  <EmptyState title="No domains yet">
+                  <EmptyState title={t('automaticMembership.noDomains')}>
                     {permissions.manageDomains
-                      ? 'Add a domain your organisation controls to place people into teams '
-                        + 'automatically when they sign in.'
-                      : 'No domain adds people to this team automatically. An organisation '
-                        + 'administrator can set one up.'}
+                      ? t('automaticMembership.noDomainsOwnerHelp')
+                      : t('automaticMembership.noDomainsTeamHelp')}
                   </EmptyState>
                 ) : (
                   <div className="grid gap-3">
@@ -233,12 +227,9 @@ export const AutomaticMembershipRulesPanel = ({
 
       <ConfirmDialog
         body={pendingActivate
-          ? `People signing in with an address at ${pendingActivate.domain} will be added as `
-            + `members of ${pendingActivate.rules.map((rule) => rule.teamName).join(', ') || 'the '
-              + 'teams you select'}. People already in your organisation who match will be added `
-            + 'now, in the background.'
+          ? t('automaticMembership.activateBody', { domain: pendingActivate.domain, teams: pendingActivate.rules.map((rule) => rule.teamName).join(', ') || t('automaticMembership.selectedTeams') })
           : undefined}
-        confirmLabel="Turn on and add people"
+        confirmLabel={t('automaticMembership.turnOnAndAdd')}
         onCancel={() => setPendingActivate(null)}
         onConfirm={() => {
           if (pendingActivate) run(setStatus, { id: pendingActivate.id, status: 'active' })
@@ -246,13 +237,12 @@ export const AutomaticMembershipRulesPanel = ({
         }}
         open={pendingActivate !== null}
         pending={setStatus.isPending}
-        title="Start adding people from this domain?"
+        title={t('automaticMembership.startAddingTitle')}
       />
 
       <ConfirmDialog
-        body={'New people stop being added straight away. Nobody is removed, and everyone who '
-          + 'already has access keeps it. You can switch this back on at any time.'}
-        confirmLabel="Pause adding people"
+        body={t('automaticMembership.pauseBody')}
+        confirmLabel={t('automaticMembership.pauseAdding')}
         destructive
         onCancel={() => setPendingPause(false)}
         onConfirm={() => {
@@ -261,15 +251,14 @@ export const AutomaticMembershipRulesPanel = ({
         }}
         open={pendingPause}
         pending={setEnabled.isPending}
-        title="Pause automatic access?"
+        title={t('automaticMembership.pauseTitle')}
       />
 
       <ConfirmDialog
         body={pendingRevoke
-          ? `People already in these teams keep their access — removing ${pendingRevoke.domain} `
-            + 'only stops new people being added. You can add the domain again later.'
+          ? t('automaticMembership.removeBody', { domain: pendingRevoke.domain })
           : undefined}
-        confirmLabel="Remove domain"
+        confirmLabel={t('automaticMembership.removeDomain')}
         destructive
         onCancel={() => setPendingRevoke(null)}
         onConfirm={() => {
@@ -278,7 +267,7 @@ export const AutomaticMembershipRulesPanel = ({
         }}
         open={pendingRevoke !== null}
         pending={revokeDomain.isPending}
-        title="Remove this domain?"
+        title={t('automaticMembership.removeDomainTitle')}
       />
     </div>
   )
