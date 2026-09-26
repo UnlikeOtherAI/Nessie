@@ -72,8 +72,8 @@ export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord
           </div>
           <div className="mt-1 truncate text-sm text-[color:var(--tx2)]">
             {[
-              invitation.status ?? 'pending',
-              invitation.teamRole,
+              t(`members.invitationStatuses.${invitation.status ?? 'pending'}`),
+              invitation.teamRole ? t(`members.roles.${invitation.teamRole}`) : undefined,
               invitation.invitedByName ? t('members.teamSection.invitedBy', { name: invitation.invitedByName }) : null,
               invitation.expiresAt
                 ? t('members.teamSection.expires', { date: new Date(invitation.expiresAt).toLocaleDateString(i18n.resolvedLanguage ?? i18n.language) })

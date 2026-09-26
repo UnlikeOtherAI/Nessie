@@ -790,6 +790,13 @@
       "reconnectTeam": "Znovu připojit tým",
       "noTeamMembers": "Tento tým zatím nemá žádné členy.",
       "noPendingInvitations": "Žádná nevyřízená pozvání."
+    },
+    "invitationStatuses": {
+      "pending": "Čeká na vyřízení",
+      "accepted": "Přijato",
+      "expired": "Platnost vypršela",
+      "cancelled": "Zrušeno",
+      "revoked": "Odebráno"
     }
   },
   "automaticMembership": {

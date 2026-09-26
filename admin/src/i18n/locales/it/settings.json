@@ -790,6 +790,13 @@
       "reconnectTeam": "Riconnetti team",
       "noTeamMembers": "Questo team non ha ancora membri.",
       "noPendingInvitations": "Nessun invito in attesa."
+    },
+    "invitationStatuses": {
+      "pending": "In attesa",
+      "accepted": "Accettato",
+      "expired": "Scaduto",
+      "cancelled": "Annullato",
+      "revoked": "Revocato"
     }
   },
   "automaticMembership": {
