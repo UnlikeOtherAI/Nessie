@@ -277,7 +277,7 @@ export const ChannelConversationSurface = ({
     >
       <ChannelHeader
         activeCall={Boolean(activeCall)}
-        activeChannel={activeChannel} hideConversations={!!conversationAgent && activeChannel?.type === 'dm'}
+        activeChannel={activeChannel} hideConversations={activeChannel?.type === 'dm'}
         boundAgents={boundAgents}
         callEligible={callEligible}
         callMeetingUri={activeCall?.meetingUri}

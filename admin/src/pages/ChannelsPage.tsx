@@ -462,7 +462,7 @@ export const ChannelsPage = () => {
             activeChannelId={activeChannel?.id ?? null}
             activeThreadId={activeThreadId ?? null}
             agents={chatToolAgents}
-            hideConversations={activeChannel?.type === 'dm' && conversationAgent !== null}
+            hideConversations={activeChannel?.type === 'dm'}
             onClose={closeTool}
             onSelectAgent={selectChatToolAgent}
             onToggle={toggleTool}
@@ -480,7 +480,7 @@ export const ChannelsPage = () => {
             allUsers={allUsers}
             canAddPeople={activeChannel.viewerCanManage && activeChannel.type !== 'dm'}
             channelUsers={channelUsers}
-            agentTools={availableChatTools(chatToolAgents, activeChannel.type === 'dm' && conversationAgent !== null)}
+            agentTools={availableChatTools(chatToolAgents, activeChannel.type === 'dm')}
             me={me}
             onOpenTool={openToolScreen}
           />
