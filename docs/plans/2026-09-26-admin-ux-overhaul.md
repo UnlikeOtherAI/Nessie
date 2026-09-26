@@ -48,9 +48,10 @@ for a real rule (SSO owns identity, secrets cascade with visible locks, grants
 are explicit, approvals live in chat). What has to change is the *shape*:
 
 - **Two front doors instead of one "Admin".** Personal settings move behind the
-  avatar, where every product puts them. "Admin" becomes a rail item that only
-  administrators see, holding organisation and team management. Agents, apps,
-  computers and automations become a first-class section for everyone.
+  avatar, where every product puts them. "Admin" keeps its original role as
+  the click-through area: its first group holds agents, apps, computers and
+  automations for everyone, and its second group holds organisation and team
+  management, shown only to administrators.
 - **One page per concern, scope as a facet.** Models, keys, people and company
   connections are one page each, with the organisation/team level shown *on*
   the page (a scope switch, an "inherited from organisation" chip, a lock),
@@ -68,9 +69,10 @@ are explicit, approvals live in chat). What has to change is the *shape*:
   becomes AI model, and no vendor or protocol name (UOA, Infisical, Ledger,
   Browserbase, MCP, IMAP) appears in a label.
 
-The result is nine personal pages, four agent-section pages, ten admin pages
-plus an Advanced group, with zero repeated labels, and every function in the
-mapping table of §8 has a named new home.
+The result is nine personal pages, four agent pages for everyone, ten
+management pages for administrators plus an Advanced group, with zero
+repeated labels, and every function in the mapping table of §8 has a named
+new home.
 
 ## 2. How the audit was done
 
@@ -217,12 +219,14 @@ their own status words. A status row is `personal · active`.
 
 R1. **Personal is not admin.** Anything about *me* (profile, notifications,
 theme, my accounts, my computers, my keys, my security) lives under the avatar
-as "Your settings". "Admin" is only for people who administer a team or the
-organisation, and members never see it.
+as "Your settings". Nothing personal is left in Admin.
 
-R2. **Building blocks are a section, not an admin task.** Agents, the apps
-and accounts they use, the computers they run on, and the schedules that wake
-them are the product's working parts and get a rail item for everyone.
+R2. **Admin is the click-through area, in two groups.** Its first group is for
+everyone: the agents, the apps and accounts they use, the computers they run
+on and the schedules that wake them. Its second group is for administrators:
+people, teams, the organisation, models, company connections, keys, spend,
+billing and security. A member sees the first group only. Bringing agent
+configuration into the conversation itself is deferred to a later session.
 
 R3. **One page per concern; scope is a facet of the page.** A thing that
 exists at organisation and team level is one page with a scope switch and
@@ -255,7 +259,7 @@ dividers (no nested cards); the shared table with the shared footer; empty
 states that name the next step and its doorway.
 
 R9. **Entitlement shapes, never hides what could be earned.** Whole sections a
-person can never use are absent (the Admin rail item for a member). A control
+person can never use are absent (the Organisation group for a member). A control
 that a person could use with more standing is present, disabled, and says who
 can change it, which is the existing `ScopedSettingGate` rule extended to every
 gate.
@@ -264,23 +268,22 @@ gate.
 
 ### 6.1 Top-level navigation
 
-Rail: **Channels · Projects · Knowledge · Agents · Admin**, with Admin shown
-only to a person who administers at least one team or the organisation, or is
-an instance operator. Bottom of the rail as today: Focus, Create, avatar. Top
-bar as today: back, forward, recent, search, alerts bell, and the bell is added
-to the phone home header and the native root bars so `/alerts` is reachable on
-every shell.
+Rail: **Channels · Projects · Knowledge · Admin**, unchanged, with Admin shown
+to everyone as today. Admin lands on its first item, Agents, for everyone;
+its second group appears only for a person who administers at least one team
+or the organisation, or is an instance operator. Bottom of the rail as today:
+Focus, Create, avatar. Top bar as today: back, forward, recent, search, alerts
+bell, and the bell is added to the phone home header and the native root bars
+so `/alerts` is reachable on every shell.
 
 Why: the section ids are a wire contract with the installed native shells and
-the surface registry, so the change is exactly one added section (`agents`)
-and one conditional one (`admin` becomes entitlement-shaped rather than
-always-on). Channels, Projects and Knowledge keep their ids. Renaming Knowledge
-to Documents is a separate decision (§12).
+the surface registry, and this plan changes none of them. Renaming Knowledge
+to Documents, or Admin to Manage, is a separate decision (§12).
 
-Avatar menu: Availability · Status · **Your settings** · **Admin** (when
-entitled) · Send feedback · Sign out. The Executors rows leave the menu (their
-home is Agents › Computers and Your settings › Your computers); Debug moves to
-Advanced; Full refresh stays only on native shells.
+Avatar menu: Availability · Status · **Your settings** · Send feedback · Sign
+out. The Executors rows leave the menu (their home is Your settings › Your
+computers and Admin › Agents › Computers); Debug moves to Advanced; Full refresh stays
+only on native shells.
 
 Team switcher: unchanged in function, but the desktop trigger shows
 "Organisation › Team" as text beside the avatar, "Add team" opens Admin › Teams
@@ -298,67 +301,90 @@ single scrolling form. Nine pages:
 | **Notifications** | Focus mode; push on/off and "notify me about" (Budget alerts shown only to owners); quiet hours; browser notifications; muted conversations (only the muted ones, with Unmute) | Unchanged in function; the muted list stops listing every private conversation with a raw visibility word. |
 | **Appearance** | Theme (12 built-ins plus the organisation palette, marked Default); text size; app icon (iOS only) | Unchanged. |
 | **Status** | Emoji, label, schedules; Set active / Clear; availability Auto/Active/Away | The half of Statuses the product consumes. Response agent and contact rules are held back (§9). |
-| **Connected accounts** | One list of the person's accounts at other services: Google Workspace (mail, calendar, meet as capabilities), Microsoft 365, Slack, other email provider (IMAP), Jira, Linear, GitHub, Trello, your AI plans (Kimi, GLM, DeepSeek, Codex, Grok), cloud browser. Rows are grouped by purpose (Mail and calendar · Chat · Tickets and code · Browsers · AI plans); each row: service, account, status sentence, "N agents may use this", Reconnect, Disconnect. "Connect an account" opens the same picker the Apps catalogue uses, filtered to things a person can connect for themselves. | This is the answer to "how do I connect X". It merges the five Connected-accounts tabs, the Account › Agents cloud-browser panel, and personal-scope app installs from the store, which are the same thing seen from the store. |
-| **Your computers** | Computers you paired: pair this computer / pair with a code; per computer: status, what it offers (files, programs, local apps, AI models on it), which agents may use it, sharing, lifecycle | A person owns the machines they pair; sharing and agent access are actions on the machine, so the same object page as Agents › Computers, filtered to mine. |
+| **Connected accounts** | One list of the person's accounts at other services: Google Workspace (mail, calendar, meet as capabilities), Microsoft 365, Slack, other email provider (IMAP), Jira, Linear, GitHub, Trello, your AI plans (Kimi, GLM, DeepSeek, Codex, Grok), cloud browser. Rows are grouped by purpose (Mail and calendar · Chat · Tickets and code · Browsers · AI plans); each row: service, account, status sentence, "N agents may use this", Reconnect, Disconnect. "Connect an account" opens the catalogue as a picker (§6.3), filtered to things a person can connect for themselves. | This is the answer to "how do I connect X". It merges the five Connected-accounts tabs, the Account › Agents cloud-browser panel, and personal-scope app installs from the store, which are the same thing seen from the store. |
+| **Your computers** | Computers you paired: pair this computer / pair with a code; per computer: status, what it offers (files, programs, local apps, AI models on it), which agents may use it, sharing, lifecycle | A person owns the machines they pair; sharing and agent access are actions on the machine, so this is the same computer page that Admin › Agents › Computers and a project's Settings › Computers open, filtered to mine and to those shared with me. |
 | **Saved keys** | Every vault key that reaches you, with where it comes from (Organisation · Team · Project · Yours), Locked and Overridden shown as chips; Add a key (for you, or for a project you are in); Revoke | The personal Secrets page, renamed, with the same cascade table. |
 | **Usage** | Your credit usage and the team totals (the member projection of Credits & billing); present only when the billing service is configured | Every member may see their own usage today; it does not belong beside administration. |
 | **Security** | Active sessions and devices (this device marked); programs signed in as you (pair with a code, Allow / Don't allow, revoke, `?code=` links land here); password (local accounts only) | Sessions and paired programs are both "things that hold my login", so they are one page. |
 
-### 6.3 Agents (rail item; everyone)
+### 6.3 Admin › Agents (the first group; everyone)
 
-Sidebar: **Agents · Apps · Computers · Automations**.
+Sidebar group **Agents**: Agents · Apps · Computers · Automations. This is
+the click-through area the section was built for: a member opens Admin and
+lands on the list of agents they can use, with the things agents use beside
+it. Agents are still met where colleagues are (the direct message list, a
+channel's member list, @mentions, search), and every one of those places links
+to the agent's page here; moving the configuration itself into the
+conversation's side panel is deferred.
 
 **Agents.** Tabs Mine · Shared · Built-in, a New agent action, the same table
 (name, visibility pill, owner, availability sentence, open its conversation).
 An agent's page keeps the identity header (avatar, name, role, status
-sentence, owner, Stop while running, Open conversation) and has six tabs:
+sentence, who manages it, Stop while running, Open conversation) and has six
+tabs, designed narrow enough to be phone-ready:
 
 | Tab | Holds | Replaces |
 |---|---|---|
-| Overview | What it is, its model, where it lives (channels and projects, linked), what it may use (chips into Access), attention items (model unavailable, computer offline, mailbox suspended), recent activity | The identity block and the scattered health lines |
+| About | What it is, its model, where it lives (channels and projects, linked), what it may use (chips into Access), attention items (model unavailable, computer offline, mailbox suspended), recent activity | The identity block, the agent info drawer and the scattered health lines |
 | Instructions | Instructions (`AGENTS.md`), manner (`personality.md`), its other documents (the agent's Documents space), checklists it can follow (to-do templates, including Repeat on a schedule) | Edit › Basics system prompt, Behavior › voice and manner, Documents tab, To-dos › Templates |
 | Access | Grouped switches with one shape: Apps and accounts · Computers · Cloud browser (grant, sign-ins, reset) · Documents it can read or write · Email address (claim, send policy) · Research (DeepWater bundle) · Built-in tools (collapsed, by category). Owner-only rows say so. | Tools tab, Designer › Tools, App › Agents with access, mailbox "Agents with access", executor › Agents, Email tab, Tool detail › Agent access |
 | Schedule | Everything that wakes it: schedules, intervals, board columns ("starts work when a ticket enters…"), document watches, webhooks, manual; each row Run now / Pause / Edit; health sentence and Reauthorize | Activity › trigger panel, the Triggers list filtered to this agent |
 | Activity | Conversations (tickets and documents folded), to-dos, runs and failures, mailbox (link to the reader), helpers it spawned (only when any), tool log (collapsed, marked technical) | Activity, To-dos › instances, Sub-Agents, Messages, mailbox page |
 | Settings | Model (with "Link your AI plan" and "Ask an admin to enable a model" doorways, local-model approval), effort, run limits in plain terms ("stop a task after N minutes or N credits"), voice, visibility (fixed after creation), ownership (transfer, take), to-dos on/off, delete | Edit › Model, Behavior › limits, ownership controls, Designer › To-dos |
 
-The Design Assistant stays as a right-rail dock on every tab and as "Continue
-in chat"; creating an agent keeps its Create (chat) and Configure modes, which
-write into the same tabs.
+Someone who does not manage the agent sees the same page read-only, with who
+manages it and what they may do: Message, Create a copy you own, or ask the
+manager. What the page does not embed it links to: the agent's documents
+space in Knowledge, its mailbox reader, an app's page, a computer's page, a
+trigger's full detail with its deliveries and machine access.
 
-**Apps.** The catalogue with two tiers. **Integrations**: a curated shelf of
+**Creating an agent.** New agent keeps its Create (chat) and Configure modes,
+which write into the same tabs, and the Design Assistant stays as a dock on
+every tab and as "Continue in chat". What changes is that there is one agent
+page rather than a detail page and a separate designer page: editing is the
+page's own tabs, and the standalone designer route redirects into them.
+
+**Apps.** The catalogue, with two tiers. **Integrations**: a curated shelf of
 the services corporate teams actually connect (Google Workspace, Microsoft
 365, Slack, Jira, Linear, GitHub, Trello, and Nessie's own research service,
-cloud browser and local AI), each a single page that knows every way it can be
-connected and never shows a community duplicate beside a first-party sign-in,
-laid out under the same purpose headings as the personal list (Mail and
-calendar · Chat · Tickets and code · Browsers · AI).
-**All apps**: the registry (about 6,400 entries) behind search, badged
-Community, plus "Add a custom app". An app page: About · Connect ("for you",
-"for a project or channel", "for the company", each in words) · Accounts
-(who connected it, status, Reconnect, Disconnect, Connect another) · Agents
-with access · and, for administrators, Review new capabilities and Lock.
+cloud browser and local AI), grouped by purpose (Mail and calendar · Chat ·
+Tickets and code · Browsers · AI), each a single page that knows every way it
+can be connected and never shows a community duplicate beside a first-party
+sign-in. **All apps**: the registry (about 6,400 entries) behind search,
+badged Community, plus "Add a custom app". An app page: About · Connect ("for
+you", "for a project or channel", "for the company", each in words) ·
+Accounts (who connected it, status, Reconnect, Disconnect, Connect another) ·
+Agents with access · and, for administrators, Review new capabilities and
+Lock. The same catalogue is the picker behind Connect an account (Your
+settings) and Connected tools (a project's settings), so a person never has
+to know that a Jira account and a Jira app are the same thing.
 
 **Computers.** All computers this person may use: Mine · Shared with me ·
-Team's. Pair a computer (this computer, or with a code). A computer's page:
-Overview (status sentence, what it offers, last seen) · Agents (whole-suite
-grant, Add agent, Remove) · Sharing (a person: Can use / Admin; a project;
-everyone in this team) · Activity (in use now with End, standing access with
-End, coding sessions with view and share, changes to review, recent work). The
-lifecycle (pause, resume, disconnect, delete, local models, on this computer)
-stays in the "Computer" menu with its password or code confirmation.
+Team's, and a Sessions tab across machines. Pair a computer (this computer, or
+with a code). A computer's page: Overview (status sentence, what it offers,
+last seen) · Agents (whole-suite grant, Add agent, Remove) · Sharing (a
+person: Can use / Admin; a project; everyone in this team) · Activity (in use
+now with End, standing access with End, coding sessions with view and share,
+changes to review, recent work). The lifecycle (pause, resume, disconnect,
+delete, local models, on this computer) stays in the "Computer" menu with its
+password or code confirmation. Your settings › Your computers and a project's
+Settings › Computers are this list filtered, opening the same page.
 
 **Automations.** Tabs Schedules & triggers · Batch jobs · Workflows. The first
-is the current Triggers list with an agent and project filter, its editor and
+is the current Triggers list with agent and project filters, its editor and
 detail unchanged in function (machine access included), and the raw JSON of
-webhook and event triggers folded under "Advanced" inside the editor. Batch
-jobs is Task Sets with a vocabulary pass ("processor model" → "runs on",
-"receiver" → "hand results to", "journal" → "results"). Workflows is the row
-that keeps its place for the other session.
+webhook and event triggers folded under "Advanced" inside the editor; each
+agent's own schedules also appear on its Schedule tab, and a board column or
+document folder still opens the editor in place. Batch jobs is Task Sets with
+a vocabulary pass ("processor model" → "runs on", "receiver" → "hand results
+to", "journal" → "results"), keeping its doorway from Documents. Workflows is
+the row that keeps its place for the other session.
 
-### 6.4 Admin (rail item; administrators only)
+### 6.4 Admin › Organisation (the second group; administrators)
 
-Sidebar, in this order, with the audience each page shapes itself to:
+Sidebar group **Organisation**, shown only to team and organisation
+administrators and instance operators, in this order, with the audience each
+page shapes itself to:
 
 | Page | Holds | Audience |
 |---|---|---|
@@ -488,7 +514,7 @@ filters, which is Rule zero's second check.
 
 | Today | Proposed | Note |
 |---|---|---|
-| Admin (rail, for everyone) | Your settings (avatar) and Admin (administrators) | D1 |
+| Admin (rail, holding personal settings) | Your settings (avatar) for the personal pages; Admin keeps agents for everyone and management for administrators | D1 |
 | Executor, machine, governed sandbox | Computer | "Sandbox" as a badge on a guest runtime |
 | Pair an executor | Pair a computer | |
 | Paired agents, MCP client | Programs signed in as you (personal), Programs signed in as people (admin) | |
@@ -528,7 +554,7 @@ functions with no consumer today (§9).
 
 | Today | New home |
 |---|---|
-| Rail Admin → `/settings` → own Profile | Rail Admin (administrators only) → Admin › Overview; Profile → avatar › Your settings |
+| Rail Admin → `/settings` → own Profile | Rail Admin → Admin › Agents for everyone, with the Organisation group (Overview first) for administrators; Profile → avatar › Your settings |
 | Team switcher: switch org+team, Invitations with Accept, Add team (tab New organisation) | Same switcher; "Organisation › Team" as text on desktop; Add team → Admin › Teams › New team; Create an organisation… its own row and dialog |
 | Avatar menu: Availability, Status, Executors rows, Feedback, Debug, Account settings, Log out | Availability, Status, Your settings, Admin (entitled), Send feedback, Sign out; Debug → Advanced › Session debug; computers → Your settings › Your computers |
 | Create menu: Message, Channel, Project, Agent | Same |
@@ -598,8 +624,10 @@ functions with no consumer today (§9).
 
 | Today | New home |
 |---|---|
-| Agents list: Personal / Shared / Global tabs, New agent, delete with confirm, Repair link, Open private home, owner cell | Agents › Agents: Mine / Shared / Built-in (same) |
-| Agent header: avatar quick edit (generate, upload, crop, remove), status pill, Stop, ownership Transfer / Take | Agent page header and Settings › Ownership (same) |
+| Agents list: Personal / Shared / Global tabs, New agent, delete with confirm, Repair link, Open private home, owner cell | Admin › Agents › Agents: Mine / Shared / Built-in (same); Admin › People also lists each person's agents |
+| Agent detail page `/agents/:id` and its tabs | The agent's page (About · Instructions · Access · Schedule · Activity · Settings), same route |
+| Agent info drawer ("name info", no settings), the channel Agent panel's Edit agent | Keep the drawer's summary; both link to the agent's page |
+| Agent header: avatar quick edit (generate, upload, crop, remove), status pill, Stop, ownership Transfer / Take | The page's header and Settings › Ownership (same) |
 | Edit tab › Basics: name, role, visibility, system prompt, parent | Instructions (prompt) and Settings (name, role, visibility) |
 | Edit tab › Model: combobox (computers, plans, hosted), Link a personal subscription, Organisation models link, Approve local model, Check executor approval | Settings › Model (same) |
 | Edit tab › Behavior: reasoning effort, run limits (tokens, tool calls, steps, minutes, cents), voice, manner | Settings › Effort and limits (plain units), Settings › Voice; manner → Instructions |
@@ -612,19 +640,19 @@ functions with no consumer today (§9).
 | Messages tab | Activity › Details (collapsed) or removed (§12) |
 | Documents tab: Knowledge workspace on the agent's space, core-doc notice | Instructions › Documents |
 | Email tab: claim address, send policy, Open mailbox, Delete mailbox | Access › Email address |
-| Design Assistant dock, Continue in chat, Create/Configure modes | Same |
+| Design Assistant dock, Continue in chat, Create/Configure modes | Same, on the one agent page; the standalone designer route redirects into it |
 | Agent mailbox page: filters, thread list, reading pane | Same page, from Activity › Mailbox and Access › Email address |
-| Task Sets: list, form (work, processor, input, output, receiver), detail actions (start, resume, retry, pause, cancel, add item, refresh), items (retry, skip, edit), local host controls | Agents › Automations › Batch jobs (same, renamed fields) |
-| Triggers list: tabs, search, type filter, table, New trigger, `?create=` | Agents › Automations › Schedules and triggers (same, plus agent and project filters) |
+| Task Sets: list, form (work, processor, input, output, receiver), detail actions (start, resume, retry, pause, cancel, add item, refresh), items (retry, skip, edit), local host controls | Admin › Agents › Automations › Batch jobs (same, renamed fields; the Documents doorway kept) |
+| Triggers list: tabs, search, type filter, table, New trigger, `?create=` | Admin › Agents › Automations › Schedules and triggers (same, plus agent and project filters); each agent's own on its Schedule tab |
 | Trigger editor: type picker, target, agent, channel, workflow, schedule / interval / webhook / event / ticket / document fields, description, Enabled | Same editor; JSON and header fields under an Advanced fold inside it |
 | Trigger detail: Run now, Reauthorize, Pause/Resume, Edit, Delete, health banner, facts, machine access (set up, card, confirm, End), webhook endpoint, deliveries | Same page; also summarised on the agent's Schedule tab |
 | Tools list: source tabs, search, status, tags, review bar (Approve / Disable selected) | Advanced › Tool registry (same); connector review also on the app's page › Review new capabilities |
 | Tool detail: id, scope key, version, schemas, transport, Review, Agent access panels | Advanced › Tool registry (same); per-agent access mirrored on Access and the app page |
-| Executors list: table, Pair executor (this computer, code, review, confirm), Sessions, Manage apps, Reviewed drafts, intents (`?create`, `#confirmationToken`, `?accessChange`, `?promotion`) | Agents › Computers (same table and pairing; Sessions → Computers › Sessions tab; Reviewed drafts → the computer's Activity › Changes to review; Manage apps removed, Apps is one click away) |
+| Executors list: table, Pair executor (this computer, code, review, confirm), Sessions, Manage apps, Reviewed drafts, intents (`?create`, `#confirmationToken`, `?accessChange`, `?promotion`) | Admin › Agents › Computers (same table and pairing; Sessions → a Sessions tab; Reviewed drafts → the computer's Activity › Changes to review; Manage apps removed); Your settings › Your computers is the same list filtered to mine and shared with me |
 | Executor detail: Machine menu (on this computer, local models, pause, resume, disconnect, delete with confirm), Agents (add, remove, capabilities), Sessions (local apps, device inventory, coding sessions, view, close), Permissions (team switch, people, projects), Activity (leases, standing access, recent sessions) | Computer page: Overview, Agents, Sharing, Activity (sessions folded in), the same menu |
-| Executor sessions page and session viewer (terminal, share with a viewer) | Agents › Computers › Sessions (same) |
+| Executor sessions page and session viewer (terminal, share with a viewer) | Admin › Agents › Computers › Sessions and the computer's Activity (same) |
 | Run on an executor launcher and lease chip (chat) | Same; copy rewritten in plain words |
-| Apps: search, All / Installed, categories, card states, Connect dialog (scope Just you / A channel / A project), progress, Add an API key (personal / shared), custom app, detail tabs (Overview, Capabilities, Connected accounts, Agents with access), DeepWater Turn on / Update / Turn off | Agents › Apps: Integrations shelf and All apps; the same connect, key and progress dialogs; the app page (About, Connect, Accounts, Agents with access, Review, Lock); research integration page carries the team switch |
+| Apps: search, All / Installed, categories, card states, Connect dialog (scope Just you / A channel / A project), progress, Add an API key (personal / shared), custom app, detail tabs (Overview, Capabilities, Connected accounts, Agents with access), DeepWater Turn on / Update / Turn off | Admin › Agents › Apps: Integrations shelf and All apps; the same connect, key and progress dialogs; the app page (About, Connect, Accounts, Agents with access, Review, Lock); the same catalogue is the picker behind Connect an account (Your settings) and Connected tools (project settings); the research integration page carries the team switch |
 
 ### 8.6 Governance and Platform
 
@@ -737,9 +765,11 @@ architecture above actually requires; everything else is presentation.
    them.
 9. **Budget alerts as an alert kind**, so the bell shows them; the once-per-
    transition rule is unchanged.
-10. **Navigation contract.** One new section id (`agents`), `admin` shaped by
-    entitlement, one redirect per renamed route, and a coordinated native
-    shell release for the tab bars.
+10. **Navigation contract.** No section id changes at all; the Admin
+    sidebar's second group is entitlement-shaped; one redirect per renamed
+    route (the standalone designer route into the agent page, every moved
+    settings route into Your settings); and a native shell release only for
+    renamed labels.
 11. **Deletions.** The seats section and its comment, Compare plans, the
     thought stream, the ordinary-tool grant switch, `/api/triggers/upcoming`.
 12. **Seed model pricing** from the model service's published rates so an
@@ -799,10 +829,10 @@ defect, not a simplification.
 
 1. **Rail names.** Keep Channels and Knowledge, or rename to Chat and
    Documents in the same release? The section ids can stay either way.
-2. **Team administrators in Admin.** The proposal shows the Admin rail item to
-   team administrators with their pages scoped to their teams. The
-   alternative, org admins only, leaves team admins managing members from a
-   team page under Agents, which is the mixing this plan removes.
+2. **Team administrators in the Organisation group.** The proposal shows the
+   group to team administrators with its pages scoped to their teams. The
+   alternative, org admins only, leaves team admins with no roster of their
+   own.
 3. **The vault as the one key store** (§10.3) is the largest backend item; it
    can follow the UI unification by one release.
 4. **Messages tab**: collapse or delete.
@@ -823,6 +853,15 @@ defect, not a simplification.
     Codex run argues the name should wait for the workflow session that
     reviews how task sets, to-dos, triggers and workflows relate. Either way
     the row keeps its place under Automations.
+11. **The Admin label.** With agents inside it for everyone, "Admin" still
+    tells a member "not for you" before they open it; the Codex run's "Manage"
+    avoids that. Keeping "Admin" is the product owner's call for now.
+12. **Agents as colleagues.** The alternative this plan defers: no Agents
+    group at all, the agent's profile and settings in the conversation's side
+    panel where a person's info opens today, a "Browse people and agents"
+    directory beside Direct messages, and the catalogue as a picker only. It
+    needs the side panel to become a registry-backed layer, which the
+    2026-09-05 review already left open for `SidePanelShell`.
 
 ## 13. Rollout order
 
@@ -830,10 +869,11 @@ Each step ships whole, with its redirects and its browser suite, in this
 order, because each one removes a class of confusion on its own:
 
 1. Vocabulary pass and the avatar split: rename labels (§7), move personal
-   pages under the avatar, hide the Admin rail item from members, land admins
-   on Overview. No data changes.
-2. Agents as a rail section: Agents, Apps, Computers, Automations; the agent
-   page's six tabs; Alerts on every shell.
+   pages under the avatar, land Admin on Agents, show the Organisation group
+   only to administrators. No data changes.
+2. The Agents group: the agent page's six tabs with the designer folded in;
+   Apps with its two tiers; Computers with its Sessions tab; Automations;
+   Alerts on every shell.
 3. Connected accounts and the accounts read model (§10.1, §10.2); the
    Integrations shelf; the Google, Microsoft, Slack and Jira pages.
 4. People, Teams, AI models and Keys with the scope switch; the local-install
@@ -913,3 +953,10 @@ worktree, to look for ideas worth borrowing.
   limits page, where this plan keeps Security, AI models and Usage and limits
   apart; and it moves system health and push setup out of the tenant admin
   entirely, which this plan lists as a decision (§12).
+
+Both runs, like this plan, give agents a group of their own; here it stays
+inside Admin as the click-through area the section was built for, which is
+the product owner's decision for now. The alternative, agents as colleagues
+configured in the conversation's side panel, is recorded as a deferred
+decision (§12) so the later session that takes it up starts from the same
+inventory.
