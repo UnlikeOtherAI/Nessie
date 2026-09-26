@@ -356,6 +356,41 @@
       "browser": "Navigateur",
       "browsingNow": "Navigation en cours",
       "conversationRunning": "Une autre conversation est en cours"
+    },
+    "automation": {
+      "startFailed": "Impossible de démarrer l’exécution",
+      "startedBody": "{{name}} est en cours.",
+      "startedTitle": "Exécution démarrée",
+      "updateFailed": "Impossible de modifier l’automatisation",
+      "pausedBody": "{{name}} est en pause.",
+      "resumedBody": "{{name}} est de nouveau actif.",
+      "pausedTitle": "Automatisation en pause",
+      "resumedTitle": "Automatisation reprise",
+      "status": {
+        "active": "Active",
+        "disabled": "Désactivée",
+        "draft": "Brouillon",
+        "paused": "En pause"
+      },
+      "runStatus": {
+        "pending": "En attente",
+        "running": "En cours",
+        "waiting_approval": "En attente d’approbation",
+        "waiting_input": "En attente de saisie",
+        "completed": "Terminée",
+        "failed": "Échec",
+        "cancelled": "Annulée"
+      },
+      "lastRun": "Dernière exécution : {{status}} {{time}}",
+      "neverRun": "Jamais exécutée",
+      "runNow": "Exécuter maintenant",
+      "resume": "Reprendre",
+      "pause": "Mettre en pause",
+      "open": "Ouvrir",
+      "loading": "Chargement des automatisations…",
+      "emptyTitle": "Aucune automatisation dans ce canal",
+      "emptyDescription": "Les workflows liés à ce canal apparaissent ici, avec leur dernière exécution et un bouton de lancement pour les membres du canal.",
+      "workflow": "Workflow"
     }
   }
 }

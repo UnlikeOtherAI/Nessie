@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   useStartWorkflowRun,
   useUpdateWorkflowInstallation,
@@ -11,9 +12,9 @@ import { useToasts } from '../../../providers/ToastProvider'
 import { Pill } from '../../primitives/Pill'
 import { useIsOwner } from '../../../facades/auth/hooks'
 import {
-  formatRelativeTime,
   getInstallationTone,
 } from '../workflows/presentation'
+import { formatRelativeTime } from '../../../i18n/formatters'
 
 /**
  * W20 — the channel Automations tab: the doorway from the place a person is
@@ -36,6 +37,7 @@ const InstallationAutomationRow = ({
   status: 'active' | 'disabled' | 'draft' | 'paused'
   canPause: boolean
 }) => {
+  const { t, i18n } = useTranslation('channels')
   const navigate = useNavigate()
   const { pushToast } = useToasts()
   const startRun = useStartWorkflowRun()
@@ -48,9 +50,9 @@ const InstallationAutomationRow = ({
       { installationId },
       {
         onError: (error) =>
-          pushToast({ body: error.message, title: 'Could not start the run' }),
+          pushToast({ body: error.message, title: t('child.automation.startFailed') }),
         onSuccess: () =>
-          pushToast({ body: `${name} is running.`, title: 'Run started' }),
+          pushToast({ body: t('child.automation.startedBody', { name }), title: t('child.automation.startedTitle') }),
       },
     )
   }
@@ -61,11 +63,11 @@ const InstallationAutomationRow = ({
       { installationId, status: nextStatus },
       {
         onError: (error) =>
-          pushToast({ body: error.message, title: 'Could not update the automation' }),
+          pushToast({ body: error.message, title: t('child.automation.updateFailed') }),
         onSuccess: () =>
           pushToast({
-            body: nextStatus === 'paused' ? `${name} is paused.` : `${name} is active again.`,
-            title: nextStatus === 'paused' ? 'Automation paused' : 'Automation resumed',
+            body: t(nextStatus === 'paused' ? 'child.automation.pausedBody' : 'child.automation.resumedBody', { name }),
+            title: t(nextStatus === 'paused' ? 'child.automation.pausedTitle' : 'child.automation.resumedTitle'),
           }),
       },
     )
@@ -76,12 +78,15 @@ const InstallationAutomationRow = ({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-semibold text-[var(--tx)]">{name}</span>
-          <Pill tone={getInstallationTone(status)}>{status}</Pill>
+          <Pill tone={getInstallationTone(status)}>{t(`child.automation.status.${status}`)}</Pill>
         </div>
         <div className="mt-1 text-xs text-[color:var(--tx3)]">
           {lastRun
-            ? `Last run ${lastRun.status} ${formatRelativeTime(lastRun.createdAt) ?? ''}`
-            : 'Never run'}
+            ? t('child.automation.lastRun', {
+              status: t(`child.automation.runStatus.${lastRun.status}`),
+              time: formatRelativeTime(lastRun.createdAt, i18n.language),
+            })
+            : t('child.automation.neverRun')}
         </div>
       </div>
       <div className="flex items-center gap-2">
@@ -92,7 +97,7 @@ const InstallationAutomationRow = ({
           onClick={runNow}
           type="button"
         >
-          Run now
+          {t('child.automation.runNow')}
         </button>
         {canPause ? (
           <button
@@ -102,7 +107,7 @@ const InstallationAutomationRow = ({
             onClick={togglePause}
             type="button"
           >
-            {status === 'paused' ? 'Resume' : 'Pause'}
+            {t(status === 'paused' ? 'child.automation.resume' : 'child.automation.pause')}
           </button>
         ) : null}
         <button
@@ -112,7 +117,7 @@ const InstallationAutomationRow = ({
           }
           type="button"
         >
-          Open
+          {t('child.automation.open')}
         </button>
       </div>
       <span className="hidden" data-testid="channel-automation-channel">{channelId}</span>
@@ -121,6 +126,7 @@ const InstallationAutomationRow = ({
 }
 
 export const ChannelAutomationsPanel = ({ channelId }: { channelId: string }) => {
+  const { t } = useTranslation('channels')
   const { me } = useAuthSession()
   const isOwner = useIsOwner()
   const isWorkflowAdmin = isOwner || (me?.user.roleIds.includes('admin') ?? false)
@@ -129,17 +135,16 @@ export const ChannelAutomationsPanel = ({ channelId }: { channelId: string }) =>
   const templateNameById = new Map(templates.map((template) => [template.id, template.name]))
 
   if (isLoading) {
-    return <div className="p-5 text-sm text-[color:var(--tx3)]">Loading automations…</div>
+    return <div className="p-5 text-sm text-[color:var(--tx3)]">{t('child.automation.loading')}</div>
   }
 
   if (installations.length === 0) {
     return (
       <div className="p-5">
         <div className="rounded-xl border border-dashed border-[color:var(--sep)] bg-[var(--scrim-weak)] p-8 text-center">
-          <div className="text-sm font-semibold text-[var(--tx)]">No automations on this channel</div>
+          <div className="text-sm font-semibold text-[var(--tx)]">{t('child.automation.emptyTitle')}</div>
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[color:var(--tx3)]">
-            Workflow installations bound to this channel show up here, with their last run and
-            a run-now button for channel members.
+            {t('child.automation.emptyDescription')}
           </p>
         </div>
       </div>
@@ -153,7 +158,7 @@ export const ChannelAutomationsPanel = ({ channelId }: { channelId: string }) =>
           key={installation.id}
           installationId={installation.id}
           channelId={channelId}
-          name={templateNameById.get(installation.workflowTemplateId) ?? 'Workflow'}
+          name={templateNameById.get(installation.workflowTemplateId) ?? t('child.automation.workflow')}
           status={installation.status}
           canPause={isWorkflowAdmin}
         />

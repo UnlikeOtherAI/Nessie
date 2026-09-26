@@ -356,6 +356,41 @@
       "browser": "Navegador",
       "browsingNow": "Navegando ahora",
       "conversationRunning": "Hay otra conversación en curso"
+    },
+    "automation": {
+      "startFailed": "No se pudo iniciar la ejecución",
+      "startedBody": "{{name}} está en ejecución.",
+      "startedTitle": "Ejecución iniciada",
+      "updateFailed": "No se pudo actualizar la automatización",
+      "pausedBody": "{{name}} está pausado.",
+      "resumedBody": "{{name}} vuelve a estar activo.",
+      "pausedTitle": "Automatización pausada",
+      "resumedTitle": "Automatización reanudada",
+      "status": {
+        "active": "Activo",
+        "disabled": "Desactivado",
+        "draft": "Borrador",
+        "paused": "En pausa"
+      },
+      "runStatus": {
+        "pending": "Pendiente",
+        "running": "En ejecución",
+        "waiting_approval": "Esperando aprobación",
+        "waiting_input": "Esperando entrada",
+        "completed": "Completado",
+        "failed": "Error",
+        "cancelled": "Cancelado"
+      },
+      "lastRun": "Última ejecución: {{status}} {{time}}",
+      "neverRun": "Nunca se ha ejecutado",
+      "runNow": "Ejecutar ahora",
+      "resume": "Reanudar",
+      "pause": "Pausar",
+      "open": "Abrir",
+      "loading": "Cargando automatizaciones…",
+      "emptyTitle": "No hay automatizaciones en este canal",
+      "emptyDescription": "Aquí aparecen las instalaciones de flujos de trabajo vinculadas al canal, su última ejecución y un botón para iniciarlas disponible para los miembros del canal.",
+      "workflow": "Flujo de trabajo"
     }
   }
 }

@@ -356,6 +356,41 @@
       "browser": "Browser",
       "browsingNow": "Browsing now",
       "conversationRunning": "Another conversation is running"
+    },
+    "automation": {
+      "startFailed": "Could not start the run",
+      "startedBody": "{{name}} is running.",
+      "startedTitle": "Run started",
+      "updateFailed": "Could not update the automation",
+      "pausedBody": "{{name}} is paused.",
+      "resumedBody": "{{name}} is active again.",
+      "pausedTitle": "Automation paused",
+      "resumedTitle": "Automation resumed",
+      "status": {
+        "active": "Active",
+        "disabled": "Disabled",
+        "draft": "Draft",
+        "paused": "Paused"
+      },
+      "runStatus": {
+        "pending": "Pending",
+        "running": "Running",
+        "waiting_approval": "Waiting for approval",
+        "waiting_input": "Waiting for input",
+        "completed": "Completed",
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+      },
+      "lastRun": "Last run: {{status}} {{time}}",
+      "neverRun": "Never run",
+      "runNow": "Run now",
+      "resume": "Resume",
+      "pause": "Pause",
+      "open": "Open",
+      "loading": "Loading automations…",
+      "emptyTitle": "No automations on this channel",
+      "emptyDescription": "Workflow installations bound to this channel show up here, with their last run and a run-now button for channel members.",
+      "workflow": "Workflow"
     }
   }
 }

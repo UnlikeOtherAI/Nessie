@@ -356,6 +356,41 @@
       "browser": "Browser",
       "browsingNow": "Durchsucht gerade",
       "conversationRunning": "Eine andere Unterhaltung läuft"
+    },
+    "automation": {
+      "startFailed": "Ausführung konnte nicht gestartet werden",
+      "startedBody": "{{name}} wird ausgeführt.",
+      "startedTitle": "Ausführung gestartet",
+      "updateFailed": "Automatisierung konnte nicht aktualisiert werden",
+      "pausedBody": "{{name}} ist pausiert.",
+      "resumedBody": "{{name}} ist wieder aktiv.",
+      "pausedTitle": "Automatisierung pausiert",
+      "resumedTitle": "Automatisierung fortgesetzt",
+      "status": {
+        "active": "Aktiv",
+        "disabled": "Deaktiviert",
+        "draft": "Entwurf",
+        "paused": "Pausiert"
+      },
+      "runStatus": {
+        "pending": "Ausstehend",
+        "running": "Wird ausgeführt",
+        "waiting_approval": "Wartet auf Genehmigung",
+        "waiting_input": "Wartet auf Eingabe",
+        "completed": "Abgeschlossen",
+        "failed": "Fehlgeschlagen",
+        "cancelled": "Abgebrochen"
+      },
+      "lastRun": "Letzte Ausführung: {{status}} {{time}}",
+      "neverRun": "Noch nie ausgeführt",
+      "runNow": "Jetzt ausführen",
+      "resume": "Fortsetzen",
+      "pause": "Pausieren",
+      "open": "Öffnen",
+      "loading": "Automatisierungen werden geladen…",
+      "emptyTitle": "Keine Automatisierungen in diesem Kanal",
+      "emptyDescription": "Hier erscheinen die mit diesem Kanal verknüpften Workflow-Installationen, ihr letzter Lauf und eine Schaltfläche zum sofortigen Start für Kanalmitglieder.",
+      "workflow": "Workflow"
     }
   }
 }

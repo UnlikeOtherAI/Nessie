@@ -356,6 +356,41 @@
       "browser": "Prohlížeč",
       "browsingNow": "Právě prohlíží",
       "conversationRunning": "Probíhá jiná konverzace"
+    },
+    "automation": {
+      "startFailed": "Spuštění se nezdařilo",
+      "startedBody": "{{name}} běží.",
+      "startedTitle": "Spuštění začalo",
+      "updateFailed": "Automatizaci se nepodařilo změnit",
+      "pausedBody": "{{name}} je pozastavený.",
+      "resumedBody": "{{name}} je znovu aktivní.",
+      "pausedTitle": "Automatizace pozastavena",
+      "resumedTitle": "Automatizace obnovena",
+      "status": {
+        "active": "Aktivní",
+        "disabled": "Zakázáno",
+        "draft": "Koncept",
+        "paused": "Pozastaveno"
+      },
+      "runStatus": {
+        "pending": "Čeká",
+        "running": "Běží",
+        "waiting_approval": "Čeká na schválení",
+        "waiting_input": "Čeká na vstup",
+        "completed": "Dokončeno",
+        "failed": "Selhalo",
+        "cancelled": "Zrušeno"
+      },
+      "lastRun": "Poslední běh: {{status}} {{time}}",
+      "neverRun": "Ještě neběžel",
+      "runNow": "Spustit nyní",
+      "resume": "Obnovit",
+      "pause": "Pozastavit",
+      "open": "Otevřít",
+      "loading": "Načítání automatizací…",
+      "emptyTitle": "V tomto kanálu nejsou žádné automatizace",
+      "emptyDescription": "Zde se zobrazují instalace workflow přiřazené k tomuto kanálu, jejich poslední běh a tlačítko pro okamžité spuštění pro členy kanálu.",
+      "workflow": "Workflow"
     }
   }
 }
