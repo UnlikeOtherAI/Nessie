@@ -41,7 +41,8 @@ visible when News is opened. The account-menu counter counts published articles 
 marker and clears after opening News. A new publication increments it. Editing
 an existing published article does not create a new publication; unpublishing
 removes it from the feed; republishing gives it a new publication number. There is no per-organisation alert fan-out or copied
-news message. The `notifications_muted` toggle on the News reader suppresses
+news message. The account-keyed query never reuses a previous account's
+notification state during a sign-in switch. The `notifications_muted` toggle on the News reader suppresses
 the small in-app toast and avatar dot, while retaining the menu counter. The
 reader's polling query checks for new publications every 30 seconds and also
 refreshes on focus.

@@ -97,6 +97,10 @@ const KEEP_PREVIOUS_EXEMPT = [
   // id: there is no sibling swap to bridge, and it seeds itself from the `me`
   // the session provider already holds, so it can never paint empty.
   'src/facades/auth/hooks.ts',
+  // The article list is global, but its unread count and mute setting belong
+  // to one account. Replaying the preceding account's query during sign-in
+  // would show that account's private notification state.
+  'src/facades/announcements/hooks.ts',
   // Billing is scoped per UOA org/team and must never reuse another team's
   // projection across an active-team switch (see facades/billing/keys.ts).
   'src/facades/billing/hooks.ts',
