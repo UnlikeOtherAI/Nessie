@@ -10,7 +10,8 @@ const source = readFileSync(
 
 test('deployment model filters are server-side URL state', () => {
   assert.match(source, /searchParams\.get\('model'\)/)
-  assert.match(source, /searchParams\.get\('provider'\)/)
+  // Not `provider`: that spelling is Connected accounts' consumed OAuth return.
+  assert.match(source, /searchParams\.get\('modelProvider'\)/)
   assert.match(source, /useDeploymentModelCatalog\(true, filters, teamId\)/)
   assert.match(source, /next\.delete\('cursor'\)/)
   assert.doesNotMatch(source, /catalog\.items\.filter/)

@@ -51,9 +51,10 @@ export const createAdminOrganizationSurfaces = (adminRoot: string): Surface[] =>
     // Every organisation page shares one screen identity, so page A → page B
     // swaps in place. These three are one page per concern behind the scope
     // switch (`?scope=organisation|team:<id>`): AI models with its catalogue
-    // filters, and Keys with its status strip.
+    // filters (`modelProvider`, never the `provider` Connected accounts
+    // consumes), and Keys with its status strip.
     depth: 1,
-    intent: { state: ['scope', 'status', 'model', 'provider'] },
+    intent: { state: ['scope', 'status', 'model', 'modelProvider'] },
     parentOf: toAdmin,
     pattern: /^\/admin\/(?:models|connections|keys)$/,
     root: adminRoot,

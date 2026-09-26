@@ -107,7 +107,10 @@ export const ModelAvailabilitySettings = ({
 
   const [searchParams, setSearchParams] = useSearchParams()
   const modelFilter = searchParams.get('model') ?? ''
-  const providerFilter = searchParams.get('provider') ?? ''
+  // `modelProvider`, not `provider`: a filter is state that stays in the
+  // address, and `?provider=` is the one-shot OAuth return Connected accounts
+  // consumes. A name is one or the other, never both.
+  const providerFilter = searchParams.get('modelProvider') ?? ''
   const debouncedModelFilter = useDebouncedValue(modelFilter, 150)
   const debouncedProviderFilter = useDebouncedValue(providerFilter, 150)
   const filters = {
@@ -126,7 +129,7 @@ export const ModelAvailabilitySettings = ({
       : 'The model catalogue could not be read.'
     : null
 
-  const setFilter = useCallback((key: 'model' | 'provider', value: string) => {
+  const setFilter = useCallback((key: 'model' | 'modelProvider', value: string) => {
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
       if (value) next.set(key, value)
@@ -264,7 +267,7 @@ export const ModelAvailabilitySettings = ({
           <div className="w-full max-w-xs">
             <Input
               aria-label="Filter by inference provider"
-              onChange={(event) => setFilter('provider', event.target.value)}
+              onChange={(event) => setFilter('modelProvider', event.target.value)}
               placeholder="Provider contains…"
               type="search"
               value={providerFilter}
