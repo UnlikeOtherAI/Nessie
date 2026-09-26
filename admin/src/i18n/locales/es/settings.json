@@ -519,6 +519,20 @@
     "worksAsLabel": "Actúa como",
     "expires": "Caduca",
     "open": "Abrir",
-    "table": "Tabla de agentes vinculados"
+    "table": "Tabla de agentes vinculados",
+    "decisionFailed": "No se pudo registrar la decisión. Inténtalo de nuevo.",
+    "dialogDescription": "Pide al agente que se conecte a Nessie. Mostrará un enlace y un código breve: abre el enlace o escribe aquí el código.",
+    "code": "Código de vinculación",
+    "chooseContext": "Primero elige un proyecto y un equipo activos. El agente vinculado queda limitado a uno de ellos y no se puede completar la vinculación sin esa selección.",
+    "allowed": "Vinculado. El agente recibirá sus credenciales en unos segundos.",
+    "refused": "Solicitud rechazada. Se indicó al agente que no vuelva a intentarlo.",
+    "invalidCode": "El código no es válido. Puede haber caducado o ya haberse usado. Pide otro al agente.",
+    "wantsToWorkUntil": " quiere trabajar como tú hasta {{date}}.",
+    "ableTo": "Podrá",
+    "verifyClient": "Permite esto solo si acabas de ejecutar una herramienta que mostró este código. El nombre anterior lo elige la herramienta y no se verifica.",
+    "done": "Listo",
+    "dontAllow": "No permitir",
+    "pairing": "Vinculando…",
+    "allow": "Permitir"
   }
 }

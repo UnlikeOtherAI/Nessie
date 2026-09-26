@@ -519,6 +519,20 @@
     "worksAsLabel": "Handelt als",
     "expires": "Läuft ab",
     "open": "Öffnen",
-    "table": "Tabelle gekoppelter Agenten"
+    "table": "Tabelle gekoppelter Agenten",
+    "decisionFailed": "Die Entscheidung konnte nicht gespeichert werden. Versuchen Sie es erneut.",
+    "dialogDescription": "Bitten Sie den Agenten, eine Verbindung zu Nessie herzustellen. Er zeigt einen Link und einen kurzen Code an. Öffnen Sie den Link oder geben Sie den Code hier ein.",
+    "code": "Kopplungscode",
+    "chooseContext": "Wählen Sie zuerst ein aktives Projekt und Team. Der gekoppelte Agent ist auf eines davon beschränkt; ohne diese Auswahl ist keine Kopplung möglich.",
+    "allowed": "Gekoppelt. Der Agent erhält seine Anmeldeinformation in wenigen Sekunden.",
+    "refused": "Abgelehnt. Der Agent wurde angewiesen, nicht erneut zu fragen.",
+    "invalidCode": "Der Code ist ungültig. Er ist möglicherweise abgelaufen oder wurde bereits verwendet. Bitten Sie den Agenten um einen neuen.",
+    "wantsToWorkUntil": " möchte bis {{date}} für Sie arbeiten.",
+    "ableTo": "Folgendes kann er",
+    "verifyClient": "Erlauben Sie dies nur, wenn Sie gerade ein Tool ausgeführt haben, das diesen Code ausgegeben hat. Der Name oben stammt vom Tool und wird nicht überprüft.",
+    "done": "Fertig",
+    "dontAllow": "Nicht erlauben",
+    "pairing": "Wird gekoppelt…",
+    "allow": "Erlauben"
   }
 }

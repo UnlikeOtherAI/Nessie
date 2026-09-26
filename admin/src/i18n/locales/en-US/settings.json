@@ -519,6 +519,20 @@
     "worksAsLabel": "Works as",
     "expires": "Expires",
     "open": "Open",
-    "table": "Paired agents table"
+    "table": "Paired agents table",
+    "decisionFailed": "That decision could not be recorded. Try again.",
+    "dialogDescription": "Ask the agent to connect to Nessie. It prints a link and a short code — open the link, or type the code here.",
+    "code": "Pairing code",
+    "chooseContext": "Pick an active project and team first — a paired agent is scoped to one, and pairing cannot be completed without it.",
+    "allowed": "Paired. The agent picks up its credential within a few seconds.",
+    "refused": "Refused. The agent was told to stop asking.",
+    "invalidCode": "That code is not valid. It may have expired, or already been used — ask the agent for a new one.",
+    "wantsToWorkUntil": " wants to work as you until {{date}}.",
+    "ableTo": "It will be able to",
+    "verifyClient": "Only allow this if you just ran a tool that printed this code. The name above is whatever that tool calls itself, and nothing checks it.",
+    "done": "Done",
+    "dontAllow": "Don’t allow",
+    "pairing": "Pairing…",
+    "allow": "Allow"
   }
 }

@@ -519,6 +519,20 @@
     "worksAsLabel": "Jedná jako",
     "expires": "Platnost do",
     "open": "Otevřít",
-    "table": "Tabulka spárovaných agentů"
+    "table": "Tabulka spárovaných agentů",
+    "decisionFailed": "Rozhodnutí se nepodařilo zaznamenat. Zkuste to znovu.",
+    "dialogDescription": "Požádejte agenta o připojení k Nessie. Zobrazí odkaz a krátký kód — otevřete odkaz nebo kód zadejte sem.",
+    "code": "Párovací kód",
+    "chooseContext": "Nejprve vyberte aktivní projekt a tým — agent je omezen na jeden z nich a bez toho párování nelze dokončit.",
+    "allowed": "Spárováno. Agent získá přihlašovací údaj během několika sekund.",
+    "refused": "Odmítnuto. Agent dostal pokyn, aby už nežádal.",
+    "invalidCode": "Kód není platný. Platnost možná vypršela nebo už byl použit — požádejte agenta o nový.",
+    "wantsToWorkUntil": " chce pracovat jako vy do {{date}}.",
+    "ableTo": "Bude mít možnost",
+    "verifyClient": "Povolte to pouze tehdy, pokud jste právě spustili nástroj, který tento kód zobrazil. Název výše si nástroj zvolil sám a není ověřený.",
+    "done": "Hotovo",
+    "dontAllow": "Nepovolit",
+    "pairing": "Párování…",
+    "allow": "Povolit"
   }
 }

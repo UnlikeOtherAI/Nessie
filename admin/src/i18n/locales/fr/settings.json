@@ -519,6 +519,20 @@
     "worksAsLabel": "Agit en tant que",
     "expires": "Expire",
     "open": "Ouvrir",
-    "table": "Tableau des agents associés"
+    "table": "Tableau des agents associés",
+    "decisionFailed": "Impossible d’enregistrer cette décision. Réessayez.",
+    "dialogDescription": "Demandez à l’agent de se connecter à Nessie. Il affiche un lien et un code court : ouvrez le lien ou saisissez le code ici.",
+    "code": "Code d’association",
+    "chooseContext": "Choisissez d’abord un projet et une équipe actifs. L’agent associé est limité à l’un d’eux ; l’association est impossible sans ce choix.",
+    "allowed": "Agent associé. Il recevra ses identifiants dans quelques secondes.",
+    "refused": "Demande refusée. L’agent a reçu l’instruction de ne plus demander.",
+    "invalidCode": "Code invalide. Il a peut-être expiré ou déjà été utilisé. Demandez-en un nouveau à l’agent.",
+    "wantsToWorkUntil": " souhaite agir en votre nom jusqu’au {{date}}.",
+    "ableTo": "Il pourra",
+    "verifyClient": "N’autorisez ceci que si vous venez d’exécuter un outil qui a affiché ce code. Le nom ci-dessus est fourni par l’outil et n’est pas vérifié.",
+    "done": "Terminé",
+    "dontAllow": "Ne pas autoriser",
+    "pairing": "Association…",
+    "allow": "Autoriser"
   }
 }
