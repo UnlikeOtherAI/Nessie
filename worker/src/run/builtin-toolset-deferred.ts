@@ -24,6 +24,7 @@ export const BUILTIN_HOT_TOOL_IDS = [
   'message_search',
   'people_search',
   'channel_find',
+  'nessie_link',
   'delegate',
   KB_DOCUMENT_COMPOSE_TOOL_ID,
   KB_DOCUMENT_EDIT_TOOL_ID,

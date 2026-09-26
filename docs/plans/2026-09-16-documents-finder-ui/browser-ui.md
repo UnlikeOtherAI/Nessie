@@ -89,10 +89,15 @@ today. `PROJECT_INTENT` inherits the two new state names automatically.
 - **The document pane** — `KnowledgeDocumentPane` inside the
   `knowledge:document` stage — takes the **whole work surface** on `split`
   in Columns and List when a document is open; Tree keeps its hierarchy at
-  left and renders the same detail in the right pane. It has a Back button,
-  the way the editor and the
-  version history already did; the 46% preview column was too small to read
-  in. The browser stays mounted underneath (covered, never unmounted), so
+  left and renders the same detail in the right pane without a redundant Back
+  button. Columns and List retain Back because their detail covers the browser.
+  File details keep Download as the primary action and show secondary actions
+  as a compact icon cluster with accessible titles; document details use the
+  same cluster and keep Publish primary when it is available. The file title
+  appears once in the pane header, with version metadata above the preview.
+  The editor and version
+  history retain their own Back controls; the 46% preview column was too small
+  to read in. The browser stays mounted underneath (covered, never unmounted), so
   Back lands on the same folder, the same column scroll and the same
   selection.
 - **The status bar** (`FinderStatusBar`, new) is a 28px strip under the
@@ -188,8 +193,11 @@ forked: `size="finder"` (44px, `min-h-11 py-0`), `selectionStyle="pill"`
   `shareCount > 0` → `faUserGroup` in `--tx3` (`title="Shared with {n}
   {person|people}"`); indexing `pending` → `faSpinner spin` in `--tx3`;
   `not_indexed` → `faMagnifyingGlassMinus` in `--tx3`; `failed` →
-  `faTriangleExclamation` in `--warning`. Draft documents show the existing
-  `AgentDraftBadge` when `isAgentDraft`. Nothing for `indexed`: a quiet row
+  `faTriangleExclamation` in `--warning`. The `Draft` status pill is only
+  shown for publishable documents and spreadsheets; uploaded files also carry
+  a page-record status, but that status is not a publication workflow. Draft
+  documents show the existing `AgentDraftBadge` when `isAgentDraft`. Nothing
+  for `indexed`: a quiet row
   is the point. Full sentences live in the tooltip and Get Info
   ([uploads-and-indexing.md](uploads-and-indexing.md) §4).
 - **Chevron** — `faChevronRight` 12px `--tx3` on folders and root rows only.
@@ -232,10 +240,12 @@ is recognisably an image rather than another document. Selected rows use the
 Channels soft active tint with readable foreground text, including in the
 active column.
 
-Latest, Shared with me and Agents keep the hierarchy mounted and show their
-contents in the right pane without switching to Columns. A selected folder
-shows its children there, or "This folder is empty." when it has none; no
-selection shows a short prompt. A document, spreadsheet or file opens the
+Latest and Shared with me keep the hierarchy mounted and show their virtual
+results in the right pane. Agents expands *inside the left tree* to agent homes;
+opening an agent home expands its folders and documents there as well. Folders
+only navigate the left hierarchy, never create a second tree or a
+column-shaped listing in the reading pane. With no document selected, the
+right pane shows a short prompt. A document, spreadsheet or file opens the
 existing detail in that right pane. A cold deep link to a nested document
 expands its ancestors and selects its row. Columns and List retain their
 full-surface document detail. Tree reuses the existing data, routes and
@@ -247,6 +257,9 @@ isolated API/admin dev pair and run `pnpm --filter @nessie/admin
 test:e2e:knowledge-tree-ux`. The script reports how many agent homes the
 current fixture exposes; zero homes still verifies the Agents directory's
 empty state but not an individual agent home.
+For the full create-and-read contract, `test:e2e:knowledge-document-ux` seeds
+an agent home and checks Tree navigation, project-root settings, immediate
+Publish, Save as draft, its row badge, and the Attachments shortcut in Chromium.
 
 ### List view (`?view=list`)
 
@@ -329,6 +342,12 @@ and the project tab need no separate rules. Order is priority, high first.
 | `view` | menu | "View: {Tree}" | `faSitemap` / `faColumns` / `faList` | 70 | | `split` only — on `single` a column *is* a list |
 | `needs-review` | toggle | "Needs review ({n})" | | 60 | | `agentDraftCount > 0 || needsReviewOnly` for the active space (unchanged behaviour) |
 | `sharing-settings` | button, compact | "Sharing & settings" | `faGear` | 10 | | active space `canManageAccess || canWrite`; at the space root it opens Space settings, while inside a folder it opens Folder settings for that folder |
+
+At a project root, the backing space may still be named `Project Documents`, but
+the browser and settings show the project's actual name. The project name is
+read-only in the document settings dialog because renaming it belongs to the
+project settings surface; saving document access settings does not rename the
+backing space.
 
 `open-agent` is **not** a toolbar action any more. When the column being
 shown is an agent's documents folder (its space has `ownerAgentId`), that

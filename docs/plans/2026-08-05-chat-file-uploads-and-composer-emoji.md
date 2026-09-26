@@ -95,5 +95,11 @@ and `17-aspect-ratio-portrait.png`.
 
 - The per-message `GET /api/messages/:id/attachments` N+1 (embed attachments in
   message records / realtime payloads instead).
-- Thumbnails, `Range`/`ETag` on downloads, paste-to-upload, upload rate
-  limiting, GC for orphaned unlinked uploads.
+- Thumbnails, `Range`/`ETag` on downloads, upload rate limiting, GC for
+  orphaned unlinked uploads.
+
+Paste-to-upload shipped on 2026-09-26: `MentionInput` hands a files-only paste
+to `onPasteFiles`, which `ChannelComposer` wires to the same
+`useComposerAttachments.addFiles` as the paperclip and a drop, and Enter sends
+staged files without text. A paste that carries text stays text. See
+`docs/functionality.md` → "message file attachments".

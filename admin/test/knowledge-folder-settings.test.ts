@@ -25,3 +25,14 @@ test('space settings reset only when their actual initial values change', () => 
   assert.match(settings, /\}, \[initialForm, open\]\)/)
   assert.doesNotMatch(settings, /\}, \[open, space\]\)/)
 })
+
+test('a project root uses its project name throughout the document browser', () => {
+  const workspace = source('../src/components/features/knowledge/KnowledgeWorkspace.tsx')
+  const finder = source('../src/components/features/knowledge/finder/DocumentsFinder.tsx')
+
+  assert.match(workspace, /metadata\?\.projectDocuments === true/)
+  assert.match(workspace, /projectRootName=\{projectRootName\}/)
+  assert.match(workspace, /spaceDisplayName=\{spaceDisplayName\}/)
+  assert.match(finder, /spaceName: spaceDisplayName \?\? knowledge\.selectedSpace\?\.name/)
+  assert.match(finder, /rootLabel=\{spaceDisplayName \?\? knowledge\.selectedSpace\?\.name/)
+})

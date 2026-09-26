@@ -174,12 +174,14 @@ export const SidebarNav = (props: SidebarNavProps) => {
           currentChannelId={currentChannelId}
           currentProjectId={currentProjectId}
           entries={visibleStarredEntries}
+          sidebarAgentDms={sidebarAgentDms}
           onNavigateAgent={onNavigateAgent}
           onNavigateChannel={onNavigateChannel}
           onNavigateDm={onNavigateDm}
           onNavigateProject={onNavigateProject}
           onToggleStar={onToggleStar}
           personalAssistantChannelId={personalAssistantChannelId}
+          personalAssistantAgentId={personalAssistantAgent?.id}
           starredCollapsed={starredCollapsed}
           toggleStarredCollapsed={toggleStarredCollapsed}
           unreadCountByChannelId={unreadCountByChannelId}

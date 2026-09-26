@@ -47,6 +47,7 @@ export type ExecutorCodingSessionsReach = {
 }
 
 export type ExecutorReachFacts =
+  | { kind: 'machines'; machines: Array<{ executorId: string; facts: ExecutorReachFacts }> }
   /**
    * The local-apps pair is in this run's toolset, or the coding-session
    * tools on top of it are. `servers` is what the bound revision's reviewed
@@ -133,6 +134,11 @@ const codingSentences = (coding: ExecutorCodingSessionsReach, machine: string): 
 export const buildExecutorReachBlock = (facts: ExecutorReachFacts | null): string | null => {
   if (!facts) return null
   switch (facts.kind) {
+    case 'machines':
+      return 'Choose executorId on each machine tool call.\n'
+        + facts.machines.map((machine) =>
+          `executorId=${machine.executorId}: ${buildExecutorReachBlock(machine.facts)}`,
+        ).join('\n')
     case 'bound': {
       // A ticket's machine is its owner's, never the person reading the thread.
       const named = facts.standing
@@ -163,7 +169,8 @@ export const buildExecutorReachBlock = (facts: ExecutorReachFacts | null): strin
             + `${formatUtcMinute(facts.leaseExpiresAt)} or until they end it.`]
           : []),
       ]
-      return sentences.join(' ')
+      return sentences.join(' ') + (!facts.standing && !facts.leaseExpiresAt
+        ? ' Existing machine access needs no additional approval or code.' : '')
     }
     case 'refused':
       return `${NO_MACHINE_TOOLS} ${REFUSAL_LINES[facts.reason]}`
@@ -282,8 +289,20 @@ export const loadExecutorReachFacts = async (
     /** A `ticket.work` run's standing bind, when run setup made one. */
     standing?: TicketWorkMachine | undefined
     toolNames: ReadonlySet<string>
+    machines?: Array<{ executorId: string; label: string; toolNames: ReadonlySet<string> }>
+    executorId?: string
   },
 ): Promise<ExecutorReachFacts | null> => {
+  if (input.machines?.length) {
+    const machines = []
+    for (const machine of input.machines) {
+      const facts = await loadExecutorReachFacts(prisma, {
+        ...input, machines: undefined, executorId: machine.executorId, toolNames: machine.toolNames,
+      })
+      if (facts) machines.push({ executorId: machine.executorId, facts })
+    }
+    return { kind: 'machines', machines }
+  }
   const standing = input.standing?.binding
   if (standing?.kind === 'refused') return { kind: 'standing_refused', reason: standing.reason }
   if (standing?.kind === 'not_applicable') return null
@@ -302,7 +321,10 @@ export const loadExecutorReachFacts = async (
   if (pair || coding) {
     const [binding, ownDm] = await Promise.all([
       prisma.executorBinding.findFirst({
-        where: { runId: input.runId, operationKey: EXECUTOR_LOCAL_APPS_OPERATION_KEYS[0] },
+        where: {
+          runId: input.runId, operationKey: EXECUTOR_LOCAL_APPS_OPERATION_KEYS[0],
+          ...(input.executorId ? { executorId: input.executorId } : {}),
+        },
         select: {
           capabilityRevision: { select: { descriptor: true } },
           executor: { select: { label: true, localMcp: true, pairingOwnerUserId: true } },

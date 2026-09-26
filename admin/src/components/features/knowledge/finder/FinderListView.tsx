@@ -267,6 +267,7 @@ export const FinderListView = ({
                   onSelect={(event) => onSelect(page, event)}
                   selected={selectedIds.includes(page.id)}
                   shareCount={page.shareCount}
+                  status={page.status}
                   tabIndex={tabbableId === page.id ? 0 : -1}
                   title={page.title}
                   trailing={finderRowBadges(page, reviews.get(page.id))}

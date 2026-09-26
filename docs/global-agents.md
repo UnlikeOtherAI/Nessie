@@ -501,13 +501,35 @@ actor context, so an unstamped original stayed unstamped through the resume.
 
 `buildGlobalAgentCatalogueBlock` (`@nessie/team-admin`) renders parameters
 from the contracts that validate them, tools from `BUILTIN_TOOL_DEFINITIONS`
-plus the organisation's live registry rows, and models from the same catalogue
-the model picker reads. Hand-written parameter or tool prose is forbidden: a new
-tool is in the Designer's knowledge the deploy it ships.
+plus the organisation's live registry rows, and models from the same two
+sources the model picker reads. Hand-written parameter or tool prose is
+forbidden: a new tool is in the Designer's knowledge the deploy it ships.
+
+**Models are the picker's list, both halves of it.** The home-DM face reads
+`listAgentModelOptionsForUser` — the deployment's Ledger catalogue minus the
+pairs the organisation or team switched off, plus the plans the person linked
+under Settings → Connected accounts — exactly as `GET /api/agents/models`
+does; it used to read `listLedgerAgentModels` alone, which is how a person
+who had just linked Kimi was told no such connector existed. The section
+(`global-agent-model-catalogue.ts`) keeps the two apart: the deployment list
+is shortlisted to twenty, the person's own plans are listed in full in their
+own group with both fields named (`provider subscription/kimi, model
+kimi-for-coding` — the `provider/model` shorthand would read as three
+segments), the id that tells two accounts at one provider apart is printed
+only when there are two, and a Ledger failure with the plans still readable
+is said as exactly that (`ledgerCatalogueUnavailable`) rather than as a
+deployment with no models. The plans are read only for the face that acts
+as the person: a shared room's Designer advises everyone and holds no write
+verb. The page sidebar receives the browser's own picker list, plans
+included. `agent_create` takes `modelSubscriptionId` beside the pair, as
+`agent_update` already did. Pinned by
+`packages/team-admin/test/global-agent-catalogue.test.ts` and
+`worker/test/db/designer-model-catalogue.test.ts`.
 
 `executors` follows `models`' three-state discipline exactly, and its own
 section lives in `global-agent-executor-catalogue.ts` because the main file was
-already at the size where a sixth subject would push it past the cap.
+already at the size where a sixth subject would push it past the cap; the
+model section and the proposal card moved out for the same reason.
 
 Its `writeSurface` decides the one closing instruction, because the two faces
 genuinely differ — `agent_tools` for a run holding the write verbs,
@@ -620,14 +642,14 @@ the same search, the switches disabled.
 ## Addressable, not bound — the Direct messages address book
 
 The Direct-messages list shows *conversations*: a row appears once its channel
-carries a message. Its `+` opens one address book with **People** and **Agents**
-tabs. People starts a human conversation. Agents answers both agent decisions in
-one place: it lists every agent a person may talk to, including the Agent
-Designer and Personal Assistant, and offers creation only after an explicit
-**Private** or **Public** choice. Public is the product label for the stored
-organization-visible `team` value and says that the agent may be invited to any
-normal channel; Private stays owner-only and DM-only. The global Create menu and
-native creation sheet enter the matching tab of this same flow.
+carries a message. Its `+` opens one address book with people and agents side by
+side. It includes addressable system agents such as the Agent Designer and
+Personal Assistant. Choosing one starts a conversation; agent creation has its
+own doorway.
+
+The recipient search matches names and people's email addresses, but its field
+does not request browser email autofill: that native menu would cover the
+address book while choosing a person or agent.
 
 A DM-homed system agent is never *bound* into a new conversation:
 `bindAgentToChannel` refuses every `systemManaged` agent and every system

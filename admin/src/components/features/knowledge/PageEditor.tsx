@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
 import type {
   KnowledgePageRecord,
   SavePageInput,
@@ -27,7 +27,7 @@ type PageEditorProps = {
   mode: 'create' | 'edit'
   onBack?: () => void
   onCancel: () => void
-  onSubmit: (input: SavePageInput) => Promise<void>
+  onSubmit: (input: SavePageInput, publish?: boolean) => Promise<void>
   page?: KnowledgePageRecord | null
   pages: KnowledgePageRecord[]
   parentPageId?: string | null
@@ -89,6 +89,7 @@ export const PageEditor = ({
   const titleErrorId = `${formId}-title-error`
   const [titleError, setTitleError] = useState<string | undefined>()
   const [formError, setFormError] = useState<string | undefined>()
+  const publishOnCreate = useRef(true)
 
   // The page as stored — the draft's baseline, so opening a page and leaving
   // it untouched stores nothing. Summary is deliberately not an authoring
@@ -127,6 +128,8 @@ export const PageEditor = ({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    const shouldPublish = mode === 'create' && publishOnCreate.current
+    publishOnCreate.current = true
     if (!title.trim()) {
       setTitleError('Give this document a title.')
       return
@@ -140,7 +143,7 @@ export const PageEditor = ({
         body,
         changeComment: changeComment.trim() || null,
         parentPageId: mode === 'create' ? draftParentPageId : undefined,
-      })
+      }, shouldPublish)
       pageDraft.clear()
     } catch (error) {
       setFormError(toFormErrors(error).formError ?? 'Unable to save this document.')
@@ -161,14 +164,29 @@ export const PageEditor = ({
       label: pending
         ? 'Saving…'
         : mode === 'create'
-          ? 'Create document'
+          ? 'Publish'
           : 'Save version',
-      onSelect: () => undefined,
+      onSelect: () => { publishOnCreate.current = true },
       primary: true,
       priority: 100,
       submit: true,
     },
   ]
+
+  if (mode === 'create') {
+    actions.splice(1, 0, {
+      disabled: pending,
+      form: formId,
+      id: 'save-page-draft',
+      label: pending ? 'Saving…' : 'Save as draft',
+      onSelect: () => {
+        publishOnCreate.current = false
+        const form = document.getElementById(formId)
+        if (form instanceof HTMLFormElement) form.requestSubmit()
+      },
+      priority: 90,
+    })
+  }
 
   // A spreadsheet is edited in its grid, never here. This is not defensive
   // tidiness: the body a rich-text save writes is the field a workbook uses for

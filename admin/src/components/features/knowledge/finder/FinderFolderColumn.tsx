@@ -214,6 +214,7 @@ export const FinderFolderColumn = ({
                 onSelect={(event) => onSelect(page, event)}
                 selected={selected}
                 shareCount={page.shareCount}
+                status={page.status}
                 tabIndex={tabbableId === page.id ? 0 : -1}
                 onKeyDown={onRowKeyDown
                   ? (event) => onRowKeyDown(event, page.id)

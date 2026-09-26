@@ -1,3 +1,4 @@
+import { runNessieLink } from './nessie-link.js'
 import { TASK_SET_TOOL_RUNNERS, runTaskSetTool } from './task-set-tools.js'
 import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
 import { appendStubbedBuiltinSchema } from './builtin-toolset-deferred.js'
@@ -143,6 +144,7 @@ const executeBuiltinToolUncorrected = async (
   dependencies: BuiltinToolDependencies = DEFAULT_BUILTIN_TOOL_DEPENDENCIES,
 ): Promise<AgenticToolResult> => {
   const inputSummary = summarizeToolInput(args)
+  if (toolName === 'nessie_link') return runNessieLink(args)
   if (Object.hasOwn(TASK_SET_TOOL_RUNNERS, toolName)) {
     return wrapTool(inputSummary, () => runTaskSetTool(toolName, context, args))
   }

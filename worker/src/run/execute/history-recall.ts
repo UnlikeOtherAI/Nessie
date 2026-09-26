@@ -8,7 +8,6 @@ import {
   type LiveEntitlements,
 } from '@nessie/runtime'
 import {
-  isWithinProjectWriteScopes,
   resolveAccessibleScopes,
   type AccessibleScopes,
   type ScopeRef,
@@ -20,7 +19,6 @@ import type { RunExecuteJobPayload } from '@nessie/schemas'
 import {
   agentActsAsRequestingPerson,
   runDelegatesToRequestingPerson,
-  type DelegatedRunFacts,
 } from '../delegated-identity.js'
 import { estimateTokens } from '../context-management.js'
 import { buildChannelLink } from '../pa-tools/tool-output.js'
@@ -29,19 +27,16 @@ import {
   admitPrivateConversationLineage,
   originalHumanAuthorId,
 } from './private-conversation-lineage.js'
-import {
-  PROJECT_WRITE_RECALL_DEPTH,
-  requiresProjectWriteRecallContainment,
-} from './memory.js'
+import { CONTAINED_RECALL_DEPTH, recallLineageGate, runDelegationFacts } from './memory.js'
 
 export const RETRIEVED_CONTEXT_TOKEN_BUDGET = 4_000
 const MAX_NEIGHBORS = 2
 const MAX_PASSAGES_PER_THREAD = 2
 /**
  * The candidate search's normal depth (`searchMessageCandidates`' default),
- * and so the most passages one recall admits. A project-write run searches
- * `PROJECT_WRITE_RECALL_DEPTH` times deeper, because its lineage filter runs
- * on the passages, and still admits no more than this.
+ * and so the most passages one recall admits. A contained run searches
+ * `CONTAINED_RECALL_DEPTH` times deeper, because its lineage filter runs on
+ * the passages, and still admits no more than this.
  */
 const MAX_HISTORY_CANDIDATES = 12
 
@@ -80,19 +75,11 @@ const effectiveUserIdFor = (payload: RunExecuteJobPayload): string | null =>
     ? payload.actorContext.actor.actorId
     : null)
 
-const delegationFactsFor = (context: RunContext): DelegatedRunFacts => ({
-  agentKind: context.agent.agentKind,
-  dmKey: context.channel.dmKey,
-  organizationId: context.channel.organizationId,
-  systemChannelType: context.channel.systemChannelType,
-  systemSlug: context.agent.systemSlug,
-})
-
 const scopeModeFor = (
   context: RunContext,
   userId: string | null,
 ): ScopeResolutionMode | null => {
-  const facts = delegationFactsFor(context)
+  const facts = runDelegationFacts(context)
   const actsAsPerson = agentActsAsRequestingPerson(facts) || runDelegatesToRequestingPerson(facts)
   if (actsAsPerson && !userId) return null
   return actsAsPerson
@@ -319,12 +306,15 @@ export const retrieveRelevantHistory = async (
     select: { agentId: true },
     where: { id: context.run.threadId },
   })
-  // Recalled history is recalled memory too: a run that can write into its
-  // project takes no message whose lineage the project write gate would then
-  // refuse, the same narrowing thought recall applies — and, like it, searches
-  // deeper so that filter does not leave the recall short.
-  const projectWrite = requiresProjectWriteRecallContainment(
-    delegationFactsFor(context),
+  // Recalled history is recalled memory too, judged by the same gate: a
+  // contained run takes no passage whose lineage would add to its reply basis
+  // — a public room's schedule no longer recalls its owner's DM with the agent
+  // and posts where only that owner may read it — and a run that can write
+  // into its project takes none the project write gate would then refuse. Like
+  // thought recall, it searches deeper so that filter does not leave it short.
+  const lineageGate = recallLineageGate(
+    runDelegationFacts(context),
+    context,
     input.holdsProjectWriteTools === true,
   )
   const candidates = await searchMessageCandidates({
@@ -336,7 +326,7 @@ export const retrieveRelevantHistory = async (
     runningAgentId: context.agent.id,
     scopeIds: scopes.audienceIds,
     scopeTypes: scopes.audienceTypes,
-    take: projectWrite ? MAX_HISTORY_CANDIDATES * PROJECT_WRITE_RECALL_DEPTH : MAX_HISTORY_CANDIDATES,
+    take: lineageGate ? MAX_HISTORY_CANDIDATES * CONTAINED_RECALL_DEPTH : MAX_HISTORY_CANDIDATES,
     ...(conversationThread?.agentId ? { threadIds: [context.run.threadId] } : {}),
   }, deps.searchConfig.pool)
   const candidateIds = candidates.map((candidate) => candidate.id)
@@ -358,8 +348,8 @@ export const retrieveRelevantHistory = async (
   let tokenCount = 0
 
   // The lineage a message brings into the run, or null when the run may not
-  // take it: a stale projection, a viewer who cannot read it, or — for a run
-  // lent a project write — anything outside what every project reader has.
+  // take it: a stale projection, a viewer who cannot read it, or — for a
+  // contained run — a lineage its gate refuses.
   const admissibleLineage = async (
     message: HistoryMessage,
   ): Promise<NonNullable<ReturnType<typeof sourceLineage>> | null> => {
@@ -371,9 +361,7 @@ export const retrieveRelevantHistory = async (
       input.viewer,
     )
     if (!access.readable || !access.lineage) return null
-    if (projectWrite && !isWithinProjectWriteScopes(lineageScopes(access.lineage), context.channel)) {
-      return null
-    }
+    if (lineageGate && !lineageGate(lineageScopes(access.lineage))) return null
     return access.lineage
   }
 
@@ -389,8 +377,8 @@ export const retrieveRelevantHistory = async (
     ) continue
 
     // A passage is admitted only with its seed, so the seed is judged before
-    // its neighbours are read: a project-write run, searching three times as
-    // deep past private hits, spends no passage read on a hit it refuses.
+    // its neighbours are read: a contained run, searching three times as deep
+    // past private hits, spends no passage read on a hit it refuses.
     const seedLineage = await admissibleLineage(seed)
     if (!seedLineage) continue
 

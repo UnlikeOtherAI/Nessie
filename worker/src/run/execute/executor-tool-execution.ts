@@ -41,7 +41,7 @@ export const createExecutorToolExecution = (
   }
   if (toolName === executorToolName('mcp.tools')) {
     const server = typeof args.server === 'string' ? args.server : ''
-    return presentExecutorMcpCatalogAnswer(args, await toolset.mcpCatalog(server, toolCallId))
+    return presentExecutorMcpCatalogAnswer(args, await toolset.mcpCatalog(server, toolCallId, args.executorId))
   }
   const result = await toolset.dispatch(toolName, args, toolCallId)
   if (toolName === executorToolName('browser.act') || toolName === executorToolName('command.run')) {

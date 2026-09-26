@@ -35,6 +35,7 @@ interface ChannelHeaderProps {
    * rail beside the chat to hold them.
    */
   chatToolAgents: readonly AgentRecord[]
+  hideConversations: boolean
   /**
    * The conversation on screen when it is *not* the room's General thread: its
    * own title becomes the heading and the room drops to the eyebrow, because a
@@ -88,6 +89,7 @@ export const ChannelHeader = ({
   callStarting,
   channelUsers,
   chatToolAgents,
+  hideConversations,
   conversation,
   conversationRename,
   externalAgentIdentity,
@@ -179,6 +181,7 @@ export const ChannelHeader = ({
     // iOS bar's one inline slot still goes to Join.
     ...chatToolHeaderActions({
       agents: chatToolAgents,
+      hideConversations,
       onOpenTool: onOpenChatTool,
       single,
     }),

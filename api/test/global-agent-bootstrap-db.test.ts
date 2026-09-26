@@ -505,7 +505,7 @@ dbTest('a global agent binds to an ordinary channel through the route gates', as
     // channel is ordinary, which is exactly what makes it bindable.
     const channel = await getChannelIfMember(prisma, userId, organizationId, channelId)
     assert.ok(channel, 'the owner is a member of the channel')
-    assert.equal(channel.systemChannelType, undefined)
+    assert.equal(channel.systemChannelType, null)
 
     // Gate 3 is `requireOwner`. Gate 4: policy, on the scope chain the route
     // builds. Both are asserted from the deny side too — a gate that admits

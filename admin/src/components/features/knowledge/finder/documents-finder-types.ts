@@ -8,6 +8,7 @@ export type FinderScope =
 
 export type DocumentsFinderProps = {
   canManageSpace: boolean
+  spaceDisplayName?: string
   onCreateRootFolder?: () => void
   onOpenSettings: (folder?: KnowledgePageRecord) => void
   documentPane?: ReactNode
