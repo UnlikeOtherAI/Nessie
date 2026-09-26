@@ -366,7 +366,7 @@ Sidebar, in this order, with the audience each page shapes itself to:
 | **People** | The roster: name, email, organisation role, teams, status; filters by team and status; Invite (from the organisation, or by email, with team targets); a person's panel: role, teams, remove from team, deactivate or reactivate, AI on their own computer policy; tab Automatic team access (verified email domains) | Team admins see and act on their teams; org admins on everyone. On SSO installs every write is the relay; on a local install the local roster |
 | **Teams** | Every team: name, address, picture, members, call provider; New team; a team's page: General (name, address, picture, call provider) and Overrides (AI models narrowed, AI on own computers, cloud browser account, keys) as links into the pages below filtered to the team | Org admins all teams; team admins theirs |
 | **Organisation** | Name, logo, appearance (the organisation palette and its checks) | Org admins; owner for the palette if that rule stays |
-| **AI models** | The live catalogue with Available switches, In use counts, Test (marked "spends credits"), bulk enable/disable with its blast-radius confirm; scope switch Organisation / each team (a team can only narrow); "AI on people's own computers" default with the team and person overrides listed | Owner for the organisation catalogue; team admins for narrowing |
+| **AI models** | The live catalogue with "Available for new selections" switches (a disabled model keeps its pinned agents running, and the row says how many), Test (marked "spends credits"), bulk enable/disable with its blast-radius confirm; scope switch Organisation / each team (a team can only narrow); "AI on people's own computers" default with the team and person overrides listed | Owner for the organisation catalogue; team admins for narrowing |
 | **Apps and accounts** | Company-level connections: shared mailboxes, company cloud browser, research service on/off per team, project and channel app installs (what is connected where and by whom), install policy and locks | Org admins; owner-only rows say so |
 | **Keys** | One table of organisation and team keys with a Level column, Locked and Overridden chips, Add a key at organisation or team, Revoke, Revoked tab | Owner (writes are owner-only today) |
 | **Usage and limits** | Usage in credits by team, agent and person for a period; budgets per organisation, team or project with three plain modes (Warn · Stop automations · Switch to a cheaper model) plus Unlimited, a period and caps; storage cap | Owner |
@@ -431,6 +431,17 @@ Security as a program signed in as you; the vault stays the vault, named Saved
 keys, and every "paste a key" box in the product becomes the same "Add a key"
 dialog that saves there (§10).
 
+Three details borrowed from the Codex run make the model answer the question
+people actually ask. An account's page has a **Used in** section (the agents,
+projects, automations and browsers that depend on it), so revoking is never
+blind. Finishing a connection says what is still missing ("Connected. Choose
+which shared agent may use this mailbox."), never a bare green tick. And both
+the account page and the agent's Access tab offer **Check access**: pick an
+agent and a context, and the server answers each step in words (signed in,
+provider permits reading, folders selected, agent allowed, this request may
+use Maya's account, sending needs approval) with one authorised remedy per
+failure. That is an API (§10), not a client-side guess.
+
 The Google Workspace page, concretely: "Sign in with Google" with the four
 capabilities as checkboxes (read mail, send mail, calendar, meet), then a
 Permissions section to widen or block one at a time, then "Let an agent act
@@ -449,6 +460,13 @@ locked control is present, greyed and inert, and says who can change it, which
 is the existing `ScopedSettingGate` behaviour applied uniformly. The team page
 never re-implements a setting; it links into these pages with the team
 preselected.
+
+Two rules travel with the switch, both from the Codex run. A write always
+names its target in the header and in the URL, and a missing or unknown team
+is an error, never a silent fall-back to the first row or to the session's
+ambient team. And a list is never narrowed to the active team by default: it
+shows what the person is entitled to see, with explicit Team, Project and Mine
+filters, which is Rule zero's second check.
 
 ### 6.9 Page anatomy and consistency rules
 
@@ -495,6 +513,9 @@ preselected.
 | Automatic logins | Automatic team access | Its own lede already denies "login" |
 | Workspace, tenant, UOA, UnlikeOtherAI | your sign-in provider | Only in help text |
 | Infisical, Ledger, Kelpie, MCP, IMAP, SMTP, OAuth, cron, JSONL | never in a label | Help text only where a person must act on it |
+| Use this everywhere (a lock) | Prevent overrides below, naming the scope | A lock that reads as sharing |
+| Revoke (a session) | Sign out this device | Revoke stays for credentials |
+| Team-owned | Managed by the team ("anyone who can open it can edit it") | The consequence is the point |
 | `needs_reauthorization`, `personal · active`, `pending_setup` | a sentence | R5 |
 
 ## 8. Where every current function goes
@@ -723,6 +744,17 @@ architecture above actually requires; everything else is presentation.
     thought stream, the ordinary-tool grant switch, `/api/triggers/upcoming`.
 12. **Seed model pricing** from the model service's published rates so an
     estimate is never $0.00 by default; an owner's override still wins.
+13. **Effective access explanation.** One read that composes the real
+    provider, account, grant, context and policy evaluators for a named agent
+    and context into ordered steps, each with a structured reason and one
+    authorised remedy, and whose refusal details carry no protected data.
+    This is what Check access (§6.7) renders.
+14. **Expose what exists and reconcile what disagrees.** The catalogue lock
+    and unlock routes have no control in the admin today; they become the app
+    page's Lock. The budget resolver's order and the budget form's copy
+    disagree with the documented organisation → team → project; reconcile the
+    resolver, its tests and the copy before the scope switch presents one
+    hierarchy.
 
 ## 11. What must not change
 
@@ -787,6 +819,10 @@ defect, not a simplification.
    not read as one ledger.
 9. **Trim the theme list** to Light, Dark, System and High contrast plus the
    organisation palette.
+10. **When to rename Task Sets.** This plan calls them Batch jobs now; the
+    Codex run argues the name should wait for the workflow session that
+    reviews how task sets, to-dos, triggers and workflows relate. Either way
+    the row keeps its place under Automations.
 
 ## 13. Rollout order
 
@@ -805,6 +841,28 @@ order, because each one removes a class of confusion on its own:
 5. Advanced group; Usage and limits; Security with the audit filters; the
    deletions in §9.
 6. Project and conversation settings consolidation.
+
+### 13.1 Validation before a step is called done
+
+Every step ships with the repository's headless browser checks, and the
+structure itself is tested with people who have never written software, using
+single-decision probes rather than a workflow walkthrough. The Codex run
+proposed the probes; the target is that eight of ten participants pick the
+right first destination, and that no probe ends with a misunderstood audience
+or payer.
+
+| Probe | Success |
+|---|---|
+| "Where would you connect your work calendar?" | Chooses Connected accounts without visiting AI models, Tools or Organisation |
+| "Is this your account or a shared one?" | Names the identity and the audience from the account page |
+| "Why can this agent not use this mailbox here?" | Names the missing step and who can fix it, from Check access |
+| "Does turning this model off stop agents already using it?" | Says no, and finds the agents still pinned to it |
+| "Which team will this setting affect?" | Names the target before Save, also after reloading a deep link |
+| "Who pays if you pick this AI plan?" | Distinguishes personal from organisation funding |
+| "Will disconnecting delete the imported email?" | Distinguishes Disconnect from Delete imported data |
+| "Can an organisation owner see your private agent?" | Says no |
+| "Which page changes your photo, and which the company logo?" | Your settings › Profile versus Admin › Organisation |
+| "What is a program signed in as you, compared with an agent or a computer?" | Explains the three without protocol words |
 
 ## 14. The parallel model runs
 
@@ -831,10 +889,27 @@ worktree, to look for ideas worth borrowing.
   schedules on the agent, because "when does it run" is a mainstream
   question); it makes Budgets a tab of Billing (§12); and it keeps paired
   computers an admin page rather than part of a section for everyone.
-- **Codex (`gpt-6-astra`)**: could not run from this machine. The CLI on the
-  path (0.141) refuses the model as too old; the newer CLI (0.155) fails its
-  websocket transport five times and then answers 401 on the ChatGPT backend
-  with a stale service-account key, for `gpt-5.6-terra` as well, so the
-  failure is the local Codex login rather than the model. The exact prompt is
-  saved beside this session's scratch files; running it from a terminal with a
-  fresh `codex login` reproduces the comparison.
+- **Codex (`gpt-6-astra`)**: the first attempts could not authenticate from
+  this machine (the CLI on the path was too old for the model, and the newer
+  one failed its websocket transport and then answered 401); a later retry
+  signed in cleanly and the run produced a 100 KB report in about twenty
+  minutes. It converges with this plan and the Kimi run on the split:
+  personal settings behind the avatar; a section it calls Manage holding
+  agents, connections, computers, people and teams, automation, company
+  settings, access and limits, and billing; an operator console for health
+  and push; "external access" as the name for programs signed in as you;
+  computers for executors; one Connections centre with Connected, Browse apps
+  and External access tabs; and the same removals. Borrowed into this plan:
+  the effective-access check as a server capability (§6.7, §10), the Used in
+  section and the connect-completion sentence, the explicit-target and
+  never-narrow-by-session rules (§6.8), "available for new selections" with
+  the pinned agents counted, three copy fixes (§7), the budget-resolver
+  contradiction (§10), exposing the catalogue lock, and the usability probes
+  (§13.1). Where it differs: it refuses any Overview page and makes the
+  Manage landing the directory itself (this plan keeps an Overview that shows
+  only decisions and is empty when there are none); it keeps Task Sets,
+  To-dos and Triggers under their current names until the workflow session
+  (§12); it folds the audit log, models and budgets into one Access and
+  limits page, where this plan keeps Security, AI models and Usage and limits
+  apart; and it moves system health and push setup out of the tenant admin
+  entirely, which this plan lists as a decision (§12).
