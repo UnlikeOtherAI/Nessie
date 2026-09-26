@@ -253,7 +253,8 @@ test('the new-message surface excludes the sender and keeps recipients available
   // moved into RecipientBar with the rest of the address bar.
   assert.match(recipientBar, /const showOptions = focused && options\.length > 0/)
   assert.doesNotMatch(source, /\(you\)/)
-  assert.match(source, /admin-compose mt-auto flex-shrink-0/)
+  // The message is written in the one composer, at the foot of the flow.
+  assert.match(source, /<div className="mt-auto flex-shrink-0">\s*<ChannelComposer/)
   assert.match(source, /StartChannelConversation/)
 })
 

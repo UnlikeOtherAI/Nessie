@@ -222,7 +222,10 @@ summary and points here; **this file is the rule**.
   choose, grant, invite, assign, or open an agent must not leave two same-named
   identities visually indistinguishable.
 - **One composer, and at rest it is one line.** Every message composer is
-  `components/features/channels/ChannelComposer.tsx` (six call sites): at rest a
+  `components/features/channels/ChannelComposer.tsx` (six call sites, the New
+  message page's first message among them — so it pastes, attaches and
+  dictates like any conversation, and its questions that need a conversation
+  to exist are passed closed, `NO_MENTION_INVITE` among them): at rest a
   single line — placeholder centred beside Send, no toolbar glyphs — opening
   while focus is inside it or anything is staged. Send is pinned to the bottom
   line and the toolbar unfolds *below* the editor, so that line never moves and
