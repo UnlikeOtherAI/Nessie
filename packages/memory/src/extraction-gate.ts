@@ -6,6 +6,7 @@ import {
   type LedgerAttribution,
 } from '@nessie/runtime'
 
+import type { ConsolidationCandidateExtractor } from './consolidation-candidates.js'
 import type { ThoughtMetadata } from './extract-metadata.js'
 
 /**
@@ -93,5 +94,58 @@ export const gateExtraction = async (
         }
       : null,
     skipReasoning: pick('reasoning') === 'absent',
+  }
+}
+
+/**
+ * How sure Jev must be that a run's conversation holds nothing durable before
+ * its memory extraction is skipped. Higher than the capture gate's 0.8: a
+ * wrong skip loses what the run's people said for good.
+ */
+export const CONSOLIDATION_GATE_MINIMUM_PROBABILITY = 0.9
+
+// Jev reads at most ~24 KB per question including its state.
+const CONSOLIDATION_STATE_BUDGET_BYTES = 18_000
+
+const CONSOLIDATION_QUESTION = decisionChoice(
+  'Does this conversation hold anything worth remembering beyond it — a durable fact, a preference, '
+  + 'a constraint, the reason behind a decision, or an intention?',
+  {
+    durable: 'Yes: someone says something that will still matter in later conversations.',
+    nothing: 'No: a one-off exchange — a question answered, a task done, small talk — '
+      + 'with nothing that will matter later.',
+  },
+)
+
+/**
+ * Jev in front of a finished run's memory extraction (the same "Jev gates"
+ * section). The extraction is a generative call over the run's conversation
+ * after every completed run; most runs answer a question or do a task and
+ * leave nothing durable. A sure "nothing" returns no candidates without the
+ * call. A conversation too long for Jev to read whole, doubt, and any failure
+ * extract exactly as before.
+ */
+export const gateCandidateExtraction = (
+  client: DecisionModelClient | undefined,
+  usage: LedgerAttribution,
+  extract: ConsolidationCandidateExtractor,
+): ConsolidationCandidateExtractor => {
+  if (!client) return extract
+  return async (input) => {
+    // The messages as the extraction reads them, already cut to its per-message limit.
+    const state = { messages: input.messages }
+    // Only a conversation Jev reads whole can be judged to hold nothing.
+    if (Buffer.byteLength(JSON.stringify(state), 'utf8') > CONSOLIDATION_STATE_BUDGET_BYTES) return extract(input)
+    try {
+      const answers = await client.evaluate({
+        state, questions: { durable: CONSOLIDATION_QUESTION }, timeoutMs: EXTRACTION_GATE_TIMEOUT_MS, usage,
+      })
+      if (confidentChoice(answers, 'durable', CONSOLIDATION_GATE_MINIMUM_PROBABILITY) === 'nothing') {
+        return { candidates: [] }
+      }
+    } catch {
+      // Extract as before.
+    }
+    return extract(input)
   }
 }

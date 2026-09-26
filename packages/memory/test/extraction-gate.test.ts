@@ -4,7 +4,11 @@ import type { DecisionModelClient } from '@nessie/runtime'
 import type { Pool } from 'pg'
 
 import { captureThought } from '../src/capture.js'
-import { gateExtraction } from '../src/extraction-gate.js'
+import {
+  CONSOLIDATION_GATE_MINIMUM_PROBABILITY,
+  gateCandidateExtraction,
+  gateExtraction,
+} from '../src/extraction-gate.js'
 
 /**
  * Jev is a stub: these pin which generative extraction a capture still pays
@@ -104,4 +108,55 @@ test('a capture Jev is sure about makes no generative extraction at all', async 
 test('without Jev, or when it is unsure, both extractions still run', async () => {
   assert.equal((await capture()).prompts.length, 2)
   assert.equal((await capture(jev({}))).prompts.length, 2)
+})
+
+const conversation = {
+  messages: [
+    { id: 'm1', role: 'user' as const, content: 'jaký je kurz eura?' },
+    { id: 'm2', role: 'assistant' as const, content: 'Dnes 24,31 Kč za euro.' },
+  ],
+}
+
+const counting = () => {
+  let calls = 0
+  const extract = async () => {
+    calls += 1
+    return { candidates: [] }
+  }
+  return { calls: () => calls, extract }
+}
+
+test('a run Jev is sure left nothing durable skips its memory extraction', async () => {
+  const model = counting()
+  const gated = gateCandidateExtraction(
+    jev({ durable: ['nothing', CONSOLIDATION_GATE_MINIMUM_PROBABILITY] }), usage, model.extract,
+  )
+  assert.deepEqual(await gated(conversation), { candidates: [] })
+  assert.equal(model.calls(), 0)
+})
+
+test('doubt, something durable, a long conversation, a failure or no Jev extract as before', async () => {
+  for (const client of [
+    jev({ durable: ['nothing', 0.85] }),
+    jev({ durable: ['durable', 0.99] }),
+    { evaluate: async () => { throw new Error('ledger down') } } as DecisionModelClient,
+  ]) {
+    const model = counting()
+    await gateCandidateExtraction(client, usage, model.extract)(conversation)
+    assert.equal(model.calls(), 1)
+  }
+
+  const long = { messages: Array.from({ length: 20 }, (_, index) => ({
+    id: `m${index}`, role: 'user' as const, content: 'x'.repeat(2_000),
+  })) }
+  const asked: unknown[] = []
+  const model = counting()
+  await gateCandidateExtraction({
+    evaluate: async (input) => { asked.push(input); return {} },
+  }, usage, model.extract)(long)
+  assert.deepEqual(asked, [], 'a conversation Jev cannot read whole is not judged')
+  assert.equal(model.calls(), 1)
+
+  const noJev = counting()
+  assert.equal(gateCandidateExtraction(undefined, usage, noJev.extract), noJev.extract)
 })

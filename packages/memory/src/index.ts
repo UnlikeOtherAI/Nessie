@@ -28,6 +28,7 @@ export {
   type ConsolidationExtractionInput,
   type ConsolidationExtractionMessage,
 } from './consolidation-candidates.js'
+export { CONSOLIDATION_GATE_MINIMUM_PROBABILITY, gateCandidateExtraction } from './extraction-gate.js'
 export {
   deriveMemoryConsolidationInferenceOrigin,
   MemoryConsolidationIdentityError,
