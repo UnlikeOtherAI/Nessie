@@ -534,7 +534,101 @@ merged on green; the next phase to land merges `main` again first.
 
 ### Phase 2: the Agents group
 
-_(the phase writes its task list and as-built notes here)_
+Branch `feat/admin-overhaul-p2`, ports 5482/5483, database `nessie_p2`.
+Task list first; as-built notes are added under each item as it lands.
+
+**Routes.** `/admin/agents/designer` and `/admin/agents/designer/:id` are
+deleted (router, registry row, lazy page, `AgentDesignerPage.tsx`); nothing
+redirects. `/admin/agents/new` is the agent page's create flow (Flow, depth 2,
+parent Agents, `flowOwnsBack` with the `returnTo` state the designer took;
+state `mode` = `create|configure`). `/admin/agents/:id` (Detail, depth 2)
+takes `?tab=about|instructions|access|schedule|activity|settings` (default
+About) in place of `?agentTab=`, which existed only because the quick-view
+drawer rendered the strip over a conversation's `?tab=`; the drawer becomes a
+summary with "Open agent page". `/admin/agents?scope=mine|shared|built-in`.
+`/admin/apps?tier=integrations|all` (default Integrations; `?filter=` kept on
+All apps). `/admin/apps/:slug?tab=about|connect|accounts|agents|manage`.
+`/admin/computers/:id?tab=overview|agents|sharing|sessions|activity`.
+`/admin/automations?tab=triggers` gains `?agent=` and `?project=`. Every
+emitter moves in the same change: the Create menu and shell
+(`useAdminShell`), the agents list, the channel's create-agent and Agent-tab
+doorways, the workflow designer's New agent, `AgentAvailability`'s Repair,
+`ApprovalGate` and `TaskChecklistTab` to-do links, the e2e suites, and the
+docs; outside `admin/src`, the Designer blueprint's and
+`browserbase-setup-prompt.ts`'s "Tools tab" become "Access tab", and
+`global-agent-chat.ts` stops naming the Agent Designer page.
+
+1. **Status sentences.** `admin/src/lib/status-sentences.ts`, exported and
+   unit-tested: one `{ label, sentence, tone }` per state for agents,
+   schedules and triggers, computers, connections and app installs
+   (`needs_reauthorization`, `pending_setup` and kin), with the plan's five
+   words (Connected · Needs attention · Turned off · Not finished · Error) for
+   anything connected and a plain sentence, never the enum, for an unknown
+   value. Adopted on every page of this group; other phases adopt it later.
+2. **The agent page** (`components/features/agents/page/*`, one file per
+   tab). About: what it is, Provided-by-Nessie note, model, where it lives
+   (channels and projects linked), what it may use (chips into Access),
+   attention items, recent activity, parent agent read-only. Instructions:
+   `AGENTS.md` and manner, the agent's documents (the existing Knowledge
+   workspace), checklists (to-do templates, Repeat on a schedule).
+   Access: built-in and app tools (grouped, collapsed), cloud browser, email
+   address, doorways to Apps and Computers; today's per-object panels stay
+   until phase 4's grant component. Schedule: the agent's triggers with Run
+   now, Pause, Resume, Reauthorize and Edit, and New schedule opening the
+   editor in place (owner-only reads, so a member reads who manages them).
+   Activity: conversations, current run, to-dos, run failures, mailbox link,
+   helpers only when any, tool log and message details folded (§12.4 kept as
+   a collapse). Settings: name, role, model (plan and admin doorways, local
+   approval), effort, run limits in minutes and dollars, voice, visibility
+   (fixed), to-dos, ownership, delete. One form state and one Save across
+   Instructions and Settings; tools keep their own writer, so an edit never
+   re-sends a stale tool policy. The Design Assistant docks on every tab for
+   a manager and moves to the tab whose control it changes. A reader who
+   does not manage the agent sees the same tabs read-only with Message and
+   Create a copy you own (the existing clone route) and who to ask; a
+   built-in agent shows only the tabs that work. The thought-stream
+   placeholder is deleted.
+3. **Create flow** at `/admin/agents/new`: Create (guided chat) and
+   Configure (the Settings, Instructions and Access panels the page uses)
+   modes, Create agent landing on the new agent's page.
+4. **Agents list**: tabs Mine · Shared · Built-in with the Provided-by-Nessie
+   note, New agent, the table with a status sentence and Message per row.
+5. **Apps**: the Integrations tier (Mail and calendar · Chat · Tickets and
+   code · Browsers · AI; one card per service linking to
+   `/admin/apps/integrations/<slug>` for the ten slugs phase 4 builds) and the
+   All apps tier (today's registry, search, Installed filter, category, Add
+   a custom app, Community badge). The app page: About (hero, capabilities,
+   links), Connect (for you, for a project or channel, for the company, in
+   words; the connect dialog opens on the chosen audience; the project-source
+   handoff and DeepWater's controls), Accounts (Reconnect, Refresh
+   capabilities, Disconnect, Connect another, Remove all accounts), Agents
+   with access (today's panel), and for administrators Manage: Review new
+   capabilities (owner approval of pending capabilities through the existing
+   registry status route) and Lock.
+6. **Lock API.** `setCatalogEntryLocked` lets any organisation admin lock an
+   instance-wide entry, which reaches every tenant. It becomes: an admin
+   locks their own organisation's entries, the instance administrator any;
+   `AppDetailRecord.canLock` carries the decision so the page greys and names
+   it otherwise. Unit tests in `@nessie/mcp-manage`, the schema and the API
+   route. A per-organisation lock of shared entries needs a table and is
+   left as a named follow-up.
+7. **Computers**: the computer page's Overview (status sentence, last seen,
+   what it offers, local apps) · Agents · Sharing · Sessions (this
+   machine's coding sessions with View and Close) · Activity (in use now,
+   standing access, changes to review for this machine, recent work); the
+   Computer menu unchanged; the list keeps Pair a computer, Sessions and
+   Reviewed drafts (build decision above) with plain copy; the run launcher
+   in plain words.
+8. **Automations**: agent and project filters on Schedules and triggers,
+   status sentences, schedules described without "cron", webhook headers and
+   key and event names and filter under an Advanced fold in the editor, and
+   the trigger page's copy without vendor names.
+
+**Order:** 1, 2 with 3 and 4 (the designer's removal is one change), 5, 6,
+7, 8, then docs, browser suites, screenshots, the kimix review and the pull
+request. **Left for later phases:** the shared Allow grant component, Check
+access, Used in and the integration pages (phase 4); `/api/triggers/upcoming`
+and the tool-grant switch (phase 6); the Messages decision (§12.4).
 
 ### Phase 3: Overview, the roster, Security
 
