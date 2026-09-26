@@ -52,3 +52,13 @@ Inference uses the configured shared model and attributes usage to the requester
   verifies desktop/tablet/phone, reload caching, the exact sent question, the
   private destination, Back, and an outsider's refusal. Screenshots are saved
   under `e2e/screenshots/agent-suggestions/`.
+
+
+## Verified behavior
+
+The Postgres regression exercises concurrent claims, no-history behavior, unchanged
+history across cooldowns, new conversations, active/terminal runs, completed replies,
+edits, deletion during inference, disclosure changes, additional DM members,
+organisation isolation, deactivation and malformed model output. The rendered flow
+passed at all three viewports with scripted inference; screenshots were inspected.
+This verifies the integration and prompt contract, not live-model suggestion quality.
