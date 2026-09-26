@@ -4,7 +4,7 @@ import { EXISTING_CODING_SESSION_OWNER_KEY } from '@nessie/schemas'
 
 import { buildAgentEnvironment } from '../coding-session/agent-env.js'
 import { CodingBridgeError } from '../coding-session/bridge-tools.js'
-import { createJsonExclusive, ensureCodingStateDir } from '../coding-session/session-files.js'
+import { ensureCodingStateDir, writeJsonAtomic } from '../coding-session/session-files.js'
 import { existingAuthorityIsLive } from './authority.js'
 import { pendingClaudeEvents } from './channel-delivery.js'
 import { channelInboxDir } from './channel-files.js'
@@ -153,7 +153,7 @@ export class ExistingSessions {
           return { state: 'failed', reason: 'The Claude channel already has 32 pending events.' }
         }
         this.lastQueuedAt = Math.max(Date.now(), this.lastQueuedAt + 1)
-        await createJsonExclusive(join(inbox, `${eventId}.pending`), {
+        await writeJsonAtomic(join(inbox, `${eventId}.pending`), {
           queuedAt: this.lastQueuedAt,
           commandId, sessionId: id, incarnation: session.incarnation, message: attributed,
           expiresAt: Date.now() + 60_000,

@@ -99,6 +99,9 @@ against the integrated code:
   draining. Cleanup claims each file before recording cancellation.
 - Concurrent channel drains tolerate another process claiming the same event.
   A durable regression checks that both drains finish and each event is sent once.
+  Running it on Windows exposed that competing renames could both succeed;
+  claims now use exclusive file creation on every platform. Pending events
+  are published atomically and the reader retries transient file-access failures.
 - Windows Codex installations are sorted before limiting executable candidates
   to 64, so an older directory listing cannot hide the newest installation.
 - An earlier development commit used a different receipt shape. That commit
