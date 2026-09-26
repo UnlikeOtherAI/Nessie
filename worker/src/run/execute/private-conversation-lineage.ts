@@ -7,6 +7,7 @@ import {
   PrivateConversationSourceSchema,
   type BasisScope,
   type ConsumedSourceSink,
+  type PrivateConversationSource,
 } from './disclosure-basis.js'
 
 const ChannelDecisionLineageSchema = z.object({
@@ -23,6 +24,35 @@ export type PrivateConversationLineage = {
 }
 
 export { originalHumanAuthorId }
+
+/**
+ * What reading one conversation turn admits into a run's provenance.
+ *
+ * Its own basis and source rows, and — because human text in a non-public room
+ * has no MessageBasisScope; it is the source rather than a derived reply — that
+ * room and the turn's original human author, so a later post into another
+ * audience cannot erase that provenance. A legacy private agent/tool row can
+ * carry another person's words but predates source lineage: its author is
+ * recorded as unknown, and a known author from another turn cannot cover it.
+ *
+ * The transcript (`loadConversation`) and the one-on-one classifier window
+ * read turns alike, so they admit them through this one definition.
+ */
+export const conversationTurnLineage = (
+  message: RawHumanMessage & PrivateConversationLineage,
+  channel: { id: string; visibility: string },
+): { basisScopes: BasisScope[]; disclosureSources: PrivateConversationSource[] } => {
+  const disclosureSources = [...message.disclosureSources]
+  if (channel.visibility !== 'public') {
+    const authorUserId = originalHumanAuthorId(message)
+    if (authorUserId) {
+      disclosureSources.push({ sourceAuthorUserId: authorUserId, sourceChannelId: channel.id })
+    } else if (message.disclosureSources.length === 0) {
+      disclosureSources.push({ sourceAuthorUserId: null, sourceChannelId: channel.id })
+    }
+  }
+  return { basisScopes: [...message.basisScopes], disclosureSources }
+}
 
 /**
  * Older carry-forward records retain channel scopes but not original human

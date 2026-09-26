@@ -76,6 +76,12 @@ const RunCompletionDeliverySchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('reaction'),
     sourceMessageId: z.string().uuid(),
+    /**
+     * Set when the platform itself marked the message — a one-on-one request
+     * done without a written reply — so the follow-up announces it. A
+     * reaction the agent added through `react` was announced when it was made.
+     */
+    emoji: z.string().min(1).optional(),
   }),
   /**
    * The run finished with nothing to say. Everything it had to deliver is

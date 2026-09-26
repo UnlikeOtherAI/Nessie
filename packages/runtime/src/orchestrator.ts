@@ -38,6 +38,15 @@ export type OrchestratorDecision =
       background?: boolean
       // Configured work uses the policy author's authority, including when answering too.
       policyWork?: boolean
+      /**
+       * A one-on-one reply that goes back to an earlier message: which one, and
+       * how the answer points at it (docs/standards/reply-threads.md →
+       * "One-on-one rooms"). Read by the run from the trigger's pinned snapshot.
+       */
+      earlierMessageId?: string
+      earlierReference?: 'mention' | 'link' | 'thread'
+      /** Do what was asked and mark the message done instead of writing a reply. */
+      acknowledgeWhenDone?: boolean
     }
   | { action: 'acknowledge'; agentId: string; emoji: string; principalUserId?: string }
   | { action: 'none' }

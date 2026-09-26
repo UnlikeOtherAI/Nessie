@@ -10,7 +10,10 @@ import { useMessageSearch } from '../../facades/messages/hooks'
  * stays focused on composing the channel surfaces rather than one feature's
  * state machine.
  */
-export const useChannelMessageSearch = (activeChannelId?: string) => {
+export const useChannelMessageSearch = (
+  activeChannelId: string | undefined,
+  releaseFeedPin: () => void,
+) => {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const { data: searchResults = [] } = useMessageSearch(activeChannelId, searchQuery)
@@ -29,18 +32,22 @@ export const useChannelMessageSearch = (activeChannelId?: string) => {
     setSearchQuery('')
   }, [])
 
+  // Every way into an earlier message — a search result, an alert, a reply's
+  // link back — jumps through here, so the feed's pin to its newest message is
+  // released here too; otherwise the pin snaps the feed straight back.
   const jumpToMessage = useCallback((messageId: string) => {
     const element = document.getElementById(`msg-${messageId}`)
     if (!element) {
       return
     }
+    releaseFeedPin()
     element.scrollIntoView({ behavior: 'smooth', block: 'center' })
     element.classList.add('admin-msg-highlight')
     // Fire-once DOM animation with no component to unmount against: if the
     // message row is gone by the time this fires, classList.remove on a
     // detached node is a harmless no-op.
     window.setTimeout(() => element.classList.remove('admin-msg-highlight'), 1600)
-  }, [])
+  }, [releaseFeedPin])
 
   return {
     closeSearch,

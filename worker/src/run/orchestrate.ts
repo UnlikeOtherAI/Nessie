@@ -22,6 +22,12 @@ import type { PrismaClient } from '@prisma/client'
 import { dispatchOrchestratorDecisions } from './orchestrate-dispatch.js'
 import { isDelegatedSystemDmChannelType } from './delegated-identity.js'
 import { loadOrchestrationContext } from './orchestrate-context.js'
+import {
+  answerInMainChat,
+  decideOneOnOneTurn,
+  isOneOnOneAgentRoom,
+  isSinglePersonRoom,
+} from './orchestrate-one-on-one.js'
 import { evaluateChannelPolicy } from './orchestrate-policy.js'
 import { postOrchestrationNotice } from './orchestration-notice.js'
 import {
@@ -69,8 +75,11 @@ export const resolveSystemDmDecisions = (
   }
 
   // Structural, like the @mention fast path: every turn in one of these DMs is
-  // addressed to its one agent, so its answer belongs to that exchange.
-  return [{ action: 'reply', agentId: assistant.id, replyPlacement: 'thread' }]
+  // addressed to its one agent. One person and one agent leave nobody to keep
+  // the exchange apart from, so the answer goes to the main chat; a turn
+  // written inside a reply thread still continues there, because
+  // `resolveReplyRootMessageId` decides that before any placement.
+  return [{ action: 'reply', agentId: assistant.id, replyPlacement: 'channel' }]
 }
 
 /**
@@ -185,6 +194,9 @@ export const executeOrchestrateDecideJob = async (
       decisionPolicyAuthorizer: true,
       archivedAt: true,
       deletedAt: true,
+      // Who is in the room decides where its answers go: a DM whose only
+      // member is the person talking has nobody else for a thread to spare.
+      _count: { select: { members: true } },
     },
   })
 
@@ -256,7 +268,26 @@ export const executeOrchestrateDecideJob = async (
   }
 
   let policyAuthorizer: AuthorizedActionContext | null = null
-  let decisions = resolveSystemDmDecisions(
+  const room = {
+    memberCount: channel._count?.members ?? 0,
+    systemChannelType: channel.systemChannelType,
+    type: channel.type,
+  }
+  const topLevelTrigger = triggerMessage ? triggerMessage.rootMessageId === null : false
+  // One person and one agent: Jev decides how the agent answers — a reply, the
+  // work done and marked, or a reaction — and whether the message goes back to
+  // an earlier one. Null means there is no judgement to act on, and the room
+  // answers the way it always has, below.
+  let decisions = triggerMessage && isOneOnOneAgentRoom(room, channelAgents)
+    ? await decideOneOnOneTurn(deps, {
+      agent: channelAgents[0]!,
+      channel,
+      payload,
+      trigger: triggerMessage,
+    })
+    : null
+  const judgedOneOnOne = decisions !== null
+  decisions ??= resolveSystemDmDecisions(
     channel.systemChannelType,
     role,
     channelAgents,
@@ -344,6 +375,9 @@ export const executeOrchestrateDecideJob = async (
 
   if (decisions.length === 0) {
     return
+  }
+  if (!judgedOneOnOne && topLevelTrigger && isSinglePersonRoom(room)) {
+    decisions = answerInMainChat(decisions)
   }
 
   await dispatchOrchestratorDecisions(deps, payload, channel, decisions, policyAuthorizer)

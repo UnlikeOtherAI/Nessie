@@ -16,12 +16,13 @@ const personalAssistant = {
   systemPrompt: null,
 }
 
-test('a personal-assistant DM always creates a threaded reply decision for a human turn', () => {
+test('a personal-assistant DM always answers a human turn in the main chat', () => {
   assert.deepEqual(
     resolveSystemDmDecisions('personal_assistant', 'user', [personalAssistant]),
     // Structural, like the @mention fast path: the turn is addressed to this
-    // one assistant, so its answer belongs to that exchange.
-    [{ action: 'reply', agentId: personalAssistant.id, replyPlacement: 'thread' }],
+    // one assistant, and one person with one agent leaves nobody for a reply
+    // thread to spare.
+    [{ action: 'reply', agentId: personalAssistant.id, replyPlacement: 'channel' }],
   )
 })
 
@@ -46,7 +47,7 @@ test('a global agent home DM takes the same structural route', () => {
     // Keyed on the channel type alone. A global agent's home DM has exactly one
     // member and exactly one binding, both database facts, so there is no
     // engagement judgement to make — in any language, slang or spelling.
-    [{ action: 'reply', agentId: designer.id, replyPlacement: 'thread' }],
+    [{ action: 'reply', agentId: designer.id, replyPlacement: 'channel' }],
   )
   assert.deepEqual(resolveSystemDmDecisions('system_agent', 'assistant', [designer]), [])
 })

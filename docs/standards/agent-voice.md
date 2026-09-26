@@ -57,6 +57,13 @@ reply is still a message):
 - **During a run** — the `react` builtin adds or removes the agent's own
   reaction on any message its run can already see, the same buttons a person
   clicks (`worker/src/run/pa-tools/agent-messages.ts` `runReactTool`).
+- **In a one-on-one room** — Jev makes that call before any run, for every
+  message: a written reply, a reaction alone (👍, 🎉 or ❤️, no run), or the work
+  done with tools and the message marked ✅ by the platform when the run ends
+  with nothing worth reading. The run is told when no written reply is owed and
+  to answer with a bare ✅, which the completion review still checks; the mark
+  on the person's message is written in the run's own commit, never by the model
+  ([reply-threads.md](reply-threads.md) → "One-on-one rooms").
 
 A run also paints 👀 on the message it is working from
 (`worker/src/run/execute/working-marker.ts`), so a person scrolling back can
