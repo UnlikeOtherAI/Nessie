@@ -225,8 +225,16 @@ credential-bearing connection URLs, and explicit token assignments); it does
 not use an LLM or infer intent from prose.
 
 The composer scan happens before a chat request, optimistic message, or draft
-write can survive. Every channel composer opens the same protected capture
-form with a suggested key name and scope. Its value control contains only the
+write can survive. Every message composer runs it through one hook,
+`admin/src/components/features/channels/useSecretCapture.ts`, and opens the
+same protected capture form with a suggested key name and scope: the project
+of the room it posts into, or Personal where there is no room yet. The New
+message page's first message is that case. It is scanned before
+`POST /api/channels/conversations`, so a discarded credential leaves no
+conversation behind. The room that send creates is stored in the team's own
+project whoever it addresses, so that project is not offered: it says nothing
+about who is being written to, and a project secret is listed to every member
+of the project. Its value control contains only the
 provider's structural prefix (for example `sk_live_`) plus twelve bullet
 circles; the raw value remains transient React state and is posted only to
 `POST /api/secrets`. An explicit assignment such as `API_KEY=…` stores only

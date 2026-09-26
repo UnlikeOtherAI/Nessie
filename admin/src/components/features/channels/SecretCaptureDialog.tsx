@@ -6,7 +6,7 @@ import {
   type SecretRecord,
   type SecretScopeType,
 } from '../../../facades/secrets/hooks'
-import type { SecretCapture } from './useChannelComposer'
+import type { SecretCapture } from './useSecretCapture'
 import { Dialog } from '../../shared/Dialog'
 import { FormActions, FormError } from '../../shared/FormActions'
 import { FormField } from '../../shared/FormField'

@@ -21,6 +21,23 @@ test('the capture form renders only a provider prefix and bullet mask', () => {
   assert.doesNotMatch(dialog, /value=\{capture\.value\}/)
 })
 
+test('both message composers hold a credential through the one capture hook', () => {
+  const composer = readSource('../src/components/features/channels/useChannelComposer.ts')
+  const newMessage = readSource('../src/pages/ChannelConversationComposePage.tsx')
+  // A room's composer offers its project; New message has no room yet.
+  assert.match(
+    composer,
+    /useSecretCapture\(\{ projectId: activeChannel\?\.projectId \?\? null \}\)/,
+  )
+  assert.match(newMessage, /useSecretCapture\(\{ projectId: null \}\)/)
+  for (const source of [composer, newMessage]) {
+    assert.doesNotMatch(
+      source,
+      /extractDetectedSecretValue|redactDetectedSecrets|Secret protected and saved/,
+    )
+  }
+})
+
 test('every channel composer doorway owns the same capture form', () => {
   const callSites = [
     '../src/pages/channels/ThreadInboxCard.tsx',
@@ -28,6 +45,7 @@ test('every channel composer doorway owns the same capture form', () => {
     '../src/components/features/channels/ChannelAgentInfoDrawer.tsx',
     '../src/components/features/channels/ChannelUserInfoDrawer.tsx',
     '../src/components/features/channels/thread-panel/ThreadReplyPanel.tsx',
+    '../src/pages/ChannelConversationComposePage.tsx',
   ]
 
   for (const callSite of callSites) {
