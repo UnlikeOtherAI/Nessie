@@ -501,13 +501,35 @@ actor context, so an unstamped original stayed unstamped through the resume.
 
 `buildGlobalAgentCatalogueBlock` (`@nessie/team-admin`) renders parameters
 from the contracts that validate them, tools from `BUILTIN_TOOL_DEFINITIONS`
-plus the organisation's live registry rows, and models from the same catalogue
-the model picker reads. Hand-written parameter or tool prose is forbidden: a new
-tool is in the Designer's knowledge the deploy it ships.
+plus the organisation's live registry rows, and models from the same two
+sources the model picker reads. Hand-written parameter or tool prose is
+forbidden: a new tool is in the Designer's knowledge the deploy it ships.
+
+**Models are the picker's list, both halves of it.** The home-DM face reads
+`listAgentModelOptionsForUser` — the deployment's Ledger catalogue minus the
+pairs the organisation or team switched off, plus the plans the person linked
+under Settings → Connected accounts — exactly as `GET /api/agents/models`
+does; it used to read `listLedgerAgentModels` alone, which is how a person
+who had just linked Kimi was told no such connector existed. The section
+(`global-agent-model-catalogue.ts`) keeps the two apart: the deployment list
+is shortlisted to twenty, the person's own plans are listed in full in their
+own group with both fields named (`provider subscription/kimi, model
+kimi-for-coding` — the `provider/model` shorthand would read as three
+segments), the id that tells two accounts at one provider apart is printed
+only when there are two, and a Ledger failure with the plans still readable
+is said as exactly that (`ledgerCatalogueUnavailable`) rather than as a
+deployment with no models. The plans are read only for the face that acts
+as the person: a shared room's Designer advises everyone and holds no write
+verb. The page sidebar receives the browser's own picker list, plans
+included. `agent_create` takes `modelSubscriptionId` beside the pair, as
+`agent_update` already did. Pinned by
+`packages/team-admin/test/global-agent-catalogue.test.ts` and
+`worker/test/db/designer-model-catalogue.test.ts`.
 
 `executors` follows `models`' three-state discipline exactly, and its own
 section lives in `global-agent-executor-catalogue.ts` because the main file was
-already at the size where a sixth subject would push it past the cap.
+already at the size where a sixth subject would push it past the cap; the
+model section and the proposal card moved out for the same reason.
 
 Its `writeSurface` decides the one closing instruction, because the two faces
 genuinely differ — `agent_tools` for a run holding the write verbs,

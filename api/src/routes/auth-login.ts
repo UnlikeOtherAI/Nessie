@@ -16,8 +16,7 @@ import { exchangeExternalAuthCode } from '../services/external-auth.js'
 import { resolveExternalTeamSelection } from '../services/identity-display.js'
 import { syncUoaProductAccountLinks } from '../services/integrations.js'
 import { attemptPersonalAssistantAvatar } from '../services/personal-assistant-avatar.js'
-import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
-import { attemptGlobalAgentsBootstrap } from '../services/global-agents.js'
+import { ensureSystemAgentsForMember } from '../services/system-agents-bootstrap.js'
 import { confirmUoaDirectServiceAccess } from '../services/uoa-billing-client.js'
 import { loadSessionUserById } from '../services/users.js'
 import { guardAuthRequest, rateLimitFor } from './auth-rate-limit.js'
@@ -378,12 +377,7 @@ export const registerAuthLoginRoute = (
           userId: context.userId,
         })
         const actorContext = createActorContextFromClaims(session.claims)
-        await ensurePersonalAssistantBootstrap(prisma, {
-          organizationId: context.organizationId,
-          teamId: context.teamId,
-          userId: context.userId,
-        })
-        await attemptGlobalAgentsBootstrap(
+        await ensureSystemAgentsForMember(
           prisma,
           {
             organizationId: context.organizationId,
