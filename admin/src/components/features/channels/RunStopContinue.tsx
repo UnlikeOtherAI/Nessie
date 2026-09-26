@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { useTranslation } from 'react-i18next'
 import { useContinueRun } from '../../../facades/runs/hooks'
 import { useToasts } from '../../../providers/ToastProvider'
 
@@ -34,6 +35,7 @@ export const RunStopContinue = ({
 }: {
   metadata: Record<string, unknown> | undefined
 }) => {
+  const { t } = useTranslation('channels')
   const runStop = readRunStop(metadata)
   const continueRun = useContinueRun()
   const { pushToast } = useToasts()
@@ -47,10 +49,10 @@ export const RunStopContinue = ({
   const onContinue = () => {
     continueRun.mutate(runStop.runId, {
       onError: (error) => {
-        pushToast({ body: error.message, title: 'Could not continue the run' })
+        pushToast({ body: error.message, title: t('run.continueError') })
       },
       onSuccess: () => {
-        pushToast({ body: 'The agent picks up where it stopped.', title: 'Run continued' })
+        pushToast({ body: t('run.continuedBody'), title: t('run.continuedTitle') })
       },
     })
   }
@@ -72,7 +74,7 @@ export const RunStopContinue = ({
         }}
         type="button"
       >
-        {continueRun.isPending ? 'Continuing…' : 'Continue'}
+        {continueRun.isPending ? t('run.continuing') : t('run.continue')}
       </button>
     </div>
   )

@@ -214,5 +214,24 @@
     "replyCount": "{{count}} respuestas",
     "earlierReplies": "{{count}} respuestas anteriores",
     "openEarlierReplies": "Abrir {{count}} respuestas anteriores"
+  },
+  "handoff": {
+    "continueThere": "Continuar allí"
+  },
+  "postRefusal": {
+    "joinToPost": "Únete a este canal para enviar mensajes.",
+    "notMember": "No eres miembro de este canal, así que no puedes enviar mensajes."
+  },
+  "run": {
+    "continueError": "No se pudo continuar la ejecución",
+    "continuedBody": "El agente continúa donde se quedó.",
+    "continuedTitle": "Ejecución continuada",
+    "continuing": "Continuando…",
+    "continue": "Continuar",
+    "restartError": "No se pudo reiniciar la ejecución",
+    "restartedBody": "El modelo local reparado está ejecutando una nueva tarea.",
+    "restartedTitle": "Ejecución reiniciada",
+    "restarting": "Reiniciando…",
+    "restart": "Reiniciar"
   }
 }

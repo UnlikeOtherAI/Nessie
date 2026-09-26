@@ -214,5 +214,24 @@
     "replyCount": "{{count}} réponses",
     "earlierReplies": "{{count}} réponses précédentes",
     "openEarlierReplies": "Ouvrir {{count}} réponses précédentes"
+  },
+  "handoff": {
+    "continueThere": "Continuer là-bas"
+  },
+  "postRefusal": {
+    "joinToPost": "Rejoignez ce canal pour envoyer des messages.",
+    "notMember": "Vous ne faites pas partie de ce canal et ne pouvez pas y envoyer de messages."
+  },
+  "run": {
+    "continueError": "Impossible de poursuivre l’exécution",
+    "continuedBody": "L’agent reprend là où il s’est arrêté.",
+    "continuedTitle": "Exécution poursuivie",
+    "continuing": "Poursuite…",
+    "continue": "Poursuivre",
+    "restartError": "Impossible de redémarrer l’exécution",
+    "restartedBody": "Le modèle local réparé traite une nouvelle exécution.",
+    "restartedTitle": "Exécution redémarrée",
+    "restarting": "Redémarrage…",
+    "restart": "Redémarrer"
   }
 }

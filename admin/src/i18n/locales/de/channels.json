@@ -214,5 +214,24 @@
     "replyCount": "{{count}} Antworten",
     "earlierReplies": "{{count}} frühere Antworten",
     "openEarlierReplies": "{{count}} frühere Antworten öffnen"
+  },
+  "handoff": {
+    "continueThere": "Dort fortfahren"
+  },
+  "postRefusal": {
+    "joinToPost": "Tritt diesem Kanal bei, um Nachrichten zu senden.",
+    "notMember": "Du bist kein Mitglied dieses Kanals und kannst dort keine Nachrichten senden."
+  },
+  "run": {
+    "continueError": "Ausführung konnte nicht fortgesetzt werden",
+    "continuedBody": "Der Agent macht dort weiter, wo er aufgehört hat.",
+    "continuedTitle": "Ausführung fortgesetzt",
+    "continuing": "Wird fortgesetzt…",
+    "continue": "Fortsetzen",
+    "restartError": "Ausführung konnte nicht neu gestartet werden",
+    "restartedBody": "Das reparierte lokale Modell bearbeitet eine neue Ausführung.",
+    "restartedTitle": "Ausführung neu gestartet",
+    "restarting": "Wird neu gestartet…",
+    "restart": "Neu starten"
   }
 }

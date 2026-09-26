@@ -214,5 +214,24 @@
     "replyCount": "{{count}} replies",
     "earlierReplies": "{{count}} earlier replies",
     "openEarlierReplies": "Open {{count}} earlier replies"
+  },
+  "handoff": {
+    "continueThere": "Continue there"
+  },
+  "postRefusal": {
+    "joinToPost": "Join this channel to send messages.",
+    "notMember": "You are not a member of this channel, so you cannot send messages in it."
+  },
+  "run": {
+    "continueError": "Could not continue the run",
+    "continuedBody": "The agent picks up where it stopped.",
+    "continuedTitle": "Run continued",
+    "continuing": "Continuing…",
+    "continue": "Continue",
+    "restartError": "Could not restart the run",
+    "restartedBody": "The repaired local model is handling a new run.",
+    "restartedTitle": "Run restarted",
+    "restarting": "Restarting…",
+    "restart": "Restart"
   }
 }

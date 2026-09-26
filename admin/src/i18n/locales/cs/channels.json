@@ -214,5 +214,24 @@
     "replyCount": "{{count}} odpovědí",
     "earlierReplies": "{{count}} starších odpovědí",
     "openEarlierReplies": "Otevřít {{count}} starších odpovědí"
+  },
+  "handoff": {
+    "continueThere": "Pokračovat tam"
+  },
+  "postRefusal": {
+    "joinToPost": "Připojte se ke kanálu, abyste mohli posílat zprávy.",
+    "notMember": "Nejste členem tohoto kanálu, proto v něm nemůžete posílat zprávy."
+  },
+  "run": {
+    "continueError": "Pokračování běhu se nezdařilo",
+    "continuedBody": "Agent naváže tam, kde skončil.",
+    "continuedTitle": "Běh pokračuje",
+    "continuing": "Pokračování…",
+    "continue": "Pokračovat",
+    "restartError": "Restart běhu se nezdařil",
+    "restartedBody": "Opravený místní model spouští nový běh.",
+    "restartedTitle": "Běh byl restartován",
+    "restarting": "Restartování…",
+    "restart": "Restartovat"
   }
 }

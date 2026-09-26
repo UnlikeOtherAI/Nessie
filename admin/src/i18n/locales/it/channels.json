@@ -214,5 +214,24 @@
     "replyCount": "{{count}} risposte",
     "earlierReplies": "{{count}} risposte precedenti",
     "openEarlierReplies": "Apri {{count}} risposte precedenti"
+  },
+  "handoff": {
+    "continueThere": "Continua lì"
+  },
+  "postRefusal": {
+    "joinToPost": "Partecipa al canale per inviare messaggi.",
+    "notMember": "Non fai parte di questo canale e non puoi inviarvi messaggi."
+  },
+  "run": {
+    "continueError": "Impossibile continuare l’esecuzione",
+    "continuedBody": "L’agente riprende da dove si era fermato.",
+    "continuedTitle": "Esecuzione continuata",
+    "continuing": "Continuazione…",
+    "continue": "Continua",
+    "restartError": "Impossibile riavviare l’esecuzione",
+    "restartedBody": "Il modello locale riparato sta gestendo una nuova esecuzione.",
+    "restartedTitle": "Esecuzione riavviata",
+    "restarting": "Riavvio…",
+    "restart": "Riavvia"
   }
 }
