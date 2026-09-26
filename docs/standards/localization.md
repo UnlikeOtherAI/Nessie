@@ -2,13 +2,21 @@
 
 The admin uses one `i18next` instance, initialized in
 `admin/src/i18n/i18n.ts` and exposed through `LocalizationProvider`. The
-account-level choice is `User.preferences.language`, validated by
-`UserPreferencesSchema` and saved through `PATCH /api/auth/me/preferences`.
-This is product-specific UI preference data; it does not duplicate any UOA
-identity or profile field. `nessie.language` in local storage is only a
-first-paint choice for signed-out sessions and is refreshed from `/me` when an
-account preference exists. The root document's `lang` attribute follows the
-active language. Native wrappers receive the same selected code in the
+For a UOA session, the account-level choice is UOA's ecosystem-wide
+`global.locale` setting. Nessie reads and writes it through the server using
+the verified UOA domain hash and the fresh access token produced during the
+serialized refresh. That token remains transient server memory. The refresh
+response carries the locale to the client; a failed write still applies the
+renewed Nessie session and reports failure so the language picker can roll
+back. UOA sessions never persist `User.preferences.language`; any legacy local
+value is removed atomically when the signed-in account is read.
+
+For a deployment without UOA, the account-level choice remains
+`User.preferences.language`, validated by `UserPreferencesSchema` and saved
+through `PATCH /api/auth/me/preferences`. `nessie.language` in local storage
+is only a first-paint hint and is refreshed from the authenticated account
+preference. The root document's `lang` attribute follows the active language.
+Native wrappers receive the same selected code in the
 existing `nessie:account` WebView message as `language: '<language-code>'`
 (for example, `language: 'en-GB'`); the message continues to include the
 existing avatar, display name, presence and focus fields.

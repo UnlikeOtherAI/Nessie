@@ -10,7 +10,9 @@ import { advanceUoaLocalSessionBindingInTransaction } from './uoa-session-contex
 import { syncUoaDirectoryAfterSessionCommit } from './uoa-session-context.js'
 import {
   refreshUoaSession,
+  readUoaLocale,
   UoaSessionRefreshError,
+  writeUoaLocale,
   type UoaSessionExchange,
 } from './uoa-session.js'
 import {
@@ -61,6 +63,7 @@ export const createUoaRefreshCallbacks = (
     expectedIdentity: UoaSessionIdentity
     refreshToken: string
     userId: string
+    localeToWrite?: string
     teamSwitch?: { organizationId: string; teamId: string }
   }) => {
     let refreshed: Awaited<ReturnType<typeof refreshUoaSession>>
@@ -133,6 +136,7 @@ export const createUoaRefreshCallbacks = (
       // Intentionally ignored — see above.
     }
     return {
+      accessToken: refreshed.accessToken,
       identity: {
         organizationId: selected.organizationId,
         subject: refreshed.identity.externalSubject,
@@ -148,6 +152,14 @@ export const createUoaRefreshCallbacks = (
       team: refreshed.identity.team,
       teamDirectory: refreshed.teamDirectory,
     }
+  },
+  syncUoaLocale: async (input: { accessToken: string; localeToWrite?: string }) => {
+    if (input.localeToWrite) {
+      await writeUoaLocale(input.accessToken, input.localeToWrite)
+      return { locale: input.localeToWrite }
+    }
+    const savedLocale = await readUoaLocale(input.accessToken)
+    return typeof savedLocale === 'string' ? { locale: savedLocale } : {}
   },
   advanceUoaSessionBinding: async (
     input: Parameters<typeof advanceUoaLocalSessionBindingInTransaction>[1],

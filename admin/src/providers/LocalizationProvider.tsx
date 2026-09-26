@@ -17,7 +17,7 @@ const storeLanguage = (language: Language): void => {
 }
 
 export const LocalizationProvider = ({ children }: PropsWithChildren) => {
-  const { me } = useAuthSession()
+  const { me, setUoaLocale } = useAuthSession()
   const { mutate: updatePreferences } = useUpdatePreferences()
   const { i18n: activeI18n } = useTranslation()
   const savedLanguage = me?.user.preferences?.language
@@ -42,10 +42,19 @@ export const LocalizationProvider = ({ children }: PropsWithChildren) => {
     if (next === language) return
     const previous = language
     const revision = ++selectionRevision.current
+    const isUoaSession = me?.auth.providerType === 'uoa'
     pendingLanguage.current = me ? next : null
     storeLanguage(next)
     void i18n.changeLanguage(next)
-    if (me) {
+    if (me && isUoaSession) {
+      void setUoaLocale(next).catch(() => {
+        if (selectionRevision.current === revision) {
+          pendingLanguage.current = null
+          storeLanguage(previous)
+          void i18n.changeLanguage(previous)
+        }
+      })
+    } else if (me) {
       updatePreferences({ language: next }, {
         onError: () => {
           if (selectionRevision.current !== revision) return
@@ -55,7 +64,7 @@ export const LocalizationProvider = ({ children }: PropsWithChildren) => {
         },
       })
     }
-  }, [language, me, updatePreferences])
+  }, [language, me, setUoaLocale, updatePreferences])
 
   const value = useMemo(() => ({ language, setLanguage }), [language, setLanguage])
   return <LocalizationContext.Provider value={value}>{children}</LocalizationContext.Provider>

@@ -58,6 +58,7 @@ import { performTerminalSessionLogout } from './terminal-session-logout'
 import { useAccessTokenRenewal } from './useAccessTokenRenewal'
 import { useSessionRestoration } from './useSessionRestoration'
 import { useTeamSessionRecovery } from './useTeamSessionRecovery'
+import { authKeys } from '../facades/auth/keys'
 
 type AuthSessionContextValue = {
   applyMeResponse: (nextMe: MeResponse) => void
@@ -82,6 +83,7 @@ type AuthSessionContextValue = {
   ) => Promise<SessionPayload>
   refreshAccessToken: (expected?: SessionCredentialSnapshot) => Promise<string | null>
   refreshSession: () => Promise<void>
+  setUoaLocale: (locale: string) => Promise<void>
   sessionMode: StoredTokenMode
   sessionState: AuthSessionState
   switchContext: (input: SwitchContextInput) => Promise<void>
@@ -401,6 +403,13 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     ambientRefreshGate.reopen()
   }, [ambientRefreshGate, sessionMutations])
 
+  const setUoaLocale = useCallback(async (locale: string): Promise<void> => {
+    await queryClient.cancelQueries({ queryKey: authKeys.me })
+    const payload = await sessionMutations.run(() => authApi.refreshWithLocale(locale))
+    queryClient.setQueryData(authKeys.me, payload.me)
+    if (payload.localeWriteFailed) throw new Error('UnlikeOtherAI could not save your language preference.')
+  }, [queryClient, sessionMutations])
+
   const { recoveryExchange, switchContext, switchUoaTeam } = useTeamSessionRecovery({
     ambientRefreshGate,
     authApi,
@@ -450,6 +459,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       recoveryExchange,
       refreshAccessToken,
       refreshSession,
+      setUoaLocale,
       sessionMode,
       sessionState,
       switchContext,
@@ -469,6 +479,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       recoveryExchange,
       refreshAccessToken,
       refreshSession,
+      setUoaLocale,
       sessionMode,
       sessionState,
       switchContext,

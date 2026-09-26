@@ -74,6 +74,7 @@ export type TokenStore = {
 }
 
 export type SessionPayload = {
+  localeWriteFailed?: boolean
   me: MeResponse
   token: string
 }
@@ -281,6 +282,7 @@ export type AuthSessionApi = {
   // Renew the access token from the httpOnly refresh cookie. Returns the new
   // session, or null when there is no valid refresh cookie.
   refresh: () => Promise<SessionPayload | null>
+  refreshWithLocale: (locale: string) => Promise<SessionPayload>
   // Switch the active team (org/project/team); returns the re-scoped session.
   switchContext: (token: string | null, input: SwitchContextInput) => Promise<SessionPayload>
   // Switch a renewable UOA session without leaving Nessie.
@@ -453,6 +455,19 @@ export const createAuthSessionApi = (
       if (!response.ok) {
         throw await parseApiError(response)
       }
+      return parseResponse<SessionPayload>(response)
+    },
+    refreshWithLocale: async (locale) => {
+      const response = await fetch(`${resolvedBaseUrl}/api/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...sessionClientHeaders(),
+        },
+        body: JSON.stringify({ locale }),
+        credentials: 'include',
+      })
+      if (!response.ok) throw await parseApiError(response)
       return parseResponse<SessionPayload>(response)
     },
     switchContext: async (token, input) => {

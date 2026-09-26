@@ -1,5 +1,5 @@
 import type { FastifyReply } from 'fastify'
-import { MeResponseSchema } from '@nessie/schemas'
+import { MeResponseSchema, UserPreferencesSchema } from '@nessie/schemas'
 
 import type { SessionTokenClaims } from '../auth/session.js'
 import { createApiResponse, sendApiError } from '../lib/api.js'
@@ -90,10 +90,18 @@ export const completeConsumedAuthSession = async (
     config,
     remainingTtlSeconds,
   )
+  const me = MeResponseSchema.parse(
+    await buildMeResponse(prisma, user, session.claims, config),
+  )
+  if (consumed.locale && consumed.uoaIdentity) {
+    const locale = UserPreferencesSchema.shape.language.safeParse(consumed.locale)
+    if (locale.success) {
+      me.user.preferences = { ...(me.user.preferences ?? {}), language: locale.data }
+    }
+  }
   return createApiResponse({
     token: session.token,
-    me: MeResponseSchema.parse(
-      await buildMeResponse(prisma, user, session.claims, config),
-    ),
+    me,
+    ...(consumed.localeWriteFailed ? { localeWriteFailed: true } : {}),
   })
 }

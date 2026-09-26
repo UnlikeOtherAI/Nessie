@@ -60,13 +60,17 @@ type ConsumeInput = UoaRotationCallbacks & {
   encryption?: EncryptionKeyRingInput
   rawToken: string
   ttlSeconds: number
+  localeToWrite?: string
+  syncUoaLocale?: (input: { accessToken: string; localeToWrite?: string }) => Promise<{ locale?: string }>
   refreshUoaSession?: (input: {
     configUrl: string
     expectedIdentity: UoaSessionIdentity
     refreshToken: string
     userId: string
+    localeToWrite?: string
     teamSwitch?: UoaTeamSwitchTarget
   }) => Promise<{
+    accessToken: string
     identity: UoaSessionIdentity
     refreshToken: string
     refreshTokenExpiresAt: Date
@@ -323,10 +327,12 @@ export const consumeRefreshToken = async (
         expectedIdentity: preflight.uoa.expectedIdentity,
         refreshToken: preflight.uoa.refreshToken,
         userId: preflight.presented.userId,
+        localeToWrite: input.localeToWrite,
         ...(teamSwitch ? { teamSwitch } : {}),
       })
       rotatedUoa = validateUoaRefresh({
         encryption: input.encryption ?? input.authSecret,
+        accessToken: refreshed.accessToken,
         credential: preflight.uoa.credential,
         expectedIdentity: preflight.uoa.expectedIdentity,
         identity: refreshed.identity,
@@ -484,5 +490,20 @@ export const consumeRefreshToken = async (
   }, AUTH_LOCK_TRANSACTION_OPTIONS)
 
   await notifyUoaSessionBindingAfterCommit(input, rotatedUoa, result, preflight.presented.userId)
-  return result
+  if (!result.ok || !rotatedUoa) return result
+  let locale: string | undefined
+  let localeWriteFailed = false
+  try {
+    locale = (await input.syncUoaLocale?.({
+      accessToken: rotatedUoa.accessToken,
+      localeToWrite: input.localeToWrite,
+    }))?.locale
+  } catch {
+    localeWriteFailed = Boolean(input.localeToWrite)
+  }
+  return {
+    ...result,
+    ...(locale ? { locale } : {}),
+    ...(localeWriteFailed ? { localeWriteFailed: true } : {}),
+  }
 }

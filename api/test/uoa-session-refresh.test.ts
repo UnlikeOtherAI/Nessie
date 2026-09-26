@@ -3,8 +3,10 @@ import { createHash, generateKeyPairSync } from 'node:crypto'
 import test from 'node:test'
 
 import {
+  readUoaLocale,
   refreshUoaSession,
   UoaSessionRefreshError,
+  writeUoaLocale,
 } from '../src/services/uoa-session.js'
 import { resolveExternalTeamSelection } from '../src/services/identity-display.js'
 
@@ -70,6 +72,31 @@ const withUoaEnv = async <T>(fn: () => Promise<T>): Promise<T> => {
     }
   }
 }
+
+test('UOA global locale uses dual authentication and replaces the setting value', async () => {
+  await withUoaEnv(async () => {
+    const calls: Array<{ body: string | null; headers: Headers; method: string; url: string }> = []
+    const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      calls.push({
+        body: typeof init?.body === 'string' ? init.body : null,
+        headers: new Headers(init?.headers),
+        method: init?.method ?? 'GET',
+        url: String(input),
+      })
+      return new Response(JSON.stringify({ value: 'cs' }), { status: 200 })
+    }
+    assert.equal(await readUoaLocale('signed-user-token', { fetchImpl }), 'cs')
+    await writeUoaLocale('signed-user-token', 'fr', { fetchImpl })
+    assert.equal(calls[0]?.url, 'https://1.1.1.1/settings/me/global/locale?domain=api.example.com')
+    assert.equal(calls[0]?.method, 'GET')
+    assert.equal(calls[1]?.method, 'PUT')
+    assert.deepEqual(JSON.parse(calls[1]?.body ?? 'null'), { value: 'fr' })
+    for (const call of calls) {
+      assert.equal(call.headers.get('authorization'), `Bearer ${clientHash}`)
+      assert.equal(call.headers.get('x-uoa-access-token'), 'signed-user-token')
+    }
+  })
+})
 
 test('refreshUoaSession sends the exact refresh contract and accepts a monotonic epoch', async () => {
   await withUoaEnv(async () => {

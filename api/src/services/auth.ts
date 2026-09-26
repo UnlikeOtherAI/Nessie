@@ -353,6 +353,21 @@ export const buildMeResponse = async (
     (membership) => membership.organizationId === activeOrgId,
   )?.role
 
+  const preferences = user.preferences
+    ? { ...(user.preferences as Record<string, unknown>) }
+    : undefined
+  if (claims.providerType === 'uoa' && preferences) {
+    if (Object.hasOwn(preferences, 'language')) {
+      await prisma.$executeRaw`
+        UPDATE "users"
+        SET "preferences" = "preferences" - 'language', "updated_at" = NOW()
+        WHERE "id" = ${user.id}::uuid
+          AND jsonb_typeof("preferences") = 'object'
+          AND "preferences" ? 'language'
+      `
+    }
+    delete preferences.language
+  }
   return {
     user: {
       id: parseUserId(user.id),
@@ -363,7 +378,7 @@ export const buildMeResponse = async (
       pronouns: user.pronouns ?? undefined,
       roleIds: activeRole ? [activeRole] : claims.roles,
       superAdmin: user.superAdmin,
-      preferences: (user.preferences as Record<string, unknown> | null) ?? undefined,
+      preferences,
     },
     session: {
       sessionId: claims.sid,
