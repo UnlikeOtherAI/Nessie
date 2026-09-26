@@ -100,7 +100,7 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
   const rows: CloudBrowserConnectionRecord[] = connections.data?.connections ?? []
   const connection = rows.find((row) =>
     scope === 'organization' ? row.scope === 'organization'
-    : scope === 'team' ? row.scope === 'team'
+    : scope === 'team' ? row.scope === 'team' && row.teamId === teamId
     : row.scope === 'user' && row.isMine)
   const connected = connection?.status === 'active'
   const disconnected = connection?.status === 'disabled'
@@ -136,6 +136,10 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
           <h2 className="font-semibold text-[color:var(--tx)]">{copy.title}</h2>
           {connections.isLoading ? (
             <p className="mt-1 text-sm text-[color:var(--tx2)]">Loading…</p>
+          ) : connections.isError ? (
+            <p className="mt-1 text-sm text-[color:var(--danger)]">
+              Could not check saved browser accounts. Try again before reconnecting.
+            </p>
           ) : connection ? (
             <p className="mt-1 text-sm text-[color:var(--tx2)]">
               {disconnected
@@ -170,15 +174,17 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
 
       {/* One gate, two reasons: a level above locked the account, or the
           account is the owner's. Either way the form stays, greyed, saying who. */}
-      <InertGate reason={scopedSettingLockReason(setting) ?? (mayConnect ? null : OWNER_ONLY)}>
-        <CloudBrowserConnectionForm
-          blurb={copy.blurb}
-          connected={connected}
-          reconnect={Boolean(connection) && !connected}
-          scope={scope}
-          teamId={teamId}
-        />
-      </InertGate>
+      {!connections.isLoading && !connections.isError ? (
+        <InertGate reason={scopedSettingLockReason(setting) ?? (mayConnect ? null : OWNER_ONLY)}>
+          <CloudBrowserConnectionForm
+            blurb={copy.blurb}
+            connected={connected}
+            reconnect={Boolean(connection) && !connected}
+            scope={scope}
+            teamId={teamId}
+          />
+        </InertGate>
+      ) : null}
 
       {setting?.canEdit && scope !== 'user' ? (
         <div className="mt-4 border-t border-[color:var(--sep)] pt-3">

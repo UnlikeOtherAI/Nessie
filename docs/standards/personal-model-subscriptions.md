@@ -170,3 +170,10 @@ Facts not restated there:
   `_TOKEN` / `_PROJECT_ID` (+ optional `_ENVIRONMENT`). Unset ⇒ the settings
   section says the feature is unavailable and linking is refused, unless the
   explicit local-only temporary store is enabled.
+
+Both the Personal Assistant and Agent Designer can refresh linked-plan metadata
+through `account_connections_list`, including a plan needing reauthorization.
+They check before asserting that an unlisted plan is unlinked. The read carries
+no credential or account label into the model and does not choose a billing
+lane. The Personal Assistant hands model changes to the Designer; selection
+remains limited to the person's own ordinary agents.

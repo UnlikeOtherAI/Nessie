@@ -358,3 +358,24 @@ and the `getChannelIfMember` / `isAgentAccessibleToActor` predicates. The
 records those functions return (`ChannelRecord`, `AgentRecord`,
 `AgentTriggerRecord`, `CreateAgentTriggerBody`) moved to `@nessie/schemas` for
 the same reason; `api/src/contracts` re-exports them.
+
+## Saved browser accounts and model plans
+
+`account_connections_list` is a metadata-only read for the Personal Assistant
+and Agent Designer on a live person's turn. It calls the same Browserbase
+directory as Settings and `listUserSubscriptions` with inactive plans included,
+so a broken connection is reported as needing attention rather than missing.
+The directory rechecks UOA entitlement, includes permitted team accounts, and
+never reads a key or key reference. The tool records the requesting user's
+disclosure scope even for an empty inventory. Each source can fail independently;
+failed reads mean unknown and never an empty list.
+
+Both assistants check this inventory before requesting a key or claiming that
+Browserbase or Kimi is not linked. They acknowledge existing connections and
+offer access for the named agent. An accepted design already authorizes its
+listed tool grants. The Designer uses its existing protected grant verbs; the
+Personal Assistant offers the existing Designer handoff. A Personal Assistant
+is an editable protected-tool target, although its general configuration and
+model remain managed by Nessie. Global specialists such as Agent Designer
+retain their fixed toolsets. Connection discovery grants nothing and does not
+change browser scope or model billing.

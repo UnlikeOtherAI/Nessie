@@ -115,7 +115,7 @@ test('an agent whose toolset is fixed is not sent to enable a tool on itself', (
   assert.doesNotMatch(fixed, /enable `browser_login_request` at Admin › Advanced › Tool registry/)
   assert.match(fixed, /Do not substitute card_post, prose, or a fabricated permission card/)
 
-  // The Personal Assistant: same fixed toolset, no grant verb of its own.
+  // Another fixed specialist without the grant verb.
   const assistant = buildBrowserbaseSetupPrompt({ hasCardTool: true, ownToolsetFixed: true })
   assert.match(assistant, /granted from that agent's Tools tab like the rest/)
   assert.doesNotMatch(assistant, /enable `browser_login_request` at Admin › Advanced › Tool registry/)
@@ -123,4 +123,15 @@ test('an agent whose toolset is fixed is not sent to enable a tool on itself', (
   // An ordinary agent's owner CAN enable it, so that door is still named.
   const ordinary = buildBrowserbaseSetupPrompt({ hasCardTool: true })
   assert.match(ordinary, /enable `browser_login_request` at Admin › Advanced › Tool registry/)
+})
+
+
+test('delegates check saved accounts before proposing a key or permission', () => {
+  const prompt = buildBrowserbaseSetupPrompt({ hasCardTool: true, hasAccountConnectionsTool: true })
+  assert.match(prompt, /call `account_connections_list`/)
+  assert.match(prompt, /team Browserbase connections and personal Kimi plans/)
+  assert.match(prompt, /unreadable inventory is unknown/)
+  assert.match(prompt, /Never ask them to enter a saved key again/)
+  assert.match(prompt, /including for the Personal Assistant itself/)
+  assert.doesNotMatch(prompt, /your toolset is fixed by the deployment/)
 })

@@ -969,3 +969,21 @@ beside §5c.
 2. **Mobile companion.** The login handoff dialog should work from the mobile
    app's webview (it's an iframe + card press); worth verifying early, since
    "sign in from your phone" is the likely real-world moment.
+
+### Connection discovery correction (2026-09-26)
+
+A saved team connection was active in production but absent from the Settings
+list: its query only included organisation and personal rows. The shared
+`connection-directory.ts` now returns the caller's own personal connection,
+the organisation connection, and entitled team connections. Bound organisations
+use fresh UOA membership; local installs use their own membership. Organisation
+owners/admins can inspect shared team connections, never another person's
+personal connection. The API includes `teamId`, and the team Settings panel
+selects that exact team rather than the first team row. A failed read shows an
+error and does not ask for a replacement key.
+
+Agent Designer and Personal Assistant reach the same metadata through
+`account_connections_list`; see [assistant tools](../standards/personal-assistant-tools.md).
+This read reports connection scope and health separately from per-agent tool
+access. It does not change connection selection or allow a team account to pay
+for a browser in another team.

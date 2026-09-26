@@ -18,14 +18,24 @@ export const buildDesignerScenarios = (parseScenario, { scope, browserTool }) =>
         usage: { inputTokens: 100, outputTokens: 2_048 },
       },
       toolTurn('tool_spec', {
-        names: ['agent_tool_access_inspect', 'agent_tool_access_set', 'agent_update'],
+        names: ['account_connections_list', 'agent_tool_access_inspect', 'agent_tool_access_set', 'agent_update'],
       }, 0),
+      toolTurn('account_connections_list', {}, 'accounts'),
       toolTurn('agent_tool_access_inspect', { agentId: scope.agentId }, 1),
       toolTurn('agent_tool_access_set', {
         agentId: scope.agentId, toolRegistryEntryId: browserTool.id, enabled: true,
       }, 2),
       toolTurn('agent_update', { agentId: scope.agentId, voiceName: 'Puck' }, 3),
       { text: GRANTED_ANSWER, usage: { inputTokens: 100, outputTokens: 20 } },
+    ],
+    utility: { text: '{}' },
+  }),
+  accounts: parseScenario({
+    name: 'personal-assistant-connected-accounts',
+    turns: [
+      toolTurn('tool_spec', { names: ['account_connections_list'] }, 'pa-spec'),
+      toolTurn('account_connections_list', {}, 'pa-accounts'),
+      { text: 'Your team browser account and Kimi plan are saved. Shall I ask Agent Designer to arrange access?' },
     ],
     utility: { text: '{}' },
   }),
