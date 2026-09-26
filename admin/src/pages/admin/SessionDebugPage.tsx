@@ -27,6 +27,7 @@ export const SessionDebugPage = () => {
     <SettingsPanel
       actions={[{
         id: 'copy-session-debug',
+        fixedWidth: '10rem',
         label: copied ? 'Copied' : 'Copy to clipboard',
         onSelect: copy,
         primary: true,
