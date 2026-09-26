@@ -170,10 +170,15 @@ const decisionsFor = (
   }]
 }
 
-/** The saved decisions that still name this room's one agent, or null to fall back. */
+/**
+ * The saved decisions that still name this room's one agent, or null to fall
+ * back. Only a one-on-one judgement is read back here: a channel policy's
+ * snapshot carries configured work and its author's authority, which a DM
+ * must never pick up by accident.
+ */
 const addressedTo = (agent: ChannelAgent, snapshot: unknown): OrchestratorDecision[] | null => {
   const saved = ChannelDecisionSnapshotSchema.safeParse(snapshot)
-  if (!saved.success) return null
+  if (!saved.success || saved.data.policyFingerprint !== ONE_ON_ONE_DECISION_FINGERPRINT) return null
   const decisions = saved.data.decisions.filter((decision) =>
     decision.action !== 'none'
     && decision.agentId === agent.id

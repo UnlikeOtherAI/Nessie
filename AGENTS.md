@@ -612,7 +612,9 @@ before writing code here.
 
 Slack-style reply threads live one level deep on `Message.rootMessageId`;
 where a run's reply lands is decided before the run starts, and **where a run
-replies and what it reads are separate questions**. Thinking bubbles and the
+replies and what it reads are separate questions**. A room whose only person is
+the one talking answers in its main chat, and with one agent in it Jev decides
+each reply's shape and whether it goes back to an earlier message. Thinking bubbles and the
 client-only liveness hint are part of the same standard. A container `Thread`
 with an `agent_id` is a **conversation with that agent** — one agent, many
 isolated contexts in the same room — and a top-level `user` turn inside one

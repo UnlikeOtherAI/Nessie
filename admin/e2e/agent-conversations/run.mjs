@@ -37,6 +37,7 @@ import {
   tokenFor,
   waitForRun,
 } from './fixture.mjs'
+import { exerciseMessageRef } from './message-ref.mjs'
 import { startMockModelServer } from './mock-server.mjs'
 import { exercisePhoneColumn } from './phone-column.mjs'
 import { openGallery, shot } from './viewports.mjs'
@@ -589,10 +590,10 @@ const main = async () => {
 
     // Every message of the thread, replies included. `GET /api/threads/:id/messages`
     // returns the top-level feed and summarises a reply thread as a count, and
-    // an answer to a conversation's opening message lands *under* it: a
-    // conversation stamps `replyPlacement: 'thread'`, which
-    // `resolveReplyRootMessageId` reads as "attach to the trigger". Isolation is
-    // a claim about the thread, so the read has to be the thread.
+    // where an answer lands depends on the room: under the opening message in a
+    // shared room, in the main chat of a one-on-one one
+    // (docs/standards/reply-threads.md → "One-on-one rooms"). Isolation is a
+    // claim about the thread, so the read has to be the thread.
     const feedOf = async (threadId) => {
       const messages = await pipeline.prisma.message.findMany({
         orderBy: { createdAt: 'asc' }, select: { content: true }, where: { threadId },
@@ -860,6 +861,9 @@ const main = async () => {
       sendMessage,
       title: CONVERSATION_TITLE,
     })
+
+    // ---- message-ref ------------------------------------------------------
+    await exerciseMessageRef({ fixture, gallery, goto, pipeline })
 
     // ---- phone ------------------------------------------------------------
     await exercisePhoneColumn({

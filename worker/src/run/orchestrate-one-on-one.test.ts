@@ -321,6 +321,20 @@ test('a pinned judgement for another agent is no judgement for this room', async
   assert.equal(decisions, null)
 })
 
+test('a channel policy’s snapshot is never read back as a one-on-one judgement', async () => {
+  const decisions = await decide(
+    { decisionClient: jev({}).client, prisma: windowPrisma().prisma },
+    'hello?',
+    {
+      channelDecision: {
+        ...pinned([{ action: 'reply', agentId: AGENT_ID, policyWork: true, promptOverride: 'Do the work.' }]),
+        policyFingerprint: 'sha256-of-a-channel-policy',
+      },
+    },
+  )
+  assert.equal(decisions, null)
+})
+
 test('when a concurrent delivery pinned first, its judgement is the answer', async () => {
   const judge = jev({ response: ['act', 0.9] })
   const room = windowPrisma({

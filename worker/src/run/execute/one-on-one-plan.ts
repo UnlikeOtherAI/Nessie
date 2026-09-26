@@ -93,10 +93,15 @@ export const buildOneOnOnePlanBlock = (
   if (!plan) return null
   const lines: string[] = []
   if (plan.acknowledgeWhenDone) {
+    // "Just ✅" rather than silence: an empty answer is what a failed provider
+    // looks like, and the loop rightly asks again. A bare mark is an answer —
+    // it still passes the completion review — and the platform turns it into a
+    // ✅ on the person's message instead of posting it (`isMarkedDone`).
     lines.push(
       'The person asked for something to be done, not for a written answer. Do it with your tools. '
-      + 'When it is done, end your turn without text: their message is marked done for you. '
-      + 'Write only if something failed, you need their decision, or the result holds something they must read.',
+      + `When it is done, answer with just ${DONE_REACTION} and nothing else: their message is marked done `
+      + 'instead of a reply being posted. Write a reply only if something failed, you need their decision, '
+      + 'or the result holds something they must read.',
     )
   }
   if (plan.earlier) {

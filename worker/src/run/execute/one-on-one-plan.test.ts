@@ -102,10 +102,13 @@ test('an earlier message outside the transcript is named without its words', () 
   assert.match(block, /link to that earlier message beside it/)
 })
 
-test('work is told no written reply is owed', () => {
+test('work is told no written reply is owed, and to answer with the bare mark', () => {
   const block = buildOneOnOnePlanBlock({ acknowledgeWhenDone: true }, null)
   assert.ok(block)
-  assert.match(block, /end your turn without text/)
+  // Not silence: an empty answer is what a failed provider looks like, and the
+  // loop would ask again. The bare mark is exactly what `isMarkedDone` accepts.
+  assert.match(block, /answer with just ✅ and nothing else/)
+  assert.equal(isMarkedDone({ acknowledgeWhenDone: true }, false, '✅'), true)
   assert.equal(buildOneOnOnePlanBlock(undefined, null), null)
   assert.equal(buildOneOnOnePlanBlock({ acknowledgeWhenDone: false }, null), null)
 })
