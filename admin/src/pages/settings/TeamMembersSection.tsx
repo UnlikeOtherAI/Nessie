@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { TeamInvitationRecord } from '@nessie/schemas'
 import { buildPeopleAgentsTree } from '../../components/features/members/people-agents-tree'
 import { useAgents } from '../../facades/agents/queries'
@@ -44,6 +45,7 @@ const teamNeedsReconnect = (error: unknown): boolean =>
   )
 
 export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord }) => {
+  const { t, i18n } = useTranslation('settings')
   const resend = useResendTeamInvitation()
   const review = useReviewTeamInvitation()
   const revoke = useRevokeTeamInvitation()
@@ -72,9 +74,9 @@ export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord
             {[
               invitation.status ?? 'pending',
               invitation.teamRole,
-              invitation.invitedByName ? `invited by ${invitation.invitedByName}` : null,
+              invitation.invitedByName ? t('members.teamSection.invitedBy', { name: invitation.invitedByName }) : null,
               invitation.expiresAt
-                ? `expires ${new Date(invitation.expiresAt).toLocaleDateString()}`
+                ? t('members.teamSection.expires', { date: new Date(invitation.expiresAt).toLocaleDateString(i18n.resolvedLanguage ?? i18n.language) })
                 : null,
             ]
               .filter(Boolean)
@@ -83,7 +85,7 @@ export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord
         </div>
         {awaitingApproval ? (
           <Pill className="shrink-0" radius="chip" size="sm" tone="warning" uppercase={false}>
-            Needs approval
+            {t('members.teamSection.needsApproval')}
           </Pill>
         ) : null}
       </div>
@@ -97,11 +99,11 @@ export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord
               onClick={() =>
                 void act(
                   () => review.mutateAsync({ action: 'approve', inviteId: invitation.inviteId }),
-                  'Couldn’t approve this invitation. Try again.',
+                  t('members.teamSection.approveFailed'),
                 )}
               type="button"
             >
-              Approve
+              {t('members.teamSection.approve')}
             </button>
             <button
               className="admin-button admin-button-secondary admin-button-compact"
@@ -109,11 +111,11 @@ export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord
               onClick={() =>
                 void act(
                   () => review.mutateAsync({ action: 'deny', inviteId: invitation.inviteId }),
-                  'Couldn’t deny this invitation. Try again.',
+                  t('members.teamSection.denyFailed'),
                 )}
               type="button"
             >
-              Deny
+              {t('members.teamSection.deny')}
             </button>
           </>
         ) : (
@@ -124,11 +126,11 @@ export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord
               onClick={() =>
                 void act(
                   () => resend.mutateAsync({ inviteId: invitation.inviteId }),
-                  'Couldn’t resend this invitation. Try again.',
+                  t('members.teamSection.resendFailed'),
                 )}
               type="button"
             >
-              Resend
+              {t('members.invitationDetails.resend')}
             </button>
             {/*
               Withdraw an invitation that is out in the world — the counterpart
@@ -143,11 +145,11 @@ export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord
               onClick={() =>
                 void act(
                   () => revoke.mutateAsync({ inviteId: invitation.inviteId }),
-                  'Couldn’t cancel this invitation. Try again.',
+                  t('members.teamSection.cancelFailed'),
                 )}
               type="button"
             >
-              Cancel invitation
+              {t('members.invitationDetails.cancel')}
             </button>
           </>
         )}
@@ -159,6 +161,7 @@ export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord
 }
 
 const InviteForm = ({ teamLabel }: { teamLabel?: string }) => {
+  const { t } = useTranslation('settings')
   const createInvitation = useCreateTeamInvitation()
   const [email, setEmail] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -179,17 +182,17 @@ const InviteForm = ({ teamLabel }: { teamLabel?: string }) => {
       // UOA decides the outcome for the address (invited, already a member, …)
       // and says so on its own hosted page; the route answers `{ok:true}` for
       // every accepted outcome, so there is no per-address verdict to relay.
-      setSuccess(`Invitation sent to ${address}.`)
+      setSuccess(t('members.teamSection.sentTo', { email: address }))
     } catch (caught) {
       const { fieldErrors: nextFieldErrors, formError: nextFormError } = toFormErrors(caught)
       setFieldErrors(nextFieldErrors)
-      setFormError(nextFormError ?? formErrorMessage(caught, 'Couldn’t send the invitation. Try again.'))
+      setFormError(nextFormError ?? formErrorMessage(caught, t('members.teamSection.sendFailed')))
     }
   }
 
   return (
     <form className="mt-4 grid gap-3" onSubmit={submit}>
-      <FormField error={fieldErrors.email} label="Email">
+      <FormField error={fieldErrors.email} label={t('members.invite.email')}>
         <Input
           onChange={(event) => setEmail(event.target.value)}
           placeholder="name@example.com"
@@ -198,7 +201,7 @@ const InviteForm = ({ teamLabel }: { teamLabel?: string }) => {
         />
       </FormField>
       <p className="text-xs text-[color:var(--tx3)]">
-        {`They’ll get an email with a link to join ${teamLabel ?? 'this team'}.`}
+        {t('members.teamSection.inviteHelp', { team: teamLabel ?? t('team.team') })}
       </p>
       <FormError>{formError}</FormError>
       <FormSuccess>{success}</FormSuccess>
@@ -208,7 +211,7 @@ const InviteForm = ({ teamLabel }: { teamLabel?: string }) => {
           disabled={createInvitation.isPending || email.trim().length === 0}
           type="submit"
         >
-          {createInvitation.isPending ? 'Sending…' : 'Send invitation'}
+          {createInvitation.isPending ? t('members.invite.sending') : t('members.invite.send')}
         </button>
       </FormActions>
     </form>
@@ -221,12 +224,15 @@ const InviteForm = ({ teamLabel }: { teamLabel?: string }) => {
  * so inviting from the org page is inviting into the session's active team,
  * and the form says so when `teamLabel` is passed.
  */
-export const InviteToTeamCard = ({ teamLabel }: { teamLabel?: string }) => (
-  <Card as="section">
-    <SectionLabel>Invite to team</SectionLabel>
-    <InviteForm teamLabel={teamLabel} />
-  </Card>
-)
+export const InviteToTeamCard = ({ teamLabel }: { teamLabel?: string }) => {
+  const { t } = useTranslation('settings')
+  return (
+    <Card as="section">
+      <SectionLabel>{t('members.teamSection.inviteToTeam')}</SectionLabel>
+      <InviteForm teamLabel={teamLabel} />
+    </Card>
+  )
+}
 
 export const TeamMembersSection = ({
   canManage,
@@ -237,6 +243,7 @@ export const TeamMembersSection = ({
   onReconnect?: () => Promise<void>
   pausedPrivateAgentCount?: number
 }) => {
+  const { t } = useTranslation('settings')
   const members = useTeamMembers()
   const needsTeamReconnect = teamNeedsReconnect(members.error)
   const [isReconnecting, setIsReconnecting] = useState(false)
@@ -279,7 +286,7 @@ export const TeamMembersSection = ({
     try {
       await onReconnect()
     } catch (error) {
-      setReconnectError(formErrorMessage(error, 'Couldn’t reconnect this team. Try again.'))
+      setReconnectError(formErrorMessage(error, t('members.teamSection.reconnectFailed')))
     } finally {
       setIsReconnecting(false)
     }
@@ -287,24 +294,24 @@ export const TeamMembersSection = ({
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
-      <Section title="People">
+      <Section title={t('members.local.people')}>
         <div className="grid gap-2" data-testid="team-member-list">
           {needsTeamReconnect ? (
             <FeedbackBanner
               feedback={{
                 kind: 'error',
-                message: 'This team has lost its connection to UnlikeOtherAI. Reconnect it to see its members.',
+                message: t('members.teamSection.teamNotLinked'),
               }}
             />
           ) : members.isError ? (
             <FeedbackBanner
               feedback={{
                 kind: 'error',
-                message: 'Members couldn’t be loaded right now. Try again in a moment.',
+                message: t('members.teamSection.membersUnavailable'),
               }}
             />
           ) : members.isLoading ? (
-            <p className="text-sm text-[color:var(--tx3)]">Loading members…</p>
+            <p className="text-sm text-[color:var(--tx3)]">{t('members.loadingMembers')}</p>
           ) : null}
           {needsTeamReconnect && onReconnect ? (
             <button
@@ -313,7 +320,7 @@ export const TeamMembersSection = ({
               onClick={() => void reconnect()}
               type="button"
             >
-              {isReconnecting ? 'Opening UnlikeOtherAI…' : 'Reconnect team'}
+              {t(isReconnecting ? 'members.teamSection.openingUoa' : 'members.teamSection.reconnectTeam')}
             </button>
           ) : null}
           {reconnectError ? <FeedbackBanner feedback={{ kind: 'error', message: reconnectError }} /> : null}
@@ -326,7 +333,7 @@ export const TeamMembersSection = ({
             />
           ))}
           {!members.isLoading && !members.isError && memberRows.length === 0 ? (
-            <EmptyState>This team has no members yet.</EmptyState>
+            <EmptyState>{t('members.teamSection.noTeamMembers')}</EmptyState>
           ) : null}
         </div>
 
@@ -344,16 +351,16 @@ export const TeamMembersSection = ({
         <div className="grid content-start gap-4">
           <InviteToTeamCard />
 
-          <Section title="Pending invitations">
+          <Section title={t('members.pendingInvitations')}>
             <div className="grid gap-2" data-testid="team-invitation-list">
               {invitations.isLoading ? (
-                <p className="text-sm text-[color:var(--tx3)]">Loading invitations…</p>
+                <p className="text-sm text-[color:var(--tx3)]">{t('members.loadingInvitations')}</p>
               ) : null}
               {invitationRows.map((invitation) => (
                 <InvitationRow invitation={invitation} key={invitation.inviteId} />
               ))}
               {!invitations.isLoading && invitationRows.length === 0 ? (
-                <EmptyState>No pending invitations.</EmptyState>
+                <EmptyState>{t('members.teamSection.noPendingInvitations')}</EmptyState>
               ) : null}
             </div>
           </Section>

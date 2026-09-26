@@ -768,6 +768,28 @@
       "memberAdded": "Člen přidán.",
       "adding": "Přidávání…",
       "addFailed": "Člena se nepodařilo přidat. Zkuste to znovu."
+    },
+    "teamSection": {
+      "invitedBy": "pozval {{name}}",
+      "expires": "platnost do {{date}}",
+      "needsApproval": "Vyžaduje schválení",
+      "approveFailed": "Pozvání se nepodařilo schválit. Zkuste to znovu.",
+      "approve": "Schválit",
+      "denyFailed": "Pozvání se nepodařilo zamítnout. Zkuste to znovu.",
+      "deny": "Zamítnout",
+      "resendFailed": "Pozvání se nepodařilo odeslat znovu. Zkuste to znovu.",
+      "cancelFailed": "Pozvání se nepodařilo zrušit. Zkuste to znovu.",
+      "sentTo": "Pozvání odesláno na adresu {{email}}.",
+      "sendFailed": "Pozvání se nepodařilo odeslat. Zkuste to znovu.",
+      "inviteHelp": "E-mailem jim přijde odkaz pro připojení k týmu {{team}}.",
+      "inviteToTeam": "Pozvat do týmu",
+      "reconnectFailed": "Tým se nepodařilo znovu připojit. Zkuste to znovu.",
+      "teamNotLinked": "Tým ztratil spojení s UnlikeOtherAI. Pro zobrazení členů ho znovu připojte.",
+      "membersUnavailable": "Členy se nyní nepodařilo načíst. Zkuste to za chvíli znovu.",
+      "openingUoa": "Otevírání UnlikeOtherAI…",
+      "reconnectTeam": "Znovu připojit tým",
+      "noTeamMembers": "Tento tým zatím nemá žádné členy.",
+      "noPendingInvitations": "Žádná nevyřízená pozvání."
     }
   },
   "automaticMembership": {

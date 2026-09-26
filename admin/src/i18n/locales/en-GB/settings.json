@@ -768,6 +768,28 @@
       "memberAdded": "Member added.",
       "adding": "Adding…",
       "addFailed": "Couldn’t add this member. Try again."
+    },
+    "teamSection": {
+      "invitedBy": "invited by {{name}}",
+      "expires": "expires {{date}}",
+      "needsApproval": "Needs approval",
+      "approveFailed": "Couldn’t approve this invitation. Try again.",
+      "approve": "Approve",
+      "denyFailed": "Couldn’t deny this invitation. Try again.",
+      "deny": "Deny",
+      "resendFailed": "Couldn’t resend this invitation. Try again.",
+      "cancelFailed": "Couldn’t cancel this invitation. Try again.",
+      "sentTo": "Invitation sent to {{email}}.",
+      "sendFailed": "Couldn’t send the invitation. Try again.",
+      "inviteHelp": "They’ll get an email with a link to join {{team}}.",
+      "inviteToTeam": "Invite to team",
+      "reconnectFailed": "Couldn’t reconnect this team. Try again.",
+      "teamNotLinked": "This team has lost its connection to UnlikeOtherAI. Reconnect it to see its members.",
+      "membersUnavailable": "Members couldn’t be loaded right now. Try again in a moment.",
+      "openingUoa": "Opening UnlikeOtherAI…",
+      "reconnectTeam": "Reconnect team",
+      "noTeamMembers": "This team has no members yet.",
+      "noPendingInvitations": "No pending invitations."
     }
   },
   "automaticMembership": {

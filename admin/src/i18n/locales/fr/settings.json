@@ -768,6 +768,28 @@
       "memberAdded": "Membre ajouté.",
       "adding": "Ajout…",
       "addFailed": "Impossible d’ajouter ce membre. Réessayez."
+    },
+    "teamSection": {
+      "invitedBy": "invité par {{name}}",
+      "expires": "expire le {{date}}",
+      "needsApproval": "Approbation requise",
+      "approveFailed": "Impossible d’approuver cette invitation. Réessayez.",
+      "approve": "Approuver",
+      "denyFailed": "Impossible de refuser cette invitation. Réessayez.",
+      "deny": "Refuser",
+      "resendFailed": "Impossible de renvoyer cette invitation. Réessayez.",
+      "cancelFailed": "Impossible d’annuler cette invitation. Réessayez.",
+      "sentTo": "Invitation envoyée à {{email}}.",
+      "sendFailed": "Impossible d’envoyer l’invitation. Réessayez.",
+      "inviteHelp": "La personne recevra un e-mail contenant un lien pour rejoindre {{team}}.",
+      "inviteToTeam": "Inviter dans l’équipe",
+      "reconnectFailed": "Impossible de reconnecter cette équipe. Réessayez.",
+      "teamNotLinked": "Cette équipe a perdu sa connexion à UnlikeOtherAI. Reconnectez-la pour afficher ses membres.",
+      "membersUnavailable": "Impossible de charger les membres pour le moment. Réessayez bientôt.",
+      "openingUoa": "Ouverture de UnlikeOtherAI…",
+      "reconnectTeam": "Reconnecter l’équipe",
+      "noTeamMembers": "Cette équipe ne compte encore aucun membre.",
+      "noPendingInvitations": "Aucune invitation en attente."
     }
   },
   "automaticMembership": {
