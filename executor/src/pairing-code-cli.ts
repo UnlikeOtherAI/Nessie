@@ -62,7 +62,7 @@ export const runPairingCodeCli = async (
   if (!['login', 'pairing-start', 'pairing-status', 'pairing-confirm', 'pairing-cancel', 'pair'].includes(command)) return false
   if (command === 'pair' && args.includes('--enrollment')) return false
   if (pairingUsesWindowsTray(args, platform)) {
-    process.stdout.write('Open Nessie Executor in the Windows tray and choose Pair with Nessie.\n')
+    process.stdout.write('Open Nessie Executor in the Windows tray and choose Add team.\n')
     return true
   }
   const explicitDirectory = value(args, '--state-dir')

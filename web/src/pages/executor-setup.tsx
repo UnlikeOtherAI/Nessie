@@ -136,7 +136,7 @@ nessie-executor permissions --executor <executor-id> --allow "git *,pnpm *"`}</c
     <h2>Startup, status and updates</h2>
 
     <p>
-      {"Interactive "}<code>{"login"}</code>{" offers automatic startup after pairing. On macOS, a "}
+      {"Interactive "}<code>{"login"}</code>{" enables automatic startup after you confirm pairing. On macOS, a "}
       {"launchd agent starts that team when you log in. On Linux, a systemd user "}
       {"service and lingering keep it connected across logout and reboot."}
     </p>
@@ -149,7 +149,7 @@ nessie-executor disable <executor-id>`}</code></pre>
       <code>{"disable"}</code>{" stops the service without deleting its pairing or permissions. "}
       {"For a foreground session, disable its service first, then use "}
       <code>{"nessie-executor daemon --executor <executor-id>"}</code>{". "}
-      {"Custom "}<code>{"--state-root"}</code>{" pairings use foreground supervision."}
+      {"Pairings created with an explicit "}<code>{"--state-dir"}</code>{" use foreground supervision."}
     </p>
 
     <p>

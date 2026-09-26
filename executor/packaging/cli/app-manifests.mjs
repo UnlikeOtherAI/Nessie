@@ -29,7 +29,9 @@ export const appCask = ({ app, version, tag, sha256 }) => {
   homepage "https://nessie.works"
   depends_on arch: :arm64
   depends_on macos: ">= :sequoia"
-${executor ? '  depends_on formula: "tmux"\n' : '  auto_updates true\n'}
+  depends_on formula: "git"
+  depends_on formula: "tmux"
+${executor ? '' : '  auto_updates true\n'}
   app "${name}.app"
   # Pairing keys and permissions deliberately survive uninstall; no zap stanza.
 end
@@ -43,9 +45,10 @@ export const wingetManifests = ({ version, tag, sha256, productCode }) => {
   if (!/^\{[A-Fa-f0-9-]{36}\}$/.test(productCode ?? '')) throw new Error('Read ProductCode from the actual signed MSI.')
   const id = 'UnlikeOtherAI.NessieExecutor'
   const common = `PackageIdentifier: ${id}\nPackageVersion: ${version}\n`
+  const schema = (type) => `# yaml-language-server: $schema=https://aka.ms/winget-manifest.${type}.1.9.0.schema.json\n`
   return {
-    [`${id}.yaml`]: common + 'DefaultLocale: en-US\nManifestType: version\nManifestVersion: 1.9.0\n',
-    [`${id}.locale.en-US.yaml`]: common + `PackageLocale: en-US
+    [`${id}.yaml`]: schema('version') + common + 'DefaultLocale: en-US\nManifestType: version\nManifestVersion: 1.9.0\n',
+    [`${id}.locale.en-US.yaml`]: schema('defaultLocale') + common + `PackageLocale: en-US
 Publisher: UnlikeOtherAI
 PublisherUrl: https://nessie.works
 PackageName: Nessie Executor
@@ -57,7 +60,7 @@ Moniker: nessie-executor
 ManifestType: defaultLocale
 ManifestVersion: 1.9.0
 `,
-    [`${id}.installer.yaml`]: common + `InstallerType: wix
+    [`${id}.installer.yaml`]: schema('installer') + common + `InstallerType: wix
 Scope: machine
 UpgradeBehavior: install
 Installers:

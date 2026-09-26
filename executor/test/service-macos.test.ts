@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
+import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
+import { promisify } from 'node:util'
 
 import { createMacServiceEnvironment, enableMacExecutorService, macServicePlan } from '../src/service-macos.js'
 
@@ -46,6 +48,7 @@ test('enable verifies pairing and runtime before registering an independent laun
     assert.deepEqual(calls, ['pairing', 'runtime', 'print', 'enable', 'bootstrap', 'print'])
     const plan = macServicePlan({ executorId: 'team-one' }, env)
     assert.equal(await readFile(plan.path, 'utf8'), plan.plist)
+    if (process.platform === 'darwin') await promisify(execFile)('/usr/bin/plutil', ['-lint', plan.path])
     const next = macServicePlan({ executorId: 'team-two' }, env)
     await symlink(plan.path, join(dirname(plan.path), next.label + '.plist'))
     await assert.rejects(enableMacExecutorService({ executorId: 'team-two' }, env), /ordinary file/)

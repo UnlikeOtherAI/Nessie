@@ -106,7 +106,7 @@ folder is not a sandbox. Sandboxed `command.run` separately requires the
 
 ## Startup, status and updates
 
-Interactive `login` offers automatic startup after pairing. On macOS, a
+Interactive `login` enables automatic startup after you confirm pairing. On macOS, a
 launchd agent starts that team when you log in. On Linux, a systemd user
 service and lingering keep it connected across logout and reboot.
 
@@ -119,7 +119,7 @@ nessie-executor disable <executor-id>
 `disable` stops the service without deleting its pairing or permissions.
 For a foreground session, disable its service first, then use
 `nessie-executor daemon --executor <executor-id>`.
-Custom `--state-root` pairings use foreground supervision.
+Pairings created with an explicit `--state-dir` use foreground supervision.
 
 Mac CLI logs are in `~/Library/Logs/NessieExecutor/<executor-id>.log`.
 Linux logs are available with

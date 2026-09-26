@@ -91,7 +91,7 @@ nessie-executor permissions --executor <executor-id> --allow "git *,pnpm *"
 ```
 
 `login` uses the interactive code flow on every platform. After confirmation,
-interactive CLI login offers a per-team launchd agent on macOS or a systemd
+interactive CLI login enables a per-team launchd agent on macOS or a systemd
 user service on Linux. `enable`, `disable` and `status` manage those services.
 Installation and startup: [executor packages](running-the-apps/executor-cli.md). `teams --json` provides the
 credential-free list of CLI pairings, with names read from the server and IDs
