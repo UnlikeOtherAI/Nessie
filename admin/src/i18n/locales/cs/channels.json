@@ -233,5 +233,26 @@
     "restartedTitle": "Běh byl restartován",
     "restarting": "Restartování…",
     "restart": "Restartovat"
+  },
+  "thinking": {
+    "loading": "Přemýšlí…",
+    "viewProcess": "Zobrazit myšlenkový postup agenta {{name}}"
+  },
+  "todo": {
+    "unavailable": "Podrobnosti úkolu nejsou dostupné.",
+    "loading": "Načítání úkolu…",
+    "stepsFinished_one": "Dokončen {{complete}}/{{count}} krok",
+    "stepsFinished_few": "Dokončeny {{complete}}/{{count}} kroky",
+    "stepsFinished_many": "Dokončeno {{complete}}/{{count}} kroků",
+    "stepsFinished_other": "Dokončeno {{complete}}/{{count}} kroků",
+    "stepsFinished": "Dokončeno {{complete}}/{{count}} kroků"
+  },
+  "taskPresentation": {
+    "unavailable": "Tento úkol už pro vás není dostupný.",
+    "change": {
+      "moved": "přesunut",
+      "reassigned": "znovu přiřazen"
+    },
+    "ticketChanges": "Úkol {{changes}}"
   }
 }

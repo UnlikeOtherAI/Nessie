@@ -233,5 +233,26 @@
     "restartedTitle": "Ejecución reiniciada",
     "restarting": "Reiniciando…",
     "restart": "Reiniciar"
+  },
+  "thinking": {
+    "loading": "Pensando…",
+    "viewProcess": "Ver el proceso de pensamiento de {{name}}"
+  },
+  "todo": {
+    "unavailable": "Los detalles de la tarea no están disponibles.",
+    "loading": "Cargando tarea…",
+    "stepsFinished_one": "{{complete}}/{{count}} paso completado",
+    "stepsFinished_few": "{{complete}}/{{count}} pasos completados",
+    "stepsFinished_many": "{{complete}}/{{count}} pasos completados",
+    "stepsFinished_other": "{{complete}}/{{count}} pasos completados",
+    "stepsFinished": "{{complete}}/{{count}} pasos completados"
+  },
+  "taskPresentation": {
+    "unavailable": "Ya no tienes acceso a este ticket.",
+    "change": {
+      "moved": "movido",
+      "reassigned": "reasignado"
+    },
+    "ticketChanges": "Ticket {{changes}}"
   }
 }

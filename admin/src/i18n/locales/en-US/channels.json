@@ -233,5 +233,26 @@
     "restartedTitle": "Run restarted",
     "restarting": "Restarting…",
     "restart": "Restart"
+  },
+  "thinking": {
+    "loading": "Thinking…",
+    "viewProcess": "View {{name}}’s thought process"
+  },
+  "todo": {
+    "unavailable": "To-do details are unavailable.",
+    "loading": "Loading to-do…",
+    "stepsFinished_one": "{{complete}}/{{count}} step finished",
+    "stepsFinished_few": "{{complete}}/{{count}} steps finished",
+    "stepsFinished_many": "{{complete}}/{{count}} steps finished",
+    "stepsFinished_other": "{{complete}}/{{count}} steps finished",
+    "stepsFinished": "{{complete}}/{{count}} steps finished"
+  },
+  "taskPresentation": {
+    "unavailable": "That ticket is no longer available to you.",
+    "change": {
+      "moved": "moved",
+      "reassigned": "reassigned"
+    },
+    "ticketChanges": "Ticket {{changes}}"
   }
 }

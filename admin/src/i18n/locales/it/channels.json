@@ -233,5 +233,26 @@
     "restartedTitle": "Esecuzione riavviata",
     "restarting": "Riavvio…",
     "restart": "Riavvia"
+  },
+  "thinking": {
+    "loading": "Ragionamento…",
+    "viewProcess": "Visualizza il ragionamento di {{name}}"
+  },
+  "todo": {
+    "unavailable": "I dettagli dell’attività non sono disponibili.",
+    "loading": "Caricamento attività…",
+    "stepsFinished_one": "{{complete}}/{{count}} passaggio completato",
+    "stepsFinished_few": "{{complete}}/{{count}} passaggi completati",
+    "stepsFinished_many": "{{complete}}/{{count}} passaggi completati",
+    "stepsFinished_other": "{{complete}}/{{count}} passaggi completati",
+    "stepsFinished": "{{complete}}/{{count}} passaggi completati"
+  },
+  "taskPresentation": {
+    "unavailable": "Questo ticket non è più disponibile.",
+    "change": {
+      "moved": "spostato",
+      "reassigned": "riassegnato"
+    },
+    "ticketChanges": "Ticket {{changes}}"
   }
 }

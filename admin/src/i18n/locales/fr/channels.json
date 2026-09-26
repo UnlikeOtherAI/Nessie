@@ -233,5 +233,26 @@
     "restartedTitle": "Exécution redémarrée",
     "restarting": "Redémarrage…",
     "restart": "Redémarrer"
+  },
+  "thinking": {
+    "loading": "Réflexion…",
+    "viewProcess": "Voir le raisonnement de {{name}}"
+  },
+  "todo": {
+    "unavailable": "Les détails de la tâche sont indisponibles.",
+    "loading": "Chargement de la tâche…",
+    "stepsFinished_one": "{{complete}}/{{count}} étape terminée",
+    "stepsFinished_few": "{{complete}}/{{count}} étapes terminées",
+    "stepsFinished_many": "{{complete}}/{{count}} étapes terminées",
+    "stepsFinished_other": "{{complete}}/{{count}} étapes terminées",
+    "stepsFinished": "{{complete}}/{{count}} étapes terminées"
+  },
+  "taskPresentation": {
+    "unavailable": "Ce ticket ne vous est plus accessible.",
+    "change": {
+      "moved": "déplacé",
+      "reassigned": "réattribué"
+    },
+    "ticketChanges": "Ticket {{changes}}"
   }
 }

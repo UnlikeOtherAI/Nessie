@@ -233,5 +233,26 @@
     "restartedTitle": "Ausführung neu gestartet",
     "restarting": "Wird neu gestartet…",
     "restart": "Neu starten"
+  },
+  "thinking": {
+    "loading": "Denkt nach…",
+    "viewProcess": "Gedankenprozess von {{name}} anzeigen"
+  },
+  "todo": {
+    "unavailable": "To-do-Details sind nicht verfügbar.",
+    "loading": "To-do wird geladen…",
+    "stepsFinished_one": "{{complete}}/{{count}} Schritt erledigt",
+    "stepsFinished_few": "{{complete}}/{{count}} Schritte erledigt",
+    "stepsFinished_many": "{{complete}}/{{count}} Schritte erledigt",
+    "stepsFinished_other": "{{complete}}/{{count}} Schritte erledigt",
+    "stepsFinished": "{{complete}}/{{count}} Schritte erledigt"
+  },
+  "taskPresentation": {
+    "unavailable": "Dieses Ticket ist für dich nicht mehr verfügbar.",
+    "change": {
+      "moved": "verschoben",
+      "reassigned": "neu zugewiesen"
+    },
+    "ticketChanges": "Ticket {{changes}}"
   }
 }
