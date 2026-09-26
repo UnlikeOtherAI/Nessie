@@ -1,12 +1,9 @@
 import { Suspense, type ComponentType, type ReactElement } from 'react'
-import { createBrowserRouter, useLocation } from 'react-router-dom'
-import { resolveRootLandingPath } from './facades/billing/checkout-return'
-import { consumeDesktopPendingPath } from './lib/desktop'
-import { readNativePendingPushPath } from './lib/native-shell'
-import { usePhoneLayout } from './navigation/mobile-shell'
+import { createBrowserRouter } from 'react-router-dom'
 import { AdminShellLayout } from './layouts/AdminShellLayout'
 import { RootLayout } from './layouts/RootLayout'
 import { RedirectRoute } from './navigation/RedirectRoute'
+import { AgentAccessRedirect, RootRouteRedirect, SettingsRootRoute } from './router-redirects'
 import { Skeleton, type SkeletonVariant } from './components/primitives/Skeleton'
 import { BootstrapPage } from './pages/BootstrapPage'
 import { ChannelsPage } from './pages/ChannelsPage'
@@ -19,6 +16,8 @@ import {
   AgentMailboxPage,
   AgentsPage,
   AlertsPage,
+  NewsPage,
+  AnnouncementsPage,
   AppDetailPage,
   AppsPage,
   AuditLogPage,
@@ -105,35 +104,6 @@ const lazyElement = (Component: ComponentType, variant: SkeletonVariant): ReactE
   </Suspense>
 )
 
-
-const RootRouteRedirect = () => {
-  const { search } = useLocation()
-  // The native shell injects a tapped notification route before this SPA
-  // starts. Resolve it here, rather than first redirecting to /channels and
-  // replacing the notification destination with the default conversation.
-  return (
-    <RedirectRoute
-      to={resolveRootLandingPath(search, readNativePendingPushPath() ?? consumeDesktopPendingPath())}
-    />
-  )
-}
-
-// `/settings/agent-access` was renamed to `/settings/paired-agents`. An agent
-// that started a pairing before the rename printed the old verification URI and
-// a person is holding it, so the old path keeps working — and the `?code=` it
-// carries has to survive, or the redirect lands them on an empty form and the
-// pairing they were three seconds from finishing dies.
-const AgentAccessRedirect = () => {
-  const { search } = useLocation()
-  return <RedirectRoute to={{ pathname: '/settings/paired-agents', search }} />
-}
-
-// The Admin tab's first phone page is its existing navigation list. Wider
-// layouts preserve the established direct route to Profile & Session.
-const SettingsRootRoute = () => {
-  const phoneLayout = usePhoneLayout()
-  return phoneLayout ? null : <RedirectRoute to="/settings/profile" />
-}
 
 export const router = createBrowserRouter([
   {
@@ -255,54 +225,21 @@ export const router = createBrowserRouter([
           { path: ':channelId' },
         ],
       },
-      {
-        path: '/projects',
-        element: lazyElement(ProjectsIndexPage, 'list'),
-      },
-      {
-        path: '/projects/directory',
-        element: lazyElement(ProjectDirectoryPage, 'list'),
-      },
-      {
-        path: '/projects/:projectId',
-        element: lazyElement(ProjectView, 'board'),
-      },
-      {
-        path: '/projects/:projectId/board',
-        element: lazyElement(ProjectView, 'board'),
-      },
-      {
-        path: '/projects/:projectId/boards',
-        element: lazyElement(ProjectBoardsPage, 'list'),
-      },
+      { path: '/projects', element: lazyElement(ProjectsIndexPage, 'list') },
+      { path: '/projects/directory', element: lazyElement(ProjectDirectoryPage, 'list') },
+      { path: '/projects/:projectId', element: lazyElement(ProjectView, 'board') },
+      { path: '/projects/:projectId/board', element: lazyElement(ProjectView, 'board') },
+      { path: '/projects/:projectId/boards', element: lazyElement(ProjectBoardsPage, 'list') },
       {
         path: '/projects/:projectId/boards/:boardId/settings',
         element: lazyElement(BoardSettingsPage, 'detail'),
       },
-      {
-        path: '/projects/:projectId/backlog',
-        element: lazyElement(ProjectView, 'board'),
-      },
-      {
-        path: '/projects/:projectId/insights',
-        element: lazyElement(ProjectView, 'board'),
-      },
-      {
-        path: '/projects/:projectId/docs',
-        element: lazyElement(ProjectView, 'board'),
-      },
-      {
-        path: '/projects/:projectId/executors',
-        element: lazyElement(ProjectView, 'board'),
-      },
-      {
-        path: '/projects/:projectId/settings',
-        element: lazyElement(ProjectView, 'board'),
-      },
-      {
-        path: '/projects/:projectId/dashboards',
-        element: lazyElement(ProjectView, 'board'),
-      },
+      { path: '/projects/:projectId/backlog', element: lazyElement(ProjectView, 'board') },
+      { path: '/projects/:projectId/insights', element: lazyElement(ProjectView, 'board') },
+      { path: '/projects/:projectId/docs', element: lazyElement(ProjectView, 'board') },
+      { path: '/projects/:projectId/executors', element: lazyElement(ProjectView, 'board') },
+      { path: '/projects/:projectId/settings', element: lazyElement(ProjectView, 'board') },
+      { path: '/projects/:projectId/dashboards', element: lazyElement(ProjectView, 'board') },
       {
         // One dashboard, full screen — its own page rather than a project tab,
         // because it is what the Overview's live tiles open into and it takes
@@ -320,30 +257,12 @@ export const router = createBrowserRouter([
         path: '/work',
         element: <RedirectRoute to="/projects" />,
       },
-      {
-        path: '/knowledge-base',
-        element: lazyElement(KnowledgeBasePage, 'list'),
-      },
-      {
-        path: '/knowledge-base/latest',
-        element: lazyElement(KnowledgeBasePage, 'list'),
-      },
-      {
-        path: '/knowledge-base/shared-with-me',
-        element: lazyElement(KnowledgeBasePage, 'list'),
-      },
-      {
-        path: '/knowledge-base/agents',
-        element: lazyElement(KnowledgeBasePage, 'list'),
-      },
-      {
-        path: '/knowledge-base/agents/:agentId',
-        element: lazyElement(KnowledgeBasePage, 'list'),
-      },
-      {
-        path: '/knowledge-base/spaces/:spaceId',
-        element: lazyElement(KnowledgeBasePage, 'list'),
-      },
+      { path: '/knowledge-base', element: lazyElement(KnowledgeBasePage, 'list') },
+      { path: '/knowledge-base/latest', element: lazyElement(KnowledgeBasePage, 'list') },
+      { path: '/knowledge-base/shared-with-me', element: lazyElement(KnowledgeBasePage, 'list') },
+      { path: '/knowledge-base/agents', element: lazyElement(KnowledgeBasePage, 'list') },
+      { path: '/knowledge-base/agents/:agentId', element: lazyElement(KnowledgeBasePage, 'list') },
+      { path: '/knowledge-base/spaces/:spaceId', element: lazyElement(KnowledgeBasePage, 'list') },
       {
         path: '/knowledge-base/views/:productView',
         element: lazyElement(KnowledgeBasePage, 'list'),
@@ -532,6 +451,14 @@ export const router = createBrowserRouter([
       {
         path: '/alerts',
         element: lazyElement(AlertsPage, 'list'),
+      },
+      {
+        path: '/news',
+        element: lazyElement(NewsPage, 'list'),
+      },
+      {
+        path: '/settings/announcements',
+        element: lazyElement(AnnouncementsPage, 'detail'),
       },
       {
         path: '/tokens',

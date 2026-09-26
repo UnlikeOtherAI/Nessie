@@ -283,7 +283,7 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     depth: 1,
     parent: 'origin',
     parentOf: toAdmin,
-    pattern: /^\/(?:alerts|feedback)$/,
+    pattern: /^\/(?:alerts|feedback|news)$/,
     root: adminRoot,
     section: 'admin',
     type: 'detail',

@@ -1,7 +1,7 @@
 import { ExecutorSection } from './user-menu/ExecutorSection'
 import { type RefObject } from 'react'
 import { Link } from 'react-router-dom'
-import { faArrowRightFromBracket, faCircleQuestion, faGear } from '@fortawesome/free-solid-svg-icons'
+import { faArrowRightFromBracket, faCircleQuestion, faGear, faNewspaper } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { MeUser } from '@nessie/schemas'
 import { Popover } from '../../components/overlays/Popover'
@@ -20,6 +20,8 @@ type UserMenuPopoverProps = {
   open: boolean
   onClose: () => void
   onLogout: () => void
+  onNews: () => void
+  newsUnreadCount: number
   placement?: UserMenuPopoverPlacement
 }
 
@@ -45,6 +47,8 @@ export const UserMenuPopover = ({
   open,
   onClose,
   onLogout,
+  onNews,
+  newsUnreadCount,
   placement = 'rail',
 }: UserMenuPopoverProps) => {
   const { focusModeEnabled } = useFocusMode()
@@ -92,6 +96,17 @@ export const UserMenuPopover = ({
       <ExecutorSection onClose={onClose} />
 
       <div className="my-1 h-px bg-[color:var(--sep)]" />
+
+      <button className={rowClassName} onClick={() => { onClose(); onNews() }} type="button">
+        <span>News</span>
+        <span className="flex items-center gap-2">
+          {newsUnreadCount > 0 ? (
+            <span aria-label={`${newsUnreadCount} unread news articles`}
+              className="news-unread-count">{newsUnreadCount > 99 ? '99+' : newsUnreadCount}</span>
+          ) : null}
+          <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--tx3)]" icon={faNewspaper} />
+        </span>
+      </button>
 
       <Link className={rowClassName} onClick={onClose} to="/feedback">
         <span>Feedback</span>

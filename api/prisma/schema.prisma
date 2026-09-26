@@ -1103,6 +1103,7 @@ enum ProductIntegrationRunStatus {
 }
 
 model User {
+  newsReadState                         PlatformNewsReadState?
   conversationSuggestions AgentConversationSuggestions[]
   executorSessionShares ExecutorHostSessionShare[]
   id                                    String                                 @id @default(uuid()) @db.Uuid
@@ -1224,6 +1225,54 @@ model User {
   endedStandingPolicies    ExecutorStandingPolicy[] @relation("ExecutorStandingPolicyEndedBy")
 
   @@map("users")
+}
+
+// Instance-wide operator content. Neither row carries an organisation id:
+// every signed-in account on this installation sees the same publication.
+model PlatformBanner {
+  id        String   @id @default("current")
+  text      String
+  linkUrl   String?  @map("link_url")
+  active    Boolean  @default(false)
+  revision  String   @default(uuid()) @db.Uuid
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_banners")
+}
+
+model PlatformNewsArticle {
+  id                 String    @id @default(uuid()) @db.Uuid
+  title              String
+  body               String
+  imageUrl           String?   @map("image_url")
+  youtubeUrl         String?   @map("youtube_url")
+  publishedAt        DateTime? @map("published_at")
+  publicationVersion Int?      @map("publication_version")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  image              PlatformNewsImage?
+
+  @@index([publicationVersion])
+  @@map("platform_news_articles")
+}
+
+model PlatformNewsImage {
+  articleId String              @id @map("article_id") @db.Uuid
+  mime      String
+  bytes     Bytes               @db.ByteA
+  article   PlatformNewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@map("platform_news_images")
+}
+
+// One marker per account across all of its organisations and devices.
+model PlatformNewsReadState {
+  userId                     String  @id @map("user_id") @db.Uuid
+  lastSeenPublicationVersion Int     @default(0) @map("last_seen_publication_version")
+  notificationsMuted         Boolean @default(false) @map("notifications_muted")
+  user                       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("platform_news_read_states")
 }
 
 // A single server-side generation orders device-token ownership handoffs across

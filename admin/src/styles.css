@@ -450,6 +450,74 @@ textarea::placeholder {
   color: var(--tx);
 }
 
+.announcement-strip {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+  min-height: 40px;
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--sep);
+  color: var(--tx);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.announcement-strip-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+
+a.announcement-strip-link:hover { text-decoration: underline; }
+
+.announcement-strip-dismiss {
+  flex: 0 0 40px;
+  color: var(--tx2);
+  font-size: 22px;
+}
+
+.announcement-strip-dismiss:hover { background: var(--overlay-weak); }
+
+.news-unread-count {
+  min-width: 20px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  padding: 1px 6px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.news-account-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--rail);
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.news-play-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: 52px;
+  height: 52px;
+  transform: translate(-50%, -50%);
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 20px;
+}
+
+.news-media:hover .news-play-button { background: var(--accent-hover); }
+
 /* The value changes happen on the palette scopes. Descendants inherit the
    in-flight colours, which keeps every route and component on one curve. A
    phone-root or portalled menu is itself a palette scope, so include its aside

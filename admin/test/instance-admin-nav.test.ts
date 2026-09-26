@@ -46,6 +46,13 @@ test('System Health is visible to the instance super-admin only', () => {
   assert.equal(isAdminNavItemVisible(health, viewer({ isSuperAdmin: true })), true)
 })
 
+test('Announcements is visible to the instance super-admin only', () => {
+  const announcements = navItem('/settings/announcements')
+  assert.equal(isAdminNavItemVisible(announcements, viewer()), false)
+  assert.equal(isAdminNavItemVisible(announcements, viewer({ isOwner: true })), false)
+  assert.equal(isAdminNavItemVisible(announcements, viewer({ isSuperAdmin: true })), true)
+})
+
 test('org-scoped operational surfaces retain their owner doorway', () => {
   // The neighbouring items read org-filtered data, so they are deliberately
   // NOT swept into the instance role along with Health.
@@ -66,7 +73,7 @@ test('org-scoped operational surfaces retain their owner doorway', () => {
 test('Platform owns both operational and instance controls without creating an empty section', () => {
   assert.deepEqual(
     platform().items.map((item) => item.path),
-    ['/ops', '/settings/push', '/audit', '/policy', '/ops/usage'],
+    ['/settings/announcements', '/ops', '/settings/push', '/audit', '/policy', '/ops/usage'],
   )
   assert.equal(ADMIN_NAV.some((group) => group.id === 'ops'), false)
   assert.equal(isAdminNavGroupVisible(platform(), viewer({ isOwner: true })), true)

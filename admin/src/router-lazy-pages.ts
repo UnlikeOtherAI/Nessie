@@ -14,6 +14,10 @@ export const ProjectDirectoryPage = lazy(() =>
   import('./pages/project/ProjectDirectoryPage').then((m) => ({ default: m.ProjectDirectoryPage })),
 )
 export const AlertsPage = lazy(() => import('./pages/AlertsPage').then((m) => ({ default: m.AlertsPage })))
+export const NewsPage = lazy(() => import('./pages/NewsPage').then((m) => ({ default: m.NewsPage })))
+export const AnnouncementsPage = lazy(() => import('./pages/AnnouncementsPage').then(
+  (m) => ({ default: m.AnnouncementsPage }),
+))
 export const AgentDesignerPage = lazy(() =>
   import('./pages/AgentDesignerPage').then((m) => ({ default: m.AgentDesignerPage })),
 )

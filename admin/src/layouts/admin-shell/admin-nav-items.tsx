@@ -411,6 +411,17 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     visibleTo: ({ isOwner, isSuperAdmin }) => isOwner || isSuperAdmin,
     items: [
       {
+        path: '/settings/announcements',
+        label: 'Announcements',
+        visibleTo: (viewer) => viewer.isSuperAdmin,
+        icon: icon(
+          <>
+            <path d="M3 10v4h4l10 4V6L7 10H3z" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M7 14l1 5h3l-1-4M20 9a4 4 0 010 6" strokeLinecap="round" />
+          </>,
+        ),
+      },
+      {
         path: '/ops',
         label: 'Health',
         exact: true,
