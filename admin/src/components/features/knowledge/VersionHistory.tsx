@@ -1,8 +1,5 @@
 import { useMemo, useState } from 'react'
 import { ChoiceGroup } from '../../shared/ChoiceGroup'
-import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import { downloadAuthedPath } from '../../../lib/uploads'
-import { versionDownloadPath } from '../../../facades/knowledge/file-hooks'
 import type {
   KnowledgePageRecord,
   KnowledgeVersionRecord,
@@ -11,6 +8,7 @@ import { buildVersionDiff, type VersionDiffOperation } from './version-history-d
 
 type VersionHistoryProps = {
   canRestore: boolean
+  onDownload: (versionId: string) => void
   onRestore: (versionId: string) => void
   page: KnowledgePageRecord
   pending?: boolean
@@ -62,12 +60,12 @@ const renderSide = (diff: VersionDiffOperation[], side: 'old' | 'current') => (
 
 export const VersionHistory = ({
   canRestore,
+  onDownload,
   onRestore,
   page,
   pending,
   versions,
 }: VersionHistoryProps) => {
-  const { token } = useAuthSession()
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null)
   const selectedVersion =
     versions.find((version) => version.id === selectedVersionId) ?? versions[0] ?? null
@@ -107,9 +105,7 @@ export const VersionHistory = ({
               {page.kind === 'file' && selectedVersion.attachmentId ? (
                 <button
                   className="admin-button admin-button-secondary"
-                  onClick={() => void downloadAuthedPath(
-                    versionDownloadPath(page.id, selectedVersion.id), page.title, token,
-                  )}
+                  onClick={() => onDownload(selectedVersion.id)}
                   type="button"
                 >
                   Download this version

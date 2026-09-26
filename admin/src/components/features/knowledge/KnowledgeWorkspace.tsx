@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useKnowledgePage, useKnowledgeVersions } from '../../../facades/knowledge/hooks'
 import { useProjects } from '../../../facades/projects/hooks'
+import { versionDownloadPath } from '../../../facades/knowledge/file-hooks'
+import { downloadAuthedPath } from '../../../lib/uploads'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { LOCAL_BACK_PRIORITY } from '../../../navigation/LocalBackContext'
 import { NestedStage, useNestedStageHosted } from '../../../navigation/NestedStage'
 import { Dialog } from '../../shared/Dialog'
@@ -44,6 +47,7 @@ export const KnowledgeWorkspace = ({
   canManageSpace,
   scope = { kind: 'org' },
 }: KnowledgeWorkspaceProps = {}) => {
+  const { token } = useAuthSession()
   const {
     activeProductView,
     selectedSpace,
@@ -244,6 +248,9 @@ export const KnowledgeWorkspace = ({
     >
       <VersionHistory
         canRestore={canWrite}
+        onDownload={(versionId) => void downloadAuthedPath(
+          versionDownloadPath(historyPage.id, versionId), historyPage.title, token,
+        )}
         onRestore={(versionId) => restoreVersion({ pageId: historyPage.id, versionId })}
         page={fullPage ?? historyPage}
         pending={restorePending}
