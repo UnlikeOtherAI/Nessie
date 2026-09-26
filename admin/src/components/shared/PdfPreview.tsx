@@ -11,6 +11,7 @@ export const PdfPreview = ({ title, url }: { title: string; url: string }) => {
   const [pageNumber, setPageNumber] = useState(1)
   const [width, setWidth] = useState(0)
   const [renderError, setRenderError] = useState(false)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -25,10 +26,23 @@ export const PdfPreview = ({ title, url }: { title: string; url: string }) => {
         // scripts or follows links embedded in an uploaded document.
         const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer())
         if (cancelled) return
-        const pdfjs = await import('pdfjs-dist')
-        const { default: pdfWorkerUrl } = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+        const [{ default: pdfApiUrl }, { default: pdfWorkerUrl }] = await Promise.all([
+          import('pdfjs-dist/build/pdf.min.mjs?url'),
+          import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+        ])
+        // A failed module import stays failed in Safari for the life of this
+        // page. Request a fresh URL after a retry so a brief network failure
+        // cannot leave the preview stuck until the whole app is reloaded.
+        const apiUrl = new URL(pdfApiUrl, window.location.href)
+        apiUrl.searchParams.set('nessie-pdf-runtime', `2-${attempt}`)
+        const pdfjs = await import(/* @vite-ignore */ apiUrl.href) as typeof import('pdfjs-dist')
         if (cancelled) return
-        pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
+        // The worker was once served as octet-stream with an immutable one-year
+        // cache lifetime. Its content hash did not change when nginx's MIME type
+        // was fixed, so existing browsers can still reuse the bad response.
+        const workerUrl = new URL(pdfWorkerUrl, window.location.href)
+        workerUrl.searchParams.set('nessie-worker-mime', `2-${attempt}`)
+        pdfjs.GlobalWorkerOptions.workerSrc = workerUrl.href
         loadingTask = pdfjs.getDocument({ data: bytes })
         document = await loadingTask.promise
         if (!cancelled) setState({ document, error: false, loading: false })
@@ -41,7 +55,7 @@ export const PdfPreview = ({ title, url }: { title: string; url: string }) => {
       void loadingTask?.destroy()
       if (document && !loadingTask) void document.destroy()
     }
-  }, [url])
+  }, [url, attempt])
 
   useEffect(() => {
     const container = containerRef.current
@@ -95,9 +109,19 @@ export const PdfPreview = ({ title, url }: { title: string; url: string }) => {
   return (
     <div className="flex h-full min-h-0 w-full flex-col" ref={containerRef}>
       {state.error || renderError ? (
-        <p className="p-8 text-center text-sm text-[color:var(--tx3)]">
-          This PDF couldn’t be previewed. Download it to open it in another app.
-        </p>
+        <div className="flex flex-col items-center gap-3 p-8 text-center text-sm text-[color:var(--tx3)]">
+          <p>This PDF couldn’t be previewed. Download it to open it in another app.</p>
+          <button
+            className="admin-button admin-button-secondary"
+            onClick={() => {
+              setRenderError(false)
+              setAttempt((current) => current + 1)
+            }}
+            type="button"
+          >
+            Retry preview
+          </button>
+        </div>
       ) : state.loading ? (
         <p className="p-8 text-center text-sm text-[color:var(--tx3)]">Loading PDF…</p>
       ) : null}
