@@ -1,0 +1,28 @@
+{
+  "title": "Buscar",
+  "placeholder": "Buscar en canales, proyectos, tickets, mensajes, documentos, personas, agentes, aplicaciones y memoria…",
+  "modeLabel": "Modo de búsqueda",
+  "fulltext": "Texto completo",
+  "fulltextTitle": "La búsqueda de texto completo encuentra las palabras que escribes en todas las secciones disponibles.",
+  "semantic": "Semántica",
+  "semanticTitle": "La búsqueda semántica conserva las coincidencias exactas y añade resultados por significado en mensajes, tickets, documentos y memoria.",
+  "semanticHelp": "La búsqueda híbrida conserva las coincidencias de texto completo y añade resultados por significado cuando el contenido tiene embeddings.",
+  "fulltextHelp": "El texto completo encuentra las palabras que escribes sin ampliar por significado.",
+  "enterQuery": "Escribe al menos dos caracteres para buscar en todas las secciones.",
+  "searching": "Buscando…",
+  "noResults": "No hay resultados",
+  "expired": "Esta página de resultados de búsqueda de tickets ha caducado.",
+  "restartTicketSearch": "Reiniciar la búsqueda de tickets",
+  "ticketNoResults": "No hay resultados de tickets en esta página.",
+  "sections": {
+    "channels": "Canales", "projects": "Proyectos", "tickets": "Tickets", "messages": "Mensajes",
+    "knowledge": "Conocimiento", "people": "Personas", "agents": "Agentes", "apps": "Aplicaciones", "memory": "Memoria"
+  },
+  "alias": "Alias: {{value}}",
+  "tag": "Etiqueta: {{value}}",
+  "protected": "Protegido",
+  "protectedAskMember": "Protegido · Pide a un miembro que te añada",
+  "untitledTicket": "Ticket sin título",
+  "memoryHybridMatch": "Memoria · Coincidencia híbrida",
+  "memoryFullTextMatch": "Memoria · Coincidencia de texto completo"
+}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { faChevronRight } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
@@ -83,9 +84,11 @@ const Breadcrumb = ({
 }: {
   crumbs: FinderBreadcrumbCrumb[]
   onBrowseTo: (pageId: string | null) => void
-}) => (
+}) => {
+  const { t } = useTranslation('knowledgeFinder')
+  return (
   <nav
-    aria-label="Current folder"
+    aria-label={t('currentFolder')}
     className="flex min-w-0 flex-wrap items-center gap-1 px-[var(--page-gutter)] py-2 text-sm"
   >
     {crumbs.map((crumb, index) => (
@@ -103,7 +106,8 @@ const Breadcrumb = ({
       </span>
     ))}
   </nav>
-)
+  )
+}
 
 export const FinderListView = ({
   backgroundProps,

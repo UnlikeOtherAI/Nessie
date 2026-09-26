@@ -20,6 +20,7 @@ import {
   writeStoredSearchMode,
 } from '../facades/search/hooks'
 import { useTabParam } from '../navigation/useTabParam'
+import { useTranslation } from 'react-i18next'
 
 const rowClass = [
   'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left',
@@ -63,13 +64,21 @@ const SearchSection = ({
   children: ReactNode
   title: SearchSectionTitle
 }) => (
-  <section className="space-y-1">
-    <SectionLabel as="h2" className="px-3">{title}</SectionLabel>
-    <div className="space-y-0.5">{children}</div>
-  </section>
+  <SearchSectionContent title={title}>{children}</SearchSectionContent>
 )
 
+const SearchSectionContent = ({ children, title }: { children: ReactNode; title: SearchSectionTitle }) => {
+  const { t } = useTranslation('search')
+  return (
+    <section className="space-y-1">
+      <SectionLabel as="h2" className="px-3">{t(`sections.${title.toLowerCase()}`)}</SectionLabel>
+      <div className="space-y-0.5">{children}</div>
+    </section>
+  )
+}
+
 export const SearchPage = () => {
+  const { t } = useTranslation('search')
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   // `?mode=` is state of this Search surface. A legacy `text` value becomes
@@ -118,7 +127,7 @@ export const SearchPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <ScreenHeader title="Search" />
+      <ScreenHeader title={t('title')} />
 
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="border-b border-[color:var(--sep)] px-[var(--page-gutter)] py-5">
@@ -128,32 +137,30 @@ export const SearchPage = () => {
               className="admin-input min-w-0 flex-1"
               maxLength={200}
               onChange={(event) => updateQuery(event.target.value)}
-              placeholder="Search channels, projects, tickets, messages, documents, people, agents, apps, and memory…"
+              placeholder={t('placeholder')}
               type="search"
               value={query}
             />
             <SearchModeToggle mode={mode} onChange={updateMode} />
           </div>
           <p className="mt-3 text-xs text-[color:var(--tx3)]">
-            {mode === 'semantic'
-              ? 'Hybrid search keeps full-text matches and adds meaning-based results where content has embeddings.'
-              : 'Full text finds the words you entered, without meaning-based expansion.'}
+            {mode === 'semantic' ? t('semanticHelp') : t('fulltextHelp')}
           </p>
         </div>
 
         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-[var(--page-gutter)] py-5">
           {!active ? (
             <p className="px-3 text-sm text-[color:var(--tx3)]">
-              Enter at least two characters to search every section.
+              {t('enterQuery')}
             </p>
           ) : results.isLoading && !hasResults ? (
-            <p className="px-3 text-sm text-[color:var(--tx3)]">Searching…</p>
+            <p className="px-3 text-sm text-[color:var(--tx3)]">{t('searching')}</p>
           ) : !hasResults ? (
             results.invalidTaskCursor ? (
               <p className="px-3 text-sm text-[color:var(--danger-text)]">
-                This ticket-search page expired.{' '}
+                {t('expired')}{' '}
                 <button className="admin-link" onClick={results.restartTaskSearch} type="button">
-                  Restart ticket search
+                  {t('restartTicketSearch')}
                 </button>
               </p>
             ) : results.errorMessage ? (
@@ -161,15 +168,15 @@ export const SearchPage = () => {
                 {results.errorMessage}
               </p>
             ) : (
-              <p className="px-3 text-sm text-[color:var(--tx3)]">No results</p>
+              <p className="px-3 text-sm text-[color:var(--tx3)]">{t('noResults')}</p>
             )
           ) : (
             <>
               {results.invalidTaskCursor ? (
                 <p className="px-3 text-sm text-[color:var(--danger-text)]">
-                  This ticket-search page expired.{' '}
+                  {t('expired')}{' '}
                   <button className="admin-link" onClick={results.restartTaskSearch} type="button">
-                    Restart ticket search
+                    {t('restartTicketSearch')}
                   </button>
                 </p>
               ) : results.errorMessage ? (
@@ -200,7 +207,7 @@ export const SearchPage = () => {
                       <>
                         {results.tasks.length === 0 ? (
                           <p className="px-3 py-2 text-sm text-[color:var(--tx3)]">
-                            No ticket results on this page.
+                            {t('ticketNoResults')}
                           </p>
                         ) : null}
                         <PaginationFooter

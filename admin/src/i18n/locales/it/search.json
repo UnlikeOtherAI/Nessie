@@ -1,0 +1,28 @@
+{
+  "title": "Cerca",
+  "placeholder": "Cerca in canali, progetti, ticket, messaggi, documenti, persone, agenti, app e memoria…",
+  "modeLabel": "Modalità di ricerca",
+  "fulltext": "Testo completo",
+  "fulltextTitle": "La ricerca nel testo completo trova le parole inserite in ogni sezione ricercabile.",
+  "semantic": "Semantica",
+  "semanticTitle": "La ricerca semantica mantiene le corrispondenze esatte e aggiunge risultati basati sul significato per messaggi, ticket, documenti e memoria.",
+  "semanticHelp": "La ricerca ibrida mantiene le corrispondenze nel testo completo e aggiunge risultati basati sul significato quando il contenuto ha embedding.",
+  "fulltextHelp": "Il testo completo trova le parole inserite senza espansione basata sul significato.",
+  "enterQuery": "Inserisci almeno due caratteri per cercare in tutte le sezioni.",
+  "searching": "Ricerca in corso…",
+  "noResults": "Nessun risultato",
+  "expired": "Questa pagina dei risultati della ricerca ticket è scaduta.",
+  "restartTicketSearch": "Riavvia la ricerca dei ticket",
+  "ticketNoResults": "Nessun risultato per i ticket in questa pagina.",
+  "sections": {
+    "channels": "Canali", "projects": "Progetti", "tickets": "Ticket", "messages": "Messaggi",
+    "knowledge": "Conoscenza", "people": "Persone", "agents": "Agenti", "apps": "App", "memory": "Memoria"
+  },
+  "alias": "Alias: {{value}}",
+  "tag": "Tag: {{value}}",
+  "protected": "Protetto",
+  "protectedAskMember": "Protetto · Chiedi a un membro di aggiungerti",
+  "untitledTicket": "Ticket senza titolo",
+  "memoryHybridMatch": "Memoria · Corrispondenza ibrida",
+  "memoryFullTextMatch": "Memoria · Corrispondenza nel testo completo"
+}

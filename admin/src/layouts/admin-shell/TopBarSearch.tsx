@@ -34,7 +34,8 @@ export const TopBarSearch = ({
   onDismiss,
   variant = 'topbar',
 }: TopBarSearchProps) => {
-  const { t } = useTranslation('shell')
+  const { t: shellT } = useTranslation('shell')
+  const { t: searchT } = useTranslation('search')
   const navigate = useNavigate()
   const { data: organization } = useCurrentOrganization()
   const [query, setQuery] = useState('')
@@ -142,7 +143,7 @@ export const TopBarSearch = ({
           aria-autocomplete="list"
           aria-controls={showDropdown ? listboxId : undefined}
           aria-expanded={showDropdown}
-          aria-label={t('navigation.search')}
+          aria-label={shellT('navigation.search')}
           className="admin-topbar-search-input"
           maxLength={200}
           onChange={(event) => {
@@ -152,8 +153,8 @@ export const TopBarSearch = ({
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder={organization?.name
-            ? t('search.placeholderNamed', { name: organization.name })
-            : t('navigation.search')}
+            ? shellT('search.placeholderNamed', { name: organization.name })
+            : shellT('navigation.search')}
           ref={inputRef}
           role="combobox"
           type="search"
@@ -172,8 +173,8 @@ export const TopBarSearch = ({
         <div className="admin-topbar-results" id={listboxId} role="listbox">
           <p className="px-3 pb-2 pt-1 text-xs text-[color:var(--tx3)]">
             {mode === 'semantic'
-              ? t('search.hybridDescription')
-              : t('search.fullTextDescription')}
+              ? searchT('semanticHelp')
+              : searchT('fulltextHelp')}
           </p>
           {results.errorMessage && items.length === 0 ? (
             <p className="px-3 py-4 text-sm text-[color:var(--danger)]">
@@ -181,13 +182,13 @@ export const TopBarSearch = ({
             </p>
           ) : items.length === 0 ? (
             <p className="px-3 py-4 text-sm text-[color:var(--tx3)]">
-              {results.isLoading ? t('search.searching') : t('search.noResults')}
+              {results.isLoading ? searchT('searching') : searchT('noResults')}
             </p>
           ) : (
             <>
               {results.errorMessage ? (
                 <p className="px-3 pb-2 text-xs text-[color:var(--danger)]">
-                  {t('search.partialError', { error: results.errorMessage })}
+                  {shellT('search.partialError', { error: results.errorMessage })}
                 </p>
               ) : null}
               {items.map((item, index) => {
@@ -200,7 +201,7 @@ export const TopBarSearch = ({
                         className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-[color:var(--tx3)]"
                         role="presentation"
                       >
-                        {item.section}
+                        {searchT(`sections.${item.section.toLowerCase()}`)}
                       </p>
                     ) : null}
                     <button
@@ -238,7 +239,7 @@ export const TopBarSearch = ({
                 }}
                 type="button"
               >
-                {t('search.seeAllResults')}
+                {shellT('search.seeAllResults')}
               </button>
             </>
           )}

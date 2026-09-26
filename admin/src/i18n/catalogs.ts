@@ -7,6 +7,8 @@ import enGBCommon from './locales/en-GB/common.json'
 import enGBFeedback from './locales/en-GB/feedback.json'
 import enGBInbox from './locales/en-GB/inbox.json'
 import enGBAuth from './locales/en-GB/auth.json'
+import enGBSearch from './locales/en-GB/search.json'
+import enGBKnowledgeFinder from './locales/en-GB/knowledgeFinder.json'
 import enUSAccountMenu from './locales/en-US/accountMenu.json'
 import enUSShell from './locales/en-US/shell.json'
 import enUSProjects from './locales/en-US/projects.json'
@@ -16,6 +18,8 @@ import enUSCommon from './locales/en-US/common.json'
 import enUSFeedback from './locales/en-US/feedback.json'
 import enUSInbox from './locales/en-US/inbox.json'
 import enUSAuth from './locales/en-US/auth.json'
+import enUSSearch from './locales/en-US/search.json'
+import enUSKnowledgeFinder from './locales/en-US/knowledgeFinder.json'
 import csAccountMenu from './locales/cs/accountMenu.json'
 import csShell from './locales/cs/shell.json'
 import csProjects from './locales/cs/projects.json'
@@ -25,6 +29,8 @@ import csCommon from './locales/cs/common.json'
 import csFeedback from './locales/cs/feedback.json'
 import csInbox from './locales/cs/inbox.json'
 import csAuth from './locales/cs/auth.json'
+import csSearch from './locales/cs/search.json'
+import csKnowledgeFinder from './locales/cs/knowledgeFinder.json'
 import deAccountMenu from './locales/de/accountMenu.json'
 import deShell from './locales/de/shell.json'
 import deProjects from './locales/de/projects.json'
@@ -34,6 +40,8 @@ import deCommon from './locales/de/common.json'
 import deFeedback from './locales/de/feedback.json'
 import deInbox from './locales/de/inbox.json'
 import deAuth from './locales/de/auth.json'
+import deSearch from './locales/de/search.json'
+import deKnowledgeFinder from './locales/de/knowledgeFinder.json'
 import frAccountMenu from './locales/fr/accountMenu.json'
 import frShell from './locales/fr/shell.json'
 import frProjects from './locales/fr/projects.json'
@@ -43,6 +51,8 @@ import frCommon from './locales/fr/common.json'
 import frFeedback from './locales/fr/feedback.json'
 import frInbox from './locales/fr/inbox.json'
 import frAuth from './locales/fr/auth.json'
+import frSearch from './locales/fr/search.json'
+import frKnowledgeFinder from './locales/fr/knowledgeFinder.json'
 import itAccountMenu from './locales/it/accountMenu.json'
 import itShell from './locales/it/shell.json'
 import itProjects from './locales/it/projects.json'
@@ -52,6 +62,8 @@ import itCommon from './locales/it/common.json'
 import itFeedback from './locales/it/feedback.json'
 import itInbox from './locales/it/inbox.json'
 import itAuth from './locales/it/auth.json'
+import itSearch from './locales/it/search.json'
+import itKnowledgeFinder from './locales/it/knowledgeFinder.json'
 import esAccountMenu from './locales/es/accountMenu.json'
 import esShell from './locales/es/shell.json'
 import esProjects from './locales/es/projects.json'
@@ -61,6 +73,8 @@ import esCommon from './locales/es/common.json'
 import esFeedback from './locales/es/feedback.json'
 import esInbox from './locales/es/inbox.json'
 import esAuth from './locales/es/auth.json'
+import esSearch from './locales/es/search.json'
+import esKnowledgeFinder from './locales/es/knowledgeFinder.json'
 import type { Language } from './languages'
 import { translationNamespaces, type TranslationNamespace } from './namespaces'
 
@@ -75,6 +89,8 @@ export const catalogs = {
     feedback: enGBFeedback,
     inbox: enGBInbox,
     auth: enGBAuth,
+    search: enGBSearch,
+    knowledgeFinder: enGBKnowledgeFinder,
   },
   'en-US': {
     accountMenu: enUSAccountMenu,
@@ -86,6 +102,8 @@ export const catalogs = {
     feedback: enUSFeedback,
     inbox: enUSInbox,
     auth: enUSAuth,
+    search: enUSSearch,
+    knowledgeFinder: enUSKnowledgeFinder,
   },
   'cs': {
     accountMenu: csAccountMenu,
@@ -97,6 +115,8 @@ export const catalogs = {
     feedback: csFeedback,
     inbox: csInbox,
     auth: csAuth,
+    search: csSearch,
+    knowledgeFinder: csKnowledgeFinder,
   },
   'de': {
     accountMenu: deAccountMenu,
@@ -108,6 +128,8 @@ export const catalogs = {
     feedback: deFeedback,
     inbox: deInbox,
     auth: deAuth,
+    search: deSearch,
+    knowledgeFinder: deKnowledgeFinder,
   },
   'fr': {
     accountMenu: frAccountMenu,
@@ -119,6 +141,8 @@ export const catalogs = {
     feedback: frFeedback,
     inbox: frInbox,
     auth: frAuth,
+    search: frSearch,
+    knowledgeFinder: frKnowledgeFinder,
   },
   'it': {
     accountMenu: itAccountMenu,
@@ -130,6 +154,8 @@ export const catalogs = {
     feedback: itFeedback,
     inbox: itInbox,
     auth: itAuth,
+    search: itSearch,
+    knowledgeFinder: itKnowledgeFinder,
   },
   'es': {
     accountMenu: esAccountMenu,
@@ -141,6 +167,8 @@ export const catalogs = {
     feedback: esFeedback,
     inbox: esInbox,
     auth: esAuth,
+    search: esSearch,
+    knowledgeFinder: esKnowledgeFinder,
   },
 } satisfies Record<Language, Record<TranslationNamespace, unknown>>
 

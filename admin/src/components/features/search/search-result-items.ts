@@ -7,6 +7,17 @@ import type { GlobalSearchMode, GlobalSearchResults } from '../../../facades/sea
 import type { SearchMarkerSubject } from './SearchResultMarker'
 import { appDetailHref } from '../apps/app-card-presentation'
 import { selectBestPassage } from '../../../lib/highlight-passage'
+import i18n from '../../../i18n/i18n'
+
+const searchText = (key: string, fallback: string, values?: Record<string, string>): string => {
+  if (!i18n.isInitialized) {
+    return Object.entries(values ?? {}).reduce(
+      (text, [name, value]) => text.replaceAll(`{{${name}}}`, value),
+      fallback,
+    )
+  }
+  return i18n.t(key, { ns: 'search', ...values })
+}
 
 export const SEARCH_SECTION_ORDER = [
   'Channels',
@@ -72,9 +83,9 @@ const matchedAppContext = (
 ): string => {
   const needle = query.trim().toLowerCase()
   const alias = app.aliases.find((value) => value.toLowerCase().includes(needle))
-  if (alias) return `Alias: ${alias}`
+  if (alias) return searchText('alias', 'Alias: {{value}}', { value: alias })
   const tag = app.tags.find((value) => value.toLowerCase().includes(needle))
-  if (tag) return `Tag: ${tag}`
+  if (tag) return searchText('tag', 'Tag: {{value}}', { value: tag })
   return app.shortDescription
 }
 
@@ -111,7 +122,9 @@ export const buildSearchResultItems = (
       id: `channel:${channel.id}`,
       primary: channel.label,
       secondary: excerpt(channel.description, query)
-        ?? `${channel.projectName}${entry.access === 'limited' ? ' · Protected' : ''}`,
+        ?? (entry.access === 'limited'
+          ? `${channel.projectName} · ${searchText('protected', 'Protected')}`
+          : channel.projectName),
       section: 'Channels',
       subject: { kind: 'channel', visibility: channel.visibility },
     })
@@ -130,7 +143,7 @@ export const buildSearchResultItems = (
       primary: project.name,
       secondary: excerpt(project.description, query)
         ?? (entry.access === 'limited' && project.visibility === 'protected'
-          ? 'Protected · Ask a member to add you'
+          ? searchText('protectedAskMember', 'Protected · Ask a member to add you')
           : undefined),
       section: 'Projects',
       subject: {
@@ -152,7 +165,7 @@ export const buildSearchResultItems = (
         ? { href: `/projects/${task.projectId}/board?task=${encodeURIComponent(task.id)}` }
         : {}),
       id: `task:${task.id}`,
-      primary: task.title ?? 'Untitled ticket',
+      primary: task.title ?? searchText('untitledTicket', 'Untitled ticket'),
       secondary: context,
       section: 'Tickets',
       subject: { kind: 'task' },
@@ -221,7 +234,10 @@ export const buildSearchResultItems = (
     items.push({
       id: `thought:${thought.id}`,
       primary: thought.content,
-      secondary: mode === 'semantic' ? 'Memory · Hybrid match' : 'Memory · Full text match',
+      secondary: searchText(
+        mode === 'semantic' ? 'memoryHybridMatch' : 'memoryFullTextMatch',
+        mode === 'semantic' ? 'Memory · Hybrid match' : 'Memory · Full text match',
+      ),
       section: 'Memory',
       subject: { kind: 'thought' },
     })

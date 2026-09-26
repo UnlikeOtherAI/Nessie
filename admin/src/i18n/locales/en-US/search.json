@@ -1,0 +1,28 @@
+{
+  "title": "Search",
+  "placeholder": "Search channels, projects, tickets, messages, documents, people, agents, apps, and memory…",
+  "modeLabel": "Search mode",
+  "fulltext": "Full text",
+  "fulltextTitle": "Full text finds the words you entered across every searchable section.",
+  "semantic": "Semantic",
+  "semanticTitle": "Semantic keeps exact matches and adds meaning-based message, ticket, document, and memory matches.",
+  "semanticHelp": "Hybrid search keeps full-text matches and adds meaning-based results where content has embeddings.",
+  "fulltextHelp": "Full text finds the words you entered, without meaning-based expansion.",
+  "enterQuery": "Enter at least two characters to search every section.",
+  "searching": "Searching…",
+  "noResults": "No results",
+  "expired": "This ticket-search page expired.",
+  "restartTicketSearch": "Restart ticket search",
+  "ticketNoResults": "No ticket results on this page.",
+  "sections": {
+    "channels": "Channels", "projects": "Projects", "tickets": "Tickets", "messages": "Messages",
+    "knowledge": "Knowledge", "people": "People", "agents": "Agents", "apps": "Apps", "memory": "Memory"
+  },
+  "alias": "Alias: {{value}}",
+  "tag": "Tag: {{value}}",
+  "protected": "Protected",
+  "protectedAskMember": "Protected · Ask a member to add you",
+  "untitledTicket": "Untitled ticket",
+  "memoryHybridMatch": "Memory · Hybrid match",
+  "memoryFullTextMatch": "Memory · Full text match"
+}
