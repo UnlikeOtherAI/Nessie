@@ -17,7 +17,12 @@
     "recordingBadge": "Recording routine · structural tool steps only",
     "recordingDescription": "Teach an agent by doing a routine together once. Only completed, redacted structural tool calls are kept; a recording never runs automatically.",
     "recordingTitle": "Routine recording",
-    "recordTitle": "Record a routine"
+    "recordTitle": "Record a routine",
+    "visibleToChannel": "Recording is visible to everyone in this channel.",
+    "stopAndGeneralise": "Stop and generalize to a draft Workflow",
+    "startedByAnother": "Another channel member started this recording.",
+    "agentToTeach": "Agent to teach",
+    "startRecording": "Start recording"
   },
   "search": {
     "placeholder": "Search messages in this channel",

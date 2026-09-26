@@ -17,7 +17,12 @@
     "recordingBadge": "Registrazione routine · solo passaggi strutturali degli strumenti",
     "recordingDescription": "Insegna una routine a un agente svolgendola insieme una volta. Vengono conservate solo le chiamate strutturali completate e ripulite; la registrazione non viene mai eseguita automaticamente.",
     "recordingTitle": "Registrazione routine",
-    "recordTitle": "Registra una routine"
+    "recordTitle": "Registra una routine",
+    "visibleToChannel": "La registrazione è visibile a tutti in questo canale.",
+    "stopAndGeneralise": "Interrompi e generalizza in una bozza di workflow",
+    "startedByAnother": "Un altro membro del canale ha avviato questa registrazione.",
+    "agentToTeach": "Agente da addestrare",
+    "startRecording": "Avvia registrazione"
   },
   "search": {
     "placeholder": "Cerca messaggi in questo canale",

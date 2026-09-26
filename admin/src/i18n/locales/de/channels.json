@@ -17,7 +17,12 @@
     "recordingBadge": "Routine wird aufgezeichnet · nur strukturelle Werkzeugschritte",
     "recordingDescription": "Bringe einem Agenten eine Routine bei, indem ihr sie einmal gemeinsam ausführt. Gespeichert werden nur abgeschlossene, bereinigte strukturelle Werkzeugaufrufe; eine Aufzeichnung wird nie automatisch ausgeführt.",
     "recordingTitle": "Routine wird aufgezeichnet",
-    "recordTitle": "Routine aufzeichnen"
+    "recordTitle": "Routine aufzeichnen",
+    "visibleToChannel": "Die Aufzeichnung ist für alle in diesem Kanal sichtbar.",
+    "stopAndGeneralise": "Aufzeichnung beenden und als Workflow-Entwurf verallgemeinern",
+    "startedByAnother": "Ein anderes Kanalmitglied hat diese Aufzeichnung gestartet.",
+    "agentToTeach": "Agent zum Anlernen",
+    "startRecording": "Aufzeichnung starten"
   },
   "search": {
     "placeholder": "Nachrichten in diesem Kanal suchen",
