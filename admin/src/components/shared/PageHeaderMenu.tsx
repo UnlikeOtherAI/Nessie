@@ -39,7 +39,7 @@ export const PageHeaderMenu = ({ action, onSelect }: PageHeaderMenuProps) => {
 
   return (
     <>
-      {action.kind === 'menu' ? (
+      {action.kind === 'menu' && action.menuStyle !== 'sidebar' ? (
         <div className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--tx3)]">
           {action.label}
         </div>
@@ -72,7 +72,7 @@ export const PageHeaderMenu = ({ action, onSelect }: PageHeaderMenuProps) => {
         if ('href' in item) {
           return (
             <a
-              className="admin-page-menu-row flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]"
+              className={`admin-page-menu-row flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)] ${action.kind === 'menu' && action.menuStyle === 'sidebar' ? 'admin-page-menu-row-sidebar' : ''}`}
               href={item.href}
               key={item.id}
               rel={item.rel}
@@ -105,6 +105,7 @@ export const PageHeaderMenu = ({ action, onSelect }: PageHeaderMenuProps) => {
               // `text-*` utility: the unlayered `button { font: inherit }` reset
               // beats Tailwind's layered utilities on a button.
               'admin-page-menu-row flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left',
+              action.kind === 'menu' && action.menuStyle === 'sidebar' ? 'admin-page-menu-row-sidebar' : '',
               'text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
               checked ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]' : '',
               item.disabled ? 'cursor-not-allowed opacity-50' : '',

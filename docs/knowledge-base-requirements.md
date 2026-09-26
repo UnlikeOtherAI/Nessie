@@ -444,14 +444,15 @@ that column):
     detail in the other browsing views; **Back** returns to its containing
     folder or the browser root outside Tree, while Tree uses the adjacent
     hierarchy without a duplicate Back. A document is a leaf: it never offers creation
-    or renders children. Its attachments are visible on the document itself,
-    with an Add attachment action and list/grid presentation rather than being
-    discoverable only through a detached drawer.
+    or renders children. Existing attachments are visible on the document itself
+    with list/grid presentation; the section is absent when there are none.
+    Add attachment stays available in the floating detail action bar.
     Document and uploaded-file detail keep attachments and comments inline below
     the content or file preview, so reading and discussion form one scrollable
     page. The top header carries only navigation and title. Per-item actions
-    (editing, history, publishing, uploading a new version, downloading, and
-    More) live in a floating, frosted bottom bar inside the detail pane, with
+    (labelled primary Edit where available, Add attachment, history, publishing,
+    uploading a new version, downloading, and More) live in a floating, frosted
+    bottom bar inside the detail pane, with
     enough scroll clearance that the final comment is never covered.
   - **Editor** (`PageEditor`) and **version History** are full-width. The editor
     fills the whole main area as a borderless writing canvas: the title and body
@@ -605,7 +606,8 @@ Two file concepts live in the knowledge base alongside rich-text pages:
   download an older file version or restore it as a new version when permitted.
 - **Attachments** — any node (document or file node) can carry extra files,
   linked via `Attachment.knowledgePageId` and surfaced below the detail content,
-  with list/grid display and an Add attachment control.
+  with list/grid display when files exist. Add attachment remains available in
+  the detail action bar when the list is empty.
   Drag-and-drop onto the attachment panel adds an attachment; drag-and-drop
   onto the filesystem creates a file node; both show a dashed-square overlay with
   live upload progress.
