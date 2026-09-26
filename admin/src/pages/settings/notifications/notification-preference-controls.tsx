@@ -1,5 +1,6 @@
 import { Switch } from '../../../components/primitives/Switch'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
+import { useTranslation } from 'react-i18next'
 
 type PushPreferenceCardProps = {
   disabled: boolean
@@ -35,69 +36,40 @@ export const PushPreferenceCard = ({
   setPushMentions,
   setPushMessages,
   setPushPublishedKnowledge,
-}: PushPreferenceCardProps) => (
+}: PushPreferenceCardProps) => {
+  const { t } = useTranslation('settings')
+  const preferences = [
+    { checked: pushMessages, description: t('notifications.channelMessagesDescription'), label: t('notifications.channelMessages'), onChange: setPushMessages },
+    { checked: pushMentions, description: t('notifications.mentionsDescription'), label: t('notifications.mentions'), onChange: setPushMentions },
+    { checked: pushBudgetAlerts, description: t('notifications.budgetAlertsDescription'), label: t('notifications.budgetAlerts'), onChange: setPushBudgetAlerts },
+    { checked: pushTriggerHealth, description: t('notifications.scheduledFailuresDescription'), label: t('notifications.scheduledFailures'), onChange: setPushTriggerHealth },
+    { checked: pushAssignedWork, description: t('notifications.assignedWorkDescription'), label: t('notifications.assignedWork'), onChange: setPushAssignedWork },
+    { checked: pushPublishedKnowledge, description: t('notifications.publishedKnowledgeDescription'), label: t('notifications.publishedKnowledge'), onChange: setPushPublishedKnowledge },
+  ]
+  return (
   <section className="admin-card p-4">
-    <SectionLabel>Push</SectionLabel>
+    <SectionLabel>{t('notifications.push')}</SectionLabel>
     <div className="mt-4 flex items-center justify-between gap-4">
       <div>
-        <div className="font-semibold text-[color:var(--tx)]">Push enabled</div>
+        <div className="font-semibold text-[color:var(--tx)]">{t('notifications.pushEnabled')}</div>
         <div className="mt-1 text-sm text-[color:var(--tx2)]">
-          {pushEnabled ? 'Enabled' : 'Disabled'}
+        {pushEnabled ? t('common.enabled') : t('common.disabled')}
         </div>
       </div>
       <Switch
         checked={pushEnabled}
         disabled={disabled}
-        label="Toggle push notifications"
+        label={t('notifications.togglePush')}
         onChange={setPushEnabled}
       />
     </div>
     <div className="mt-5 border-t border-[color:var(--sep)] pt-4">
-      <div className="font-semibold text-[color:var(--tx)]">Notify me about</div>
+      <div className="font-semibold text-[color:var(--tx)]">{t('notifications.notifyAbout')}</div>
       <div className="mt-1 text-sm text-[color:var(--tx2)]">
-        Every type starts enabled. Nessie skips delivery only when a focused app is already
-        showing that exact conversation or page. When you are elsewhere in Nessie, desktop and
-        browser sessions show a banner and registered devices receive the system notification.
+        {t('notifications.deliveryDescription')}
       </div>
       <div className="mt-4 grid gap-3">
-        {[
-          {
-            checked: pushMessages,
-            description: 'New posts in channels you belong to.',
-            label: 'Channel messages',
-            onChange: setPushMessages,
-          },
-          {
-            checked: pushMentions,
-            description: 'Messages that explicitly @mention you.',
-            label: 'Mentions',
-            onChange: setPushMentions,
-          },
-          {
-            checked: pushBudgetAlerts,
-            description: 'Operational budget warnings and blocks for organisation owners.',
-            label: 'Budget alerts',
-            onChange: setPushBudgetAlerts,
-          },
-          {
-            checked: pushTriggerHealth,
-            description: 'A scheduled task that stopped running and needs attention.',
-            label: 'Scheduled task failures',
-            onChange: setPushTriggerHealth,
-          },
-          {
-            checked: pushAssignedWork,
-            description: 'Project work assigned to you by another person.',
-            label: 'Assigned work',
-            onChange: setPushAssignedWork,
-          },
-          {
-            checked: pushPublishedKnowledge,
-            description: 'Knowledge pages newly published where you have access.',
-            label: 'Published knowledge',
-            onChange: setPushPublishedKnowledge,
-          },
-        ].map((preference) => (
+        {preferences.map((preference) => (
           <div className="flex items-center justify-between gap-4" key={preference.label}>
             <div>
               <div className="font-medium text-[color:var(--tx)]">{preference.label}</div>
@@ -108,7 +80,7 @@ export const PushPreferenceCard = ({
             <Switch
               checked={preference.checked}
               disabled={!pushEnabled || disabled}
-              label={`Toggle ${preference.label.toLowerCase()} notifications`}
+                label={t('notifications.toggleSpecific', { label: preference.label.toLowerCase() })}
               onChange={preference.onChange}
             />
           </div>
@@ -116,4 +88,5 @@ export const PushPreferenceCard = ({
       </div>
     </div>
   </section>
-)
+  )
+}
