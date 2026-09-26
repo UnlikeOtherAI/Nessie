@@ -4,7 +4,7 @@ import test from 'node:test'
 import {
   isMcpRegistryRowExposed,
   type McpRunScopeContext,
-} from '../src/run/mcp-tool-access.js'
+} from '../src/mcp-tool-access.js'
 
 const CREATOR = 'user-creator'
 const COLLEAGUE = 'user-colleague'

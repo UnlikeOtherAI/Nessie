@@ -11,6 +11,7 @@ import {
 import {
   CommsCredentialCoordinatorError,
   loadUserGoogleCommsCredential,
+  selectUserGoogleConnection,
 } from '../src/index.js'
 
 const ENCRYPTION_SECRET = 'credential-test-secret'
@@ -334,4 +335,33 @@ test('needs_reauthorization is reported ahead of a generic scope failure', async
 
 test('no connection at all is CONNECTION_NOT_FOUND', async () => {
   await rejectsWith(load([]), 'CONNECTION_NOT_FOUND')
+})
+
+test('selecting an account reads the rows and never opens a credential', async () => {
+  // Check access asks the same question a tool call asks, without touching
+  // the credential: the fake's credential read would throw if it were made.
+  const prisma = {
+    commsConnection: {
+      findMany: async () => [row({ id: CONNECTION_ID })],
+      findUnique: async () => {
+        throw new Error('the selector must not read the credential')
+      },
+    },
+  } as unknown as PrismaClient
+  assert.deepEqual(
+    await selectUserGoogleConnection(prisma, {
+      capabilityId: 'meet.create',
+      organizationId: ORGANIZATION_ID,
+      requiredScopes: [REQUIRED_SCOPE],
+      userId: USER_ID,
+    }),
+    { id: CONNECTION_ID },
+  )
+  await rejectsWith(
+    selectUserGoogleConnection(prismaWithRows([
+      row({ id: CONNECTION_ID }),
+      row({ id: '00000000-0000-4000-8000-00000000000a' }),
+    ]), { organizationId: ORGANIZATION_ID, requiredScopes: [REQUIRED_SCOPE], userId: USER_ID }),
+    'AMBIGUOUS_ACCOUNT',
+  )
 })

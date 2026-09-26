@@ -1,7 +1,9 @@
 import {
   buildAuthorizedTransport,
+  buildMcpRunScopeContext,
   EnvSecretResolver,
   fingerprintMcpToolDescriptor,
+  isMcpRegistryRowExposed,
   mcpToolDescriptorAnnotationsFromMetadata,
   mcpAuthRequiresCredential,
   resolveCredentialRefWithSource,
@@ -35,10 +37,6 @@ import {
 } from './mcp-tool-names.js'
 import { recordMcpConnectorUsage } from './mcp-usage.js'
 import { isFatalToolExecutionError } from './tool-execution-errors.js'
-import {
-  buildMcpRunScopeContext,
-  isMcpRegistryRowExposed,
-} from './mcp-tool-access.js'
 import { dispatchTool } from './tool-dispatch.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'

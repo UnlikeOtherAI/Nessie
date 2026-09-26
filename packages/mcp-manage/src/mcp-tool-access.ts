@@ -1,5 +1,5 @@
 import type { AuthorizedActionContext } from '@nessie/schemas'
-import { isCurrentAllowedMcpToolGrant } from '@nessie/mcp-manage'
+import { isCurrentAllowedMcpToolGrant } from './mcp-tool-grant-fingerprint.js'
 
 export type McpRunScopeContext = {
   agentKind: 'personal_assistant' | 'shared'

@@ -328,19 +328,26 @@ export const listUserGoogleConnections = async (
   }))
 }
 
+export type SelectUserGoogleConnectionInput = Pick<
+  LoadUserGoogleCredentialInput,
+  'capabilityId' | 'connectionId' | 'organizationId' | 'requiredScopes' | 'userId'
+>
+
 /**
- * Load the one active Google account satisfying every required scope, decrypt
- * only that selected row, and serialize an expired-token refresh through a
- * database row lock so API and worker processes cannot rotate it concurrently.
+ * Which one of the caller's Google accounts a call would use — the selection
+ * `loadUserGoogleCommsCredential` makes before it opens anything, and the
+ * only place that decides it. Reads, never decrypts, refreshes or marks, so
+ * Check access (`/api/accounts/:id/access-check`) asks exactly the question a
+ * tool call asks without touching the credential.
  *
  * Fails closed at each step: no connection, a scope the grant does not carry, a
  * locally blocked capability, or two equally-valid accounts are all typed
  * refusals, never a best guess.
  */
-export const loadUserGoogleCommsCredential = async (
+export const selectUserGoogleConnection = async (
   prisma: PrismaClient,
-  input: LoadUserGoogleCredentialInput,
-): Promise<ConnectorConnectionContext> => {
+  input: SelectUserGoogleConnectionInput,
+): Promise<{ id: string }> => {
   const connections = await prisma.commsConnection.findMany({
     where: {
       organizationId: input.organizationId,
@@ -392,7 +399,20 @@ export const loadUserGoogleCommsCredential = async (
     }
     throw new CommsCredentialCoordinatorError('SCOPE_MISSING')
   }
+  return { id: selected.id }
+}
 
+/**
+ * Load the one active Google account satisfying every required scope, decrypt
+ * only that selected row, and serialize an expired-token refresh through a
+ * database row lock so API and worker processes cannot rotate it concurrently.
+ * The selection is `selectUserGoogleConnection`'s.
+ */
+export const loadUserGoogleCommsCredential = async (
+  prisma: PrismaClient,
+  input: LoadUserGoogleCredentialInput,
+): Promise<ConnectorConnectionContext> => {
+  const selected = await selectUserGoogleConnection(prisma, input)
   const loaded = await prisma.commsConnection.findUnique({
     where: { id: selected.id },
     include: { credential: true },

@@ -14,7 +14,8 @@ file is the rule**.
   in runs the installing user requested — there any agent they talk to (their
   PA or a shared agent) may use them without a per-agent grant, unless a tool is
   explicitly denied; nobody else's run reaches them
-  (`worker/src/run/mcp-tool-access.ts`). OAuth is dynamic by default (RFC 9728/8414
+  (`isMcpRegistryRowExposed` in `@nessie/mcp-manage`, which the worker and
+  Check access both call). OAuth is dynamic by default (RFC 9728/8414
   discovery, RFC 7591 client registration, PKCE, pg-backed state, auto-refresh);
   static client configs remain supported. Owners/admins can lock catalog
   entries against member self-service (install-time gate, endpoint-match
