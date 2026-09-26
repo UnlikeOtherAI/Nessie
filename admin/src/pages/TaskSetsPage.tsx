@@ -21,7 +21,7 @@ export const TaskSetsPage = ({ host }: { host?: SettingsTabHostProps }) => {
     <section className="flex h-full min-h-0 flex-col">
       <ScreenHeader
         actions={[{
-          id: 'create', label: 'New task set', primary: true, priority: 100,
+          id: 'create', label: 'New batch job', primary: true, priority: 100,
           onSelect: () => navigate(taskSetCreatePath()),
         }]}
         eyebrow={host?.eyebrow}
@@ -31,16 +31,16 @@ export const TaskSetsPage = ({ host }: { host?: SettingsTabHostProps }) => {
       />
       <PageBody>
         <QueryState
-          emptyLabel="No task sets yet. Create one here, or choose Process with Task Set in Documents."
-          errorLabel="Task sets could not be loaded."
+          emptyLabel="No batch jobs yet. Create one here, or choose Process with Batch Job in Documents."
+          errorLabel="Batch jobs could not be loaded."
           isEmpty={rows.items.length === 0}
-          loadingLabel="Loading task sets…"
+          loadingLabel="Loading batch jobs…"
           query={rows.query}
         >
           {() => <>
             <DataTable
               columns={[
-                { key: 'name', header: 'Task set', render: (set) => <div>
+                { key: 'name', header: 'Batch job', render: (set) => <div>
                   <div className="font-medium">{set.name}</div>
                   <div className="text-xs text-[color:var(--tx3)]">{set.processor.model}</div>
                 </div> },
@@ -49,7 +49,7 @@ export const TaskSetsPage = ({ host }: { host?: SettingsTabHostProps }) => {
                 { key: 'updated', header: 'Status updated', render: (set) => taskSetTimestamp(set.statusChangedAt) },
               ]}
               expandable={false}
-              label="Task sets"
+              label="Batch jobs"
               onRowClick={(set) => navigate(taskSetPath(set.id))}
               rowActionLabel={(set) => `Open ${set.name}`}
               rowKey={(set) => set.id}

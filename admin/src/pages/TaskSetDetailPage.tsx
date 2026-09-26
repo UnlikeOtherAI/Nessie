@@ -59,10 +59,10 @@ export const TaskSetDetailPage = () => {
     onSelect: () => action.mutate({ action: value }),
   })
   if (set?.status === 'draft' || set?.status === 'ready') addAction('start', 'Start processing', true)
-  if (set?.status === 'paused' || set?.status === 'blocked') addAction('resume', 'Resume task set', true)
+  if (set?.status === 'paused' || set?.status === 'blocked') addAction('resume', 'Resume batch job', true)
   if (set?.status === 'completed' && set.deliveryStatus === 'blocked') addAction('retry', 'Retry delivery', true)
-  if (set && ['running', 'waiting', 'importing'].includes(set.status)) addAction('pause', 'Pause task set')
-  if (set && !['completed', 'cancelled'].includes(set.status)) addAction('cancel', 'Cancel task set')
+  if (set && ['running', 'waiting', 'importing'].includes(set.status)) addAction('pause', 'Pause batch job')
+  if (set && !['completed', 'cancelled'].includes(set.status)) addAction('cancel', 'Cancel batch job')
   if (set?.status === 'draft' && !set.source) actions.push({
     id: 'add-item', label: 'Add item', priority: 80, onSelect: () => setAdding(true),
   })
@@ -77,9 +77,9 @@ export const TaskSetDetailPage = () => {
   return (
     <section className="flex h-full min-h-0 flex-col">
       <ScreenHeader actions={actions} backLabel="Batch jobs" onBack={() => navigate(BATCH_JOBS_PATH)}
-        title={set?.name ?? 'Task set'} />
+        title={set?.name ?? 'Batch job'} />
       <PageBody className="grid gap-6">
-        <QueryState errorLabel="This task set could not be loaded." loadingLabel="Loading task set…" query={query}>
+        <QueryState errorLabel="This batch job could not be loaded." loadingLabel="Loading batch job…" query={query}>
           {() => set ? <>
             <Section title={<span className="flex flex-wrap items-center gap-3"><TaskSetStatus status={set.status} />{taskSetProgress(set)}</span>}>
               <div className="grid gap-3 text-sm">
@@ -90,21 +90,21 @@ export const TaskSetDetailPage = () => {
                 <p className="text-[color:var(--tx3)]">Status updated {taskSetTimestamp(set.statusChangedAt)}
                   {set.skippedItems ? ` · ${set.skippedItems} skipped` : ''}</p>
                 {set.reason ? <FormError>{taskSetReason(set.reason)}</FormError> : null}
-                <FormError>{action.error ? formErrorMessage(action.error, 'The task set could not be updated.') : null}</FormError>
+                <FormError>{action.error ? formErrorMessage(action.error, 'The batch job could not be updated.') : null}</FormError>
                 {set.currentItemId ? <button className="admin-button admin-button-secondary justify-self-start"
                   onClick={() => selectItem(set.currentItemId ?? undefined)} type="button">Open current item</button> : null}
                 <div className="flex flex-wrap gap-4">
                   {set.source ? <Link className="text-[color:var(--accent)] underline" to={taskSetDocumentPath(set.source.pageId)}>Open input file</Link> : null}
                   {set.outputPageId ? <Link className="text-[color:var(--accent)] underline" to={taskSetDocumentPath(set.outputPageId)}>Open saved output</Link> : null}
-                  {set.receiver ? <Link className="text-[color:var(--accent)] underline" to={`/channels/${set.receiver.channelId}`}>Open receiver conversation</Link> : null}
+                  {set.receiver ? <Link className="text-[color:var(--accent)] underline" to={`/channels/${set.receiver.channelId}`}>Open results conversation</Link> : null}
                 </div>
-                {set.receiver ? <p className="text-[color:var(--tx2)]">Receiver delivery: {set.deliveryStatus}</p> : null}
+                {set.receiver ? <p className="text-[color:var(--tx2)]">Results delivery: {set.deliveryStatus}</p> : null}
               </div>
             </Section>
-            <Section title={`Processor · ${set.processor.model}`}>
+            <Section title={`Runs on · ${set.processor.model}`}>
               <p className="text-sm text-[color:var(--tx2)]">One item at a time, in the order below.</p>
               {processor?.localInferenceHostId ? <LocalInferenceHostStatus
-                empty={<p className="text-sm">The local processor is unavailable. Review its setup before resuming.</p>}
+                empty={<p className="text-sm">The local model is unavailable. Review its setup before resuming.</p>}
                 hostId={processor.localInferenceHostId} /> : null}
             </Section>
             <Section title="Items">
@@ -118,7 +118,7 @@ export const TaskSetDetailPage = () => {
                     </div> },
                     { key: 'status', header: 'Status', render: (item) => <TaskSetStatus status={item.status} /> },
                     { key: 'updated', header: 'Status updated', render: (item) => taskSetTimestamp(item.statusChangedAt) },
-                  ]} empty="No items yet. Add the first item before starting." expandable={false} label="Task set items"
+                  ]} empty="No items yet. Add the first item before starting." expandable={false} label="Batch job items"
                     onRowClick={(item) => selectItem(item.id)} rowActionLabel={(item) => `Open item ${item.sequence}`}
                     rowKey={(item) => item.id} rows={rows.items} />
                   <PaginationFooter {...rows} />
@@ -126,7 +126,7 @@ export const TaskSetDetailPage = () => {
               </QueryState>
             </Section>
             <details>
-              <summary className="cursor-pointer font-semibold">{editable ? 'Edit task set' : 'Configuration'}</summary>
+              <summary className="cursor-pointer font-semibold">{editable ? 'Edit batch job' : 'Configuration'}</summary>
               <div className="pt-5">
                 {editable ? <TaskSetForm identity={set.id} sourceLocked={set.totalItems > 0 || set.status !== 'draft'} initial={{
                   name: set.name, objective: set.objective, instructions: set.instructions,
@@ -147,7 +147,7 @@ export const TaskSetDetailPage = () => {
       <Dialog onClose={() => setAdding(false)} open={adding} size="lg" title="Add item">
         <TaskSetItemEditor onSaved={() => setAdding(false)} setId={taskSetId} />
       </Dialog>
-      <Dialog onClose={() => selectItem()} open={Boolean(itemId)} size="lg" title="Task set item">
+      <Dialog onClose={() => selectItem()} open={Boolean(itemId)} size="lg" title="Batch job item">
         {itemId ? <TaskSetItemDetail editable={editable} itemId={itemId} setId={taskSetId} /> : null}
       </Dialog>
     </section>

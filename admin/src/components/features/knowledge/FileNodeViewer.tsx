@@ -151,7 +151,7 @@ export const FileNodeViewer = ({
           id: 'task-set-actions',
           items: [{
             id: 'process-task-set',
-            label: 'Process with Task Set',
+            label: 'Process with Batch Job',
             onSelect: () => navigate(taskSetCreatePath({
               pageId: page.id, versionId: version.id, format: taskSetSourceFormat(page.title),
             })),

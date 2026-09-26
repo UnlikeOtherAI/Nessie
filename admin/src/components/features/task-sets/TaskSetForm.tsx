@@ -89,11 +89,11 @@ export const TaskSetForm = ({ initial, identity, onSave, onSaved, submitLabel, s
           </FormField>
         </div>
       </Section>
-      <Section title="Processor">
+      <Section title="Runs on">
         <div className="grid gap-4">
-          <QueryState errorLabel="Processors could not be loaded." loadingLabel="Loading processors…" query={processors}>
-            {() => <FormField error={errorFor('processor')} help="One item runs at a time. Other task sets share the processor's available capacity."
-              label="Processor model" required>
+          <QueryState errorLabel="Models could not be loaded." loadingLabel="Loading models…" query={processors}>
+            {() => <FormField error={errorFor('processor')} help="One item runs at a time. Other batch jobs share the model's available capacity."
+              label="Model" required>
               <Select onChange={(event) => {
                 const option = processors.data?.find((item) => item.id === event.target.value)
                 if (!option) return
@@ -103,7 +103,7 @@ export const TaskSetForm = ({ initial, identity, onSave, onSaved, submitLabel, s
                   localInferenceBindingId: option.localInferenceBindingId,
                 } })
               }} value={selected?.id ?? ''}>
-                <option value="">Choose a processor</option>
+                <option value="">Choose a model</option>
                 {(processors.data ?? []).map((option) => <option
                   disabled={Boolean(option.setupUrl) && !option.localInferenceBindingId}
                   key={option.id} value={option.id}>
@@ -114,15 +114,15 @@ export const TaskSetForm = ({ initial, identity, onSave, onSaved, submitLabel, s
           </QueryState>
           {selected?.reason ? <p className="text-sm text-[color:var(--tx2)]">{selected.reason}</p> : null}
           {(processors.data ?? []).some((option) => option.source === 'local' && option.setupUrl) ?
-            <Link className="text-sm text-[color:var(--accent)] underline" to="/admin/computers">Set up a local processor</Link> : null}
+            <Link className="text-sm text-[color:var(--accent)] underline" to="/admin/computers">Set up a local model</Link> : null}
           <FormField label="Research tools">
             <Select onChange={(event) => patch({ search: event.target.value as 'none' | 'processor' })} value={draft.search ?? 'none'}>
               <option value="none">No web research</option>
-              <option value="processor">Processor's configured search</option>
+              <option value="processor">The model's configured search</option>
             </Select>
           </FormField>
-          <FormField error={errorFor('maxParallelRequests')} label="Parallel requests across task sets"
-            help="Each set still runs one item at a time. The lowest active set limit applies to this processor; local device capacity may be lower.">
+          <FormField error={errorFor('maxParallelRequests')} label="Parallel requests across batch jobs"
+            help="Each set still runs one item at a time. The lowest active set limit applies to this model; local device capacity may be lower.">
             <Input max={32} min={1} onChange={(event) => patch({ maxParallelRequests: Number(event.target.value) })}
               type="number" value={draft.maxParallelRequests ?? 1} />
           </FormField>
@@ -147,15 +147,15 @@ export const TaskSetForm = ({ initial, identity, onSave, onSaved, submitLabel, s
           onChange={(output) => patch({ output })} value={draft.output} />
         <FormError>{errorFor('output')}</FormError>
       </Section>
-      <Section title="Receiver (optional)">
+      <Section title="Hand results to (optional)">
         <div className="grid gap-4">
           <QueryState errorLabel="Agents could not be loaded." loadingLabel="Loading agents…" query={agents}>
-            {() => <FormField help="Choose an agent to continue the work after processing. Leave empty to save the results only." label="Receiver agent">
+            {() => <FormField help="Choose an agent to continue the work after processing. Leave empty to save the results only." label="Agent">
               <Select onChange={(event) => patch({ receiver: event.target.value ? {
                 agentId: event.target.value, channelId: draft.receiver?.channelId ?? '',
                 instructions: draft.receiver?.instructions ?? '',
               } : null })} value={draft.receiver?.agentId ?? ''}>
-                <option value="">No receiver</option>
+                <option value="">None</option>
                 {(agents.data ?? []).map((agent) => <option key={agent.id} value={agent.id}>
                   {agent.name} · {agent.id.slice(0, 8)}
                 </option>)}
@@ -164,7 +164,7 @@ export const TaskSetForm = ({ initial, identity, onSave, onSaved, submitLabel, s
           </QueryState>
           {draft.receiver ? <>
             <QueryState errorLabel="Conversations could not be loaded." loadingLabel="Loading conversations…" query={channels}>
-              {() => <FormField label="Receiver conversation" required>
+              {() => <FormField label="Conversation" required>
                 <Select onChange={(event) => {
                   patch({ receiver: { ...draft.receiver!, channelId: event.target.value } })
                 }}
@@ -175,7 +175,7 @@ export const TaskSetForm = ({ initial, identity, onSave, onSaved, submitLabel, s
                 </Select>
               </FormField>}
             </QueryState>
-            <FormField label="Receiver instructions" required>
+            <FormField label="Instructions" required>
               <Textarea onChange={(event) => {
                 patch({ receiver: { ...draft.receiver!, instructions: event.target.value } })
               }}

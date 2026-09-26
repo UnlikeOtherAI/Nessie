@@ -193,7 +193,7 @@ export const AgentTriggerPanel = ({ agent, title = 'Triggers' }: AgentTriggerPan
             triggers: "add another" is as ordinary an intent as "add the
             first", and a control that appears only in an empty state is one a
             person has to empty the list to find again. It carries the agent,
-            so the Triggers page opens its create form already pointed here
+            so the Schedules and triggers page opens its create form already pointed here
             rather than at a list to hunt through. */}
         <div className="flex items-center gap-3">
           <span className="text-xs text-[color:var(--tx3)]">{triggers.length} configured</span>
