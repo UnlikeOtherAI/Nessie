@@ -26,6 +26,12 @@ export interface DecisionModelClient {
     state: Record<string, unknown>
     questions: Record<string, DecisionQuestion>
     usage: LedgerAttribution
+    /**
+     * How long the caller will wait. A caller whose own answer never depends on
+     * the classifier (a one-on-one reply falls back to answering) waits less
+     * than one whose configured work does.
+     */
+    timeoutMs?: number
   }): Promise<Record<string, DecisionAnswer>>
 }
 
@@ -46,6 +52,10 @@ export class DecisionInputLimitError extends Error {
 const MAX_QUESTION_BYTES = 24_000
 const MAX_REQUEST_BYTES = 48_000
 const MAX_CHOICE_OPTIONS = 255
+const DEFAULT_EVALUATION_TIMEOUT_MS = 10_000
+
+/** The Ledger service that routes Jev's evaluation protocol. */
+export const JEV_LEDGER_SERVICE = 'vercel'
 
 const serializeDecisionRequest = (
   model: string,
@@ -93,7 +103,10 @@ export const createLedgerDecisionClient = (options: {
   if (!isLedgerEndpoint(options.baseUrl)) {
     throw new Error('Channel decisions require a Ledger inference endpoint.')
   }
-  const baseUrl = resolveLedgerServiceBaseUrl(options.baseUrl, 'vercel-evaluate')!
+  // Ledger serves Jev from its unified `vercel` connector (`/v1/vercel/evaluate`).
+  // The separate `vercel-evaluate` service this once called was never enabled in
+  // production and has been removed from Ledger.
+  const baseUrl = resolveLedgerServiceBaseUrl(options.baseUrl, JEV_LEDGER_SERVICE)!
   return {
     async evaluate(input) {
       const model = 'typesafe-ai/jev'
@@ -110,17 +123,17 @@ export const createLedgerDecisionClient = (options: {
           ...signedHeaders,
         },
         body,
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(input.timeoutMs ?? DEFAULT_EVALUATION_TIMEOUT_MS),
       }, options.transport)
       if (!response.ok) {
         throw await providerHttpError({
-          ledgerRouted: true, operation: 'evaluate', provider: 'vercel-evaluate', response,
+          ledgerRouted: true, operation: 'evaluate', provider: JEV_LEDGER_SERVICE, response,
         })
       }
       const result = ResponseSchema.parse(await response.json())
       // Operational metering follows the existing shared model client's best-effort sink.
       await options.recordUsage?.([{
-        invocationId: randomUUID(), requestId, provider: 'vercel-evaluate',
+        invocationId: randomUUID(), requestId, provider: JEV_LEDGER_SERVICE,
         model: result.model ?? model, operationType: 'other',
         usage: result.usage, latencyMs: Date.now() - startedAt,
       }], attribution).catch(() => undefined)

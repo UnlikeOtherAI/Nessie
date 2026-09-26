@@ -10,7 +10,11 @@ export const ChannelDecisionChoiceSchema = z.object({
 })
 export type ChannelDecisionChoice = z.infer<typeof ChannelDecisionChoiceSchema>
 
-/** Server-owned outcome, authority and source lineage pinned to one trigger message. */
+/**
+ * Server-owned outcome, authority and source lineage pinned to one trigger
+ * message: a channel policy's, or a one-on-one room's (`policyFingerprint`
+ * `ONE_ON_ONE_DECISION_FINGERPRINT`, no authorizer).
+ */
 export const ChannelDecisionSnapshotSchema = z.object({
   policyFingerprint: z.string(),
   authorizer: AuthorizedActionContextSchema.nullable(),
@@ -27,8 +31,25 @@ export const ChannelDecisionSnapshotSchema = z.object({
       replyPlacement: z.enum(['thread', 'channel']).optional(),
       promptOverride: z.string().optional(), background: z.boolean().optional(),
       policyWork: z.boolean().optional(),
+      // One-on-one rooms: the earlier message a reply goes back to, how it
+      // points there, and whether doing the work is the whole answer.
+      earlierMessageId: z.string().uuid().optional(),
+      earlierReference: z.enum(['mention', 'link', 'thread']).optional(),
+      acknowledgeWhenDone: z.boolean().optional(),
     }),
   ])),
 })
 
 export type ChannelDecisionSnapshot = z.infer<typeof ChannelDecisionSnapshotSchema>
+
+/** Marks a snapshot Jev wrote for a one-on-one room rather than a channel policy. */
+export const ONE_ON_ONE_DECISION_FINGERPRINT = 'one-on-one'
+
+/**
+ * `metadata.messageRef` on a one-on-one reply Jev placed in the main chat with
+ * a link back to the earlier message it is about. Server-authored from the
+ * pinned snapshot, never from model output; only the id travels, so a reader
+ * sees the earlier message through their own feed or not at all.
+ */
+export const MessageRefMetadataSchema = z.object({ messageId: z.string().uuid() })
+export type MessageRefMetadata = z.infer<typeof MessageRefMetadataSchema>

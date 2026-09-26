@@ -9,18 +9,23 @@ import type { DeepWaterHandoffRunLocator } from '@nessie/runtime'
  * 2. A trigger message that is itself a reply attaches to the same root
  *    (one level deep): conversation continuity is a structural fact and
  *    outranks any placement judgement.
- * 3. A `channel` placement judgement posts top-level — the reply is a
+ * 3. In a one-on-one room, a reply Jev placed under the earlier message the
+ *    trigger goes back to attaches to that message's thread
+ *    (docs/standards/reply-threads.md → "One-on-one rooms").
+ * 4. A `channel` placement judgement posts top-level — the reply is a
  *    standalone contribution to the room, not an answer owed to the trigger.
- * 4. Otherwise the reply threads under the trigger message (#233 default,
+ * 5. Otherwise the reply threads under the trigger message (#233 default,
  *    which is also what a null/absent judgement means).
  */
 export const resolveReplyRootMessageId = (
   triggerMessage: { id: string; rootMessageId: string | null },
   handoffLocator: DeepWaterHandoffRunLocator | null,
   replyPlacement: RunReplyPlacement | null,
+  earlierThreadRootMessageId?: string,
 ): string | undefined => {
   if (handoffLocator) return undefined
   if (triggerMessage.rootMessageId) return triggerMessage.rootMessageId
+  if (earlierThreadRootMessageId) return earlierThreadRootMessageId
   if (replyPlacement === 'channel') return undefined
   return triggerMessage.id
 }

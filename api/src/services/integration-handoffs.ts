@@ -66,18 +66,16 @@ export type PersonalAssistantIntegrationHandoffInput = {
   ) => Promise<void>
   content: string
   metadata: Record<string, unknown> | ((context: { channelId: string }) => Record<string, unknown>)
-  teamId: string
 }
 
 export const createPersonalAssistantIntegrationHandoff = async (
   deps: IntegrationHandoffDeps,
   input: PersonalAssistantIntegrationHandoffInput,
 ) => {
-  const { actorContext, content, teamId } = input
+  const { actorContext, content } = input
 
   await (deps.ensureBootstrap ?? ensurePersonalAssistantBootstrap)(deps.prisma, {
     organizationId: actorContext.tenant.organizationId,
-    teamId,
     userId: actorContext.actor.actorId,
   })
   const paState = await deps.loadPersonalAssistantState(actorContext)

@@ -6,7 +6,7 @@ import {
   type SecretRecord,
   type SecretScopeType,
 } from '../../../facades/secrets/hooks'
-import type { SecretCapture } from './useChannelComposer'
+import type { SecretCapture } from './useSecretCapture'
 import { Dialog } from '../../shared/Dialog'
 import { FormActions, FormError } from '../../shared/FormActions'
 import { FormField } from '../../shared/FormField'
@@ -35,7 +35,11 @@ export const SecretCaptureDialog = ({
 }) => {
   const createSecret = useCreateSecret()
   const [name, setName] = useState(() => suggestedSecretName(capture.detected.type))
-  const [scopeType, setScopeType] = useState<SecretScopeType>(capture.scopeType)
+  // Personal, always: a project secret is listed to every member of the
+  // project and, through the cascade, outranks their team's and
+  // organisation's secret of the same name, so it is a choice, never the
+  // default.
+  const [scopeType, setScopeType] = useState<SecretScopeType>('personal')
   const [error, setError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
 
@@ -47,7 +51,7 @@ export const SecretCaptureDialog = ({
         name,
         value: capture.value,
         scopeType,
-        ...(scopeType === 'project' && capture.scopeId ? { scopeId: capture.scopeId } : {}),
+        ...(scopeType === 'project' && capture.projectId ? { scopeId: capture.projectId } : {}),
       })
       await onSaved(secret)
     } catch (caught) {
@@ -87,7 +91,7 @@ export const SecretCaptureDialog = ({
             value={scopeType}
           >
             <option value="personal">Personal</option>
-            {capture.scopeId ? <option value="project">This project</option> : null}
+            {capture.projectId ? <option value="project">This project</option> : null}
           </Select>
         </FormField>
         <FormError>{error}</FormError>

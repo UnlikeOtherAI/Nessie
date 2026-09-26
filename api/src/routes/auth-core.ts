@@ -298,11 +298,7 @@ export const registerAuthCoreRoutes = (
     const actorContext = createActorContextFromClaims(session.claims)
     await ensureSystemAgentsForMember(
       prisma,
-      {
-        organizationId: actorContext.tenant.organizationId,
-        teamId: actorContext.tenant.teamId!,
-        userId: result.user.id,
-      },
+      { organizationId: actorContext.tenant.organizationId, userId: result.user.id },
       (error) => request.log.error({ err: error }, 'global_agent_bootstrap_failed'),
     )
     await attemptPersonalAssistantAvatar({

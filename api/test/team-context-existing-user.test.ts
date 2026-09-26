@@ -134,7 +134,16 @@ const makeFake = (seed: {
       },
     },
     team: {
-      findFirst: async () => (record('team.findFirst'), state.teams[0] ?? null),
+      // The shared-channel root's own team is looked up by name under its
+      // project; every other lookup here still lands on the seeded team.
+      findFirst: async ({ where }: { where?: Row } = {}) => {
+        record('team.findFirst')
+        return state.teams.find((team) =>
+          (where?.name === undefined || team.name === where.name)
+          && (where?.projectId === undefined || team.projectId === where.projectId)
+          && (where?.systemManaged === undefined
+            || (team.systemManaged ?? false) === where.systemManaged)) ?? null
+      },
       findUnique: async ({ where }: { where: Row }) => {
         record('team.findUnique')
         const found = state.teams.find((team) =>
@@ -160,6 +169,14 @@ const makeFake = (seed: {
         const row = { id: randomUUID(), ...data }
         state.projects.push(row)
         return row
+      },
+      // The shared-channel root is resolved project first.
+      findFirst: async ({ where }: { where: Row }) => {
+        record('project.findFirst')
+        return state.projects.find((project) =>
+          (where.channelRoot === undefined || project.channelRoot === where.channelRoot)
+          && (where.organizationId === undefined
+            || project.organizationId === where.organizationId)) ?? null
       },
     },
     // A project's default board is created nested, so the fake needs the

@@ -100,7 +100,7 @@ export const seedProjectOperatorWorld = async (prisma: PrismaClient) => {
   const dm = await channel(nessie, 'dm', { dmKey: `dm:${owner.id}:${suffix}`, type: 'dm', visibility: 'private' })
   // A system conversation: the Agent Designer's real home DM for the owner.
   const system = { id: (await ensureGlobalAgentBootstrap(prisma, {
-    blueprint: AGENT_DESIGNER_BLUEPRINT, organizationId: organization.id, teamId: team.id, userId: owner.id,
+    blueprint: AGENT_DESIGNER_BLUEPRINT, organizationId: organization.id, userId: owner.id,
   })).channelId }
   const agent = (name: string, toolPolicy: Record<string, boolean>) =>
     prisma.agent.create({

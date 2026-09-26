@@ -158,8 +158,14 @@ this standard, not an exception to it.
 - **The press is a message.** It writes a real `user` turn stamped
   `metadata.agentCardResponse`, so the outcome is in the chat, is an ordinary
   human turn in the transcript, and wakes the card's agent through one
-  *structural* orchestrator path (a server-written metadata key — never content
-  matching). The press's realtime announcement is scoped by the destination,
+  *structural* orchestrator path — never content matching, and never a
+  judgement. `resolveCardResponseDecisions` (`worker/src/run/orchestrate.ts`)
+  reads `AgentCard.responseMessageId`, the column the press transaction writes
+  and no client can, and answers with a threaded reply by the card's agent
+  before a one-on-one judgement, the engagement decision or a channel policy is
+  asked. A judgement asked first is free to answer a press with a reaction or
+  with nothing — a one-on-one judgement may well read "Allow" as a thank-you —
+  and the agent that asked would never hear the answer. The press's realtime announcement is scoped by the destination,
   not by the organisation the presser happens to belong to: it goes out through
   `buildChannelRealtimeScopes`, which returns the channel scope alone for a
   delegated system DM (the Personal Assistant's, or a global agent's home) and

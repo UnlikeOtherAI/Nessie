@@ -69,6 +69,7 @@ import {
   resolveConversationRootMessageId,
   resolveReplyRootMessageId,
 } from './reply-placement.js'
+import { earlierThreadRoot, readOneOnOnePlan } from './one-on-one-plan.js'
 import { buildScopes } from './scopes.js'
 import { createRunRecorders } from './run-recorders.js'
 import { handleRunFailurePath } from './run-failure-path.js'
@@ -244,10 +245,14 @@ const runJobUnderFence = async (
     }
   }
 
+  context.oneOnOnePlan = readOneOnOnePlan(message.channelDecision, {
+    agentId: context.agent.id, principalUserId: context.run.principalUserId,
+  })
   context.replyRootMessageId = resolveReplyRootMessageId(
     { id: payload.messageId, rootMessageId: message.rootMessageId },
     handoffLocator,
     context.run.replyPlacement,
+    earlierThreadRoot(context.oneOnOnePlan),
   )
   context.conversationRootMessageId = resolveConversationRootMessageId({
     rootMessageId: message.rootMessageId,

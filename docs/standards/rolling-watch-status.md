@@ -27,8 +27,10 @@ Mechanics (`worker/src/run/execute/watch-status.ts` +
   made every trigger run fail when `conclude_silently` shipped.
 - **Two gates, structural first.** Only an unattended run belonging to an
   `interval`/`scheduled` trigger that has set `config.rollingStatus:true` is
-  eligible; then one small utility-model call judges the text as a finding or
-  a no-change. That judgement **fails open** — any error, timeout or
+  eligible; then the text is judged as a finding or a no-change — by Jev when
+  the run has it and it is sure (0.8, `judgeWatchDisposition`,
+  [tech-and-run-budgets.md](tech-and-run-budgets.md) → "Jev gates"), otherwise
+  by one small utility-model call. That generative judgement **fails open** — any error, timeout or
   unparseable answer posts normally, because a missed finding is far worse
   than one redundant message.
 - **The roll resets when anything else is said.** The fold only continues while

@@ -30,6 +30,10 @@ export const makeExternalAgentPrismaFake = (
   seed: ExternalAgentFakeSeed,
 ) => {
   const projects = new Map<string, string>([[seed.projectId, seed.organizationId]])
+  // The organisation's channel-root project, by organisation — the system
+  // team that hosts the external agent's DMs hangs from it.
+  const rootProjects = new Map<string, string>()
+  const sharedChannels: Array<{ projectId: string }> = []
   const teams = new Map<string, Team>([
     [
       seed.teamId,
@@ -68,29 +72,45 @@ export const makeExternalAgentPrismaFake = (
     accountLinks,
     credentialOverrides,
     toolRegistryEntries,
+    rootProjects,
     $executeRaw: async () => 0,
     $transaction: async (arg: unknown) =>
       typeof arg === 'function'
         ? (arg as (tx: unknown) => Promise<unknown>)(self)
         : Promise.all(arg as Promise<unknown>[]),
+    project: {
+      findFirst: async (args: { where: { channelRoot: boolean; organizationId: string } }) => {
+        const id = rootProjects.get(args.where.organizationId)
+        return id ? { id } : null
+      },
+      create: async (args: { data: { channelRoot: boolean; name: string; organizationId: string } }) => {
+        const id = randomUUID()
+        projects.set(id, args.data.organizationId)
+        if (args.data.channelRoot) rootProjects.set(args.data.organizationId, id)
+        return { id }
+      },
+    },
     team: {
       findFirst: async (args: {
         where: {
           name?: string
           systemManaged?: boolean
           id?: string
-          project: { organizationId: string }
+          project?: { organizationId: string }
+          projectId?: string
         }
       }) => {
-        const orgId = args.where.project.organizationId
+        const orgId = args.where.project?.organizationId
+          ?? projects.get(args.where.projectId ?? '')
         if (args.where.name !== undefined) {
           const found = [...teams.values()].find(
             (t) =>
               t.name === args.where.name
               && t.systemManaged === args.where.systemManaged
-              && t.organizationId === orgId,
+              && t.organizationId === orgId
+              && (args.where.projectId === undefined || t.projectId === args.where.projectId),
           )
-          return found ? { id: found.id } : null
+          return found ? { id: found.id, projectId: found.projectId } : null
         }
         const seedTeam = teams.get(args.where.id ?? '')
         return seedTeam && seedTeam.organizationId === orgId
@@ -148,6 +168,14 @@ export const makeExternalAgentPrismaFake = (
       },
     },
     channel: {
+      // The root's "has it ever held a standard channel" read and the default
+      // shared-channel seed: kept apart from the DMs the assertions count.
+      count: async (args: { where: { projectId: string } }) =>
+        sharedChannels.filter((c) => c.projectId === args.where.projectId).length,
+      createMany: async (args: { data: Array<{ projectId: string }> }) => {
+        sharedChannels.push(...args.data.map((row) => ({ projectId: row.projectId })))
+        return { count: args.data.length }
+      },
       upsert: async (args: {
         where: { dmKey: string }
         create: {

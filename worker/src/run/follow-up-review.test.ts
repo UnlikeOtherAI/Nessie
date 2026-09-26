@@ -169,3 +169,42 @@ test('the completion decision must be an actual boolean and a reason', async () 
   )
   assert.equal(decision.needsFollowUp, true)
 })
+
+const jev = (choice: 'complete' | 'unfinished', probability: number) => {
+  let asked = 0
+  return {
+    asked: () => asked,
+    decide: async () => {
+      asked += 1
+      return { completion: { type: 'choice' as const, choice, probabilities: { [choice]: probability } } }
+    },
+  }
+}
+
+test('a sure "complete" from Jev ends the turn without the generative review', async () => {
+  const sink: InvocationRecord[] = []
+  const gate = jev('complete', 0.95)
+  let reviewed = 0
+  const decision = await reviewFollowUp(async () => {
+    reviewed += 1
+    return response('{"needsFollowUp":true,"reason":"unused"}')
+  }, [{ role: 'user', content: 'Kolik máme místa na disku?' }], 'Na disku zbývá 1 TB.', sink, gate.decide)
+
+  assert.equal(decision.needsFollowUp, false)
+  assert.equal(gate.asked(), 1)
+  assert.equal(reviewed, 0)
+  assert.deepEqual(sink, [])
+})
+
+for (const [choice, probability] of [['complete', 0.7], ['unfinished', 0.99]] as const) {
+  test(`Jev ${choice} at ${probability} leaves the turn to the generative review`, async () => {
+    const gate = jev(choice, probability)
+    const decision = await reviewFollowUp(
+      async () => response('{"needsFollowUp":true,"reason":"The disk was never read."}'),
+      [{ role: 'user', content: 'Kolik máme místa na disku?' }], 'Mrknu na to.', [], gate.decide,
+    )
+    assert.equal(gate.asked(), 1)
+    assert.equal(decision.needsFollowUp, true)
+    assert.equal(decision.reason, 'The disk was never read.')
+  })
+}

@@ -1,5 +1,7 @@
 import { parseAcknowledgeEmoji, type AgentMention } from '@nessie/schemas'
 
+import type { DecisionModelClient } from './decision-model.js'
+import { judgeChannelEngagement } from './engagement-decisions.js'
 import { isCreditsExhaustedError } from './inference/types.js'
 import type { LedgerAttribution } from './ledger.js'
 import type { ModelClient, ModelMessage } from './model.js'
@@ -38,6 +40,15 @@ export type OrchestratorDecision =
       background?: boolean
       // Configured work uses the policy author's authority, including when answering too.
       policyWork?: boolean
+      /**
+       * A one-on-one reply that goes back to an earlier message: which one, and
+       * how the answer points at it (docs/standards/reply-threads.md →
+       * "One-on-one rooms"). Read by the run from the trigger's pinned snapshot.
+       */
+      earlierMessageId?: string
+      earlierReference?: 'mention' | 'link' | 'thread'
+      /** Do what was asked and mark the message done instead of writing a reply. */
+      acknowledgeWhenDone?: boolean
     }
   | { action: 'acknowledge'; agentId: string; emoji: string; principalUserId?: string }
   | { action: 'none' }
@@ -124,7 +135,9 @@ export const resolveMentionedAgentDecisions = (
  *   joined. Following never *forces* a reply — the LLM decision below may still
  *   decline — and it still returns at most one non-mention reply, so multiple
  *   followers never stampede a thread.
- * - Otherwise: ask the LLM which agent (if any) should engage
+ * - Otherwise: ask Jev which agent (if any) should engage, when this
+ *   installation has it (`decisionClient`), and use its answer when it is sure
+ * - Only when Jev is absent, unsure or failing: ask the LLM
  */
 export const decideAgentEngagement = async (
   modelClient: ModelClient,
@@ -144,6 +157,8 @@ export const decideAgentEngagement = async (
     // Attribution for the engagement-decision LLM call so its tokens are billed
     // to the originating org/channel/thread/actor.
     usage?: LedgerAttribution
+    /** Jev, asked before the generative call; see `judgeChannelEngagement`. */
+    decisionClient?: DecisionModelClient
   },
 ): Promise<OrchestratorDecision[]> => {
   if (input.agents.length === 0) {
@@ -189,6 +204,17 @@ export const decideAgentEngagement = async (
   // If there are @mentions but no agent matched, assume user-to-user — stay silent
   if (/@\w/.test(input.content)) {
     return []
+  }
+
+  if (input.decisionClient) {
+    const judged = await judgeChannelEngagement(input.decisionClient, {
+      agents: input.agents,
+      content: input.content,
+      followingAgentIds: input.followingAgentIds ?? [],
+      recentMessages: input.recentMessages,
+      usage: input.usage,
+    })
+    if (judged) return judged
   }
 
   // LLM decision: should any agent engage? Annotate the agents already

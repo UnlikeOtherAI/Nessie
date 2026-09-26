@@ -412,7 +412,6 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       ? await resolveSystemAgentConversation(prisma, {
         agentIds,
         organizationId: actorContext.tenant.organizationId,
-        teamId,
         userId: actorContext.actor.actorId,
         userIds,
       })

@@ -1,4 +1,4 @@
-import type { LedgerAttribution, ModelClient } from '@nessie/runtime'
+import type { DecisionModelClient, LedgerAttribution, ModelClient } from '@nessie/runtime'
 import { EMBEDDING_DIMENSIONS } from '@nessie/schemas'
 import type { ThoughtAudienceType, ThoughtVisibility } from '@nessie/schemas'
 import type { Pool } from 'pg'
@@ -10,6 +10,7 @@ import { computeFingerprint } from './fingerprint.js'
 import { getEmbedding } from './embed.js'
 import { extractMetadata, type ThoughtMetadata } from './extract-metadata.js'
 import { extractReasoning, type ReasoningExtraction } from './extract-reasoning.js'
+import { gateExtraction } from './extraction-gate.js'
 import { withTransaction } from './transaction.js'
 
 export type CaptureThoughtInput = {
@@ -74,6 +75,8 @@ export type CapturedThought = {
 export type CaptureConfig = {
   pool: Pool
   modelClient: ModelClient
+  /** Jev, asked whether each extraction is worth generating; absent off Ledger. */
+  decisionClient?: DecisionModelClient
 }
 
 const AUDIENCE_TYPE_BY_VISIBILITY: Record<ThoughtVisibility, ThoughtAudienceType> = {
@@ -374,11 +377,16 @@ export const captureThought = async (
   // Bill the embedding + extraction LLM calls to the memory's owner/scope.
   const usage = buildCaptureAttribution(input)
 
-  // Run embedding + metadata extraction + reasoning extraction in parallel
+  // Embedding runs beside Jev's extraction gate; each generative extraction
+  // then runs unless Jev was sure it has nothing to find.
+  const embedded = getEmbedding(input.content, config.modelClient, usage).catch(() => null)
+  const gate = config.decisionClient
+    ? await gateExtraction(config.decisionClient, input.content, usage)
+    : null
   const [embedding, metadata, reasoning] = await Promise.all([
-    getEmbedding(input.content, config.modelClient, usage).catch(() => null),
-    extractMetadata(input.content, config.modelClient, usage).catch(() => null),
-    extractReasoning(input.content, config.modelClient, usage).catch(() => null),
+    embedded,
+    gate?.metadata ?? extractMetadata(input.content, config.modelClient, usage).catch(() => null),
+    gate?.skipReasoning ? null : extractReasoning(input.content, config.modelClient, usage).catch(() => null),
   ])
   const mergedMetadata =
     metadata || input.metadata

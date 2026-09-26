@@ -17,6 +17,7 @@ import { GoogleScopeRequestCard } from './GoogleScopeRequestCard'
 import { MailSurfaceDoorwayChip } from './MailSurfaceDoorway'
 import { MarkdownEditInput } from './MarkdownEditInput'
 import { MessageMarkdown } from './MessageMarkdown'
+import { MessageRefChip } from './MessageRefChip'
 import { MessageUiCards } from './MessageUiCards'
 import type { ResolveReactorName } from './ReactionPills'
 import { RestrictedMessageCard, type DisclosureDuration } from './RestrictedMessageCard'
@@ -152,6 +153,7 @@ export const ChannelMessageBody = ({
         />
       ) : (
         <>
+          <MessageRefChip metadata={message.metadata} onOpenThread={onOpenThread} />
           {/* A card message's `content` is the same card rendered as plain text.
               Other clients and the model use it; the feed renders the card once. */}
           {carriesAgentCard || carriesWebSearchCard || carriesResearchCard || voiceCall ? null : (

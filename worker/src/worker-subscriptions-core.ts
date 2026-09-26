@@ -159,6 +159,7 @@ subscribe(
     await executeRunJob(
       {
         cloudBrowser,
+        decisionClient,
         deepSignalMcpIdentity,
         atRestEncryptionKeyRing: encryptionKeyRing,
         executorCommandEncryptionSecret: encryptionKeyRing,
@@ -190,6 +191,7 @@ subscribe(
     await executeRunCompletionFollowup(
       {
         cloudBrowser,
+        decisionClient,
         deepSignalMcpIdentity,
         atRestEncryptionKeyRing: encryptionKeyRing,
         executorCommandEncryptionSecret: encryptionKeyRing,
@@ -379,6 +381,7 @@ subscribe(
         captureConfig: {
           modelClient,
           pool,
+          ...(decisionClient ? { decisionClient } : {}),
         },
         ledgerIdentity,
         prisma,

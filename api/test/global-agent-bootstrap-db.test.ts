@@ -92,19 +92,17 @@ const teardown = async (context: Seed): Promise<void> => {
 
 dbTest('bootstrap is idempotent and writes the sanctioned system tuple', async () => {
   const context = await seed('global-agent-bootstrap')
-  const { organizationId, prisma, teamId, userId } = context
+  const { organizationId, prisma, userId } = context
 
   try {
     const first = await ensureGlobalAgentBootstrap(prisma, {
       blueprint: AGENT_DESIGNER_BLUEPRINT,
       organizationId,
-      teamId,
       userId,
     })
     const second = await ensureGlobalAgentBootstrap(prisma, {
       blueprint: AGENT_DESIGNER_BLUEPRINT,
       organizationId,
-      teamId,
       userId,
     })
 
@@ -197,17 +195,15 @@ dbTest('bootstrap is idempotent and writes the sanctioned system tuple', async (
 
 dbTest('each person gets their own home DM off one shared agent row', async () => {
   const context = await seed('global-agent-homes')
-  const { organizationId, otherUserId, prisma, teamId, userId } = context
+  const { organizationId, otherUserId, prisma, userId } = context
 
   try {
     const [mine] = await ensureGlobalAgentsForUser(prisma, {
       organizationId,
-      teamId,
       userId,
     })
     const [theirs] = await ensureGlobalAgentsForUser(prisma, {
       organizationId,
-      teamId,
       userId: otherUserId,
     })
 
@@ -227,13 +223,12 @@ dbTest('each person gets their own home DM off one shared agent row', async () =
 
 dbTest('re-applying the blueprint never clobbers a targeted grant', async () => {
   const context = await seed('global-agent-policy-merge')
-  const { organizationId, prisma, teamId, userId } = context
+  const { organizationId, prisma, userId } = context
 
   try {
     const first = await ensureGlobalAgentBootstrap(prisma, {
       blueprint: AGENT_DESIGNER_BLUEPRINT,
       organizationId,
-      teamId,
       userId,
     })
 
@@ -253,7 +248,6 @@ dbTest('re-applying the blueprint never clobbers a targeted grant', async () => 
     await ensureGlobalAgentBootstrap(prisma, {
       blueprint: AGENT_DESIGNER_BLUEPRINT,
       organizationId,
-      teamId,
       userId,
     })
 
@@ -325,7 +319,6 @@ dbTest('the database refuses an unsanctioned slug or home shape', async () => {
     const bootstrap = await ensureGlobalAgentBootstrap(prisma, {
       blueprint: AGENT_DESIGNER_BLUEPRINT,
       organizationId,
-      teamId,
       userId,
     })
 
@@ -344,13 +337,12 @@ dbTest('the database refuses an unsanctioned slug or home shape', async () => {
 
 dbTest('no second agent may bind into a global agent home DM', async () => {
   const context = await seed('global-agent-binding')
-  const { organizationId, prisma, teamId, userId } = context
+  const { organizationId, prisma, userId } = context
 
   try {
     const bootstrap = await ensureGlobalAgentBootstrap(prisma, {
       blueprint: AGENT_DESIGNER_BLUEPRINT,
       organizationId,
-      teamId,
       userId,
     })
     const intruder = await prisma.agent.create({
@@ -388,13 +380,12 @@ dbTest('no second agent may bind into a global agent home DM', async () => {
 
 dbTest('a global agent cannot own a trigger', async () => {
   const context = await seed('global-agent-trigger')
-  const { organizationId, prisma, teamId, userId } = context
+  const { organizationId, prisma, userId } = context
 
   try {
     const bootstrap = await ensureGlobalAgentBootstrap(prisma, {
       blueprint: AGENT_DESIGNER_BLUEPRINT,
       organizationId,
-      teamId,
       userId,
     })
 
@@ -415,13 +406,12 @@ dbTest('a global agent cannot own a trigger', async () => {
 
 dbTest('an unbound global agent is still listed on the Global tab', async () => {
   const context = await seed('global-agent-list')
-  const { organizationId, otherUserId, prisma, teamId, userId } = context
+  const { organizationId, otherUserId, prisma, userId } = context
 
   try {
     const bootstrap = await ensureGlobalAgentBootstrap(prisma, {
       blueprint: AGENT_DESIGNER_BLUEPRINT,
       organizationId,
-      teamId,
       userId,
     })
 
@@ -489,13 +479,12 @@ const actorContextFor = (
 
 dbTest('a global agent binds to an ordinary channel through the route gates', async () => {
   const context = await seed('global-agent-bind')
-  const { organizationId, prisma, teamId, userId } = context
+  const { organizationId, prisma, userId } = context
 
   try {
     const bootstrap = await ensureGlobalAgentBootstrap(prisma, {
       blueprint: AGENT_DESIGNER_BLUEPRINT,
       organizationId,
-      teamId,
       userId,
     })
     const channelId = await ordinaryChannel(context, 'design-room')

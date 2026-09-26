@@ -5,6 +5,7 @@ import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import { useAgents } from '../facades/agents/hooks'
 import { useStartChannelConversation } from '../facades/channels/hooks'
 import { useSendMessageToThread } from '../facades/messages/hooks'
+import type { SecretRecord } from '../facades/secrets/hooks'
 import { useUsers } from '../facades/users/hooks'
 import type { AgentRecord, UserRecord } from '../lib/api-client'
 import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
@@ -30,6 +31,7 @@ import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { ChannelComposer } from '../components/features/channels/ChannelComposer'
 import { useComposerAttachments } from '../components/features/channels/useComposerAttachments'
 import { NO_MENTION_INVITE } from '../components/features/channels/useMentionInviteGate'
+import { useSecretCapture } from '../components/features/channels/useSecretCapture'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 const getRecipientName = (
@@ -59,6 +61,17 @@ export const ChannelConversationComposePage = () => {
   const { data: allAgents = [] } = useAgents({ scope: 'all' })
   const startConversation = useStartChannelConversation()
   const sendMessage = useSendMessageToThread()
+  // A credential in the first message is stopped for the vault as in every
+  // composer. There is no room yet, so the capture offers Personal only: the
+  // room the send creates is stored in the team's own project whoever it
+  // addresses, which says nothing about who is being written to, and a
+  // project secret is listed to every member of that project.
+  const {
+    capture: secretCapture,
+    dismiss: dismissSecretCapture,
+    intercept: interceptSecret,
+    release: releaseSecret,
+  } = useSecretCapture({ projectId: null })
   const mentionRef = useRef<MentionInputHandle>(null)
   const addressInputRef = useRef<HTMLInputElement>(null)
   // Staged exactly as in any conversation — paste, the paperclip, a drop —
@@ -144,9 +157,18 @@ export const ChannelConversationComposePage = () => {
         addressInputRef.current?.focus()
         return
       }
+      setError(null)
+      // Before the conversation is started, not only before the message, so a
+      // discarded credential leaves no conversation behind. Its words are not
+      // put back: the capture is the one place the value may stay. The staged
+      // files stay for the masked resend.
+      if (interceptSecret(content, { agentMentions, replacementMode: 'message' })) {
+        mentionRef.current?.clear()
+        setMessage('')
+        return
+      }
 
       sending.current = true
-      setError(null)
       try {
         const channel = await startConversation.mutateAsync({
           agentIds: recipients
@@ -175,7 +197,17 @@ export const ChannelConversationComposePage = () => {
         sending.current = false
       }
     },
-    [attachments, navigate, recipients, restoreText, sendMessage, startConversation],
+    [attachments, interceptSecret, navigate, recipients, restoreText, sendMessage, startConversation],
+  )
+
+  // Saved to the vault: the masked text starts the conversation like any
+  // first message, so a start that fails puts the masked words back.
+  const confirmSecretCapture = useCallback(
+    async (secret: SecretRecord) => {
+      const turn = releaseSecret(secret)
+      if (turn) await submit(turn.content, turn.agentMentions)
+    },
+    [releaseSecret, submit],
   )
 
   const isPending = startConversation.isPending || sendMessage.isPending
@@ -285,18 +317,17 @@ export const ChannelConversationComposePage = () => {
                   // do not arise before one exists. Every mention here names a
                   // recipient, and the send makes each a member, so nobody can
                   // be mentioned in from outside and no agent is left unbound.
-                  // This page also does not hold a typed credential for the
-                  // vault the way a conversation's composer does, so there is
-                  // no capture to show.
+                  // A typed credential needs no conversation, so its capture
+                  // is the one every composer shows.
                   mentionInvite={NO_MENTION_INVITE}
                   pendingAgentInvites={[]}
                   invitingAgentId={null}
                   inviteErrors={{}}
                   onInvitePendingAgent={() => undefined}
                   onDismissPendingAgent={() => undefined}
-                  secretCapture={null}
-                  onConfirmSecretCapture={async () => undefined}
-                  onDismissSecretCapture={() => undefined}
+                  secretCapture={secretCapture}
+                  onConfirmSecretCapture={confirmSecretCapture}
+                  onDismissSecretCapture={dismissSecretCapture}
                 />
               </div>
             </div>

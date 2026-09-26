@@ -2,6 +2,7 @@ import { loadConfig } from '@nessie/config'
 import {
   attributionFromActorContext,
   type InferenceResult,
+  type RunDecisionEvaluator,
   type InvocationRecord,
   type ProviderMessage,
   type ToolSchemaDescriptor,
@@ -63,6 +64,12 @@ export type RunInference = {
     messages: ProviderMessage[],
     tools: ToolSchemaDescriptor[],
   ) => Promise<InferenceResult>
+  /**
+   * Jev, for the utility judgements it can answer first. Null when the
+   * installation has no Ledger route, and for a run on a personal subscription
+   * or a local model: those runs' evidence stays in their own lane.
+   */
+  decide: RunDecisionEvaluator | null
 }
 
 export const createRunInference = (
@@ -89,14 +96,16 @@ export const createRunInference = (
 ): RunInference => {
   let currentTurnStreamed = false
   const reasoningEffort = reasoningEffortForAgentEffort(context.agent.effort)
+  const attribution = attributionFromActorContext(payload.actorContext, {
+    agentId: context.agent.id,
+    agentKind: context.agent.agentKind,
+    runId: context.run.id,
+  })
   const requestHeadersForProvider = createProviderRequestHeadersResolver({
-    attribution: attributionFromActorContext(payload.actorContext, {
-      agentId: context.agent.id,
-      agentKind: context.agent.agentKind,
-      runId: context.run.id,
-    }),
+    attribution,
     ledgerIdentity: deps.ledgerIdentity,
   })
+  const decisionClient = options.subscription || options.local ? undefined : deps.decisionClient
 
   const runModel = {
     model: options.budgetModelOverride?.model ?? context.agent.model,
@@ -264,6 +273,9 @@ export const createRunInference = (
   }
 
   return {
+    decide: decisionClient
+      ? (input) => decisionClient.evaluate({ ...input, usage: { ...attribution, systemComponent: 'run-decisions' } })
+      : null,
     consumeStreamedFlag: () => {
       const streamed = currentTurnStreamed
       currentTurnStreamed = false

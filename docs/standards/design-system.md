@@ -152,6 +152,16 @@ summary and points here; **this file is the rule**.
   `admin/test/page-header-actions.test.ts` holds all of this, and
   `pnpm --filter @nessie/admin test:e2e:page-header` screenshots every theme's
   header into `e2e/screenshots/page-header/`.
+- **A text link is styled where it is written.** The anchor reset
+  (`color: inherit; text-decoration: none`) sits in `@layer base` in
+  `styles.css`, beside Tailwind's preflight, so a link's own utilities —
+  `underline`, `hover:underline`, `text-[color:var(--lnk)]` — apply. Until
+  2026-09-26 it was unlayered and beat every one of them, so 57 text links
+  rendered as plain text. Navigation rows take their colour from their own
+  classes (`.admin-sb-item`, `.admin-rail-btn`, `.sidebar-project-link`),
+  which the reset never decided. The `button, input, select, textarea
+  { font: inherit }` reset is still unlayered, so a `text-*` size on a control
+  stays inert, as the page-header rule above says.
 - **One segmented strip, everywhere.** Every compact single-select strip in
   the admin — detail tabs, page sections, filter segments, and inline form
   choices — is `components/primitives/TabBar.tsx` (a single sliding pill,
@@ -226,7 +236,9 @@ summary and points here; **this file is the rule**.
   `components/features/channels/ChannelComposer.tsx` (six call sites, the New
   message page's first message among them — so it pastes, attaches and
   dictates like any conversation, and its questions that need a conversation
-  to exist are passed closed, `NO_MENTION_INVITE` among them): at rest a
+  to exist are passed closed, `NO_MENTION_INVITE` among them, while a typed
+  credential, which needs none, stops for the vault through the same
+  `useSecretCapture` as everywhere else): at rest a
   single line — placeholder centred beside Send, no toolbar glyphs — opening
   while focus is inside it or anything is staged. Send is pinned to the bottom
   line and the toolbar unfolds *below* the editor, so that line never moves and

@@ -411,7 +411,11 @@ export const runAgentConversationStartTool = async (
       const run = await tx.run.create({
         data: {
           agentId: target.id,
-          replyPlacement: 'thread',
+          // The requester's own room has nobody else in it for a reply thread
+          // to spare, so the answer goes to its main chat; a shared room keeps
+          // it under the opener (docs/standards/reply-threads.md →
+          // "One-on-one rooms").
+          replyPlacement: destinationIsRequestersOwnRoom ? 'channel' : 'thread',
           status: 'pending',
           threadId: conversation.id,
           triggerMessageId: opener.id,

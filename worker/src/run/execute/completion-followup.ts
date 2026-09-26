@@ -22,6 +22,7 @@ import {
 import { enqueueInteractiveReplyPush } from './reply-push.js'
 import { buildScopes } from './scopes.js'
 import type { ExecutionDependencies } from './types.js'
+import { publishReactionChanged } from './working-marker.js'
 
 const eventKey = (
   payload: RunCompletionFollowupJobPayload,
@@ -65,6 +66,17 @@ export const executeRunCompletionFollowup = async (
       agentId: parseAgentId(context.agent.id),
       runId: parseRunId(context.run.id),
     }, { idempotencyKey: key('stream-done') })
+    // ...and, when the platform marked the message done itself, that mark:
+    // written in the run's commit, announced only now that it is durable.
+    if (delivery.kind === 'reaction' && delivery.emoji) {
+      await publishReactionChanged(deps.realtimeTransport, {
+        agentId: context.agent.id,
+        emoji: delivery.emoji,
+        messageId: delivery.sourceMessageId,
+        ...(context.run.principalUserId ? { onBehalfOfUserId: context.run.principalUserId } : {}),
+        threadId: context.run.threadId,
+      })
+    }
   } else if (delivery.kind === 'watch') {
     await publishMessageUpdated(deps.realtimeTransport, context, {
       content: delivery.content,

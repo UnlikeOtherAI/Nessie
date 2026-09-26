@@ -39,14 +39,13 @@ dbTest('external-agent bootstrap writes its system-managed tuple to Postgres', a
     const project = await prisma.project.create({
       data: { name: 'External agent project', organizationId },
     })
-    const team = await prisma.team.create({
+    await prisma.team.create({
       data: { name: 'External agent team', projectId: project.id },
     })
 
     const first = await ensureExternalAgentBootstrap(prisma, {
       organizationId,
       product,
-      teamId: team.id,
       userId,
       externalTeamId: 'uoa-team',
     })
@@ -82,7 +81,6 @@ dbTest('external-agent bootstrap writes its system-managed tuple to Postgres', a
     const second = await ensureExternalAgentBootstrap(prisma, {
       organizationId,
       product,
-      teamId: team.id,
       userId,
       externalTeamId: 'uoa-team',
     })
