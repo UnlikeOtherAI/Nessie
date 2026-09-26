@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Outlet, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useRedirect } from '../navigation/redirect'
-import { useChannelPlaceableAgents } from '../facades/agents/hooks'
+import { useChannelPlaceableAgents, useStartAgentConversation } from '../facades/agents/hooks'
 import { useChannels } from '../facades/channels/hooks'
 import { useExternalAgentIdentity } from '../facades/integrations/hooks'
 import {
@@ -25,6 +25,8 @@ import type { ConversationRenameDoorway } from '../components/features/channels/
 import { ChatToolDock } from '../components/features/channels/tool-rail/ChatToolDock'
 import { ResearchBriefHost } from '../components/features/deep-water/ResearchBriefHost'
 import { conversationRoomEyebrow } from '../components/features/agents/conversations/conversation-presentation'
+import { conversationPath } from '../components/features/agents/conversations/AgentConversationList'
+import { focusComposerState } from '../components/features/agents/conversations/conversation-intent'
 import { availableChatTools } from '../components/features/channels/tool-rail/chat-tools'
 import { ChannelOverlays } from './channels/ChannelOverlays'
 import { ChannelConversationSurface } from './channels/ChannelConversationSurface'
@@ -95,6 +97,8 @@ export const ChannelsPage = () => {
         ? personalAssistantState.agent
         : null)
     : null
+  const startAgentConversation = useStartAgentConversation()
+  const [sessionStartError, setSessionStartError] = useState<string | null>(null)
   // A ticket's work thread is written in only by people who can edit its
   // board (docs/standards/ticket-work.md → "The work thread"); asked only for
   // a conversation that names a ticket.
@@ -164,6 +168,29 @@ export const ChannelsPage = () => {
       && !(isPersonalAssistantConversation && personalAssistantPending),
     personalAssistantAgent,
   })
+  const sessionHome = !threadId && activeChannel?.type === 'dm' && conversationAgent
+    ? {
+        agent: conversationAgent,
+        busy: startAgentConversation.isPending,
+        error: sessionStartError,
+        onStart: (message?: string) => {
+          setSessionStartError(null)
+          startAgentConversation.mutate(
+            { agentId: conversationAgent.id, channelId: activeChannel.id, ...(message ? { message } : {}) },
+            {
+              onSuccess: (result) => {
+                void navigate(conversationPath(result.conversation), {
+                  state: message ? undefined : focusComposerState(),
+                })
+              },
+              onError: (error: unknown) => setSessionStartError(
+                error instanceof Error ? error.message : 'Could not start a conversation.',
+              ),
+            },
+          )
+        },
+      }
+    : null
   const {
     chatToolAgents,
     closeTool,
@@ -279,6 +306,7 @@ export const ChannelsPage = () => {
         ].join(' ')}
       >
         <ChannelConversationSurface
+          sessionHome={sessionHome}
           activeCall={activeCall}
           activeChannel={activeChannel}
           activeThreadId={activeThreadId ?? null}

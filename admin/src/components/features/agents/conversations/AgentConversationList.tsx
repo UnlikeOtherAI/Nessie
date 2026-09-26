@@ -48,15 +48,14 @@ type AgentConversationListProps = {
   refetchInterval?: number | ((conversations: AgentConversationRecord[]) => number)
   /** Selected after the navigation — the panel focuses its composer with it. */
   onSelect?: (conversation: AgentConversationRecord) => void
+  presentation?: 'panel' | 'sidebar'
 }
 
 /**
  * Every conversation an agent is in that the reader may see.
  *
- * One component, two homes: the column beside a chat (`AgentConversationsPanel`)
- * and the agent's own page tab, which renders it at page width. They are the
- * same list — same rows, same order, same scope rule — so it is parameterised
- * rather than copied.
+ * One component in the chat column, the agent page and the Channels sidebar.
+ * The sidebar uses compact tree rows; order and access scope stay shared.
  *
  * Rows are buttons rather than links because the row is a switch between
  * conversations rather than a document to open in a new tab; the destination
@@ -75,6 +74,7 @@ export const AgentConversationList = ({
   agentId,
   flash = null,
   onSelect,
+  presentation = 'panel',
   refetchInterval,
 }: AgentConversationListProps) => {
   const navigate = useNavigate()
@@ -87,7 +87,7 @@ export const AgentConversationList = ({
   const [documentsOpen, setDocumentsOpen] = useState<boolean | null>(null)
 
   if (query.isPending) {
-    return <Skeleton className="p-3" count={3} variant="list" />
+    return presentation === 'sidebar' ? null : <Skeleton className="p-3" count={3} variant="list" />
   }
 
   if (query.isError) {
@@ -110,6 +110,7 @@ export const AgentConversationList = ({
   }
 
   if (conversations.length === 0) {
+    if (presentation === 'sidebar') return null
     return (
       <p className="px-3 py-6 text-center text-sm text-[color:var(--tx3)]">
         No conversations yet
@@ -135,14 +136,16 @@ export const AgentConversationList = ({
         <button
           aria-current={current ? 'true' : undefined}
           className={[
-            'flex w-full items-start gap-2 px-3 py-2 text-left transition-colors',
-            'border-b border-[color:var(--sep)]',
+            presentation === 'sidebar'
+              ? 'admin-sb-item sidebar-child group'
+              : 'flex w-full items-start gap-2 px-3 py-2 text-left transition-colors border-b border-[color:var(--sep)]',
             current
-              ? 'bg-[color:var(--main-hover)]'
-              : 'hover:bg-[color:var(--main-hover)] focus-visible:bg-[color:var(--main-hover)]',
+              ? presentation === 'sidebar' ? 'active' : 'bg-[color:var(--main-hover)]'
+              : presentation === 'sidebar' ? '' : 'hover:bg-[color:var(--main-hover)] focus-visible:bg-[color:var(--main-hover)]',
             blink === null ? '' : 'admin-attention-pulse',
           ].filter(Boolean).join(' ')}
-          data-testid="agent-conversation-row"
+          data-testid={presentation === 'sidebar' ? 'agent-session-sidebar-row' : 'agent-conversation-row'}
+          title={presentation === 'sidebar' ? `${conversation.title} · ${conversationRoomLabel(conversation.channel)}` : undefined}
           onClick={() => {
             void navigate(to)
             onSelect?.(conversation)
@@ -157,7 +160,7 @@ export const AgentConversationList = ({
             a badge that grew the slot would undo the alignment the slot
             exists for.
           */}
-          <span className="flex w-6 flex-shrink-0 justify-center pt-1.5">
+          <span className={presentation === 'sidebar' ? 'flex w-3 flex-shrink-0 justify-center' : 'flex w-6 flex-shrink-0 justify-center pt-1.5'}>
             {running ? (
               <span
                 aria-hidden="true"
@@ -168,14 +171,14 @@ export const AgentConversationList = ({
             )}
           </span>
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-sm font-semibold text-[color:var(--tx)]">
+            <span className={presentation === 'sidebar' ? 'truncate' : 'truncate text-sm font-semibold text-[color:var(--tx)]'}>
               {conversation.title}
             </span>
-            <span className="truncate text-xs text-[color:var(--tx2)]">
+            {presentation === 'panel' ? <span className="truncate text-xs text-[color:var(--tx2)]">
               {conversationBodyLine(conversation, 'No messages yet')}
-            </span>
+            </span> : null}
           </span>
-          <span className="flex flex-shrink-0 flex-col items-end gap-1 pt-0.5">
+          {presentation === 'panel' ? <span className="flex flex-shrink-0 flex-col items-end gap-1 pt-0.5">
             {age ? (
               <span className="text-[11px] text-[color:var(--tx3)]">{age}</span>
             ) : null}
@@ -184,7 +187,7 @@ export const AgentConversationList = ({
                 {conversationRoomLabel(conversation.channel)}
               </Pill>
             ) : null}
-          </span>
+          </span> : null}
           {running ? <span className="sr-only">Running now</span> : null}
         </button>
       </div>
@@ -207,7 +210,9 @@ export const AgentConversationList = ({
     <div className="flex flex-col" data-testid={input.testId}>
       <button
         aria-expanded={input.open}
-        className="flex min-h-11 w-full items-center gap-2 border-b border-[color:var(--sep)] px-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)] hover:bg-[color:var(--main-hover)]"
+        className={presentation === 'sidebar'
+          ? 'admin-sb-item sidebar-child group text-xs text-[color:var(--tx3)]'
+          : 'flex min-h-11 w-full items-center gap-2 border-b border-[color:var(--sep)] px-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)] hover:bg-[color:var(--main-hover)]'}
         onClick={() => input.setOpen(!input.open)}
         type="button"
       >

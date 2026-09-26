@@ -2437,6 +2437,40 @@ html[data-desktop-platform='linux'] #root {
   font-size: 14px;
 }
 
+.admin-sidebar-nav .sidebar-agent-group {
+  margin-top: 2px;
+}
+
+.admin-sidebar-nav .sidebar-agent-disclosure {
+  position: absolute;
+  top: 50%;
+  left: 9px;
+  display: flex;
+  width: 12px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  color: var(--tx3);
+}
+
+.admin-sidebar-nav .sidebar-agent-children {
+  margin-left: 28px;
+  border-left: 1px solid var(--sep);
+  padding-left: 4px;
+}
+
+.admin-sidebar-nav .sidebar-agent-children .admin-sb-item {
+  width: calc(100% - 8px);
+  min-height: 28px;
+  margin: 1px 4px;
+  padding: 3px 8px;
+}
+
+.admin-sidebar-nav .sidebar-agent-children .sidebar-agent-new {
+  color: var(--tx3);
+}
+
 .admin-sidebar-nav .admin-sb-item.sidebar-shared-channel {
   width: 100%;
   min-height: 30px;
