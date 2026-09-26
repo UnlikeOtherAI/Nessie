@@ -331,7 +331,7 @@ mod open_nessie_tests {
     fn the_status_window_nessie_preset_resolves_before_opening() {
         assert_eq!(
             executors_url_for_backend("nessie"),
-            Ok("https://app.nessie.works/agents/executors"),
+            Ok("https://app.nessie.works/admin/computers"),
         );
     }
 }

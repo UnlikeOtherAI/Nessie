@@ -151,7 +151,7 @@ struct PairingAttemptView: View {
                         .disabled(busy)
                 } else {
                     Text("Enter this code in Nessie").font(.headline)
-                    Text("Open Agents → Executors → Pair executor.")
+                    Text("Open Admin › Computers › Pair a computer.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     PairingCodeBoxes(code: state.code ?? "")

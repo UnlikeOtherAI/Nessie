@@ -36,7 +36,7 @@ const destination = (view: PairingCodeView): string => (
 const show = (view: PairingCodeView): void => {
   if (view.status === 'waiting') {
     process.stdout.write(`\n${[...(view.code ?? '')].map((digit) => `[ ${digit} ]`).join(' ')}\n`)
-    process.stdout.write('In Nessie, open Agents → Executors and choose Pair executor. Enter this code.\n')
+    process.stdout.write('In Nessie, open Admin › Computers and choose Pair a computer. Enter this code.\n')
     process.stdout.write(`${view.machineName ?? 'This computer'} — fingerprint: ${view.fingerprint ?? ''}\n`)
   } else if (view.status === 'confirmation') {
     process.stdout.write(`Connect ${view.machineName ?? 'this computer'} to ${destination(view)}?\n`)

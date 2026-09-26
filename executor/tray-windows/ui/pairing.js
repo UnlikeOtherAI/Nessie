@@ -23,7 +23,7 @@ const renderPairing = (view) => {
     }
   }
   document.getElementById('pairing-instruction').textContent = {
-    waiting: 'In Nessie, open Agents → Executors, choose Pair executor and enter this code.',
+    waiting: 'In Nessie, open Admin › Computers, choose Pair a computer and enter this code.',
     confirmation: 'Confirm where this computer will connect.',
     alreadyPaired: 'This computer is already paired. Close that pairing and create a new one?',
     expired: 'This code expired. Cancel and get a new code.',
