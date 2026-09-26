@@ -605,5 +605,48 @@
     "sendTest": "Test an dieses iPhone senden",
     "removeApnsBody": "Push-Benachrichtigungen über Apple werden bis zum Upload eines neuen Schlüssels angehalten.",
     "removeApnsTitle": "APNs-Anmeldedaten entfernen?"
+  },
+  "members": {
+    "active": "Aktiv",
+    "activeMembers": "Aktive Mitglieder",
+    "pendingInvitations": "Ausstehende Einladungen",
+    "pending": "Ausstehend",
+    "deactivatedMembers": "Deaktivierte Mitglieder",
+    "inactive": "Inaktiv",
+    "automaticLogins": "Automatische Anmeldungen",
+    "access": "Zugriff",
+    "invitePeople": "Personen einladen",
+    "title": "Mitglieder",
+    "status": "Mitgliederstatus",
+    "total": "Insgesamt: {{count}}",
+    "invitationsLoadFailed": "Einladungen konnten nicht geladen werden.",
+    "loadFailed": "Mitglieder konnten nicht geladen werden.",
+    "loadingInvitations": "Einladungen werden geladen…",
+    "loadingMembers": "Mitglieder werden geladen…",
+    "noPendingInvitations": "Keine ausstehenden Einladungen",
+    "pendingHelp": "Einladungen bleiben hier, bis sie angenommen wurden.",
+    "invitation": "Einladung",
+    "openInvitation": "Einladung für {{name}} öffnen",
+    "member": "Mitglied",
+    "noActiveMembers": "Keine aktiven Mitglieder",
+    "noDeactivatedMembers": "Keine deaktivierten Mitglieder",
+    "inviteFirst": "Laden Sie die erste Person ein.",
+    "deactivatedHelp": "Hier erscheinen deaktivierte Mitglieder.",
+    "unnamed": "Unbenanntes Mitglied",
+    "openMember": "{{name}} öffnen",
+    "descriptions": {
+      "active": {
+        "organization": "Personen in Ihrer Organisation.",
+        "team": "Personen in diesem Team."
+      },
+      "pending": {
+        "organization": "Eingeladene Personen, die noch nicht beigetreten sind.",
+        "team": "Eingeladene Personen, die noch nicht beigetreten sind."
+      },
+      "deactivated": {
+        "organization": "Personen mit pausiertem Organisationszugriff.",
+        "team": "Personen mit pausiertem Teamzugriff."
+      }
+    }
   }
 }

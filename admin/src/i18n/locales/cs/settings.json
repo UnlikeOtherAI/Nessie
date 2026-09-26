@@ -605,5 +605,48 @@
     "sendTest": "Odeslat test na tento iPhone",
     "removeApnsBody": "Push oznámení přes Apple se zastaví, dokud nenahrajete nový klíč.",
     "removeApnsTitle": "Odebrat přihlašovací údaj APNs?"
+  },
+  "members": {
+    "active": "Aktivní",
+    "activeMembers": "Aktivní členové",
+    "pendingInvitations": "Nevyřízená pozvání",
+    "pending": "Čekající",
+    "deactivatedMembers": "Deaktivovaní členové",
+    "inactive": "Neaktivní",
+    "automaticLogins": "Automatická přihlášení",
+    "access": "Přístup",
+    "invitePeople": "Pozvat lidi",
+    "title": "Členové",
+    "status": "Stav členů",
+    "total": "Celkem: {{count}}",
+    "invitationsLoadFailed": "Pozvání se nepodařilo načíst.",
+    "loadFailed": "Členy se nepodařilo načíst.",
+    "loadingInvitations": "Načítání pozvání…",
+    "loadingMembers": "Načítání členů…",
+    "noPendingInvitations": "Žádná nevyřízená pozvání",
+    "pendingHelp": "Pozvání se zde zobrazují, dokud nejsou přijata.",
+    "invitation": "Pozvání",
+    "openInvitation": "Otevřít pozvání pro {{name}}",
+    "member": "člen",
+    "noActiveMembers": "Žádní aktivní členové",
+    "noDeactivatedMembers": "Žádní deaktivovaní členové",
+    "inviteFirst": "Pozvěte někoho jako prvního člena.",
+    "deactivatedHelp": "Zde se zobrazí členové, které deaktivujete.",
+    "unnamed": "Nepojmenovaný člen",
+    "openMember": "Otevřít {{name}}",
+    "descriptions": {
+      "active": {
+        "organization": "Lidé ve vaší organizaci.",
+        "team": "Lidé v tomto týmu."
+      },
+      "pending": {
+        "organization": "Lidé, které jste pozvali a kteří se ještě nepřipojili.",
+        "team": "Lidé, které jste pozvali a kteří se ještě nepřipojili."
+      },
+      "deactivated": {
+        "organization": "Lidé s pozastaveným přístupem k organizaci.",
+        "team": "Lidé s pozastaveným přístupem k tomuto týmu."
+      }
+    }
   }
 }

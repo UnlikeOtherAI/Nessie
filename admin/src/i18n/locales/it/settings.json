@@ -605,5 +605,48 @@
     "sendTest": "Invia un test a questo iPhone",
     "removeApnsBody": "Le notifiche push tramite Apple si interromperanno finché non verrà caricata una nuova chiave.",
     "removeApnsTitle": "Rimuovere la credenziale APNs?"
+  },
+  "members": {
+    "active": "Attivi",
+    "activeMembers": "Membri attivi",
+    "pendingInvitations": "Inviti in attesa",
+    "pending": "In attesa",
+    "deactivatedMembers": "Membri disattivati",
+    "inactive": "Inattivi",
+    "automaticLogins": "Accessi automatici",
+    "access": "Accesso",
+    "invitePeople": "Invita persone",
+    "title": "Membri",
+    "status": "Stato dei membri",
+    "total": "Totale: {{count}}",
+    "invitationsLoadFailed": "Impossibile caricare gli inviti.",
+    "loadFailed": "Impossibile caricare i membri.",
+    "loadingInvitations": "Caricamento degli inviti…",
+    "loadingMembers": "Caricamento dei membri…",
+    "noPendingInvitations": "Nessun invito in attesa",
+    "pendingHelp": "Gli inviti restano qui finché non vengono accettati.",
+    "invitation": "Invito",
+    "openInvitation": "Apri l’invito per {{name}}",
+    "member": "membro",
+    "noActiveMembers": "Nessun membro attivo",
+    "noDeactivatedMembers": "Nessun membro disattivato",
+    "inviteFirst": "Invita qualcuno per aggiungere il primo membro.",
+    "deactivatedHelp": "Qui appaiono i membri che disattivi.",
+    "unnamed": "Membro senza nome",
+    "openMember": "Apri {{name}}",
+    "descriptions": {
+      "active": {
+        "organization": "Persone nella tua organizzazione.",
+        "team": "Persone in questo team."
+      },
+      "pending": {
+        "organization": "Persone invitate che non hanno ancora aderito.",
+        "team": "Persone invitate che non hanno ancora aderito."
+      },
+      "deactivated": {
+        "organization": "Persone con accesso all’organizzazione sospeso.",
+        "team": "Persone con accesso a questo team sospeso."
+      }
+    }
   }
 }

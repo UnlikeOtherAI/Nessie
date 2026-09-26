@@ -605,5 +605,48 @@
     "sendTest": "Envoyer un test sur cet iPhone",
     "removeApnsBody": "Les notifications push via Apple seront interrompues jusqu’au téléversement d’une nouvelle clé.",
     "removeApnsTitle": "Supprimer l’identifiant APNs ?"
+  },
+  "members": {
+    "active": "Actifs",
+    "activeMembers": "Membres actifs",
+    "pendingInvitations": "Invitations en attente",
+    "pending": "En attente",
+    "deactivatedMembers": "Membres désactivés",
+    "inactive": "Inactifs",
+    "automaticLogins": "Connexions automatiques",
+    "access": "Accès",
+    "invitePeople": "Inviter des personnes",
+    "title": "Membres",
+    "status": "État des membres",
+    "total": "{{count}} au total",
+    "invitationsLoadFailed": "Impossible de charger les invitations.",
+    "loadFailed": "Impossible de charger les membres.",
+    "loadingInvitations": "Chargement des invitations…",
+    "loadingMembers": "Chargement des membres…",
+    "noPendingInvitations": "Aucune invitation en attente",
+    "pendingHelp": "Les invitations restent ici jusqu’à leur acceptation.",
+    "invitation": "Invitation",
+    "openInvitation": "Ouvrir l’invitation de {{name}}",
+    "member": "membre",
+    "noActiveMembers": "Aucun membre actif",
+    "noDeactivatedMembers": "Aucun membre désactivé",
+    "inviteFirst": "Invitez une personne pour ajouter le premier membre.",
+    "deactivatedHelp": "Les membres désactivés apparaissent ici.",
+    "unnamed": "Membre sans nom",
+    "openMember": "Ouvrir {{name}}",
+    "descriptions": {
+      "active": {
+        "organization": "Personnes de votre organisation.",
+        "team": "Personnes de cette équipe."
+      },
+      "pending": {
+        "organization": "Personnes invitées qui n’ont pas encore rejoint l’organisation.",
+        "team": "Personnes invitées qui n’ont pas encore rejoint l’équipe."
+      },
+      "deactivated": {
+        "organization": "Personnes dont l’accès à l’organisation est suspendu.",
+        "team": "Personnes dont l’accès à l’équipe est suspendu."
+      }
+    }
   }
 }
