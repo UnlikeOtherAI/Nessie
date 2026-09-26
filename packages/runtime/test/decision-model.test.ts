@@ -66,7 +66,14 @@ test('a caller that will not wait long gives up on a stalled evaluation', async 
   const client = createLedgerDecisionClient({
     ...base,
     transport: transport((_url, init) => new Promise<Response>((_resolve, reject) => {
-      init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+      // `AbortSignal.timeout` does not hold the event loop open, and a stalled
+      // fake request holds nothing either: without this the test runner sees
+      // an empty loop and cancels the test before the caller's timeout fires.
+      const keepAlive = setTimeout(() => undefined, 10_000)
+      init?.signal?.addEventListener('abort', () => {
+        clearTimeout(keepAlive)
+        reject(init.signal?.reason)
+      })
     })),
   })
   const startedAt = Date.now()
