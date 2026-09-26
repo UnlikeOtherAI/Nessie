@@ -69,9 +69,8 @@ type Props = {
   onChange?: (text: string) => void
   onOversizePaste?: (paste: string) => void
   /**
-   * Receives a paste that carries files and no text: a screenshot, a copied
-   * image, a file copied in the file manager. Without it that paste inserts
-   * nothing.
+   * Receives a paste that carries files and no text — a screenshot, a copied
+   * image. Without it that paste inserts nothing.
    */
   onPasteFiles?: (files: File[]) => void
   onSubmit: (text: string, agentMentions: AgentMention[]) => void
@@ -434,9 +433,8 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
             e.preventDefault()
             const text = e.clipboardData.getData('text/plain')
             // A paste that carries text is text, even when the app it came
-            // from put a picture of it beside it — Excel, Word and PowerPoint
-            // all do. Files arrive on their own only when files are what was
-            // copied.
+            // from put a picture of it beside it, as Excel does with cells.
+            // Files arrive on their own only when files are what was copied.
             const files = Array.from(e.clipboardData.files)
             if (onPasteFiles && files.length > 0 && !text.trim()) {
               onPasteFiles(files)

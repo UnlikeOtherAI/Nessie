@@ -11,8 +11,8 @@ import { JSDOM } from 'jsdom'
  *
  * A screenshot on the clipboard is files and no text, and is handed over to be
  * staged exactly like a picked file. A paste from an app that puts a picture
- * of its text beside the text — Excel, Word and PowerPoint all do — stays
- * text, because text is what the person copied. Staged files are a message on
+ * of its text beside the text, as Excel does with cells, stays text, because
+ * text is what the person copied. Staged files are a message on
  * their own, so Enter sends them with an empty draft, and holds the draft
  * while one is still uploading rather than posting without it.
  */
