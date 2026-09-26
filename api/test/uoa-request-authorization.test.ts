@@ -44,6 +44,29 @@ test('org demotion uses a new signed UOA read on the very next request', async (
   assert.equal(calls, 2)
 })
 
+test('a burst of concurrent requests from one session costs UOA one read', async () => {
+  // A page mount or an event replay admits dozens of requests of the same
+  // session in one instant; each used to send its own /org/me.
+  let release!: () => void
+  const released = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let calls = 0
+  const deps = requestDeps((async () => {
+    calls += 1
+    await released
+    return json({ org: { org_id: 'org_acme', org_role: 'admin' } })
+  }) as PinnedFetch)
+
+  const burst = Array.from({ length: 30 }, () => authorizeUoaRequest('org_acme', identity, deps))
+  release()
+
+  for (const result of await Promise.all(burst)) {
+    assert.deepEqual(result, { status: 'allowed', role: 'admin' })
+  }
+  assert.equal(calls, 1)
+})
+
 test('membership removal and deactivation reject a formerly authorized bearer', async () => {
   for (const status of [401, 403, 404]) {
     const deps = requestDeps((async () => json({ error: 'ACCESS_DENIED' }, status)) as PinnedFetch)

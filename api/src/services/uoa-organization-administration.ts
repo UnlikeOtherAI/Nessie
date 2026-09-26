@@ -7,7 +7,6 @@ import {
   UoaRosterIdentityError,
   UoaRosterRejectedError,
   UoaRosterUnavailableError,
-  withUoaOrgRosterSubjectAssertion,
   type UoaRoleGrants,
   type UoaRosterDeps,
 } from '@nessie/team-admin'
@@ -67,11 +66,8 @@ export const resolveOrganizationAdministrationAccess = async (
   try {
     const context = await readUoaOrganizationRoleContext(
       input.organization.externalOrgId,
-      withUoaOrgRosterSubjectAssertion(
-        input.organization.externalOrgId,
-        input.actorContext.actionContext.uoaIdentity,
-        rosterDeps,
-      ),
+      input.actorContext.actionContext.uoaIdentity,
+      rosterDeps,
     )
     return uoaRoleHoldsCapability(
       NESSIE_UOA_ROLE_GRANTS,
