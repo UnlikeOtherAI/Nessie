@@ -31,6 +31,7 @@ import { EXECUTOR_CODING_AGENT_LABELS, executorObservedAge } from './executor-pr
  */
 
 const STATUS: Record<ExecutorCodingSessionStatus, { label: string; tone: PillTone }> = {
+  unknown: { label: 'live state unknown', tone: 'muted' },
   closed: { label: 'closed', tone: 'muted' },
   failed: { label: 'failed', tone: 'danger' },
   interrupted: { label: 'interrupted', tone: 'warning' },
@@ -82,7 +83,7 @@ const SessionRow = ({ executorId, canClose, closing, onClose, pending, readAt, s
       </div>
       <p className="text-[color:var(--tx3)]">
         {EXECUTOR_CODING_AGENT_LABELS[session.agent]} in {session.root}
-        {' · '}driven by {session.ownerAgentName ?? 'an agent you cannot see'}
+        {' · '}{session.origin === 'external' ? 'existing native session' : `driven by ${session.ownerAgentName ?? 'an agent you cannot see'}`}
         {' · '}updated <span title={session.updatedAt}>{executorObservedAge(session.updatedAt, readAt)}</span>
       </p>
       {session.ticketWork ? <TicketWork work={session.ticketWork} /> : null}
@@ -99,7 +100,7 @@ const SessionRow = ({ executorId, canClose, closing, onClose, pending, readAt, s
       >
         Closing…
       </span>
-    ) : canClose && session.status !== 'closed' && session.status !== 'failed' ? (
+    ) : canClose && session.origin !== 'external' && session.status !== 'closed' && session.status !== 'failed' ? (
       <button
         aria-label={`Close ${session.title}`}
         className="admin-button admin-button-secondary admin-button-compact"
@@ -133,7 +134,7 @@ export const ExecutorSessionList = ({ executorId }: { executorId: string }) => {
       {() => {
         const list = query.data ?? { canClose: false, sessions: [] }
         if (list.sessions.length === 0) {
-          return <p className="mt-1 text-[color:var(--tx2)]">No sessions have been reported on this machine. Ask an agent with access to start one.</p>
+          return <p className="mt-1 text-[color:var(--tx2)]">No sessions have been reported on this machine. Open Codex or Claude, then ask an agent with access to find it.</p>
         }
         const pressed = close.isPending ? close.variables?.sessionId : undefined
         return (

@@ -22,7 +22,8 @@
     "seed:connectors": "DATABASE_URL=${DATABASE_URL:-postgresql://${PGUSER:-$USER}@localhost:5432/nessie} tsx src/db/seed-connectors-cli.ts",
     "sync:registry": "DATABASE_URL=${DATABASE_URL:-postgresql://${PGUSER:-$USER}@localhost:5432/nessie} tsx src/db/sync-registry-cli.ts",
     "recategorize:apps": "DATABASE_URL=${DATABASE_URL:-postgresql://${PGUSER:-$USER}@localhost:5432/nessie} tsx src/db/recategorize-apps-cli.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:executor-sessions": "node --test --test-concurrency=2 --import tsx test/executor-coding-session-routes.test.ts test/executor-coding-sessions-control.test.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

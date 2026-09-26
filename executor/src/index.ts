@@ -1,5 +1,7 @@
 #!/usr/bin/env node
+import { existingClaudeChannelConfiguration } from './existing-session/setup.js'
 import { dirname } from 'node:path'
+import { existingSessionsEnabled, setExistingSessionsEnabled } from './existing-session/settings.js'
 
 import { approveExecutorPairingOrigin } from '@nessie/schemas'
 
@@ -137,7 +139,7 @@ const usage = (): never => {
     'Usage: nessie-executor login --api <nessie|deeptest|https://your-nessie.example> --workspace <folder>\n'
     + '       nessie-executor teams [--json] [--state-root <path>]\n'
     + '       nessie-executor daemon --executor <uuid>\n'
-    + '       nessie-executor permissions --executor <uuid> [--allow-all|--allow "git *,pnpm *"] '
+    + '       nessie-executor permissions --executor <uuid> [--existing-sessions on|off] [--allow-all|--allow "git *,pnpm *"] '
     + '[--deny "git push *"|--clear-deny]\n'
     + '       nessie-executor pairing-start --api <nessie|deeptest|https://your-nessie.example> '
     + '[--cli] [--state-dir <owner-only-path>] [--replace --executor <uuid>]\n'
@@ -563,9 +565,12 @@ export const run = async (args: string[]): Promise<void> => {
         : 'codingSessions' in input ? { requested: input.codingSessions } : {},
       input.commandPolicy,
     )
+    if (input.existingCodingSessionsEnabled !== undefined) {
+      await setExistingSessionsEnabled(command.stateDir, input.existingCodingSessionsEnabled)
+    }
     process.stdout.write(
       `Local policy proposal saved as revision ${updated.descriptor.revision}. `
-      + 'Restart the local daemon to apply these machine-owned permissions.\n',
+      + 'Restart the local daemon to apply policy changes. The existing-session switch takes effect immediately.\n',
     )
     return
   }
@@ -585,7 +590,9 @@ export const run = async (args: string[]): Promise<void> => {
     return
   }
   if (command.kind === 'describe') {
-    process.stdout.write(`${JSON.stringify(describeExecutor(state), undefined, 2)}\n`)
+    process.stdout.write(`${JSON.stringify({ ...describeExecutor(state),
+      existingCodingSessionsEnabled: await existingSessionsEnabled(command.stateDir),
+      existingClaudeChannelConfiguration: existingClaudeChannelConfiguration(state, command.stateDir) }, undefined, 2)}\n`)
     return
   }
   if (command.kind === 'connect') {

@@ -359,4 +359,8 @@ sentence changes only if the invariant itself did.
 
 Executor sharing is direct: people receive use or admin access, projects and the current team receive use access; read [executor sharing](docs/standards/executor-sharing.md) before changing it.
 
+Existing Codex/Claude session discovery and experimental Queue/Push use the
+existing executor authorization and one default-on local disable switch; see
+[existing coding sessions](docs/plans/2026-09-26-existing-coding-sessions/overview.md).
+
 Executor CLI packages, Homebrew app casks and WinGet manifests follow [package distribution](docs/releasing-executor-packages.md).

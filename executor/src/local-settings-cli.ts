@@ -1,4 +1,5 @@
 import { homedir } from 'node:os'
+import { existingSessionsEnabled, setExistingSessionsEnabled } from './existing-session/settings.js'
 import { resolve } from 'node:path'
 
 import { localCommandPolicyOf } from './command-policy.js'
@@ -47,6 +48,12 @@ export const runLocalSettingsCli = async (args: string[]): Promise<boolean> => {
     await serveExecutor(directory, state)
     return true
   }
+  const existing = value(args, '--existing-sessions')
+  if (existing !== undefined && existing !== 'on' && existing !== 'off') throw new Error('Use --existing-sessions on|off.')
+  if (existing !== undefined) {
+    await setExistingSessionsEnabled(directory, existing === 'on')
+    process.stdout.write(`Existing coding sessions ${existing === 'on' ? 'enabled' : 'disabled'} on this connection.\n`)
+  }
   const current = localCommandPolicyOf(state)
   const allow = value(args, '--allow')
   const deny = value(args, '--deny')
@@ -61,6 +68,7 @@ export const runLocalSettingsCli = async (args: string[]): Promise<boolean> => {
     await configureExecutorLocalPolicy(directory, state, state.descriptor.operationKeys,
       undefined, undefined, undefined, undefined, undefined, {}, policy)
     process.stdout.write('Permissions saved on this computer. Restart its daemon to apply them.\n')
-  } else process.stdout.write(`${JSON.stringify(current, null, 2)}\n`)
+  } else if (existing === undefined) process.stdout.write(`${JSON.stringify({ ...current,
+    existingCodingSessionsEnabled: await existingSessionsEnabled(directory) }, null, 2)}\n`)
   return true
 }

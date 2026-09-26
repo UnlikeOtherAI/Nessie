@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import {
+  EXISTING_CODING_SESSION_OWNER_KEY,
   ExecutorAccessViewResponseSchema,
   ExecutorCodingSessionCloseBodySchema,
   ExecutorCodingSessionListResponseSchema,
@@ -124,7 +125,8 @@ const output = resolve(REPO_ROOT, 'e2e/screenshots/executor-coding-sessions')
  * machine's next report arriving without it.
  */
 const openContext = async (browser, {
-  accessView = access, canClose, names, refuse = [], sessions = reported, ticketWork: ticketOf = {}, width,
+  accessView = access, canClose, names, refuse = [], sessions = reported, ticketWork: ticketOf = {},
+  width, viewSession = pricing,
 }) => {
   const state = {
     closing: new Set(), dropped: new Set(), posted: [], reads: 0, viewers: [],
@@ -137,15 +139,16 @@ const openContext = async (browser, {
     const path = url.pathname
     const method = route.request().method()
     const respond = (data, status = 200) => route.fulfill({ status, json: { data } })
-    const sessionBase = `/api/executors/${executorId}/coding-sessions/${pricing.sessionId}`
+    const sessionBase = `/api/executors/${executorId}/coding-sessions/${viewSession.sessionId}`
     if (path === sessionBase + '/view') {
       if (state.revoked) return respond(null, 404)
-      const session = { ...pricing }
+      const session = { ...viewSession }
       delete session.ownerKey
       return respond({
-        canShare: canClose, online: true, session,
-        screen: { ansi: '\u001b[32m' + state.screen + '\u001b[0m\r\n> ', cols: 120, rows: 36,
-          capturedAt: iso(0), kind: 'terminal' },
+        canShare: canClose && viewSession.origin !== 'external', online: true, session,
+        screen: { ansi: viewSession.origin === 'external' ? state.screen : '\u001b[32m' + state.screen + '\u001b[0m\r\n> ',
+          cols: 120, rows: 36,
+          capturedAt: iso(0), kind: viewSession.origin === 'external' ? 'activity' : 'terminal' },
       })
     }
     if (path === sessionBase + '/shares') {
@@ -159,7 +162,7 @@ const openContext = async (browser, {
       return respond({ success: true })
     }
     if (path === '/api/executor-sessions') {
-      return respond(reported.map((entry) => {
+      return respond(sessions.map((entry) => {
         const session = { ...entry }
         delete session.ownerKey
         return { ...session, executorId, executorLabel: 'Workstation', shared: !canClose }
@@ -194,8 +197,9 @@ const openContext = async (browser, {
     return route.fulfill({ status: 500, json: { error: { code: 'UNEXPECTED', message: path } } })
   })
   const page = await context.newPage()
+  await page.clock.setFixedTime(new Date(now))
   const errors = []
-  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('pageerror', (error) => { errors.push(error.message); console.error(error.message) })
   const dropClosing = () => { for (const id of state.closing) state.dropped.add(id) }
   return { context, dropClosing, errors, page, state, unexpected }
 }
@@ -349,7 +353,7 @@ try {
     assert.match(await linked.innerText(),
       /Fix the invoice rounding\s*working\s*Claude Code in billing · driven by CTO/)
     const link = linked.getByRole('link', { name: ticketTitle })
-    assert.equal(await link.getAttribute('href'), `/projects/${projectId}/board?task=${taskId}`,
+    assert.equal(await link.getAttribute('href'), `#/projects/${projectId}/board?task=${taskId}`,
       'the ticket opens on its own board')
     assert.equal((await linked.getByTestId('executor-coding-session-ticket').innerText()).trim(),
       `${ticketTitle} · ticket work under Ondrej’s standing access`)
@@ -388,5 +392,36 @@ try {
   assert.deepEqual(recipient.unexpected, [])
   await recipient.context.close()
 
+  for (const width of [1280, 390]) {
+    const existing = { ...pricing, sessionId: '99999999-9999-5999-a999-999999999999',
+      ownerKey: EXISTING_CODING_SESSION_OWNER_KEY, origin: 'external', agent: 'codex', root: 'existing',
+      status: 'unknown', title: 'Existing Codex conversation' }
+    const native = await openContext(browser, { canClose: true, names: {}, width,
+      sessions: [existing], viewSession: existing })
+    native.state.screen = 'Existing Codex conversation\r\nProvider: Codex\r\nState: Live state unknown\r\n'
+      + 'Available input: Queue native input\r\nThe original client decides when to consume input.\r\n'
+      + 'Last input: queued natively\r\nAsk your Nessie agent to send input or inspect recent messages.'
+    const nativeList = await open(native.page)
+    assert.match(await nativeList.innerText(), /existing native session/u)
+    assert.equal(await nativeList.getByRole('button', { name: /^Close /u }).count(), 0)
+    await nativeList.getByRole('link', { name: `View ${existing.title}` }).click()
+    await native.page.getByText('Existing native session · Ask your Nessie agent to inspect it or send input').waitFor()
+    assert.equal(await native.page.getByRole('button', { name: 'Share session', exact: true }).count(), 0)
+    await native.page.reload()
+    await native.page.getByRole('heading', { name: existing.title }).waitFor()
+    await native.page.getByRole('region', { name: 'Native session overview' }).waitFor()
+    assert.match(await native.page.getByTestId('executor-terminal-screen').innerText(), /Available input: Queue native input/u)
+    assert.equal(await noOverflow(native.page), true)
+    await native.page.screenshot({ fullPage: true, path: resolve(output, `existing-session-${width}.png`) })
+    await native.page.goBack()
+    await native.page.getByRole('heading', { name: 'Workstation' }).waitFor()
+    await native.page.goForward()
+    await native.page.getByRole('heading', { name: existing.title }).waitFor()
+    await native.page.getByRole('button', { name: width < 768 ? 'Sessions' : 'Back to sessions', exact: true }).click()
+    await native.page.getByRole('heading', { name: 'Sessions', exact: true }).waitFor()
+    assert.deepEqual(native.errors, [])
+    assert.deepEqual(native.unexpected, [])
+    await native.context.close()
+  }
   console.log(`Executor coding sessions flows passed; screenshots: ${output}`)
 } finally { await browser.close(); await stopProcess(admin) }

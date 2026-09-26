@@ -109,3 +109,26 @@ settings, and captures both platforms' screens. The existing admin
 `test:e2e:executor-pairing` checks the popup on desktop and mobile widths.
 Runtime tests cover local deny precedence, legacy policy preservation, refusal
 before guest launch, and exclusion of new rules from pairing network payloads.
+
+## Existing coding sessions
+
+The default-on **Existing coding sessions** switch in the shared console's
+Commands page applies to the selected local connection. The same setting is
+available in every CLI with `permissions --executor <id> --existing-sessions
+on|off`, and is included in `permissions` and `describe` output. Existing
+executor authorization is enough; there are no extra grants. Disabling stops
+new discovery and dispatch and keeps the original coding processes running.
+Provider behavior and Claude's experimental channel startup requirement are
+in [existing coding sessions](plans/2026-09-26-existing-coding-sessions/overview.md).
+
+The same Commands page has **Connect a Claude channel**, with the installed
+executor's exact MCP JSON and Claude startup command. `describe --json` emits
+this as `existingClaudeChannelConfiguration`. This connects Claude's native
+experimental channel; it adds no Nessie authentication or approval. Sessions
+already running without that channel stay inspectable until Claude connects it.
+
+Background discovery reuses a 60-second cache. The existing daemon heartbeat
+reports whether the connection has private-owner session access; shared
+connections do not collect existing conversation metadata. Explicit owner
+queries refresh the provider inventory. A missing or expired heartbeat receipt
+stops channel delivery. Disabling the local switch takes effect immediately.

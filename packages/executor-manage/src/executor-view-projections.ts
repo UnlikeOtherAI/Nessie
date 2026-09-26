@@ -1,4 +1,5 @@
 import {
+  EXISTING_CODING_SESSION_OWNER_KEY,
   ExecutorCapabilityDescriptorSchema,
   ExecutorLocalMcpReportSchema,
   type ExecutorLocalMcpReport,
@@ -72,7 +73,12 @@ export const localMcpFor = (
   const parsed = ExecutorLocalMcpReportSchema.safeParse(stored)
   if (!parsed.success) return {}
   return {
-    localMcp: parsed.data,
+    // External metadata is available through the pairing-owner session routes only.
+    localMcp: parsed.data.map((entry) => ({ ...entry,
+      ...(entry.codingSessions ? { codingSessions: entry.codingSessions.filter((session) => (
+        session.ownerKey !== EXISTING_CODING_SESSION_OWNER_KEY
+      )) } : {}),
+    })),
     ...(observedAt === null ? {} : { localMcpObservedAt: observedAt.toISOString() }),
   }
 }

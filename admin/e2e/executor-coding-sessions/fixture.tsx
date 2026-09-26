@@ -1,8 +1,10 @@
 import { ApiClientProvider, createApiClient } from '@nessie/client-core'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { HashRouter, Route, Routes } from 'react-router-dom'
 
+import { ShellStateProvider } from '../../src/layouts/admin-shell/ShellStateContext'
+import { PhoneNavigationProvider } from '../../src/layouts/admin-shell/PhoneNavigationProvider'
 import { LocalBackProvider } from '../../src/navigation/LocalBackContext'
 import { ExecutorDetailContent } from '../../src/pages/ExecutorDetailPage'
 import { ExecutorSessionPage } from '../../src/pages/ExecutorSessionPage'
@@ -23,6 +25,8 @@ import '../../src/styles.css'
 const EXECUTOR_ID = '33333333-3333-4333-8333-333333333333'
 const initialPath = new URLSearchParams(window.location.search).get('sessions') === '1'
   ? '/admin/computers/sessions' : `/admin/computers/${EXECUTOR_ID}?tab=sessions`
+// Keep the fixture document served by Vite while exercising real browser history and reload.
+if (!window.location.hash) window.history.replaceState(null, '', `${window.location.href}#${initialPath}`)
 
 const client = createApiClient({ baseUrl: '', token: 'executor-coding-sessions-fixture' })
 const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -31,8 +35,12 @@ if (!(root instanceof HTMLElement)) throw new Error('Executor coding sessions fi
 createRoot(root).render(
   <QueryClientProvider client={queries}>
     <ApiClientProvider client={client}>
-      <MemoryRouter initialEntries={[initialPath]}>
+      <HashRouter>
         <LocalBackProvider>
+          <ShellStateProvider value={{ onCreateAgent: () => undefined, onCreateChannel: () => undefined,
+            onSelectAgent: () => undefined, onLogout: () => undefined, openDrawer: () => undefined,
+            showHeaderAccountMenu: false }}>
+          <PhoneNavigationProvider>
           <main className="h-screen bg-[color:var(--main)] text-[color:var(--tx)]">
             <Routes>
               <Route path="/admin/computers/:executorId" element={<ExecutorDetailContent token={null} />} />
@@ -40,8 +48,10 @@ createRoot(root).render(
               <Route path="/admin/computers/sessions" element={<ExecutorSessionsPage />} />
             </Routes>
           </main>
+          </PhoneNavigationProvider>
+          </ShellStateProvider>
         </LocalBackProvider>
-      </MemoryRouter>
+      </HashRouter>
     </ApiClientProvider>
   </QueryClientProvider>,
 )

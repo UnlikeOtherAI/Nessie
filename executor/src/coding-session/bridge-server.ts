@@ -43,6 +43,7 @@ export const codingBridgeCallMeta = (meta: unknown): CodingBridgeCallMeta => {
 const FIXED_VALUE_KEYS = new Set([
   'sessionId', 'ownerKey', 'agent', 'agents', 'status', 'reason', 'root', 'rootName', 'name', 'path', 'createdAt', 'updatedAt',
   'lastTurnEndedAt', 'at',
+  'origin', 'provider', 'nativeId', 'providerMessageId', 'nativeQueueId', 'nextCursorProvider',
   'baseCommit', 'code', 'nextCursor', 'kind', 'subtype', 'state', 'mergeable', 'url', 'unavailable', 'incomplete',
 ])
 

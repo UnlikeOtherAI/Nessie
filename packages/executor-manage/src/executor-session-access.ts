@@ -1,6 +1,6 @@
 import type { ExecutorHostSession, Prisma, PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
-import { ExecutorCodingSessionSummarySchema } from '@nessie/schemas'
+import { EXISTING_CODING_SESSION_OWNER_KEY, ExecutorCodingSessionSummarySchema } from '@nessie/schemas'
 
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 
@@ -11,6 +11,7 @@ type Client = PrismaClient | Prisma.TransactionClient
 export const sessionSummary = (session: ExecutorHostSession) => ExecutorCodingSessionSummarySchema.omit({
   ownerKey: true,
 }).parse({
+  ...(session.ownerKey === EXISTING_CODING_SESSION_OWNER_KEY ? { origin: 'external' } : {}),
   sessionId: session.sessionId, title: session.title, agent: session.agent, root: session.root,
   status: session.status, updatedAt: session.reportedAt.toISOString(),
 })
@@ -29,7 +30,7 @@ export const sessionAccessWhere = (actor: AuthorizedActionContext): Prisma.Execu
       { executor: { pairingOwnerUserId: userId, privateAssignments: {
         some: { principalKind: 'user', userId, role: 'admin' },
       } } },
-      { shares: { some: { userId } } },
+      { ownerKey: { not: EXISTING_CODING_SESSION_OWNER_KEY }, shares: { some: { userId } } },
     ],
   }
 }
@@ -42,6 +43,7 @@ export const requireHostSession = async (
     include: { executor: { select: { pairingOwnerUserId: true, status: true, label: true, lastSeenAt: true } } },
   })
   const canShare = row?.executor.pairingOwnerUserId === actor.actor.actorId
+    && row.ownerKey !== EXISTING_CODING_SESSION_OWNER_KEY
   if (!row || (ownerOnly && !canShare)) throw sessionNotFound()
   return { row, canShare }
 }

@@ -42,6 +42,17 @@
     </section>
     <section id="tab-commands" hidden>
       <h2>Command permissions</h2>
+      <section aria-label="Existing coding sessions">
+        <label><input id="existing-coding-sessions" type="checkbox" checked> Existing coding sessions</label>
+        <p class="hint">Let Nessie find and interact with your existing Codex and Claude sessions through experimental native interfaces. Turning this off keeps those sessions running.</p>
+        <details id="claude-channel-setup">
+          <summary>Connect a Claude channel</summary>
+          <p class="hint">Claude needs this channel when the conversation starts. Save the configuration below as <code>nessie-channel.json</code>, then run:</p>
+          <pre style="white-space:pre-wrap;overflow-wrap:anywhere">claude --mcp-config nessie-channel.json --dangerously-load-development-channels server:nessie</pre>
+          <pre id="claude-channel-config" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
+          <p class="hint">Claude controls its channel opt-in and permission prompts. Conversations started without the channel remain available for inspection.</p>
+        </details>
+      </section>
       <form id="command-form">
         <label for="command-mode">Commands this team may run</label><select id="command-mode"><option value="all">Allow all commands</option><option value="allowlist">Only allowlisted commands</option></select>
         <label for="command-allowlist">Allowlist</label><textarea id="command-allowlist" placeholder="git *&#10;pnpm run *" rows="3"></textarea>

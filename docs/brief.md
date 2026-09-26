@@ -71,6 +71,14 @@ separately for each paired team; Nessie controls who may use it. The CLI and
 matching macOS/Windows consoles use machine-issued pairing codes. See
 [local executor controls](executor-local-controls.md).
 
+Existing Codex/Claude session control covers all three CLI executors
+(macOS, Windows, Linux) and both GUI executors (macOS, Windows). Existing
+executor authorization is sufficient, with one default-on local toggle to
+disable the feature; no additional session grants or consent flow. Codex uses
+its native queue; Claude Push requires its native channel connection. Unsupported
+controls remain explicit. See [existing coding sessions](plans/2026-09-26-existing-coding-sessions/overview.md)
+and the [native verification matrix](plans/2026-09-26-existing-coding-sessions/verification.md).
+
 ## Local model agents direction (2026-09-20)
 
 An existing agent may explicitly use an installed Ollama model through a paired

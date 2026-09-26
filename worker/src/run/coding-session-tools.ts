@@ -6,7 +6,7 @@ import type { ToolSchemaDescriptor } from '@nessie/runtime'
  * (docs/plans/2026-09-22-executor-local-apps/coding-sessions.md §8).
  *
  * A run bound to a revision whose descriptor offers the `coding-sessions`
- * bridge, on a private executor its pairing owner launched, gets these seven
+ * bridge, on a private executor its pairing owner launched, gets these tools
  * instead of reaching the bridge through `executor_mcp_call`. Their
  * descriptions are system text, not a program's catalog the untrusted banner
  * disowns, and their schemas are real, so scalar coercion works. Each one is
@@ -17,6 +17,9 @@ import type { ToolSchemaDescriptor } from '@nessie/runtime'
  */
 
 export const CODING_SESSION_TOOL_NAMES = {
+  queue: 'coding_session_queue',
+  push: 'coding_session_push',
+  steer: 'coding_session_steer',
   close: 'coding_session_close',
   interrupt: 'coding_session_interrupt',
   list: 'coding_session_list',
@@ -40,7 +43,7 @@ export const TERMINAL_SESSION_TOOL_NAMES: ReadonlySet<string> = new Set([
   CODING_SESSION_TOOL_NAMES.terminalWrite,
 ])
 
-/** The structured coding-session seven: what holding "the coding tools" means, terminal or not. */
+/** The structured coding-session family: what holding "the coding tools" means, terminal or not. */
 export const STRUCTURED_CODING_SESSION_TOOL_NAMES: ReadonlySet<string> = new Set(
   [...CODING_SESSION_TOOL_NAME_SET].filter((name) => !TERMINAL_SESSION_TOOL_NAMES.has(name)),
 )
@@ -50,6 +53,9 @@ export const isCodingSessionToolName = (name: string): name is CodingSessionTool
 
 /** The bridge tool each one calls: `coding_session_wait` polls `session_status`. */
 export const CODING_BRIDGE_TOOL: Record<CodingSessionToolName, string> = {
+  coding_session_queue: 'session_queue',
+  coding_session_push: 'session_push',
+  coding_session_steer: 'session_steer',
   coding_session_close: 'session_close',
   coding_session_interrupt: 'session_interrupt',
   coding_session_list: 'session_list',
@@ -95,6 +101,7 @@ export const defaultCodingAgent = (facts: ExecutorCodingSessionsFacts): Executor
   facts.agents.includes('claude') ? 'claude' : facts.agents[0]!
 
 const agentPhrase = (facts: ExecutorCodingSessionsFacts): string => {
+  if (!facts.agents.length) return 'a configured coding agent'
   const primary = defaultCodingAgent(facts)
   const others = facts.agents.filter((agent) => agent !== primary && agent !== 'terminal')
   return others.length === 0
@@ -145,6 +152,21 @@ export const codingSessionDescriptors = (facts: ExecutorCodingSessionsFacts): To
   ] : []
   const descriptors: ToolSchemaDescriptor[] = [
     ...terminalTools,
+    ...(facts.existingSessions ? (['queue', 'push', 'steer'] as const).map((action) => ({
+      toolName: CODING_SESSION_TOOL_NAMES[action],
+      description: action === 'queue'
+        ? 'Submit native input to an existing Codex session. Experimental: the original client decides when to consume it; '
+          + 'Desktop may consume it during its current turn. Read capabilities first. Never claim consumption from acceptance.'
+        : action === 'push'
+          ? 'Push an event to an existing Claude session with a connected Nessie channel. Events may arrive during a turn. '
+            + 'This is not a normal user message or a delivery acknowledgement. Read capabilities first.'
+          : 'Steer an existing session only when its capabilities explicitly permit it, naming the exact current turn. '
+            + 'Unavailable when the owning native runtime cannot be reached; never resume a second copy.',
+      inputSchema: { type: 'object', additionalProperties: false,
+        required: action === 'steer' ? ['sessionId', 'message', 'expectedTurnId'] : ['sessionId', 'message'],
+        properties: { sessionId: SESSION_ID, message: { type: 'string', minLength: 1, maxLength: TEXT_MAX },
+          ...(action === 'steer' ? { expectedTurnId: { type: 'string', maxLength: 128 } } : {}) } },
+    })) : []),
     {
       toolName: CODING_SESSION_TOOL_NAMES.close,
       description: 'Close only when the work is merged or abandoned, or the person asks. Do not close because your '
@@ -160,8 +182,9 @@ export const codingSessionDescriptors = (facts: ExecutorCodingSessionsFacts): To
       toolName: CODING_SESSION_TOOL_NAMES.list,
       description: `Roots, agents, your sessions: the folders coding agents may work in on this machine (${roots}), `
         + `the coding agents it offers (${facts.agents.map((agent) => CODING_AGENT_LABELS[agent]).join(', ')}), `
-        + 'and the sessions you hold there, including viewer links you can share with the person.',
-      inputSchema: { additionalProperties: false, properties: {}, type: 'object' },
+        + 'and your managed and existing native sessions, with capabilities and viewer links. Filters apply to native sessions. Existing-session tools use the exact sessionId returned here.',
+      inputSchema: { additionalProperties: false, properties: { search: { type: 'string', maxLength: 200 }, provider: { type: 'string', enum: ['codex', 'claude'] },
+        cursor: { type: 'string', maxLength: 1_024, description: 'Use nextCursor with nextCursorProvider from the previous result.' } }, type: 'object' },
     },
     {
       toolName: CODING_SESSION_TOOL_NAMES.review,
@@ -171,7 +194,7 @@ export const codingSessionDescriptors = (facts: ExecutorCodingSessionsFacts): To
     },
     {
       toolName: CODING_SESSION_TOOL_NAMES.send,
-      description: 'A follow-up or correction for a coding session; it reaches a working session at its next step.',
+      description: 'A follow-up for a Nessie-managed coding session. Existing external sessions require their advertised Queue or Push action.',
       inputSchema: {
         additionalProperties: false,
         properties: { message: { maxLength: TEXT_MAX, minLength: 1, type: 'string' }, sessionId: SESSION_ID },
@@ -204,13 +227,15 @@ export const codingSessionDescriptors = (facts: ExecutorCodingSessionsFacts): To
       description: 'Wait up to 10 minutes on a coding session; it returns early when the turn ends, the session '
         + 'needs you, fails or closes, or the person writes. working means still busy — calling wait again is '
         + 'expected. waiting_for_input: read the summary, call coding_session_review, then send feedback or close. '
-        + 'If the person wrote, end your turn now with one line of status; you will read their message next.',
-      inputSchema: sessionOnly,
+        + 'Use wait=false for an immediate overview of an existing session. Set detail=events to include bounded recent text. '
+        + 'Unknown live state is not idle. If the person wrote, end your turn now with one line of status.',
+      inputSchema: { ...sessionOnly, properties: { ...sessionOnly.properties, wait: { type: 'boolean' },
+        detail: { type: 'string', enum: ['summary', 'events'] } } },
     },
   ]
   return facts.agents.some((agent) => agent !== 'terminal') ? descriptors : descriptors.filter((tool) => (
     tool.toolName !== CODING_SESSION_TOOL_NAMES.start && tool.toolName !== CODING_SESSION_TOOL_NAMES.send
-      && tool.toolName !== CODING_SESSION_TOOL_NAMES.wait
+      && (tool.toolName !== CODING_SESSION_TOOL_NAMES.wait || facts.existingSessions === true)
   ))
 }
 
@@ -244,7 +269,9 @@ export const codingBridgeArguments = (
       return { message: key ?? args.data, sessionId: args.sessionId, terminal: true }
     }
     case CODING_SESSION_TOOL_NAMES.list:
-      return {}
+      return { ...(args.search === undefined ? {} : { search: args.search }),
+        ...(args.provider === undefined ? {} : { provider: args.provider }),
+        ...(args.cursor === undefined ? {} : { cursor: args.cursor }) }
     case CODING_SESSION_TOOL_NAMES.start: {
       const path = text(args.path)
       const title = text(args.title)
@@ -256,6 +283,13 @@ export const codingBridgeArguments = (
         ...(title === undefined ? {} : { title }),
       }
     }
+    case CODING_SESSION_TOOL_NAMES.wait:
+      return { sessionId: args.sessionId, ...(args.detail === 'events' ? { detail: 'events' } : {}) }
+    case CODING_SESSION_TOOL_NAMES.queue:
+    case CODING_SESSION_TOOL_NAMES.push:
+    case CODING_SESSION_TOOL_NAMES.steer:
+      return { sessionId: args.sessionId, message: args.message,
+        ...(args.expectedTurnId === undefined ? {} : { expectedTurnId: args.expectedTurnId }) }
     case CODING_SESSION_TOOL_NAMES.send:
       return { message: args.message, sessionId: args.sessionId }
     case CODING_SESSION_TOOL_NAMES.review: {

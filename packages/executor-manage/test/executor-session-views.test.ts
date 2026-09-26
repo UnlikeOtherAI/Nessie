@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto'
 import test from 'node:test'
 
-import { canonicalExecutorPayload, type ExecutorSessionViewExchange } from '@nessie/schemas'
+import { EXISTING_CODING_SESSION_OWNER_KEY, canonicalExecutorPayload, type ExecutorSessionViewExchange } from '@nessie/schemas'
 
 import {
   exchangeExecutorSessionViews, readExecutorSessionView, changeExecutorSessionShare, listExecutorHostSessions,
@@ -102,4 +102,28 @@ dbTest('session screens are owner-only, encrypted, independently relayed, and ep
     await world.cleanup()
     await prisma.$disconnect()
   }
+})
+
+
+dbTest('external native sessions remain pairing-owner private even when an old share row exists', async () => {
+  const prisma = leaseTestPrisma()
+  const world = await seedLeaseWorld(prisma, { codingSessions: true, pairingOwner: 'holder', scope: 'private' })
+  const sessionId = randomUUID()
+  const input = { executorId: world.executorId, sessionId }
+  try {
+    await prisma.executorHostSession.create({ data: {
+      ...input, ownerKey: EXISTING_CODING_SESSION_OWNER_KEY, title: 'Private native conversation', agent: 'codex',
+      root: 'existing', status: 'unknown', reportedAt: new Date(), requestedUntil: new Date(0),
+    } })
+    const view = await readExecutorSessionView(prisma, secret, world.holderContext, input)
+    assert.equal(view.canShare, false)
+    assert.equal(view.session.origin, 'external')
+    const memberId = world.memberContext.actor.actorId
+    await prisma.executorHostSessionShare.create({ data: { ...input, userId: memberId } })
+    await assert.rejects(readExecutorSessionView(prisma, secret, world.memberContext, input), /Session not found/u)
+    await assert.rejects(readExecutorSessionView(prisma, secret, world.adminContext, input), /Session not found/u)
+    assert.deepEqual(await listExecutorHostSessions(prisma, world.memberContext), [])
+    await assert.rejects(changeExecutorSessionShare(prisma, world.holderContext, input, { removeUserId: memberId }),
+      /Session not found/u)
+  } finally { await world.cleanup(); await prisma.$disconnect() }
 })

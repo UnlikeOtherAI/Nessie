@@ -10,7 +10,7 @@ import {
   reportedExecutorCodingSessions,
 } from '@nessie/executor-manage'
 import { buildAgentEntitlementWhere } from '@nessie/team-admin'
-import { isAdminActor, type AuthorizedActionContext, type ExecutorCodingSessionListResponse } from '@nessie/schemas'
+import { EXISTING_CODING_SESSION_OWNER_KEY, isAdminActor, type AuthorizedActionContext, type ExecutorCodingSessionListResponse } from '@nessie/schemas'
 
 import { loadTicketSessionOwners } from './executor-coding-session-tickets.js'
 
@@ -45,7 +45,8 @@ export const listExecutorCodingSessions = async (
   })
   // Every session acts as the person who paired a private machine, and a shared one runs none.
   const canClose = executorCodingSessionsAllowed(row, userId)
-  const sessions = reportedExecutorCodingSessions(row.localMcp).filter((session) => session.status !== 'closed')
+  const sessions = reportedExecutorCodingSessions(row.localMcp).filter((session) => session.status !== 'closed'
+    && (session.ownerKey !== EXISTING_CODING_SESSION_OWNER_KEY || canClose))
   if (sessions.length === 0) return { canClose, sessions: [] }
   const [ownerAgentIds, open, tickets] = await Promise.all([
     row.scopeKind === 'private' ? executorCodingSessionOwnerAgentIds(prisma, executorId, row.pairingOwnerUserId) : [],

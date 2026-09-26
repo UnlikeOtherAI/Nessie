@@ -20,6 +20,7 @@ try {
       window.pairStatus = 'idle'
       window.paired = []
       window.policies = {}
+      window.existingSessions = {}
       window.enabled = false
       const invoke = async (command, args = {}) => {
         window.calls.push({ command, args })
@@ -41,8 +42,17 @@ try {
           organizationName: 'UnlikeOtherAI', teamName: id === 'team-1' ? 'Research' : 'Platform',
           apiBaseUrl: 'https://api.nessie.works',
         }
-        if (command === 'executor_configure') window.policies[id] = args.configurationInput.commandPolicy ?? window.policies[id]
+        if (command === 'executor_configure') {
+          window.policies[id] = args.configurationInput.commandPolicy ?? window.policies[id]
+          if (args.configurationInput.existingCodingSessionsEnabled !== undefined) {
+            window.existingSessions[id] = args.configurationInput.existingCodingSessionsEnabled
+          }
+        }
         if (['executor_describe', 'executor_console_describe', 'executor_configure'].includes(command)) return {
+          existingClaudeChannelConfiguration: { mcpServers: { nessie: {
+            command: 'node', args: ['nessie-executor.cjs', 'serve-existing-claude-channel', '--state-dir', 'pairing-1'],
+          } } },
+          existingCodingSessionsEnabled: window.existingSessions[id] !== false,
           executorId: id, apiBaseUrl: 'https://api.nessie.works', commandPolicy: window.policies[id],
           policy: { operations: ['file.read'], permittedPrograms: [], revision: 1 },
           reach: { folders: [{ name: 'work', path: '/Users/person/Work' }] },
@@ -82,6 +92,10 @@ try {
     await page.waitForFunction(() => document.querySelectorAll('.connection-row').length === 2)
     await page.screenshot({ path: join(output, `${host}-teams.png`), fullPage: true })
     await page.locator('[data-tab="commands"]').click()
+    assert.equal(await page.locator('#existing-coding-sessions').isChecked(), true)
+    await page.locator('#existing-coding-sessions').uncheck()
+    await page.waitForFunction(() => window.existingSessions['team-0'] === false)
+    assert.equal(await page.locator('#existing-coding-sessions').isChecked(), false)
     await page.locator('#command-mode').selectOption('allowlist')
     await page.locator('#command-allowlist').fill('git *')
     await page.locator('#command-denylist').fill('git push *')
@@ -90,7 +104,13 @@ try {
     assert.deepEqual(await page.evaluate(() => window.policies['team-1']), { mode: 'all', allowlist: [], denylist: [] })
     await page.locator('#connection').selectOption('team-1')
     await page.waitForFunction(() => document.getElementById('command-mode').value === 'all')
+    assert.equal(await page.locator('#existing-coding-sessions').isChecked(), true)
     await page.screenshot({ path: join(output, `${host}-commands.png`), fullPage: true })
+    await page.locator('#claude-channel-setup summary').click()
+    assert.match(await page.locator('#claude-channel-config').textContent(), /serve-existing-claude-channel/)
+    assert.match(await page.locator('#claude-channel-setup').textContent(), /dangerously-load-development-channels/)
+    await page.screenshot({ path: join(output, `${host}-claude-setup.png`), fullPage: true })
+    await page.locator('#claude-channel-setup summary').click()
     await page.locator('#terminal-command').fill('node')
     await page.locator('#terminal-arguments').fill('/installed/gemini.js\n--debug')
     await page.getByRole('button', { name: 'Choose working folder…' }).click()

@@ -4,12 +4,13 @@ Date: 2026-09-26. [Implementation plan](overview.md).
 
 ## Verdict
 
-Existing-session discovery is feasible. Exact live control, especially desktop
-control, remains unverified. Do not infer it from saved-history access or CLI
+Existing-session discovery is feasible. A follow-up proved external idle
+queue delivery into a macOS CLI session connected to the shared daemon.
+Desktop control remains unverified. Do not infer it from saved-history access or CLI
 resume. This is a preliminary experimental report, not completion of the
 brief's full pre-build acceptance suite.
 
-Probes were read-only: versions/help, generated Codex protocol bindings,
+Initial probes were read-only: versions/help, generated Codex protocol bindings,
 provider-native inventory, initialized metadata-only app-server requests and
 limited process/socket metadata. No prompt was sent to an existing session;
 no session was interrupted, restarted or resumed. Temporary app-server
@@ -59,7 +60,7 @@ details, not instructions to hardcode machine names into the product.
    `threadId` and `turnId`. These are schema observations, not live tests.
 6. The installed `TurnStartParams` explicitly mentions steering an already
    active turn. Therefore checking idle and later calling start is not a safe
-   implementation of a queue-only grant.
+implementation of the Queue action.
 
 Current OpenAI documentation describes thread metadata reads, loaded-thread
 listing and lifecycle notifications after start/resume. It marks app-server
@@ -84,9 +85,9 @@ Official source inspected at `a6bd19261c30ce0a0225fe90e646822d29916f11`:
 | Requirement | Status from these probes |
 | --- | --- |
 | Discover persisted sessions / native IDs | PASS on the four tested binaries across three OSes |
-| Discover active sessions in the owning runtime | BLOCKED on the tested default socket routes; other supported routes not yet established |
-| Inspect real active/idle state | NOT TESTED; fresh-server `notLoaded` is insufficient |
-| Queue next normal input / idle input to the exact existing conversation | NOT TESTED |
+| Discover active sessions in the owning runtime | PASS in the follow-up macOS shared-daemon CLI probe; Windows/Linux default routes remain blocked |
+| Inspect real active/idle state | PASS in that macOS CLI probe; fresh-server `notLoaded` remains insufficient |
+| Queue next normal input / idle input to the exact existing conversation | PASS for idle input in that macOS CLI probe; other clients/platforms unverified |
 | Steer / interrupt / lifecycle event subscription | Schema/documentation available; NOT TESTED against existing live sessions |
 | Codex Desktop exact-conversation control | NOT TESTED; release blocker |
 | IDE exact-conversation control / native-ID continuity across restart | NOT TESTED |
@@ -94,6 +95,48 @@ Official source inspected at `a6bd19261c30ce0a0225fe90e646822d29916f11`:
 Recommended adapter: connect to a proven owning runtime, use its native queue,
 steer and interrupt methods, and retain per-operation version gates. Persisted
 inventory can be a separate read source, labelled with unknown live state.
+
+### Follow-up: shared-daemon CLI delivery
+
+Later on 2026-09-26, the Mac installation had changed: PATH Codex was 0.157.1
+and `codex app-server daemon version` reported a running 0.158.0-alpha.2.1
+daemon. This probe did not install, start or restart that daemon. Its endpoint
+was `~/.codex/app-server-control/app-server-control.sock`. A WebSocket client
+over the native `codex app-server proxy` tunnel completed initialization and
+initially returned zero loaded threads. The existing Desktop conversation was
+not among the daemon's loaded threads; socket availability alone still does
+not establish attachment to that conversation.
+
+A disposable terminal session was then started outside Nessie, using
+`codex --remote unix:// --no-alt-screen -C <scratch>` and a harmless marker
+prompt. The probe discovered its native thread ID
+`01a0defb-cc9a-7370-bf83-63a12c473a52`, read its completed marker turn and
+observed idle state. From a separate process:
+
+```sh
+codex queue --remote unix:// \
+  --thread 01a0defb-cc9a-7370-bf83-63a12c473a52 \
+  --message '[Nessie test] Reply exactly NESSIE_EXTERNAL_QUEUE_OK. Do not use tools or edit files.'
+```
+
+Native queue entry `01a0defc-b98e-79d0-9fe1-f5030a8fb4cc` was accepted. The
+same terminal rendered the submitted message and `NESSIE_EXTERNAL_QUEUE_OK`.
+A read of that exact test thread showed a second completed turn, ID
+`01a0defc-b991-77a3-bbf6-b7ac19b9644f`, with the same message and response.
+No resume, replacement process or new thread was used for this delivery.
+The native source field was `vscode` even for this known terminal client,
+confirming that source alone cannot classify the visible client.
+
+Windows and Linux were rechecked in the same follow-up. Windows PATH remained
+0.141.0; the bundled 0.158.0-alpha.2.1 still returned OS error 10050 for the
+default daemon socket. Linux PATH remained 0.156.1 and its default daemon
+socket was absent. No existing process was restarted to change these results.
+
+This is a provider transport proof for one macOS CLI configuration, not an
+implemented Nessie adapter or a pass for either GUI executor. Direct delivery
+to already-open Desktop runtimes, other platforms and unregistered Claude
+sessions remains the release blocker. Executor authorization does not itself
+create those provider connections.
 
 ## Claude Code observations
 
@@ -141,9 +184,11 @@ setup and CLI flags remain separate compatibility cases.
 | Native lifecycle events / 50 repeated messages / delivery acknowledgement | NOT TESTED |
 | Desktop GUI control and visible history | NOT TESTED on all platforms |
 
-Recommended adapter: native inventory plus explicit, identity-bound channel
-enrolment where proven. Keep discovered unregistered sessions inspect-only
-after local consent. Do not spawn `claude --resume` as an attachment workaround;
+Recommended adapter: native inventory plus identity-bound channel connections
+where proven. Existing executor authorization covers discovery and supported
+control; no additional Nessie consent or session grant is required. Provider
+channel configuration remains a technical prerequisite. Report unregistered
+sessions as inspect-only. Do not spawn `claude --resume` as an attachment workaround;
 the current CLI even documents that resuming a running session in background
 may create a copy, which would violate the acceptance criterion.
 
@@ -165,5 +210,62 @@ the repository. Generate schemas with the actual target binary using
 `app-server generate-ts --experimental --out <scratch-directory>`.
 
 Phase 0 in the plan owns the remaining real-delivery experiments, native
-desktop visibility, consent/enrolment proof and operation-by-operation matrix.
+desktop visibility, provider connection proof and operation-by-operation matrix.
 The research does not substitute for those tests.
+
+## Experimental implementation follow-up
+
+The later ChatterBox experiment was corroborated against the native records.
+Its Codex Desktop thread `01a0ded6-cbbc-7cf0-807e-0e7901afa7d2`
+contains the externally queued `CB-QUEUE-0926` user message at
+`2026-09-26T18:11:35.895Z`. The Desktop binary was
+`0.158.0-alpha.2.1`. This corrects the earlier blanket Desktop blocker:
+native queue input can reach Desktop without attaching to its owning runtime.
+It was consumed during an active turn, so this is not a guaranteed next-turn
+queue. Direct steering from a separate app-server still returned thread not
+found.
+
+The Claude CLI channel experiment used 2.1.283, Haiku 4.5 and native session
+`98d5afb2-6581-4073-b808-eea13cf726f6`. Its transcript contains the
+20 sequential `CB_SEQ_*` events in order. The busy event was observed during
+the sleep-tool turn before the final response. No reply-tool acknowledgement
+was produced. The Desktop test on 2.1.281 did not establish channel opt-in or
+Push support. These are provider proofs, not Nessie adapter installation tests.
+
+The Nessie adapter's first native metadata test on macOS exposed an important
+bounded-read requirement: plain `thread/list` scanned history and exceeded a
+15-second deadline. `useStateDbOnly: true` returned promptly. Its original
+CLI probe had been archived when that test exited; `archived: true` finds the
+same native ID, while ordinary discovery correctly excludes it. The adapter
+uses native cursor pagination and an explicit title search for older sessions.
+
+Current implementation verification distinguishes live registry state from
+saved history. A fresh Codex metadata server's `notLoaded` is reported as
+unknown. Claude's native registry returned eight current sessions on macOS,
+with seven idle and one busy at the observation time; all correctly reported
+Push unavailable because none had the Nessie channel connected.
+
+## Executor adapter verification, 26 September 2026
+
+The implemented `ExistingSessions` adapter queued one uniquely marked message
+into a manually opened Codex CLI conversation on macOS. The original client
+answered in the same native thread. Repeating the same executor command ID
+returned the saved receipt without adding a second native message. No resume,
+thread start, or native process termination was used.
+
+The implemented Nessie Claude channel delivered a uniquely marked event into a
+manually opened Claude Code 2.1.283 conversation. That conversation answered the
+token. Its local journal advanced from `accepted_locally` to
+`written_to_transport`; the reply was verified separately in the bounded native
+transcript read. This probe used a disposable pairing fixture and simulated
+existing heartbeat receipts, so it proves the provider adapter, not a live
+production control-plane round trip. Claude's own development-channel startup
+flag was required. Its initial startup failure was a malformed test fixture
+with no workspace; the corrected fixture connected successfully.
+
+
+Native regression testing also exposed an older Windows draft-ingest failure:
+Windows does not implement `O_NOFOLLOW`. Draft ingestion now rejects a known
+symbolic-link leaf and writes through an exclusively created sibling followed
+by rename, so replacing the leaf cannot truncate its target. The existing
+cross-platform regression checks that the outside file remains unchanged.

@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
-import { lstat, mkdir, open, rm } from 'node:fs/promises'
+import { lstat, mkdir, open, rename, rm } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 
 import {
   GUEST_DRAFT_READ_MAX_BYTES,
@@ -57,13 +59,14 @@ const applyFile = async (
   entry: GuestDraftEntry,
   destination: string,
 ): Promise<number> => {
-  // O_NOFOLLOW is what stops a symbolic link the guest planted in an earlier
-  // entry from redirecting this write outside the overlay.
-  const handle = await open(
-    destination,
-    constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW,
-    0o600,
-  )
+  const previous = await lstat(destination).catch((error: unknown) => {
+    if (!missing(error)) throw error
+    return undefined
+  })
+  if (previous?.isSymbolicLink()) throw new WorkspacePathError('A draft may not write through a symbolic link.')
+  // Windows has no O_NOFOLLOW. An exclusive sibling plus rename never opens the destination link or inode.
+  const temporary = join(dirname(destination), `.nessie-draft-${randomUUID()}`)
+  const handle = await open(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600)
   try {
     let offset = 0
     for (;;) {
@@ -86,9 +89,12 @@ const applyFile = async (
       }
     }
     await handle.sync()
+    await handle.close()
+    await rename(temporary, destination)
     return offset
   } finally {
     await handle.close()
+    await rm(temporary, { force: true })
   }
 }
 

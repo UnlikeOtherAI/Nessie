@@ -18,7 +18,7 @@ const OTHER = '00000000-0000-4000-8000-0000000000a2'
 const SESSION = '00000000-0000-4000-8000-0000000000c1'
 
 const facts: ExecutorCodingSessionsFacts = {
-  agents: ['claude', 'codex'], allowedToolCount: 3, configDigest: `sha256:${'c'.repeat(64)}`, environmentNames: [],
+  existingSessions: true, agents: ['claude', 'codex'], allowedToolCount: 3, configDigest: `sha256:${'c'.repeat(64)}`, environmentNames: [],
   permissionMode: { claude: 'acceptEdits', codex: 'default' }, rootNames: ['nessie', 'site'], serverName: 'coding-sessions',
 }
 
@@ -326,4 +326,19 @@ test('a ticket.work run\'s wait gives way to a wake for the same work pending be
     { interactive: true, principalUserId: null, triggerId: null },
     { actorContext: { path: ['actionContext', 'ticketWorkId'], equals: '00000000-0000-4000-8000-00000000000a' } },
   ])
+})
+
+
+test('existing input preserves exact identity and nonblocking inspection performs one status call', async () => {
+  const { sessions, sent } = harness(() => answer({ sessionId: SESSION, origin: 'external', status: 'unknown' }, 'row-native'))
+  await sessions.execute(CODING_SESSION_TOOL_NAMES.queue, { sessionId: SESSION, message: 'Pokračuj, pls.' }, 'queue-native')
+  assert.deepEqual(sent[0]?.args, { server: 'coding-sessions', tool: 'session_queue',
+    arguments: { sessionId: SESSION, message: 'Pokračuj, pls.' } })
+  const result = await sessions.execute(CODING_SESSION_TOOL_NAMES.wait,
+    { sessionId: SESSION, wait: false, detail: 'events' }, 'read-native')
+  assert.equal(sent.length, 2)
+  assert.deepEqual(sent[1]?.args, { server: 'coding-sessions', tool: 'session_status',
+    arguments: { sessionId: SESSION, detail: 'events' } })
+  assert.equal(result.success, true)
+  assert.match(result.output, /unknown/u)
 })

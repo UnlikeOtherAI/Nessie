@@ -291,7 +291,7 @@ export const createExecutorCodingSessions = (input: {
       // The builtins' rule, against the tool's own schema: `"4096"` for an
       // integer, an object sent as a JSON string.
       const args = coerceToolArgumentsToSchema(schemaOf.get(toolName), modelArgs)
-      return toolName === CODING_SESSION_TOOL_NAMES.wait
+      return toolName === CODING_SESSION_TOOL_NAMES.wait && args.wait !== false
         ? wait(args, providerToolCallId, hooks)
         : once(toolName, args, providerToolCallId)
     },

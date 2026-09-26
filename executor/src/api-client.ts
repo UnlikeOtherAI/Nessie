@@ -38,7 +38,9 @@ export type ExecutorApiClient = {
   heartbeat: (
     baseUrl: string,
     input: { connectionEpoch: string; executorId: string; observedAt: string; signature: string },
-  ) => Promise<{ connectionEpoch: string; status: string; codingSessionClose?: unknown }>
+  ) => Promise<{
+    connectionEpoch: string; status: string; codingSessionClose?: unknown; existingSessionsAllowed?: boolean
+  }>
   pollCommand: (
     baseUrl: string,
     input: { connectionEpoch: string; executorId: string; observedAt: string; signature: string },

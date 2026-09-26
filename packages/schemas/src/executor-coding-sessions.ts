@@ -17,6 +17,9 @@ import { TimestampSchema } from './schema-primitives.js'
 /** Reserved: the executor refuses a hand-named server of this name. */
 export const EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME = 'coding-sessions'
 
+/** OS-account sessions belong to the pairing owner, rather than an agent/run owner hash. */
+export const EXISTING_CODING_SESSION_OWNER_KEY = `sha256:${'0'.repeat(64)}`
+
 export const EXECUTOR_CODING_AGENT_NAMES = ['claude', 'codex', 'terminal'] as const
 export const ExecutorCodingAgentNameSchema = z.enum(EXECUTOR_CODING_AGENT_NAMES)
 export type ExecutorCodingAgentName = z.infer<typeof ExecutorCodingAgentNameSchema>
@@ -66,7 +69,8 @@ const sameMembers = (left: readonly string[], right: readonly string[]): boolean
 export const ExecutorCodingSessionsFactsSchema = z
   .object({
     serverName: z.literal(EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME),
-    agents: z.array(ExecutorCodingAgentNameSchema).min(1).max(EXECUTOR_CODING_AGENT_NAMES.length)
+    existingSessions: z.literal(true).optional(),
+    agents: z.array(ExecutorCodingAgentNameSchema).max(EXECUTOR_CODING_AGENT_NAMES.length)
       .refine(distinct, 'Each coding agent is named once.'),
     /**
      * Per offered agent: Claude Code's `--permission-mode` (`default` when the
@@ -85,7 +89,7 @@ export const ExecutorCodingSessionsFactsSchema = z
      */
     environmentNames: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/)).max(128)
       .refine(distinct, 'Each environment variable is named once.'),
-    rootNames: z.array(CodingRootNameSchema).min(1).max(16).refine(distinct, 'Each coding root is named once.'),
+    rootNames: z.array(CodingRootNameSchema).max(16).refine(distinct, 'Each coding root is named once.'),
     configDigest: Sha256DigestSchema,
     /**
      * Per offered agent: the most one turn may spend, in US dollars, or `null`
@@ -128,6 +132,8 @@ export const ExecutorCodingSessionsFactsSchema = z
     unaskedCommands: z.enum(['any', 'listed']).optional(),
   })
   .strict()
+  .refine((facts) => facts.existingSessions || (facts.agents.length > 0 && facts.rootNames.length > 0),
+    'Managed coding sessions need an agent and a root.')
   .refine(
     (facts) => sameMembers(Object.keys(facts.permissionMode), facts.agents),
     'Every offered coding agent states its permission mode, and only those do.',
@@ -264,6 +270,7 @@ export const ExecutorCodingSessionCloseListSchema = z
   .max(EXECUTOR_CODING_SESSION_CLOSE_MAXIMUM)
 
 export const ExecutorCodingSessionStatusSchema = z.enum([
+  'unknown',
   'starting',
   'working',
   'waiting_for_input',
@@ -290,6 +297,7 @@ export const ExecutorCodingSessionSummarySchema = z
   .object({
     sessionId: z.string().uuid(),
     ownerKey: ExecutorCodingSessionOwnerKeySchema,
+    origin: z.literal('external').optional(),
     title: z.string().min(1).max(120),
     status: ExecutorCodingSessionStatusSchema,
     reason: CodingReasonSchema.optional(),

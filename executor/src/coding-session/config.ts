@@ -38,6 +38,7 @@ export type CodingAgentConfig = {
 }
 
 export type CodingSessionsConfig = {
+  existingSessions?: true
   roots: { name: string; path: string }[]
   agents: Partial<Record<CodingAgentName, CodingAgentConfig>>
   agentEnv: { inheritUserSession: boolean; pass: string[]; set: Record<string, string> }
@@ -199,8 +200,8 @@ const agentEnvironment = (value: unknown): CodingSessionsConfig['agentEnv'] => {
   return { inheritUserSession: value.inheritUserSession !== false, pass, set }
 }
 
-const rootList = (value: unknown): CodingSessionsConfig['roots'] => {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 16) {
+const rootList = (value: unknown, allowEmpty = false): CodingSessionsConfig['roots'] => {
+  if (!Array.isArray(value) || (!allowEmpty && value.length === 0) || value.length > 16) {
     return refuse('codingSessions.roots names between 1 and 16 folders.')
   }
   const roots = value.map((entry: unknown, index) => {
@@ -226,8 +227,9 @@ export const normalizeCodingSessionsConfig = (input: unknown): CodingSessionsCon
   if (!record(value)) return refuse('The configuration needs a codingSessions object.')
   onlyKeys(value, [
     'roots', 'agents', 'agentEnv', 'maxLiveSessionsPerOwner', 'idleMinutes', 'maxTurnMinutes', 'maxBudgetUsd',
-    'closeOnDaemonShutdown',
+    'closeOnDaemonShutdown', 'existingSessions',
   ], 'codingSessions')
+  if (value.existingSessions !== undefined && value.existingSessions !== true) refuse('existingSessions must be true.')
   if (value.closeOnDaemonShutdown !== undefined && typeof value.closeOnDaemonShutdown !== 'boolean') {
     refuse('codingSessions.closeOnDaemonShutdown must be true or false.')
   }
@@ -237,10 +239,11 @@ export const normalizeCodingSessionsConfig = (input: unknown): CodingSessionsCon
   for (const name of CODING_AGENT_NAMES) {
     if (value.agents[name] !== undefined) agents[name] = agentConfig(name, value.agents[name])
   }
-  if (Object.keys(agents).length === 0) refuse('codingSessions.agents names at least one coding agent.')
+  if (Object.keys(agents).length === 0 && value.existingSessions !== true) refuse('codingSessions.agents names at least one coding agent.')
   const maxBudgetUsd = boundedNumber(value.maxBudgetUsd, 'codingSessions.maxBudgetUsd', undefined, { min: 0, max: 1_000 })
   return {
-    roots: rootList(value.roots),
+    roots: rootList(value.roots, value.existingSessions === true),
+    ...(value.existingSessions === true ? { existingSessions: true as const } : {}),
     agents,
     agentEnv: agentEnvironment(value.agentEnv),
     maxLiveSessionsPerOwner: boundedNumber(value.maxLiveSessionsPerOwner, 'codingSessions.maxLiveSessionsPerOwner', 3, {

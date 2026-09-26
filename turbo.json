@@ -84,6 +84,12 @@
       "outputs": [],
       "env": ["DATABASE_URL"]
     },
+    "test:executor-sessions": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "outputs": [],
+      "env": ["DATABASE_URL"]
+    },
     "test:terminal": {
       "dependsOn": ["^build"],
       "cache": false,

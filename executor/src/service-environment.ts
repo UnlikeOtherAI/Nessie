@@ -95,4 +95,3 @@ export const assertExecutorIdentifier = (value: string): string => {
 }
 
 export const executorServiceStateRoot = (home: string): string => resolve(home, SERVICE_STATE_DIRECTORY)
-
