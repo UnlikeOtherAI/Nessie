@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { faClockRotateLeft, faFolder, faHouse, faLayerGroup, faRobot, faShareNodes } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgeRoot } from '@nessie/schemas'
@@ -51,6 +52,7 @@ export const FinderTreeSidebar = ({
   rowsIn,
   selectedSpaceId,
 }: FinderTreeSidebarProps) => {
+  const { t } = useTranslation('knowledgeFinder')
   const { token } = useAuthSession()
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [expandedSpaces, setExpandedSpaces] = useState<Set<string>>(
@@ -100,8 +102,8 @@ export const FinderTreeSidebar = ({
         {expanded ? (
           <QueryState
             className="knowledge-sidebar-tree-query py-2"
-            errorLabel="Couldn’t load your documents."
-            loadingLabel="Loading documents…"
+            errorLabel={t('couldNotLoadYourDocuments')}
+            loadingLabel={t('loadingDocuments')}
             query={pagesQuery}
           >
             {() => (
@@ -135,20 +137,20 @@ export const FinderTreeSidebar = ({
     <SidebarTreePanel className="knowledge-sidebar-tree-panel">
       <QueryState
         className="knowledge-sidebar-tree-query py-2"
-        errorLabel="Couldn’t load your document spaces."
-        loadingLabel="Loading documents…"
+        errorLabel={t('couldNotLoadYourDocumentSpaces')}
+        loadingLabel={t('loadingDocuments')}
         query={rootQuery}
       >
         {() => root ? (
           <>
             <div className="space-y-0.5">
-              {rootRow({ id: 'virtual:latest', kind: 'latest' }, 'Latest', faClockRotateLeft)}
+              {rootRow({ id: 'virtual:latest', kind: 'latest' }, t('latest'), faClockRotateLeft)}
               {rootRow(
                 { count: root.sharedWithMeCount, id: 'virtual:shared', kind: 'shared-with-me' },
-                'Shared with me',
+                t('sharedWithMe'),
                 faShareNodes,
               )}
-              {personal ? spaceRow(personal, 'My Documents', faHouse) : null}
+              {personal ? spaceRow(personal, t('myDocuments'), faHouse) : null}
             </div>
             <div className="mt-2.5">
               <SidebarTreeSectionHeader
@@ -156,7 +158,7 @@ export const FinderTreeSidebar = ({
                 controls="finder-projects"
                 onToggle={() => setCollapsed((current) => ({ ...current, projects: !current.projects }))}
               >
-                Projects
+                {t('projects')}
               </SidebarTreeSectionHeader>
               <SidebarTreeChildren id="finder-projects" className={collapsed.projects ? 'hidden' : ''}>
                 {projects.map(({ space }) => spaceRow(
@@ -167,7 +169,7 @@ export const FinderTreeSidebar = ({
               </SidebarTreeChildren>
             </div>
             <div className="mt-3">
-              {rootRow({ id: 'virtual:agents', kind: 'agents' }, 'Agents', faRobot, (
+              {rootRow({ id: 'virtual:agents', kind: 'agents' }, t('agents'), faRobot, (
                 <SidebarTreeLeading>
                   <SidebarTreeChevron expanded={agentsExpanded} />
                   <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--accent)]" fixedWidth icon={faRobot} />
@@ -199,8 +201,8 @@ export const FinderTreeSidebar = ({
                         {expanded ? (
                           <QueryState
                             className="knowledge-sidebar-tree-query py-2"
-                            errorLabel="Couldn’t load agent documents."
-                            loadingLabel="Loading documents…"
+                            errorLabel={t('couldNotLoadAgentDocuments')}
+                            loadingLabel={t('loadingDocuments')}
                             query={pagesQuery}
                           >
                             {() => (

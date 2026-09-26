@@ -93,7 +93,7 @@ export const deleteConfirmCopy = (pages: KnowledgePageRecord[]): DeleteConfirmCo
   const page = pages[0]
   if (!page) return { body: '', confirmLabel: finderText('delete', 'Delete'), title: finderText('deleteQuestion', 'Delete?') }
   const shared = (page.shareCount ?? 0) > 0
-    ? ` ${finderText(page.shareCount === 1 ? 'deleteShared_one' : 'deleteShared_other', page.shareCount === 1 ? 'It is shared with {{count}} person, who will lose access.' : 'It is shared with {{count}} people, who will lose access.', { count: page.shareCount })}`
+    ? ` ${finderText(page.shareCount === 1 ? 'deleteShared_one' : 'deleteShared_other', page.shareCount === 1 ? 'It is shared with {{count}} person, who will lose access.' : 'It is shared with {{count}} people, who will lose access.', { count: page.shareCount ?? 0 })}`
     : ''
   const body = page.kind === 'folder'
     ? finderText('deleteFolderBody', 'Everything inside it will be deleted too. Uploaded files are removed from storage straight away.')

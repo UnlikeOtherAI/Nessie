@@ -211,12 +211,13 @@ const IndexingGlyph = ({
   )
 }
 
-const UploadLine = ({ upload }: { upload: FinderRowUpload }) =>
-  upload.error ? (
+const UploadLine = ({ upload }: { upload: FinderRowUpload }) => {
+  const { t } = useTranslation('knowledgeFinder')
+  return upload.error ? (
     <span className="text-xs text-[color:var(--danger-text)]">{upload.error}</span>
   ) : (
     <span className="flex items-center gap-2 text-xs text-[color:var(--tx3)]">
-      {upload.label ?? 'Uploading…'}
+      {upload.label ?? t('uploading')}
       {upload.pct === undefined ? null : (
         <span className="block h-1 w-16 overflow-hidden rounded-full bg-[color:var(--overlay)]">
           <span
@@ -227,6 +228,7 @@ const UploadLine = ({ upload }: { upload: FinderRowUpload }) =>
       )}
     </span>
   )
+}
 
 export const FinderRow = ({
   ariaLabel,

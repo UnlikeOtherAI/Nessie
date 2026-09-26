@@ -203,12 +203,12 @@ export const AccessReadoutDialog = ({
             onClick={onOpenProjectMembers}
             type="button"
           >
-            Open project members
+            {t('openProjectMembers')}
           </button>
         ) : null}
         {access.mode === 'agent' && onOpenAgent ? (
           <button className="admin-button admin-button-secondary" onClick={onOpenAgent} type="button">
-            Open agent
+            {t('openAgent')}
           </button>
         ) : null}
         {(access.mode === 'space' || access.mode === 'agent') && onSpaceSettings ? (
@@ -217,16 +217,16 @@ export const AccessReadoutDialog = ({
             onClick={onSpaceSettings}
             type="button"
           >
-            Sharing &amp; settings…
+            {t('sharingSettings')}
           </button>
         ) : null}
         {access.mode === 'shared_to_me' && onRemoveShare ? (
           <button className="admin-button admin-button-danger" onClick={onRemoveShare} type="button">
-            Remove from Shared with me
+            {t('removeFromShared')}
           </button>
         ) : null}
         <button className="admin-button admin-button-primary" onClick={onClose} type="button">
-          Done
+          {t('done')}
         </button>
       </div>
     </Dialog>

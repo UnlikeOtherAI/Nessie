@@ -1,4 +1,5 @@
 import type { DragEvent, ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ColumnBrowserColumn } from '../../../shared/column-browser/ColumnBrowserColumn'
 import { FinderVirtualHost, type FinderVirtualRow } from './FinderVirtualColumn'
 import type { FinderSelection, FinderSelectionEvent } from './finder-selection'
@@ -39,14 +40,16 @@ export const FinderVirtualPane = ({
   /** The route itself owns this column on a single-column Knowledge screen. */
   screen?: boolean
   selection: FinderSelection
-}): ReactNode => (
+}): ReactNode => {
+  const { t } = useTranslation('knowledgeFinder')
+  return (
   <ColumnBrowserColumn
     onBack={onBack}
     resize={resize}
     screen={screen}
     showBack
     scrollKey={`finder:${columnKey}`}
-    title={kind === 'latest' ? 'Latest' : 'Shared with me'}
+    title={kind === 'latest' ? t('latest') : t('sharedWithMe')}
   >
     <div className="h-full" {...refuseProps}>
       <FinderVirtualHost
@@ -60,4 +63,5 @@ export const FinderVirtualPane = ({
       />
     </div>
   </ColumnBrowserColumn>
-)
+  )
+}

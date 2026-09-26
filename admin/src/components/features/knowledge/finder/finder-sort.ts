@@ -88,10 +88,20 @@ export const familyForRow = (page: {
   }
 }
 
+const FAMILY_KEYS: Record<FileFamily, string> = {
+  archive: 'familyArchive', audio: 'familyAudio', book: 'familyBook', code: 'familyCode',
+  document: 'familyDocument', excel: 'familyExcel', folder: 'familyFolder', image: 'familyImage',
+  mail: 'familyMail', pdf: 'familyPdf', powerpoint: 'familyPowerpoint', spreadsheet: 'familySpreadsheet',
+  text: 'familyText', unknown: 'familyUnknown', video: 'familyVideo', word: 'familyWord',
+}
+
+export const finderFamilyLabel = (family: FileFamily): string =>
+  finderText(FAMILY_KEYS[family], familyLabel[family])
+
 export const kindLabelForRow = (page: {
   kind: KnowledgePageRecord['kind']
   title: string
-}): string => familyLabel[familyForRow(page)]
+}): string => finderFamilyLabel(familyForRow(page))
 
 type SortableRow = Pick<
   KnowledgePageRecord,

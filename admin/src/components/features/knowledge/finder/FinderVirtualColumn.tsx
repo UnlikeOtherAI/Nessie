@@ -12,13 +12,13 @@ import { ActorName, useActorNames } from '../../../shared/ActorName'
 import { EmptyState } from '../../../shared/EmptyState'
 import { QueryState } from '../../../shared/QueryState'
 import { RowList } from '../../../shared/RowList'
-import { familyLabel, familyTone, iconForFamily } from '../../../shared/file-icons'
+import { familyTone, iconForFamily } from '../../../shared/file-icons'
 import { FinderRow } from './FinderRow'
 import type {
   FinderBackgroundMenuProps,
   FinderRowMenuProps,
 } from './FinderContextMenus'
-import { familyForRow } from './finder-sort'
+import { familyForRow, finderFamilyLabel } from './finder-sort'
 import type { FinderSelection, FinderSelectionEvent } from './finder-selection'
 
 /**
@@ -110,7 +110,7 @@ export const FinderVirtualColumn = ({
                   iconTone={familyTone[family]}
                   id={row.id}
                   indexing={row.indexing}
-                  indexingFamilyLabel={familyLabel[family]}
+                  indexingFamilyLabel={finderFamilyLabel(family)}
                   key={row.id}
                   kind={row.kind}
                   status={row.status}

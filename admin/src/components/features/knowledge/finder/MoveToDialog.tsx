@@ -130,12 +130,12 @@ export const MoveToDialog = ({
   const movingIds = useMemo(() => new Set(pages.map((page) => page.id)), [pages])
   const blocked = (spaceId: string) => (pageId: string): string | undefined => {
     if (spaceId !== sourceSpaceId) return undefined
-    if (movingIds.has(pageId)) return "Can't move a folder into itself"
+    if (movingIds.has(pageId)) return t('moveIntoSelf')
     let walk = pageById(pageId)
     const seen = new Set<string>()
     while (walk && !seen.has(walk.id)) {
       seen.add(walk.id)
-      if (movingIds.has(walk.id)) return "Can't move a folder into itself"
+      if (movingIds.has(walk.id)) return t('moveIntoSelf')
       walk = walk.parentPageId ? pageById(walk.parentPageId) : undefined
     }
     return undefined

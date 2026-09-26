@@ -26,10 +26,12 @@ export const FinderTreeVirtualDetail = ({
   query,
   rows,
   selection,
-}: FinderTreeVirtualDetailProps) => (
+}: FinderTreeVirtualDetailProps) => {
+  const { t } = useTranslation('knowledgeFinder')
+  return (
   <div className="h-full overflow-y-auto px-3 py-2">
     <h2 className="mb-2 px-1 text-lg font-semibold">
-      {kind === 'latest' ? 'Latest' : 'Shared with me'}
+      {kind === 'latest' ? t('latest') : t('sharedWithMe')}
     </h2>
     <FinderVirtualHost
       columnKey={`virtual:${kind}`}
@@ -45,4 +47,6 @@ export const FinderTreeVirtualDetail = ({
       selection={selection}
     />
   </div>
-)
+  )
+}
+import { useTranslation } from 'react-i18next'

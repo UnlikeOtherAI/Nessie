@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import i18n from '../../../../i18n/i18n'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgeIndexingState, KnowledgeItemInfo } from '@nessie/schemas'
 import { ActorName, useActorNames } from '../../../shared/ActorName'
@@ -7,7 +8,6 @@ import { Dialog } from '../../../shared/Dialog'
 import { QueryState } from '../../../shared/QueryState'
 import {
   familyForFilename,
-  familyLabel,
   familyTone,
   iconForFamily,
   type FileFamily,
@@ -21,6 +21,8 @@ import {
   sharedToMeReadout,
   spaceReadout,
 } from './sharing-copy'
+import { finderFamilyLabel } from './finder-sort'
+import { finderText } from './finder-text'
 
 /**
  * Get Info (menus-and-dialogs.md §3): how big this is *including everything
@@ -57,7 +59,7 @@ type GetInfoDialogProps = {
 
 const formatDateTime = (value: string): string => {
   const at = Date.parse(value)
-  return Number.isFinite(at) ? new Date(at).toLocaleString() : value
+  return Number.isFinite(at) ? new Date(at).toLocaleString(i18n.language) : value
 }
 
 const bytes = (value: string): string => formatBytes(Number(value))
@@ -75,30 +77,30 @@ const familyOf = (info: KnowledgeItemInfo): FileFamily => {
 const kindLabel = (info: KnowledgeItemInfo): string => {
   if (info.target === 'space') {
     switch (info.home.rootKind) {
-      case 'personal': return 'Your documents'
-      case 'project': return 'Project folder'
-      case 'agent': return 'Agent documents'
-      default: return 'Shared folder'
+      case 'personal': return finderText('kindYourDocuments', 'Your documents')
+      case 'project': return finderText('kindProjectFolder', 'Project folder')
+      case 'agent': return finderText('kindAgentDocuments', 'Agent documents')
+      default: return finderText('kindSharedFolder', 'Shared folder')
     }
   }
-  return familyLabel[familyOf(info)]
+  return finderFamilyLabel(familyOf(info))
 }
 
 const contains = (info: KnowledgeItemInfo): string | null => {
   if (info.kind !== 'folder' && info.kind !== 'space') return null
   const { documents, files, folders, spreadsheets } = info.counts
   const parts = [
-    folders > 0 ? `${folders} ${folders === 1 ? 'folder' : 'folders'}` : null,
-    documents > 0 ? `${documents} ${documents === 1 ? 'document' : 'documents'}` : null,
+    folders > 0 ? finderText(folders === 1 ? 'countFolders_one' : 'countFolders_other', '{{count}} folders', { count: folders }) : null,
+    documents > 0 ? finderText(documents === 1 ? 'countDocuments_one' : 'countDocuments_other', '{{count}} documents', { count: documents }) : null,
     spreadsheets > 0
-      ? `${spreadsheets} ${spreadsheets === 1 ? 'spreadsheet' : 'spreadsheets'}`
+      ? finderText(spreadsheets === 1 ? 'countSpreadsheets_one' : 'countSpreadsheets_other', '{{count}} spreadsheets', { count: spreadsheets })
       : null,
-    files > 0 ? `${files} ${files === 1 ? 'file' : 'files'}` : null,
+    files > 0 ? finderText(files === 1 ? 'countFiles_one' : 'countFiles_other', '{{count}} files', { count: files }) : null,
   ].filter(Boolean)
-  const body = parts.length === 0 ? 'Nothing yet' : parts.join(', ')
+  const body = parts.length === 0 ? finderText('nothingYet', 'Nothing yet') : parts.join(', ')
   // A capped walk is a lower bound, and a number that might be wrong has to
   // say so where it is read, not in a tooltip.
-  return info.truncated ? `${body} (counted up to 10,000 items)` : body
+  return info.truncated ? `${body} (${finderText('countedUpTo', 'counted up to 10,000 items')})` : body
 }
 
 /**
@@ -110,24 +112,24 @@ const searchLine = (info: KnowledgeItemInfo): string | null => {
   if (info.kind === 'folder' || info.kind === 'space') {
     const { indexed, notIndexed, pending } = info.indexing
     if (indexed + notIndexed + pending === 0) return null
-    return `${indexed} searchable, ${pending} indexing, ${notIndexed} not indexed`
+    return finderText('searchAggregate', '{{indexed}} searchable, {{pending}} indexing, {{notIndexed}} not indexed', { indexed, pending, notIndexed })
   }
   const { indexed, notIndexed, pending } = info.indexing
-  if (pending > 0) return 'Indexing…'
-  if (indexed > 0) return 'Searchable'
+  if (pending > 0) return finderText('indexing', 'Indexing…')
+  if (indexed > 0) return finderText('searchable', 'Searchable')
   if (notIndexed > 0) {
     if (info.kind === 'document') {
-      return 'Not indexed — draft documents are indexed when published'
+      return finderText('notIndexedDraft', 'Not indexed — draft documents are indexed when published')
     }
     // A spreadsheet is searchable, just not yet: its text comes from the
     // projection written with each saved version, so an unsaved one has
     // nothing to index rather than being the wrong kind of thing to index.
     // The words are `indexing-copy.ts`'s `unsaved`, because the row's glyph
     // and this line must not describe one state two ways.
-    if (info.kind === 'spreadsheet') return 'Not indexed — nothing saved to search yet'
-    return `Not indexed — ${familyLabel[familyOf(info)]}s aren’t searchable`
+    if (info.kind === 'spreadsheet') return finderText('notIndexedUnsaved', 'Not indexed — nothing saved to search yet')
+    return finderText('notIndexedUnsupportedFamily', 'Not indexed — {{family}}s aren’t searchable', { family: finderFamilyLabel(familyOf(info)) })
   }
-  return 'Preparing search…'
+  return finderText('preparingSearch', 'Preparing search…')
 }
 
 const sharingLine = (info: KnowledgeItemInfo): string => {
@@ -147,7 +149,7 @@ const sharingLine = (info: KnowledgeItemInfo): string => {
     case 'agent':
       return agentReadout(access.agentName, access.memberUserCount).headline
     case 'shared_to_me':
-      return sharedToMeReadout('The owner', access.access).headline
+      return sharedToMeReadout(finderText('theOwner', 'The owner'), access.access).headline
   }
 }
 
@@ -199,12 +201,12 @@ const InfoBody = ({
         className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-sm"
         data-testid="get-info-list"
       >
-        <Row label="Kind">{kindLabel(info)}</Row>
-        <Row label="Size">{`${bytes(info.sizeBytes)}${sizeSuffix}`}</Row>
-        {onDisk ? <Row label="On disk">{onDisk}</Row> : null}
-        {containsLine ? <Row label="Contains">{containsLine}</Row> : null}
+        <Row label={t('infoKind')}>{kindLabel(info)}</Row>
+        <Row label={t('infoSize')}>{`${bytes(info.sizeBytes)}${sizeSuffix}`}</Row>
+        {onDisk ? <Row label={t('infoOnDisk')}>{onDisk}</Row> : null}
+        {containsLine ? <Row label={t('infoContains')}>{containsLine}</Row> : null}
         {info.target === 'page' ? (
-          <Row label="Where">
+          <Row label={t('infoWhere')}>
             <button
               className="text-left text-[color:var(--accent)] hover:underline"
               onClick={() => onBrowseHome?.({
@@ -219,7 +221,7 @@ const InfoBody = ({
           </Row>
         ) : null}
         {info.taskId ? (
-          <Row label="Ticket">
+          <Row label={t('infoTicket')}>
             <button
               className="text-left text-[color:var(--accent)] hover:underline"
               onClick={() => onOpenTicket?.(info.taskId as string)}
@@ -229,16 +231,16 @@ const InfoBody = ({
             </button>
           </Row>
         ) : null}
-        <Row label="Created">
+        <Row label={t('infoCreated')}>
           <span>
             {formatDateTime(info.createdAt)}
-            {' by '}
+            {` ${t('infoBy')} `}
             <ActorName actor={resolveActor('user', info.createdBy)} />
           </span>
         </Row>
-        <Row label="Modified">{formatDateTime(info.updatedAt)}</Row>
+        <Row label={t('infoModified')}>{formatDateTime(info.updatedAt)}</Row>
         {search ? (
-          <Row label="Search">
+          <Row label={t('infoSearch')}>
             <span className="flex flex-wrap items-center gap-2">
               {search}
               {onRetryIndexing ? (
@@ -253,7 +255,7 @@ const InfoBody = ({
             </span>
           </Row>
         ) : null}
-        <Row label="Sharing">{sharingLine(info)}</Row>
+        <Row label={t('infoSharing')}>{sharingLine(info)}</Row>
       </dl>
     </div>
   )
@@ -269,6 +271,7 @@ export const GetInfoDialog = ({
   open,
   target,
 }: GetInfoDialogProps) => {
+  const { t } = useTranslation('knowledgeFinder')
   const pageQuery = usePageInfo(target.kind === 'page' && open ? target.pageId : undefined)
   const spaceQuery = useSpaceInfo(target.kind === 'space' && open ? target.spaceId : undefined)
   const query = target.kind === 'page' ? pageQuery : spaceQuery
@@ -278,8 +281,8 @@ export const GetInfoDialog = ({
     <Dialog onClose={onClose} open={open} title={target.title}>
       <QueryState
         className="py-6"
-        errorLabel="Couldn’t read this item’s details."
-        loadingLabel="Reading…"
+        errorLabel={t('getInfoLoadError')}
+        loadingLabel={t('getInfoLoading')}
         query={{ isError: query.isError, isLoading: query.isLoading, refetch: query.refetch }}
       >
         {() => (info ? (
@@ -302,11 +305,11 @@ export const GetInfoDialog = ({
             onClick={onSharing}
             type="button"
           >
-            Sharing…
+            {t('sharingMenu')}
           </button>
         ) : null}
         <button className="admin-button admin-button-primary" onClick={onClose} type="button">
-          Done
+          {t('done')}
         </button>
       </div>
     </Dialog>

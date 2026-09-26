@@ -462,6 +462,7 @@ const useColumnFileDrop = ({
   target: UploadTarget
   titleOf: (pageId: string) => string | undefined
 }) => {
+  const { t } = useTranslation('knowledgeFinder')
   // The folder row under the pointer, held in a ref as well as state: the
   // entry walk is asynchronous and reads it after the drop handler returned.
   const [hovered, setHovered] = useState<string | null>(null)
@@ -517,7 +518,7 @@ const useColumnFileDrop = ({
         onDrop: (event: DragEvent<HTMLElement>) => {
           if (!dragCarriesFiles(event)) return
           event.preventDefault()
-          onRefused?.(READ_ONLY_DROP_COPY)
+          onRefused?.(t('cannotAddFilesHere'))
         },
       },
       fileDropActive: false,

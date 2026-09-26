@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import { useMovePages } from '../../../../facades/knowledge/finder-hooks'
 import { useToasts } from '../../../../providers/ToastProvider'
@@ -32,6 +33,7 @@ export const useFinderMove = ({
   selectedIds: readonly string[]
   selectedSpaceId: string | undefined
 }) => {
+  const { t } = useTranslation('knowledgeFinder')
   const movePages = useMovePages()
   const { pushToast } = useToasts()
 
@@ -68,13 +70,13 @@ export const useFinderMove = ({
           onError: (error) => pushToast({
             body: error instanceof Error
               ? error.message
-              : 'This item changed since you opened it. Refresh and try again.',
-            title: 'Couldn’t move that',
+              : t('moveChanged'),
+            title: t('couldNotMove'),
           }),
         },
       )
     },
-    [movePages, pageById, pushToast],
+    [movePages, pageById, pushToast, t],
   )
 
   const rowsForDrag = useCallback(

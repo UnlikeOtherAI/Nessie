@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -79,6 +80,7 @@ export const useFinderMenus = ({
   const navigate = useNavigate()
   const { me } = useAuthSession()
   const { pushToast } = useToasts()
+  const { t } = useTranslation('knowledgeFinder')
   const openDocument = useOpenDocument()
   const menu = useContextMenu()
   const rename = useRenamePage()
@@ -88,9 +90,9 @@ export const useFinderMenus = ({
   // Every write a menu starts says so when it fails: a row that silently
   // snapped back reads as a gesture that missed, not as a refusal.
   const failed = useCallback((title: string) => (error: unknown) => pushToast({
-    body: error instanceof Error ? error.message : 'Please try again.',
+    body: error instanceof Error ? error.message : t('pleaseTryAgain'),
     title,
-  }), [pushToast])
+  }), [pushToast, t])
 
   const [active, setActive] = useState<FinderMenuActiveTarget | null>(null)
   const [dialog, setDialog] = useState<FinderDialogState>(null)
@@ -197,7 +199,7 @@ export const useFinderMenus = ({
         if (!id || !target) return
         const kind = first?.kind ?? virtualRow?.kind
         void navigator.clipboard?.writeText(pageLink(target, id, kind === 'folder'))
-        pushToast({ body: '', title: 'Link copied' })
+        pushToast({ body: '', title: t('linkCopied') })
       },
       download: () => {
         for (const page of targetPages.length > 0 ? targetPages : []) {
@@ -313,7 +315,7 @@ export const useFinderMenus = ({
         if (virtualRow && me?.user.id) {
           removeShare.mutate(
             { granteeUserId: me.user.id, pageId: virtualRow.id },
-            { onError: failed('Couldn’t remove that') },
+            { onError: failed(t('couldNotRemoveThat')) },
           )
         }
       },
@@ -321,7 +323,7 @@ export const useFinderMenus = ({
       retryIndexing: () => {
         const id = first?.id ?? virtualRow?.id
         if (!id) return
-        reindex.mutate(id, { onError: failed('Couldn’t start indexing') })
+        reindex.mutate(id, { onError: failed(t('couldNotStartIndexing')) })
         pushToast({ body: '', title: 'Indexing again…' })
       },
       sharing: openSharing,
@@ -350,7 +352,7 @@ export const useFinderMenus = ({
   }, [
     active, documentTriggerFor, failed, knowledge, me?.user.id, navigate, onConvertToSpreadsheet,
     onCreateRootFolder, onCreateSpreadsheet, onImportSpreadsheet, onNewFolderIn, onRefresh, onUploadFiles,
-    openDocument, openSharing, pushToast,
+    openDocument, openSharing, pushToast, t,
     queryClient, reindex, removeShare, renderMoveTo, space, targetPages,
   ])
 
@@ -385,12 +387,12 @@ export const useFinderMenus = ({
             title: next,
           },
           // The facade puts the old name back; this says why.
-          { onError: failed('Couldn’t rename that') },
+          { onError: failed(t('couldNotRenameThat')) },
         )
       },
       pending: rename.isPending,
     }
-  }, [failed, knowledge, rename, renamingId, space])
+  }, [failed, knowledge, rename, renamingId, space, t])
 
   const rowProps = useCallback((input: FinderMenuRowRef): FinderRowMenuProps => {
     const row = asRowRef(input)
@@ -436,7 +438,7 @@ export const useFinderMenus = ({
         anchor={menu.anchor}
         fallbackFocusRef={fallbackFocusRef}
         items={items}
-        label={menuTarget ? finderMenuLabel(menuTarget) : 'Actions'}
+        label={menuTarget ? finderMenuLabel(menuTarget) : t('actions')}
         onClose={closeMenu}
         returnFocusRef={returnFocusRef}
       />
@@ -454,7 +456,7 @@ export const useFinderMenus = ({
           onRetryIndexing={dialog.pageId
             ? () => reindex.mutate(
               dialog.pageId as string,
-              { onError: failed('Couldn’t start indexing') },
+              { onError: failed(t('couldNotStartIndexing')) },
             )
             : undefined}
           onSharing={() => {
@@ -472,7 +474,7 @@ export const useFinderMenus = ({
             void navigator.clipboard?.writeText(
               pageLink(dialog.spaceId ?? '', dialog.pageId, dialog.subjectKind === 'folder'),
             )
-            pushToast({ body: '', title: 'Link copied' })
+            pushToast({ body: '', title: t('linkCopied') })
           }}
           open
           pageId={dialog.pageId}
@@ -496,7 +498,7 @@ export const useFinderMenus = ({
             ? () => {
               removeShare.mutate(
                 { granteeUserId: me.user.id, pageId: dialog.pageId as string },
-                { onError: failed('Couldn’t remove that') },
+                { onError: failed(t('couldNotRemoveThat')) },
               )
               setDialog(null)
             }
@@ -528,7 +530,7 @@ export const useFinderMenus = ({
             const pages = dialog?.kind === 'delete' ? dialog.pages : []
             setDialog(null)
             void Promise.all(pages.map((page) => knowledge.archivePage(page.id)))
-              .catch(failed('Couldn’t delete that'))
+              .catch(failed(t('couldNotDeleteThat')))
           }}
           open
           pending={knowledge.archivePending}

@@ -6,7 +6,7 @@ import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import { formatBytes } from '../../../../lib/upload-xhr'
 import { EmptyState } from '../../../shared/EmptyState'
 import { RowList } from '../../../shared/RowList'
-import { familyLabel, familyTone, iconForFamily } from '../../../shared/file-icons'
+import { familyTone, iconForFamily } from '../../../shared/file-icons'
 import { useFolderDocumentReviews } from '../../../../facades/knowledge/document-trigger-hooks'
 import { finderRowBadges } from './DocumentReviewBadge'
 import { FinderRow } from './FinderRow'
@@ -25,6 +25,7 @@ import {
 import { useFinderKeyboard } from './useFinderKeyboard'
 import {
   composeFinderSort,
+  finderFamilyLabel,
   familyForRow,
   finderSortLabel,
   finderSortDirection,
@@ -243,7 +244,7 @@ export const FinderListView = ({
                   iconTone={familyTone[family]}
                   id={page.id}
                   indexing={page.indexing}
-                  indexingFamilyLabel={familyLabel[family]}
+                  indexingFamilyLabel={finderFamilyLabel(family)}
                   key={page.id}
                   kind={page.kind}
                   gridCells={(
@@ -340,6 +341,7 @@ export const FinderListHost = ({
   selection,
   sort,
 }: FinderListHostProps) => {
+  const { t } = useTranslation('knowledgeFinder')
   const order = rows.map((page) => page.id)
   const selectedIds = selection.columnKey === level.key ? selection.ids : []
   const onRowKeyDown = useFinderKeyboard({
@@ -376,7 +378,7 @@ export const FinderListHost = ({
           { id: null, title: rootLabel },
           ...pathPages.map((page) => ({ id: page.id, title: page.title })),
         ]}
-        emptyLabel="This folder is empty."
+        emptyLabel={t('emptyList')}
         onBrowseTo={onBrowseTo}
         onCancelFolder={onCancelFolder}
         onOpen={onOpen}
