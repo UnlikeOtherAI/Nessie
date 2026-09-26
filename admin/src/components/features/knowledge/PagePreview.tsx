@@ -154,7 +154,7 @@ export const PagePreview = ({
           ) : null}
           {isAgentDraft(page) ? <AgentDraftBadge /> : null}
         </div>
-        <h1 className="mt-3 text-3xl font-semibold text-[var(--tx)]">{page.title}</h1>
+        <h1 className="kb-document-title mt-3">{page.title}</h1>
         <ReviewPanel
           canWrite={canWrite}
           onPublish={onPublish}

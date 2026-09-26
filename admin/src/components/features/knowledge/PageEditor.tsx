@@ -237,7 +237,7 @@ export const PageEditor = ({
               aria-invalid={Boolean(titleError) || undefined}
               aria-label="Document title"
               autoFocus
-              className="kb-document-title w-full border-none bg-transparent font-bold leading-tight text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
+              className="kb-document-title w-full border-none bg-transparent outline-none placeholder:text-[color:var(--tx3)]"
               onChange={(event) => patchDraft({ title: event.target.value })}
               placeholder="Give this document a title…"
               value={title}

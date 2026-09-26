@@ -530,7 +530,7 @@ jobs:
             $subject = $signature.SignerCertificate.Subject
             $ekus = @(
               $signature.SignerCertificate.EnhancedKeyUsageList |
-                ForEach-Object { $_.ObjectId.Value }
+                ForEach-Object { $_.Value }
             )
             Write-Host "$($_.Name): $($signature.Status) $subject $($ekus -join ',')"
             if (

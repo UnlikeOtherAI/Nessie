@@ -1,4 +1,10 @@
-import type { InferenceResult, InvocationRecord, ProviderMessage } from '@nessie/runtime'
+import {
+  judgeAnswerComplete,
+  type InferenceResult,
+  type InvocationRecord,
+  type ProviderMessage,
+  type RunDecisionEvaluator,
+} from '@nessie/runtime'
 import { z } from 'zod'
 
 const decisionSchema = z.object({
@@ -11,13 +17,23 @@ export type FollowUpDecision = z.infer<typeof decisionSchema> & { invocations: I
 export const FOLLOW_UP_LIMIT_MESSAGE =
   'I could not finish the requested work after trying to continue. No further action is running.'
 
-/** Semantic judgement belongs to the model, never to matching phrases in the reply. */
+/**
+ * Semantic judgement belongs to the model, never to matching phrases in the
+ * reply. Jev (`decide`) answers first: when it is sure the answer finishes
+ * the turn, the generative review is not asked. Only the generative review
+ * can send a run back to work, because its written reason is what the
+ * continuing turn is told.
+ */
 export const reviewFollowUp = async (
   runUtility: (messages: ProviderMessage[], tools: []) => Promise<InferenceResult>,
   messages: ProviderMessage[],
   outputText: string,
   invocationSink: InvocationRecord[],
+  decide?: RunDecisionEvaluator | null,
 ): Promise<FollowUpDecision> => {
+  if (decide && await judgeAnswerComplete(decide, messages, outputText)) {
+    return { needsFollowUp: false, reason: 'Jev judged the answer complete.', invocations: [] }
+  }
   const result = await runUtility([
     {
       role: 'system',

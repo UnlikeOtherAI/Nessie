@@ -187,6 +187,7 @@ export const handleRunLoopOutcome = async (
       })
       : null
   const rollingWatch = await resolveRollingWatch(deps, payload, context, {
+    decide: input.inference.decide,
     responseText,
     runUtility: input.inference.runUtility,
   })

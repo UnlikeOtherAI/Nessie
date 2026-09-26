@@ -2,9 +2,15 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { JSDOM } from 'jsdom'
+import { act, createElement as h } from 'react'
 
 import type { AgentMention } from '@nessie/schemas'
+import {
+  secretCaptureProjectId,
+  useSecretCapture,
+} from '../src/components/features/channels/useSecretCapture.js'
 import type { SecretRecord } from '../src/facades/secrets/hooks.js'
+import type { ChannelRecord } from '../src/lib/api-client.js'
 
 /**
  * `useSecretCapture`, the interception every message composer runs before a
@@ -12,6 +18,8 @@ import type { SecretRecord } from '../src/facades/secrets/hooks.js'
  * (docs/secret-management-spec.md → "Capture and ingestion"). A draft carrying
  * a credential is held instead of sent, the raw bytes live only in the
  * capture, and saving drops them before handing back the masked turn to send.
+ * `secretCaptureProjectId` decides which project, if any, a room's capture
+ * may offer beside Personal.
  */
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
@@ -19,12 +27,6 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   url: 'http://localhost:5455/channels/new',
 })
 
-const React = await import('react')
-const { act, createElement: h } = React
-const { createRoot } = await import('react-dom/client')
-const { useSecretCapture } = await import(
-  '../src/components/features/channels/useSecretCapture.js'
-)
 type SecretCaptureGate = ReturnType<typeof useSecretCapture>
 
 const domGlobals = {
@@ -60,6 +62,10 @@ const saved = (name: string) => ({ name }) as SecretRecord
 
 const mount = async (projectId: string | null) => {
   const restoreDom = installDom()
+  // Only once the DOM is in place: react-dom decides which events the browser
+  // supports when it is first evaluated, and one loaded without a window falls
+  // back to an old IE path that throws on every focused input after it.
+  const { createRoot } = await import('react-dom/client')
   const container = dom.window.document.createElement('div')
   dom.window.document.body.appendChild(container)
   const root = createRoot(container)
@@ -114,20 +120,18 @@ test('a draft carrying a credential is held, and only the capture has its bytes'
     assert.equal(capture.replacementContent, `Deploy with ${MASKED} please`)
     assert.deepEqual(capture.agentMentions, MENTIONS)
     assert.equal(capture.replacementMode, 'message')
-    // No room to offer: the one scope every person may write.
-    assert.equal(capture.scopeType, 'personal')
-    assert.equal(capture.scopeId, undefined)
+    // Nothing to offer beside Personal, the one scope every person may write.
+    assert.equal(capture.projectId, undefined)
   } finally {
     await gate.close()
   }
 })
 
-test('a composer posting into a room offers that room’s project as the scope', async () => {
+test('a project the composer may offer rides along as a choice', async () => {
   const gate = await mount('project-1')
   try {
     assert.equal(await gate.intercept(KEY), true)
-    assert.equal(gate.current().capture?.scopeType, 'project')
-    assert.equal(gate.current().capture?.scopeId, 'project-1')
+    assert.equal(gate.current().capture?.projectId, 'project-1')
   } finally {
     await gate.close()
   }
@@ -186,4 +190,36 @@ test('discarding drops the capture and leaves nothing to send', async () => {
   } finally {
     await gate.close()
   }
+})
+
+const room = (overrides: Partial<ChannelRecord> = {}): ChannelRecord => ({
+  isGroupDm: false,
+  projectId: 'project-1',
+  scope: 'project',
+  type: 'standard',
+  ...overrides,
+}) as ChannelRecord
+
+test('only an organisation owner in an ordinary project room is offered its project', () => {
+  const owner = { viewerIsOwner: true }
+  assert.equal(secretCaptureProjectId(room(), owner), 'project-1')
+  // `canManageSecretScope` refuses every other role a project write, admins too.
+  assert.equal(secretCaptureProjectId(room(), { viewerIsOwner: false }), null)
+})
+
+test('a room whose project is only where it is stored never offers it', () => {
+  const owner = { viewerIsOwner: true }
+  for (const [kind, stored] of [
+    ['a DM', room({ type: 'dm' })],
+    ['a group DM', room({ isGroupDm: true })],
+    ['a Personal Assistant conversation', room({ systemChannelType: 'personal_assistant' })],
+    ['a global agent’s home DM', room({ systemChannelType: 'system_agent' })],
+    ['an agent mailbox room', room({ systemChannelType: 'agent_email' })],
+    ['a standalone room', room({ scope: 'standalone' })],
+    ['a record that does not say', room({ scope: undefined })],
+  ] as const) {
+    assert.equal(secretCaptureProjectId(stored, owner), null, kind)
+  }
+  // Before a room exists: the New message page.
+  assert.equal(secretCaptureProjectId(null, owner), null)
 })

@@ -39,7 +39,10 @@ of main turns and other utility calls. Its default is an explicit
 `needsFollowUp: false` fixture decision. Tests of premature completion set it
 to true; this scripts runner behavior and does not test model judgement.
 The HTTP fixture identifies this lane by the fixed
-`[nessie.follow_up_review.v1]` protocol marker in the system message.
+`[nessie.follow_up_review.v1]` protocol marker in the system message. On a
+Ledger installation Jev may answer first and skip this lane
+([tech-and-run-budgets.md](standards/tech-and-run-budgets.md) → "Jev gates");
+the harness has no Jev, so every text answer still reaches it.
 
 One JSON file = one scripted multi-turn conversation. The next turn is selected
 by counting assistant messages in the incoming request, so a single engine

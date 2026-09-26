@@ -1495,10 +1495,16 @@ type ControlCommandDefinition = {
   - `DELETE /secrets/{secretRef}` (removal/purge policy aware).
 - UI requirement:
   - every channel composer intercepts structural credentials before send and
-    opens the shared capture form with prefilled key, Personal/Project scope,
-    and a provider-prefix-plus-bullets value display. The New message page's
-    first message is intercepted before its conversation is started, with
-    Personal scope only, since no room exists yet.
+    opens the shared capture form with a prefilled key and a
+    provider-prefix-plus-bullets value display. The scope is always Personal
+    to begin with.
+  - the room's project is offered as a choice, never preselected, and only
+    to an organisation owner in an ordinary project room. DMs, group DMs,
+    system conversations and standalone rooms offer Personal only, because
+    they are stored in a team's own project or a hidden container.
+  - the New message page's first message is intercepted before its
+    conversation is started, with Personal scope only, since no room exists
+    yet.
   - a successful save posts only a masked replacement turn; raw secret text is
     never the message later deleted or rewritten.
   - broader scope selection (`global`, `team`, `channel`, `agent`, `thread`,

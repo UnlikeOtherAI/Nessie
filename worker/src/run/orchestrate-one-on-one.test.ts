@@ -354,6 +354,8 @@ const roomFixture = (options: {
   channel: { memberCount: number; systemChannelType?: string | null; type: 'dm' | 'standard' }
   decisionClient?: DecisionModelClient
   modelAnswer?: string
+  /** The trigger is the answer to this agent's card, pressed under it. */
+  pressedCardOf?: string
 }) => {
   const modelCalls: string[] = []
   const runs: Array<{ replyPlacement: string | null }> = []
@@ -404,10 +406,16 @@ const roomFixture = (options: {
           createdAt: at(5),
           id: TRIGGER_ID,
           role: 'user',
-          rootMessageId: null,
+          rootMessageId: options.pressedCardOf ? CARD_MESSAGE_ID : null,
           thread: { agentId: null, startedByUserId: null },
           threadId: THREAD_ID,
         }),
+      },
+      agentCard: {
+        findUnique: async ({ where }: { where: { responseMessageId: string } }) =>
+          options.pressedCardOf && where.responseMessageId === TRIGGER_ID
+            ? { agentId: options.pressedCardOf }
+            : null,
       },
       $transaction: async (work: (client: unknown) => Promise<unknown>) => work(tx),
     },
@@ -417,6 +425,38 @@ const roomFixture = (options: {
 }
 
 const threadedModelAnswer = JSON.stringify({ action: 'reply', agentId: AGENT_ID, replyPlacement: 'thread' })
+const CARD_MESSAGE_ID = '00000000-0000-4000-8000-0000000000c1'
+
+test('a card press wakes the card’s agent without asking Jev or the model', async () => {
+  // Jev would only react to "Allow" — which would leave the agent that asked waiting.
+  const judge = jev({ response: ['acknowledge', 0.99], engagement: ['none', 0.99] })
+  for (const channel of [
+    { memberCount: 1, type: 'dm' as const },
+    { memberCount: 3, type: 'standard' as const },
+  ]) {
+    const fixture = roomFixture({
+      channel, decisionClient: judge.client, modelAnswer: JSON.stringify({ action: 'none' }), pressedCardOf: AGENT_ID,
+    })
+    await executeOrchestrateDecideJob(fixture.deps, payload('Allow · Env: prod'))
+
+    assert.deepEqual(fixture.modelCalls, [])
+    assert.deepEqual(fixture.runs, [{ replyPlacement: 'thread' }])
+  }
+  assert.deepEqual(judge.calls, [])
+})
+
+test('a reply that answers no card is judged as before', async () => {
+  const fixture = roomFixture({
+    channel: { memberCount: 3, type: 'standard' },
+    modelAnswer: JSON.stringify({ action: 'none' }),
+    pressedCardOf: '00000000-0000-4000-8000-0000000000ff',
+  })
+  await executeOrchestrateDecideJob(fixture.deps, payload('Allow'))
+
+  // The card belongs to an agent that is not in the room: nothing structural to wake.
+  assert.deepEqual(fixture.modelCalls, ['chat'])
+  assert.deepEqual(fixture.runs, [])
+})
 
 test('a one-on-one turn Jev judged never reaches the engagement model', async () => {
   const fixture = roomFixture({
@@ -438,7 +478,15 @@ test('without Jev an agent DM keeps its engagement judgement but answers in the 
   assert.deepEqual(fixture.runs, [{ replyPlacement: 'channel' }])
 })
 
-test('a shared room is never judged by Jev and keeps its reply thread', async () => {
+/** What a shared room asks Jev: whether an agent engages — never the one-on-one turn. */
+const askedRoomEngagementOnly = (calls: Evaluation[]): void => {
+  assert.equal(calls.length, 1)
+  assert.ok('engagement' in calls[0]!.questions)
+  assert.ok(!('response' in calls[0]!.questions))
+}
+
+test('a shared room is never judged as a one-on-one turn and keeps its reply thread', async () => {
+  // Jev is unsure whether to engage, so the generative orchestrator decides as before.
   const judge = jev({ response: ['reply', 0.9] })
   const fixture = roomFixture({
     channel: { memberCount: 3, type: 'standard' },
@@ -447,7 +495,8 @@ test('a shared room is never judged by Jev and keeps its reply thread', async ()
   })
   await executeOrchestrateDecideJob(fixture.deps, payload('can someone check the invoice?'))
 
-  assert.deepEqual(judge.calls, [])
+  askedRoomEngagementOnly(judge.calls)
+  assert.deepEqual(fixture.modelCalls, ['chat'])
   assert.deepEqual(fixture.runs, [{ replyPlacement: 'thread' }])
 })
 
@@ -460,6 +509,20 @@ test('a DM between two people is a shared room too', async () => {
   })
   await executeOrchestrateDecideJob(fixture.deps, payload('can u check the invoice'))
 
-  assert.deepEqual(judge.calls, [])
+  askedRoomEngagementOnly(judge.calls)
+  assert.deepEqual(fixture.runs, [{ replyPlacement: 'thread' }])
+})
+
+test('a shared room Jev is sure about never reaches the engagement model', async () => {
+  const judge = jev({ engagement: ['reply', 0.93], placement: ['thread', 0.9] })
+  const fixture = roomFixture({
+    channel: { memberCount: 3, type: 'standard' },
+    decisionClient: judge.client,
+    modelAnswer: JSON.stringify({ action: 'none' }),
+  })
+  await executeOrchestrateDecideJob(fixture.deps, payload('mrkne někdo na tu fakturu?'))
+
+  askedRoomEngagementOnly(judge.calls)
+  assert.deepEqual(fixture.modelCalls, [])
   assert.deepEqual(fixture.runs, [{ replyPlacement: 'thread' }])
 })

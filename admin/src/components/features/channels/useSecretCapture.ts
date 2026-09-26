@@ -7,22 +7,45 @@ import {
 } from '@nessie/schemas'
 import type { AgentMention } from '../../shared/MentionInput'
 import type { SecretRecord } from '../../../facades/secrets/hooks'
+import type { ChannelRecord } from '../../../lib/api-client'
 
 /**
  * A credential a composer stopped before sending
  * (docs/secret-management-spec.md → "Capture and ingestion"). `value` is the
  * only copy of the raw bytes, and it lives nowhere but here until the vault
- * POST in `SecretCaptureDialog` succeeds.
+ * POST in `SecretCaptureDialog` succeeds. It is saved as Personal unless the
+ * person picks `projectId`, which is offered and never preselected.
  */
 export type SecretCapture = {
   agentMentions: AgentMention[]
   detected: DetectedSecret
+  projectId?: string
   replacementContent: string
   replacementMode: 'file' | 'message'
-  scopeId?: string
-  scopeType: 'personal' | 'project'
   value: string
 }
+
+/**
+ * The project a capture in `room` may offer beside Personal, or null.
+ *
+ * Only an ordinary room of a project offers one, and only to an organisation
+ * owner: `POST /api/secrets` lets no other role write a project
+ * (`canManageSecretScope`). A DM, a group DM or a system conversation is
+ * stored in its team's own project whoever it addresses, and a standalone
+ * room in a hidden container, so neither project is the room's audience.
+ */
+export const secretCaptureProjectId = (
+  room: ChannelRecord | null,
+  { viewerIsOwner }: { viewerIsOwner: boolean },
+): string | null =>
+  room
+  && viewerIsOwner
+  && room.type === 'standard'
+  && room.scope === 'project'
+  && !room.isGroupDm
+  && !room.systemChannelType
+    ? room.projectId
+    : null
 
 /** What a saved capture sends in place of the text it stopped. */
 type SecretProtectedTurn = Pick<SecretCapture, 'agentMentions' | 'replacementMode'> & {
@@ -36,8 +59,9 @@ type SecretProtectedTurn = Pick<SecretCapture, 'agentMentions' | 'replacementMod
  * person saves it to the vault or discards it; saving sends a new turn with
  * every detected value masked, discarding sends nothing.
  *
- * `projectId` is the project whose room the composer posts into, offered as
- * the capture's scope; null offers Personal only.
+ * `projectId` is the project the capture may offer beside Personal, which a
+ * composer posting into a room takes from `secretCaptureProjectId`; null
+ * offers Personal only.
  */
 export const useSecretCapture = ({ projectId }: { projectId: string | null }) => {
   const [capture, setCapture] = useState<SecretCapture | null>(null)
@@ -57,11 +81,9 @@ export const useSecretCapture = ({ projectId }: { projectId: string | null }) =>
       setCapture({
         agentMentions: context.agentMentions,
         detected,
+        ...(projectId ? { projectId } : {}),
         replacementContent: redactDetectedSecrets(text),
         replacementMode: context.replacementMode,
-        ...(projectId
-          ? { scopeId: projectId, scopeType: 'project' as const }
-          : { scopeType: 'personal' as const }),
         value: extractDetectedSecretValue(text, detected),
       })
       return true

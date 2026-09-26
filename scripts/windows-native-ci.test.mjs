@@ -197,6 +197,12 @@ test("the release gives Tauri an argument-safe Artifact Signing command", () => 
   );
 });
 
+test("the release reads EKU values from the Oid collection", () => {
+  const signatureVerification = stepBlock(releaseWorkflow, "Verify signatures");
+  assert.match(signatureVerification, /ForEach-Object \{ \$_\.Value \}/);
+  assert.doesNotMatch(signatureVerification, /\$_\.ObjectId\.Value/);
+});
+
 test(
   "the executor MSI fixture is deterministic and carries the required marker",
   { skip: process.platform !== "win32" },
