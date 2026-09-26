@@ -7,6 +7,7 @@ import { Pill } from '../../../components/primitives/Pill'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 
 const THEME_SWATCHES: Record<Exclude<Theme, 'organization'>, readonly [string, string, string]> = {
+  blckwhte: ['#f8f8f9', '#050505', '#ffffff'],
   contrast: ['#000000', '#facc15', '#ffffff'],
   daylight: ['#eef2f7', '#2563eb', '#111827'],
   forest: ['#0a160f', '#047857', '#e5eee8'],

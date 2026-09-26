@@ -8,6 +8,7 @@ export const SsoThemeSchema = z.enum([
   'nebula',
   'midnight',
   'daylight',
+  'blckwhte',
   'forest',
   'ocean',
   'sunset',
