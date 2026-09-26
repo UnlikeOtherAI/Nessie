@@ -13,6 +13,7 @@ Research date: 2026-09-26. Nessie base: `abd544dbd99ede1d9615fc782e1cc52e1fb552d
 - [Home and doorways](#home-and-doorways)
 - [Delivery sequence and gates](#delivery-sequence-and-gates)
 - [Provider findings](provider-findings.md)
+- [Kimix review and dispositions](kimix-review.md)
 
 ## Outcome
 
@@ -43,8 +44,9 @@ by shipping inspection alone or only sessions Nessie starts.
 - Prefer native events; bound metadata reads and recent context. No background
   model is needed to watch sessions.
 
-Use Nessie's existing list/status/send/interrupt vocabulary instead of adding
-eight overlapping public verbs. No new message board, scheduler, agent
+Reuse Nessie's list/status/wait/interrupt tools and add only the distinct input
+actions below. No duplicate get/overview/capabilities/inject APIs are needed.
+No new message board, scheduler, agent
 hierarchy, repository sync, merge engine or terminal emulator is needed.
 Keep full message bodies in restricted conversation/delivery storage, rather
 than copying them into general audit logs.
@@ -126,6 +128,42 @@ resuming, disclose that limitation: it does not pass live attachment acceptance.
 Custom-channel distribution/allowlisting is a release requirement; the
 development preview flag is a test tool, not silent production setup.
 
+### Provider approvals
+
+For both providers, permission prompts in external sessions are observe-only
+in the MVP. The person answers in their original client. Attaching must not
+claim approval ownership, acknowledge, deny or answer those prompts, or change
+the session's permission/sandbox settings. Any future approval relay needs a
+separate design and grant.
+
+### Exact tool contract
+
+The following is the proposed contract, not a list of implemented tools:
+
+| Agent tool | Bridge operation | External-session semantics |
+| --- | --- | --- |
+| `coding_session_list` | `session_list` | Authorized inventory with explicit provider/root/state/client/capability filters, cursor and freshness. |
+| `coding_session_wait` | `session_status` | Bounded overview and delivery/capability state; retain the existing worker wait model. |
+| `coding_session_queue` | `session_queue` | Default instruction action; next normal input only, never steer or Push fallback. |
+| `coding_session_push` | `session_push` | Explicit provider event with batching and acknowledgement limits. |
+| `coding_session_steer` | `session_steer` | Explicit current-turn input, conditional on its exact turn ID. |
+| `coding_session_interrupt` | `session_interrupt` | Native interruption conditional on its exact turn ID; never process-tree kill. |
+
+Queue/Push/Steer are three distinct semantics, not aliases for inject/send.
+The legacy `coding_session_send`, start/review/close and terminal-write tools
+retain their current managed-session behaviour and refuse external targets.
+Descriptions and result links distinguish the origins and name the available
+actions; all action restrictions are enforced in dispatch, not only text.
+This avoids changing the current managed Claude driver's follow-up semantics
+as a side effect of adding external attachment.
+
+The human-facing overview uses the same status projection without a model
+inference. Attach/grant and detach/revoke belong to the existing local console
+and CLI policy control; no model tool grants itself access. A remote human's
+Disconnect attenuates an existing attachment through a typed detach request,
+not `session_close`. All attachment records are local product data tied to the
+existing pairing/binding, not a second identity or membership store.
+
 ## Identity, policy and delivery
 
 ### Session reference
@@ -163,6 +201,16 @@ permissions. No inheritance from an existing broad coding-launch grant, and no
 automatic grant to all future sessions. Attachments do not make ordinary local
 machine command rules a sandbox for the coding agent.
 
+Discovery runs only in the executor's own OS account and explicitly configured
+provider profiles. A Windows service-account connection cannot enumerate or
+attach the signed-in person's desktop sessions, even if an elevated process
+can read them. The owner uses their tray/user connection. Reject cross-account
+paths, IPC endpoints and claimed session registrations on all three platforms.
+
+The MVP covers owner-authorized conversational bindings. Standing ticket work
+does not inherit external attachment access from an agent-level launch grant;
+supporting unattended use needs explicit attachment/context authorization.
+
 Effective authority is the intersection of the server's current binding and
 entitlement, the local per-session grant, the provider's support and live
 identity. Check at admission and again immediately before dispatch. Bind the
@@ -176,6 +224,13 @@ unless the existing disclosure mechanism explicitly permits the recipient.
 Every read that reaches a run feeds `ConsumedSourceSink`. A machine-management
 role alone must not expose a person's external session metadata. Keep UOA as
 identity/membership authority; add no duplicated user profiles or memberships.
+
+External sessions are not shareable through the existing session-screen
+sharing API or `ExecutorSessionSharing`. Return `canShare: false`, reject share
+mutations server-side, and refuse screen/overview reads through legacy share
+rows or executor-admin entitlement. Only the pairing owner and specifically
+authorized agent/binding can read the allowed projection. Sharing external
+conversation content is outside this MVP and needs a separate explicit design.
 
 ### Reliable outcomes
 
@@ -245,6 +300,14 @@ For Channels send at least 50 uniquely identified events to one long-lived
 session, including a busy burst, and account for all outcomes without restart
 or replacement. Verify terminal, IDE and desktop independently, including
 Linux desktop if offered by the tested provider version.
+
+Record PATH CLI and desktop-bundled binaries as separate matrix rows, including
+their alpha/stable release channel. Test provider auto-update during attachment
+(invalidate capability evidence and re-probe), the human closing/deleting a
+session with pending native input (cancel/fail/unknown as observed; never
+respawn), and a permission prompt during a Nessie-submitted turn (observe;
+never answer). Prove that a service-account executor sees no other OS user's
+sessions, and that existing share grants cannot expose an external session.
 
 **Exit:** a compatibility matrix with PASS/FAIL/BLOCKED/NOT TESTED and evidence
 for each advertised operation. The user's macOS/Windows/Linux exact-existing-
