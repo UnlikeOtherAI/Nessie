@@ -34,20 +34,14 @@ export const APP_DOWNLOADS = {
  * does local work on. Nessie Desktop already carries a copy, so these downloads
  * are for a Mac that runs only the executor and nothing else.
  *
- * Two images because the app carries its own pinned Node, which is the build
- * host's own binary. Both are Developer ID signed, notarized and stapled, so
- * neither needs a Gatekeeper bypass — see
+ * The Apple Silicon image carries its own pinned Node. It is Developer ID
+ * signed, notarized and stapled, so it needs no Gatekeeper bypass — see
  * docs/running-the-apps/executor-menu-bar-macos.md.
  */
 export const EXECUTOR_DOWNLOADS = {
   macAppleSilicon: {
     asset: 'Nessie-Executor-macOS-Apple-Silicon.dmg',
     detail: 'Apple silicon',
-    label: 'Mac executor',
-  },
-  macIntel: {
-    asset: 'Nessie-Executor-macOS-Intel.dmg',
-    detail: 'Intel',
     label: 'Mac executor',
   },
 } as const satisfies Record<string, AppDownload>

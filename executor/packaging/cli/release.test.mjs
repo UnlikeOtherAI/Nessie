@@ -41,7 +41,17 @@ test('publication rejects verification keys, altered payloads and mismatched sou
     await assert.rejects(verifyCandidate(directory, 'darwin', '1.2.3'), /Verification builds/)
     candidate.signing = 'release'
     await writeFile(path, JSON.stringify(candidate))
-    assert.equal((await verifyCandidate(directory, 'darwin', '1.2.3')).commit, candidate.commit)
+    await assert.rejects(verifyCandidate(directory, 'darwin', '1.2.3', async () => {
+      throw new Error('No trusted attestation for this edited manifest')
+    }), /No trusted attestation/)
+    const attested = await verifyCandidate(directory, 'darwin', '1.2.3', async (command, args) => {
+      assert.equal(command, 'gh')
+      assert.equal(args[args.indexOf('--source-ref') + 1], 'refs/heads/main')
+      assert.equal(args[args.indexOf('--source-digest') + 1], candidate.commit)
+      assert.equal(args[args.indexOf('--signer-workflow') + 1], 'UnlikeOtherAI/Nessie/.github/workflows/executor-cli.yml')
+      assert.ok(args.includes('--deny-self-hosted-runners'))
+    })
+    assert.equal(attested.commit, candidate.commit)
     await assert.rejects(verifyCandidate(directory, 'darwin', '1.2.4'), /matching production-signed/)
     await writeFile(join(directory, 'Formula/nessie-executor.rb'), 'changed after signing')
     await assert.rejects(verifyCandidate(directory, 'darwin', '1.2.3'), /Candidate file changed/)
@@ -62,6 +72,7 @@ test('build workflow cannot publish a release or silently produce an unsigned Ma
   assert.ok(workflow.includes("environment: ${{ inputs.release_signing && 'executor-cli-release' || '' }}"))
   assert.ok(workflow.includes("SIGNING_KEY: ${{ inputs.release_signing && secrets.EXECUTOR_REPOSITORY_SIGNING_KEY || '' }}"))
   assert.ok(workflow.includes("if: ${{ inputs.macos && github.ref == 'refs/heads/main' }}"))
+  assert.match(workflow, /if: inputs.release_signing\s+uses: actions\/attest@v4/)
 })
 
 test('app manifests refuse moving URLs and retain the actual installed app versions', () => {

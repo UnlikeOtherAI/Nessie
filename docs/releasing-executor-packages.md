@@ -149,8 +149,11 @@ updates as separate actions.
 3. Create the immutable `executor-v<version>` tag at that exact source commit.
    Push the tag, then run:
    `NESSIE_EXECUTOR_VERSION=<version> node executor/packaging/cli/publish.mjs /path/to/candidates`.
-   The publisher checks both production candidate manifests, unchanged hashes,
-   the matching tag, and successful main CI plus Desktop CI before uploading.
+   The publisher verifies each manifest's GitHub artifact attestation against
+   the CLI build workflow on `main`, the exact source commit and GitHub-hosted
+   runners. Only production builds attest their manifests; changing a local
+   signing label or payload invalidates this proof. It also checks unchanged
+   payload hashes, the matching tag, and successful main CI plus Desktop CI.
    It sets `--latest=false` so it cannot replace the desktop updater's latest release.
 4. Deploy the signed repository snapshot. Commit the generated formula to the
    tap through a PR; run `brew audit --strict`, install it and run `brew test`.

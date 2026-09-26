@@ -92,13 +92,6 @@ export const AppDownloads = () => {
             label={EXECUTOR_DOWNLOADS.macAppleSilicon.label}
           />
         </a>
-        <a className="signin-app" href={downloadUrl(EXECUTOR_DOWNLOADS.macIntel)}>
-          <FontAwesomeIcon aria-hidden="true" className="signin-app-icon" icon={faApple} />
-          <Description
-            detail={EXECUTOR_DOWNLOADS.macIntel.detail}
-            label={EXECUTOR_DOWNLOADS.macIntel.label}
-          />
-        </a>
       </div>
       <a className="signin-app-releases" href={LATEST_RELEASE_PAGE} rel="noreferrer" target="_blank">
         Checksums and earlier releases on GitHub

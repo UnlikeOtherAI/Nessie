@@ -25,7 +25,6 @@ export const homebrewFormula = (version, sha256) => {
   version "${version}"
   sha256 "${sha256}"
   license "FSL-1.1-ALv2"
-  depends_on :macos
   depends_on arch: :arm64
   depends_on macos: :sequoia
   depends_on "git"

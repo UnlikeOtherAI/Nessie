@@ -19,8 +19,9 @@ export const candidateFiles = (platform, version) => {
   ]
 }
 
-export const verifyCandidate = async (directory, platform, version) => {
-  const candidate = JSON.parse(await readFile(join(directory, `${platform}-candidate.json`), 'utf8'))
+export const verifyCandidate = async (directory, platform, version, execute = run) => {
+  const manifest = join(directory, `${platform}-candidate.json`)
+  const candidate = JSON.parse(await readFile(manifest, 'utf8'))
   if (candidate.version !== releaseVersion(version) || candidate.platform !== platform || candidate.signing !== 'release'
     || !/^[a-f0-9]{40}$/.test(candidate.commit)) {
     throw new Error('Publication requires matching production-signed candidates. Verification builds cannot be published.')
@@ -30,6 +31,11 @@ export const verifyCandidate = async (directory, platform, version) => {
   for (const file of files) {
     if (candidate.files[file] !== await digest(join(directory, file))) throw new Error(`Candidate file changed: ${file}`)
   }
+  // The signed manifest authenticates every payload hash and the signing mode.
+  // Neither an edited JSON label nor an attestation from a branch is sufficient.
+  await execute('gh', ['attestation', 'verify', manifest, '--repo', 'UnlikeOtherAI/Nessie',
+    '--signer-workflow', 'UnlikeOtherAI/Nessie/.github/workflows/executor-cli.yml',
+    '--source-ref', 'refs/heads/main', '--source-digest', candidate.commit, '--deny-self-hosted-runners'])
   return candidate
 }
 

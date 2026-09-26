@@ -80,7 +80,7 @@ test('every download points at a release asset on the one base', () => {
  */
 test('the executor images are named exactly as the release publishes them', () => {
   assert.equal(EXECUTOR_DOWNLOADS.macAppleSilicon.asset, 'Nessie-Executor-macOS-Apple-Silicon.dmg')
-  assert.equal(EXECUTOR_DOWNLOADS.macIntel.asset, 'Nessie-Executor-macOS-Intel.dmg')
+  assert.deepEqual(Object.keys(EXECUTOR_DOWNLOADS), ['macAppleSilicon'])
 })
 
 test('the executor downloads are on screen and labelled as the executor', async () => {

@@ -53,8 +53,8 @@ describes the same pairing in its terminal form.
 
 ## Installing it
 
-The download is `Nessie-Executor-macOS-Apple-Silicon.dmg` or
-`Nessie-Executor-macOS-Intel.dmg` from the GitHub release. **Open it, drag the
+The download is `Nessie-Executor-macOS-Apple-Silicon.dmg`
+from the GitHub release. **Open it, drag the
 app onto the Applications folder beside it, and launch it.** There is no
 right-click-Open, no `xattr -d`, no Gatekeeper bypass and no security-settings
 detour: the image is signed with the Nessie `Developer ID Application`
@@ -62,8 +62,8 @@ certificate, notarized by Apple, and has its notarization ticket stapled to both
 the image and the app inside it. If macOS ever refuses one of these downloads,
 that is a defect in the release, not a step for the person installing it.
 
-Two DMGs exist because the app carries its own pinned Node, and that binary is
-the build host's own. An Apple Silicon Mac wants the Apple Silicon image.
+The standalone executor app requires an Apple Silicon Mac and carries its own
+pinned Node runtime.
 
 The mounted volume holds exactly two things: the app, and a symlink to
 `/Applications` to drop it on. There is no scripted Finder window with a
