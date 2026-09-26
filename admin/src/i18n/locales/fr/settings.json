@@ -7,7 +7,8 @@
     "disabled": "Désactivé",
     "cancel": "Annuler",
     "remove": "Supprimer",
-    "delete": "Supprimer"
+    "delete": "Supprimer",
+    "loading": "Chargement…"
   },
   "profile": {
     "title": "Profil",
@@ -259,5 +260,130 @@
     "saveStatus": "Enregistrer le statut",
     "deleteConfirmation": "Cela supprime également ses plannings et règles de contact.",
     "deleteConfirmationTitle": "Supprimer « {{label}} » ?"
+  },
+  "team": {
+    "settingsSections": "Sections des paramètres de l’équipe",
+    "agents": "Agents",
+    "team": "Équipe",
+    "teams": "Équipes",
+    "name": "Nom",
+    "teamName": "Nom de l’équipe",
+    "renameHelp": "Ce nom appartient à votre équipe UnlikeOtherAI. En l’enregistrant, vous le renommez dans UnlikeOtherAI et dans ses autres produits.",
+    "renameInactiveHelp": "Ce nom appartient à votre équipe UnlikeOtherAI. Seule une personne dans cette équipe peut le modifier. Rejoignez cette équipe pour la renommer.",
+    "addressHelp": "C’est l’adresse de votre équipe. La modifier change son adresse web et l’ancienne ne fonctionnera plus — {{slug}}.{{domain}}.",
+    "address": "Adresse de l’équipe",
+    "addressPlaceholder": "adresse-equipe",
+    "saveFailed": "Impossible d’enregistrer cette équipe.",
+    "saved": "Équipe enregistrée.",
+    "save": "Enregistrer",
+    "avatarTypeError": "Choisissez une image PNG, JPEG ou WebP.",
+    "avatarSizeError": "L’image doit faire moins de 1 Mo.",
+    "avatarUpdated": "Avatar de l’équipe mis à jour.",
+    "avatarSaveFailed": "Impossible d’enregistrer l’avatar",
+    "avatarRemoved": "Avatar de l’équipe supprimé.",
+    "avatarRemoveFailed": "Impossible de supprimer l’avatar",
+    "avatar": "Avatar de l’équipe",
+    "avatarDescription": "L’image de {{team}}, gérée par UnlikeOtherAI, apparaît partout où l’équipe est affichée, y compris dans les autres produits UnlikeOtherAI. Elle est distincte du logo de l’organisation, qui représente tout le tenant.",
+    "uploading": "Importation…",
+    "uploadImage": "Importer une image",
+    "removing": "Suppression…",
+    "avatarFileHint": "PNG, JPEG ou WebP, jusqu’à 1 Mo. Les images carrées sont idéales. Une fois supprimée, l’image est remplacée par l’icône de l’équipe ou une image générée.",
+    "avatarOwnerOnly": "Seuls les propriétaires et administrateurs de l’organisation peuvent modifier l’avatar de l’équipe.",
+    "avatarActiveTeamOnly": "UnlikeOtherAI n’accepte cette modification que depuis l’équipe concernée. Rejoignez-la pour changer son image."
+  },
+  "organization": {
+    "settingsSections": "Sections des paramètres de l’organisation",
+    "appearance": "Apparence",
+    "organisation": "Organisation",
+    "name": "Nom",
+    "organisationName": "Nom de l’organisation",
+    "managedNameHelp": "Ce nom appartient à votre organisation UnlikeOtherAI. En l’enregistrant, vous le renommez dans UnlikeOtherAI, sur l’écran de connexion et dans tous ses produits.",
+    "nameSaveFailed": "Impossible d’enregistrer le nom de l’organisation.",
+    "nameSaved": "Nom de l’organisation enregistré.",
+    "saveName": "Enregistrer le nom",
+    "logo": "Logo",
+    "logoSaved": "Logo enregistré.",
+    "logoSaveFailed": "Impossible d’enregistrer le logo",
+    "logoRemoveFailed": "Impossible de supprimer le logo",
+    "logoRemoved": "Logo supprimé.",
+    "logoDescription": "Logo de {{organization}}, affiché dans la barre latérale et sur l’écran de connexion.",
+    "companyLogo": "Logo de l’entreprise",
+    "replaceLogo": "Remplacer le logo",
+    "uploadLogo": "Importer un logo",
+    "logoFileHint": "PNG ou JPG. Les images carrées sont idéales.",
+    "logoCropDescription": "Faites glisser pour repositionner, faites défiler ou utilisez le curseur pour zoomer. Le cadre délimite le logo.",
+    "saveLogo": "Enregistrer le logo",
+    "editLogo": "Modifier le logo",
+    "themeSaved": "Thème enregistré. Il devient le thème par défaut pour les membres de {{organization}} qui n’en ont pas choisi.",
+    "themeSaveFailed": "Impossible d’enregistrer le thème.",
+    "themeRemoved": "Thème supprimé.",
+    "themeRemoveFailed": "Impossible de supprimer le thème.",
+    "saveTheme": "Enregistrer le thème",
+    "removeTheme": "Supprimer le thème",
+    "themeDescription": "Les couleurs propres à {{organization}} sont proposées à tous comme thème par défaut, sauf choix personnel. Chacun peut choisir un autre thème, y compris le contraste élevé.",
+    "noTheme": "Aucun thème pour le moment. Commencez avec les couleurs ci-dessous et remplacez l’accent par la couleur de votre marque.",
+    "appearanceHelp": "Détermine si le texte est sombre sur fond clair ou clair sur fond sombre. Le fond et la barre latérale doivent correspondre.",
+    "light": "Clair",
+    "dark": "Sombre",
+    "accent": "Accent",
+    "accentHelp": "Boutons, liens, sélection et élément actif. La couleur principale de votre marque.",
+    "background": "Arrière-plan",
+    "backgroundHelp": "La couleur derrière les pages. Gardez-la presque blanche pour un thème clair ou presque noire pour un thème sombre : une couleur vive réduit la lisibilité.",
+    "sidebar": "Barre latérale",
+    "sidebarHelp": "La colonne de navigation. Dérivée de l’accent, sauf si vous la définissez.",
+    "deriveSidebar": "Dériver de l’accent",
+    "resetToSaved": "Rétablir la version enregistrée",
+    "previewNotice": "Vous voyez le brouillon. Votre thème revient lorsque vous quittez cette page. Choisissez {{organization}} dans Compte → Apparence pour le conserver.",
+    "removeThemeConfirmation": "Les personnes sans thème personnel retrouvent Grès. Celles qui ont choisi {{organization}} verront Grès jusqu’à l’enregistrement d’un nouveau thème.",
+    "removeThemeTitle": "Supprimer le thème de l’organisation ?",
+    "calls": "Appels",
+    "callsDescription": "Choisissez le fournisseur utilisé lorsqu’une personne démarre un appel dans chaque équipe.",
+    "noTeams": "Aucune équipe disponible.",
+    "teamsLoadFailed": "Impossible de charger les équipes.",
+    "teamsLoading": "Chargement des équipes…",
+    "providerUnavailable": "{{provider}} n’est pas configuré pour ce déploiement.",
+    "callProviderFor": "Fournisseur d’appel pour {{team}}",
+    "noCallProviders": "Aucun fournisseur d’appel n’est configuré pour ce déploiement.",
+    "providerSaveFailed": "Impossible d’enregistrer le fournisseur d’appel.",
+    "callsCreateLink": "Les appels dans cette équipe créent un lien {{provider}}.",
+    "checks": {
+      "title": "Vérifications",
+      "text": "Texte sur l’arrière-plan",
+      "secondaryText": "Texte secondaire sur l’arrière-plan",
+      "link": "Lien sur l’arrière-plan",
+      "button": "Libellé du bouton sur l’accent",
+      "accentMain": "Accent sur l’arrière-plan",
+      "blocked": "Bloqué",
+      "check": "À vérifier",
+      "surface-band": {
+        "label": "Arrière-plan",
+        "light": "Pour un thème clair, l’arrière-plan doit être clair, par exemple #f8fafc.",
+        "dark": "Pour un thème sombre, l’arrière-plan doit être sombre, par exemple #14171c."
+      },
+      "surface-chroma": {
+        "label": "Arrière-plan",
+        "detail": "L’arrière-plan est trop coloré pour que le texte reste lisible. Gardez-le neutre et réservez la couleur à l’accent ou à la barre latérale."
+      },
+      "sidebar-band": {
+        "label": "Barre latérale",
+        "detail": "La barre latérale doit être aussi sombre (ou claire) que l’arrière-plan, car ils partagent les mêmes couleurs de texte."
+      },
+      "accent-on-main": {
+        "label": "Accent sur l’arrière-plan",
+        "detail": "L’accent ne se détache pas assez de l’arrière-plan ({{ratio}}:1 ; 3:1 requis). Choisissez un accent plus clair ou plus sombre, ou modifiez l’arrière-plan."
+      },
+      "accent-on-panel": {
+        "label": "Accent sur les cartes",
+        "detail": "L’accent ne se détache pas assez des cartes ({{ratio}}:1 ; 3:1 requis). Choisissez un accent plus clair ou plus sombre, ou modifiez l’arrière-plan."
+      },
+      "accent-on-sidebar": {
+        "label": "Accent sur la barre latérale",
+        "detail": "L’élément sélectionné dans la navigation sera peu visible ({{ratio}}:1)."
+      },
+      "accent-near-danger": {
+        "label": "Accent et erreurs",
+        "detail": "Votre accent est proche du rouge des erreurs ; les boutons destructifs ressembleront donc aux boutons ordinaires."
+      }
+    }
   }
 }

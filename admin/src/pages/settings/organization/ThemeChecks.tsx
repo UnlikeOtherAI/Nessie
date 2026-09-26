@@ -1,4 +1,5 @@
 import { contrastRatio, type EvaluatedTheme } from '@nessie/schemas'
+import { useTranslation } from 'react-i18next'
 import { Pill } from '../../../components/primitives/Pill'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 
@@ -24,24 +25,26 @@ type Row = {
 const round1 = (value: number): number => Math.round(value * 10) / 10
 
 export const ThemeChecks = ({ evaluated }: { evaluated: EvaluatedTheme }) => {
+  const { t } = useTranslation('settings')
   const { tokens } = evaluated
   const guaranteed: Row[] = [
-    { label: 'Text on background', ratio: contrastRatio(tokens.tx, tokens.main), tone: 'success' },
+    { label: t('organization.checks.text'), ratio: contrastRatio(tokens.tx, tokens.main), tone: 'success' },
     {
-      label: 'Secondary text on background',
+      label: t('organization.checks.secondaryText'),
       ratio: contrastRatio(tokens.tx3, tokens.main),
       tone: 'success',
     },
-    { label: 'Link on background', ratio: contrastRatio(tokens.lnk, tokens.main), tone: 'success' },
+    { label: t('organization.checks.link'), ratio: contrastRatio(tokens.lnk, tokens.main), tone: 'success' },
     {
-      label: 'Button label on accent',
+      label: t('organization.checks.button'),
       ratio: contrastRatio(tokens['on-accent'], tokens.accent),
       tone: 'success',
     },
   ]
   const measured: Row[] = evaluated.checks.map((check) => ({
-    ...(check.message ? { detail: check.message } : {}),
-    label: check.label,
+    detail: t(`organization.checks.${check.id}.${check.id === 'surface-band'
+      ? evaluated.colorScheme : 'detail'}`, { ratio: check.ratio }),
+    label: t(`organization.checks.${check.id}.label`),
     ...(check.ratio === undefined ? {} : { ratio: check.ratio }),
     tone: check.level === 'blocking' ? ('danger' as const) : ('warning' as const),
   }))
@@ -52,7 +55,7 @@ export const ThemeChecks = ({ evaluated }: { evaluated: EvaluatedTheme }) => {
     ...(accentReported
       ? []
       : [{
-        label: 'Accent on background',
+        label: t('organization.checks.accentMain'),
         ratio: contrastRatio(tokens.accent, tokens.main),
         tone: 'success' as const,
       }]),
@@ -61,12 +64,12 @@ export const ThemeChecks = ({ evaluated }: { evaluated: EvaluatedTheme }) => {
 
   return (
     <section>
-      <SectionLabel>Checks</SectionLabel>
+      <SectionLabel>{t('organization.checks.title')}</SectionLabel>
       <ul className="mt-3 grid gap-2">
         {rows.map((row) => (
           <li className="flex items-start gap-3" key={`${row.label}-${row.tone}`}>
             <Pill tone={row.tone}>
-              {row.ratio === undefined ? row.tone === 'danger' ? 'Blocked' : 'Check' : `${round1(row.ratio)}:1`}
+              {row.ratio === undefined ? row.tone === 'danger' ? t('organization.checks.blocked') : t('organization.checks.check') : `${round1(row.ratio)}:1`}
             </Pill>
             <div className="min-w-0">
               <div className="text-sm text-[color:var(--tx)]">{row.label}</div>

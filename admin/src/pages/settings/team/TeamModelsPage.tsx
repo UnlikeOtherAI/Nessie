@@ -1,4 +1,5 @@
 import { Navigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 import { Select } from '../../../components/shared/FormControls'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
@@ -13,6 +14,7 @@ import { ModelAvailabilitySettings } from '../OrganizationModelsPage'
  * provider/model pair.
  */
 export const TeamModelsPage = () => {
+  const { t } = useTranslation('settings')
   const { me } = useAuthSession()
   const isOwner = useIsOwner()
   const canManage = isOwner || (me?.user.roleIds.includes('admin') ?? false)
@@ -30,7 +32,7 @@ export const TeamModelsPage = () => {
   const scopeControl = rows.length > 1 ? (
     <div className="w-full max-w-xs">
       <Select
-        aria-label="Team"
+        aria-label={t('team.team')}
         onChange={(event) => {
           setSearchParams((current) => {
             const next = new URLSearchParams(current)

@@ -7,7 +7,8 @@
     "disabled": "Disattivato",
     "cancel": "Annulla",
     "remove": "Rimuovi",
-    "delete": "Elimina"
+    "delete": "Elimina",
+    "loading": "Caricamento…"
   },
   "profile": {
     "title": "Profilo",
@@ -259,5 +260,130 @@
     "saveStatus": "Salva stato",
     "deleteConfirmation": "Verranno eliminate anche le pianificazioni e le regole di contatto.",
     "deleteConfirmationTitle": "Eliminare “{{label}}”?"
+  },
+  "team": {
+    "settingsSections": "Sezioni impostazioni team",
+    "agents": "Agenti",
+    "team": "Team",
+    "teams": "Team",
+    "name": "Nome",
+    "teamName": "Nome del team",
+    "renameHelp": "Questo nome appartiene al tuo team UnlikeOtherAI. Salvandolo lo rinomini lì e la modifica si applica anche agli altri prodotti UnlikeOtherAI.",
+    "renameInactiveHelp": "Questo nome appartiene al tuo team UnlikeOtherAI e può essere modificato solo dall’interno del team. Passa a questo team per rinominarlo.",
+    "addressHelp": "Questo è l’indirizzo del team. Se lo cambi, cambia anche l’indirizzo web e quello precedente smette di funzionare — {{slug}}.{{domain}}.",
+    "address": "Indirizzo team",
+    "addressPlaceholder": "indirizzo-team",
+    "saveFailed": "Impossibile salvare il team.",
+    "saved": "Team salvato.",
+    "save": "Salva",
+    "avatarTypeError": "Scegli un’immagine PNG, JPEG o WebP.",
+    "avatarSizeError": "L’immagine deve essere inferiore a 1 MB.",
+    "avatarUpdated": "Avatar del team aggiornato.",
+    "avatarSaveFailed": "Impossibile salvare l’avatar",
+    "avatarRemoved": "Avatar del team rimosso.",
+    "avatarRemoveFailed": "Impossibile rimuovere l’avatar",
+    "avatar": "Avatar del team",
+    "avatarDescription": "L’immagine aziendale di {{team}}, gestita da UnlikeOtherAI, viene mostrata ovunque compaia il team, anche negli altri prodotti UnlikeOtherAI. È distinta dal logo dell’organizzazione, che rappresenta l’intero tenant.",
+    "uploading": "Caricamento…",
+    "uploadImage": "Carica immagine",
+    "removing": "Rimozione…",
+    "avatarFileHint": "PNG, JPEG o WebP fino a 1 MB. Le immagini quadrate sono ideali. Dopo la rimozione viene mostrata l’icona del team o un’immagine generata.",
+    "avatarOwnerOnly": "Solo i proprietari e gli amministratori dell’organizzazione possono modificare l’avatar del team.",
+    "avatarActiveTeamOnly": "UnlikeOtherAI accetta questa modifica solo dall’interno del team. Passa al team per cambiare la sua immagine."
+  },
+  "organization": {
+    "settingsSections": "Sezioni impostazioni organizzazione",
+    "appearance": "Aspetto",
+    "organisation": "Organizzazione",
+    "name": "Nome",
+    "organisationName": "Nome dell’organizzazione",
+    "managedNameHelp": "Questo nome appartiene alla tua organizzazione UnlikeOtherAI. Salvandolo lo rinomini lì e la modifica appare nella schermata di accesso e negli altri prodotti UnlikeOtherAI.",
+    "nameSaveFailed": "Impossibile salvare il nome dell’organizzazione.",
+    "nameSaved": "Nome dell’organizzazione salvato.",
+    "saveName": "Salva nome",
+    "logo": "Logo",
+    "logoSaved": "Logo salvato.",
+    "logoSaveFailed": "Impossibile salvare il logo",
+    "logoRemoveFailed": "Impossibile rimuovere il logo",
+    "logoRemoved": "Logo rimosso.",
+    "logoDescription": "Logo di {{organization}}, mostrato nella barra laterale e nella schermata di accesso.",
+    "companyLogo": "Logo aziendale",
+    "replaceLogo": "Sostituisci logo",
+    "uploadLogo": "Carica logo",
+    "logoFileHint": "PNG o JPG. Le immagini quadrate sono ideali.",
+    "logoCropDescription": "Trascina per riposizionare, scorri o usa il cursore per ingrandire. L’area incorniciata diventa il logo.",
+    "saveLogo": "Salva logo",
+    "editLogo": "Modifica logo",
+    "themeSaved": "Tema salvato. Ora è predefinito per tutte le persone di {{organization}} che non ne hanno scelto uno.",
+    "themeSaveFailed": "Impossibile salvare il tema.",
+    "themeRemoved": "Tema rimosso.",
+    "themeRemoveFailed": "Impossibile rimuovere il tema.",
+    "saveTheme": "Salva tema",
+    "removeTheme": "Rimuovi tema",
+    "themeDescription": "I colori di {{organization}} sono disponibili a tutti come tema predefinito per chi non ne sceglie uno. È comunque possibile scegliere qualsiasi tema, incluso Contrasto elevato.",
+    "noTheme": "Nessun tema. Inizia dai colori qui sotto e sostituisci l’accento con il colore del brand.",
+    "appearanceHelp": "Stabilisce se il testo è scuro su chiaro o chiaro su scuro. Sfondo e barra laterale devono essere coerenti.",
+    "light": "Chiaro",
+    "dark": "Scuro",
+    "accent": "Accento",
+    "accentHelp": "Pulsanti, link, selezione ed elemento attivo. Il colore principale del brand.",
+    "background": "Sfondo",
+    "backgroundHelp": "Il colore delle pagine. Quasi bianco per un tema chiaro, quasi nero per uno scuro: colori intensi rendono il testo difficile da leggere.",
+    "sidebar": "Barra laterale",
+    "sidebarHelp": "La colonna di navigazione. Derivata dall’accento se non la imposti.",
+    "deriveSidebar": "Deriva dall’accento",
+    "resetToSaved": "Ripristina i valori salvati",
+    "previewNotice": "Stai vedendo la bozza. Il tuo tema torna quando esci da questa pagina. Scegli {{organization}} in Account → Aspetto per mantenerlo.",
+    "removeThemeConfirmation": "Chi non ha scelto un tema tornerà ad Arenaria. Chi ha scelto {{organization}} vedrà Arenaria finché non verrà salvato un nuovo tema.",
+    "removeThemeTitle": "Rimuovere il tema dell’organizzazione?",
+    "calls": "Chiamate",
+    "callsDescription": "Scegli il provider usato quando qualcuno avvia una chiamata in ogni team.",
+    "noTeams": "Nessun team disponibile.",
+    "teamsLoadFailed": "Impossibile caricare i team.",
+    "teamsLoading": "Caricamento team…",
+    "providerUnavailable": "{{provider}} non è configurato per questa distribuzione.",
+    "callProviderFor": "Provider di chiamata per {{team}}",
+    "noCallProviders": "Nessun provider di chiamata è configurato per questa distribuzione.",
+    "providerSaveFailed": "Impossibile salvare il provider di chiamata.",
+    "callsCreateLink": "Le chiamate in questo team creano un link {{provider}}.",
+    "checks": {
+      "title": "Controlli",
+      "text": "Testo sullo sfondo",
+      "secondaryText": "Testo secondario sullo sfondo",
+      "link": "Link sullo sfondo",
+      "button": "Etichetta pulsante sull’accento",
+      "accentMain": "Accento sullo sfondo",
+      "blocked": "Bloccato",
+      "check": "Controlla",
+      "surface-band": {
+        "label": "Sfondo",
+        "light": "Per un tema chiaro, lo sfondo deve essere chiaro, ad esempio #f8fafc.",
+        "dark": "Per un tema scuro, lo sfondo deve essere scuro, ad esempio #14171c."
+      },
+      "surface-chroma": {
+        "label": "Sfondo",
+        "detail": "Lo sfondo è troppo colorato per rendere leggibile il testo. Mantienilo neutro e usa il colore per l’accento o la barra laterale."
+      },
+      "sidebar-band": {
+        "label": "Barra laterale",
+        "detail": "La barra laterale deve essere scura (o chiara) quanto lo sfondo, perché condividono i colori del testo."
+      },
+      "accent-on-main": {
+        "label": "Accento sullo sfondo",
+        "detail": "L’accento non risalta abbastanza sullo sfondo ({{ratio}}:1; servono 3:1). Scegli un accento più chiaro o scuro oppure modifica lo sfondo."
+      },
+      "accent-on-panel": {
+        "label": "Accento sulle schede",
+        "detail": "L’accento non risalta abbastanza sulle schede ({{ratio}}:1; servono 3:1). Scegli un accento più chiaro o scuro oppure modifica lo sfondo."
+      },
+      "accent-on-sidebar": {
+        "label": "Accento sulla barra laterale",
+        "detail": "L’elemento evidenziato nella navigazione sarà poco visibile ({{ratio}}:1)."
+      },
+      "accent-near-danger": {
+        "label": "Accento ed errori",
+        "detail": "L’accento è simile al rosso degli errori, quindi i pulsanti distruttivi sembreranno normali."
+      }
+    }
   }
 }

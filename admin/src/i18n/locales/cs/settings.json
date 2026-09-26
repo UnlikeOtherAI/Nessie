@@ -7,7 +7,8 @@
     "disabled": "Vypnuto",
     "cancel": "Zrušit",
     "remove": "Odebrat",
-    "delete": "Smazat"
+    "delete": "Smazat",
+    "loading": "Načítání…"
   },
   "profile": {
     "title": "Profil",
@@ -259,5 +260,130 @@
     "saveStatus": "Uložit stav",
     "deleteConfirmation": "Tím se smažou také jeho plány a pravidla kontaktů.",
     "deleteConfirmationTitle": "Smazat „{{label}}“?"
+  },
+  "team": {
+    "settingsSections": "Sekce nastavení týmu",
+    "agents": "Agenti",
+    "team": "Tým",
+    "teams": "Týmy",
+    "name": "Název",
+    "teamName": "Název týmu",
+    "renameHelp": "Tento název patří vašemu týmu v UnlikeOtherAI. Uložením jej přejmenujete tam a změna se projeví i v ostatních produktech UnlikeOtherAI.",
+    "renameInactiveHelp": "Tento název patří vašemu týmu v UnlikeOtherAI a změnit jej můžete pouze přímo v tomto týmu. Přepněte na něj a přejmenujte ho.",
+    "addressHelp": "Toto je adresa vašeho týmu. Změníte-li ji, změní se webová adresa týmu a stará přestane fungovat — {{slug}}.{{domain}}.",
+    "address": "Adresa týmu",
+    "addressPlaceholder": "adresa-tymu",
+    "saveFailed": "Tým se nepodařilo uložit.",
+    "saved": "Tým byl uložen.",
+    "save": "Uložit",
+    "avatarTypeError": "Vyberte obrázek PNG, JPEG nebo WebP.",
+    "avatarSizeError": "Obrázek musí mít méně než 1 MB.",
+    "avatarUpdated": "Avatar týmu byl aktualizován.",
+    "avatarSaveFailed": "Avatar se nepodařilo uložit",
+    "avatarRemoved": "Avatar týmu byl odebrán.",
+    "avatarRemoveFailed": "Avatar se nepodařilo odebrat",
+    "avatar": "Avatar týmu",
+    "avatarDescription": "Firemní obrázek týmu {{team}} spravuje UnlikeOtherAI a zobrazuje jej všude, kde se tým objeví — včetně ostatních produktů UnlikeOtherAI. Liší se od loga organizace, které označuje celý tenant.",
+    "uploading": "Nahrávání…",
+    "uploadImage": "Nahrát obrázek",
+    "removing": "Odebírání…",
+    "avatarFileHint": "PNG, JPEG nebo WebP do 1 MB. Nejlépe fungují čtvercové obrázky. Po odebrání se zobrazí ikona týmu nebo vygenerovaný obrázek.",
+    "avatarOwnerOnly": "Avatar týmu mohou změnit pouze vlastníci a správci organizace.",
+    "avatarActiveTeamOnly": "UnlikeOtherAI přijímá tuto změnu pouze přímo v daném týmu. Přepněte na něj a změňte obrázek."
+  },
+  "organization": {
+    "settingsSections": "Sekce nastavení organizace",
+    "appearance": "Vzhled",
+    "organisation": "Organizace",
+    "name": "Název",
+    "organisationName": "Název organizace",
+    "managedNameHelp": "Tento název patří organizaci UnlikeOtherAI. Uložením jej přejmenujete tam; změna se projeví na přihlašovací stránce i v ostatních produktech UnlikeOtherAI.",
+    "nameSaveFailed": "Název organizace se nepodařilo uložit.",
+    "nameSaved": "Název organizace byl uložen.",
+    "saveName": "Uložit název",
+    "logo": "Logo",
+    "logoSaved": "Logo bylo uloženo.",
+    "logoSaveFailed": "Logo se nepodařilo uložit",
+    "logoRemoveFailed": "Logo se nepodařilo odebrat",
+    "logoRemoved": "Logo bylo odebráno.",
+    "logoDescription": "Logo organizace {{organization}} zobrazené v postranním panelu a na přihlašovací stránce.",
+    "companyLogo": "Logo společnosti",
+    "replaceLogo": "Nahradit logo",
+    "uploadLogo": "Nahrát logo",
+    "logoFileHint": "PNG nebo JPG. Nejlépe fungují čtvercové obrázky.",
+    "logoCropDescription": "Přetažením obrázek přemístěte, posouváním nebo posuvníkem přibližte. Ohraničená oblast bude logem.",
+    "saveLogo": "Uložit logo",
+    "editLogo": "Upravit logo",
+    "themeSaved": "Motiv byl uložen. Nyní je výchozí pro všechny v organizaci {{organization}}, kteří si nevybrali vlastní.",
+    "themeSaveFailed": "Motiv se nepodařilo uložit.",
+    "themeRemoved": "Motiv byl odebrán.",
+    "themeRemoveFailed": "Motiv se nepodařilo odebrat.",
+    "saveTheme": "Uložit motiv",
+    "removeTheme": "Odebrat motiv",
+    "themeDescription": "Vlastní barvy organizace {{organization}} jsou dostupné všem jako motiv a použijí se jako výchozí, pokud si někdo nevybere jiný. Stále lze zvolit libovolný motiv včetně vysokého kontrastu.",
+    "noTheme": "Zatím bez motivu. Začněte barvami níže a nahraďte zvýrazňující barvu barvou značky.",
+    "appearanceHelp": "Zda je text tmavý na světlém nebo světlý na tmavém pozadí. Pozadí a postranní panel musí odpovídat.",
+    "light": "Světlý",
+    "dark": "Tmavý",
+    "accent": "Zvýraznění",
+    "accentHelp": "Tlačítka, odkazy, výběr a aktivní položka. Hlavní barva vaší značky.",
+    "background": "Pozadí",
+    "backgroundHelp": "Barva plochy stránek. Pro světlý motiv ji nastavte téměř na bílou, pro tmavý téměř na černou. Výrazné barvy zhoršují čitelnost textu.",
+    "sidebar": "Postranní panel",
+    "sidebarHelp": "Navigační sloupec. Pokud barvu nenastavíte, odvodí se ze zvýraznění.",
+    "deriveSidebar": "Odvodit ze zvýraznění",
+    "resetToSaved": "Obnovit uložené",
+    "previewNotice": "Zobrazuje se vám koncept. Po opuštění stránky se vrátí váš motiv — chcete-li jej zachovat, vyberte {{organization}} v Účet → Vzhled.",
+    "removeThemeConfirmation": "Lidem bez vlastního motivu se obnoví motiv Pískovec. Ti, kdo zvolili {{organization}}, uvidí Pískovec, dokud neuložíte nový motiv.",
+    "removeThemeTitle": "Odebrat motiv organizace?",
+    "calls": "Hovory",
+    "callsDescription": "Vyberte poskytovatele, který se použije při zahájení hovoru v každém týmu.",
+    "noTeams": "Nejsou dostupné žádné týmy.",
+    "teamsLoadFailed": "Týmy se nepodařilo načíst.",
+    "teamsLoading": "Načítání týmů…",
+    "providerUnavailable": "{{provider}} není pro toto nasazení nakonfigurován.",
+    "callProviderFor": "Poskytovatel hovorů pro {{team}}",
+    "noCallProviders": "Pro toto nasazení nejsou nakonfigurováni žádní poskytovatelé hovorů.",
+    "providerSaveFailed": "Poskytovatele hovorů se nepodařilo uložit.",
+    "callsCreateLink": "Hovory v tomto týmu vytvoří odkaz {{provider}}.",
+    "checks": {
+      "title": "Kontroly",
+      "text": "Text na pozadí",
+      "secondaryText": "Sekundární text na pozadí",
+      "link": "Odkaz na pozadí",
+      "button": "Popisek tlačítka na zvýraznění",
+      "accentMain": "Zvýraznění na pozadí",
+      "blocked": "Blokováno",
+      "check": "Kontrola",
+      "surface-band": {
+        "label": "Pozadí",
+        "light": "Pro světlý motiv musí být pozadí světlé — například #f8fafc.",
+        "dark": "Pro tmavý motiv musí být pozadí tmavé — například #14171c."
+      },
+      "surface-chroma": {
+        "label": "Pozadí",
+        "detail": "Pozadí je příliš barevné, aby na něm byl text čitelný. Použijte neutrální odstín a barvu přidejte do zvýraznění nebo postranního panelu."
+      },
+      "sidebar-band": {
+        "label": "Postranní panel",
+        "detail": "Postranní panel musí být stejně tmavý (nebo světlý) jako pozadí, protože sdílejí barvy textu."
+      },
+      "accent-on-main": {
+        "label": "Zvýraznění na pozadí",
+        "detail": "Zvýraznění na pozadí dostatečně nevyniká ({{ratio}}:1; potřeba je 3:1). Zvolte světlejší či tmavší barvu nebo upravte pozadí."
+      },
+      "accent-on-panel": {
+        "label": "Zvýraznění na kartách",
+        "detail": "Zvýraznění na kartách dostatečně nevyniká ({{ratio}}:1; potřeba je 3:1). Zvolte světlejší či tmavší barvu nebo upravte pozadí."
+      },
+      "accent-on-sidebar": {
+        "label": "Zvýraznění na postranním panelu",
+        "detail": "Zvýrazněná položka navigace bude málo viditelná ({{ratio}}:1)."
+      },
+      "accent-near-danger": {
+        "label": "Zvýraznění a chyby",
+        "detail": "Zvýraznění je podobné červené pro chyby, takže destruktivní tlačítka budou vypadat jako běžná."
+      }
+    }
   }
 }

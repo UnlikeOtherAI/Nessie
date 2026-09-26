@@ -7,7 +7,8 @@
     "disabled": "Deaktiviert",
     "cancel": "Abbrechen",
     "remove": "Entfernen",
-    "delete": "Löschen"
+    "delete": "Löschen",
+    "loading": "Wird geladen…"
   },
   "profile": {
     "title": "Profil",
@@ -259,5 +260,130 @@
     "saveStatus": "Status speichern",
     "deleteConfirmation": "Dadurch werden auch Zeitpläne und Kontaktregeln entfernt.",
     "deleteConfirmationTitle": "„{{label}}“ löschen?"
+  },
+  "team": {
+    "settingsSections": "Team-Einstellungsbereiche",
+    "agents": "Agents",
+    "team": "Team",
+    "teams": "Teams",
+    "name": "Name",
+    "teamName": "Teamname",
+    "renameHelp": "Dieser Name gehört zu deinem Team in UnlikeOtherAI. Beim Speichern wird er dort umbenannt und in allen anderen UnlikeOtherAI-Produkten aktualisiert.",
+    "renameInactiveHelp": "Dieser Name gehört zu deinem Team in UnlikeOtherAI. Änderungen sind nur direkt im Team möglich. Wechsle zu diesem Team, um es umzubenennen.",
+    "addressHelp": "Dies ist die Adresse deines Teams. Wenn du sie änderst, ändert sich die Webadresse; die alte funktioniert danach nicht mehr — {{slug}}.{{domain}}.",
+    "address": "Teamadresse",
+    "addressPlaceholder": "team-adresse",
+    "saveFailed": "Team konnte nicht gespeichert werden.",
+    "saved": "Team gespeichert.",
+    "save": "Speichern",
+    "avatarTypeError": "Wähle ein PNG-, JPEG- oder WebP-Bild aus.",
+    "avatarSizeError": "Das Bild muss kleiner als 1 MB sein.",
+    "avatarUpdated": "Team-Avatar aktualisiert.",
+    "avatarSaveFailed": "Avatar konnte nicht gespeichert werden",
+    "avatarRemoved": "Team-Avatar entfernt.",
+    "avatarRemoveFailed": "Avatar konnte nicht entfernt werden",
+    "avatar": "Team-Avatar",
+    "avatarDescription": "Das Teamfoto für {{team}} wird von UnlikeOtherAI verwaltet und überall angezeigt, wo das Team erscheint — auch in allen anderen UnlikeOtherAI-Produkten. Es ist unabhängig vom Organisationslogo, das den gesamten Mandanten kennzeichnet.",
+    "uploading": "Wird hochgeladen…",
+    "uploadImage": "Bild hochladen",
+    "removing": "Wird entfernt…",
+    "avatarFileHint": "PNG, JPEG oder WebP, bis zu 1 MB. Quadratische Bilder eignen sich am besten. Nach dem Entfernen wird das Teamsymbol oder ein generiertes Bild angezeigt.",
+    "avatarOwnerOnly": "Nur Organisationsinhaber und -admins können den Team-Avatar ändern.",
+    "avatarActiveTeamOnly": "UnlikeOtherAI akzeptiert diese Änderung nur direkt im Team. Wechsle dorthin, um das Bild zu ändern."
+  },
+  "organization": {
+    "settingsSections": "Einstellungsbereiche der Organisation",
+    "appearance": "Darstellung",
+    "organisation": "Organisation",
+    "name": "Name",
+    "organisationName": "Organisationsname",
+    "managedNameHelp": "Dieser Name gehört zu deiner UnlikeOtherAI-Organisation. Beim Speichern wird er dort umbenannt und auf dem Anmeldebildschirm sowie in allen anderen UnlikeOtherAI-Produkten aktualisiert.",
+    "nameSaveFailed": "Organisationsname konnte nicht gespeichert werden.",
+    "nameSaved": "Organisationsname gespeichert.",
+    "saveName": "Name speichern",
+    "logo": "Logo",
+    "logoSaved": "Logo gespeichert.",
+    "logoSaveFailed": "Logo konnte nicht gespeichert werden",
+    "logoRemoveFailed": "Logo konnte nicht entfernt werden",
+    "logoRemoved": "Logo entfernt.",
+    "logoDescription": "Das Logo für {{organization}}, angezeigt in der Seitenleiste und auf dem Anmeldebildschirm.",
+    "companyLogo": "Firmenlogo",
+    "replaceLogo": "Logo ersetzen",
+    "uploadLogo": "Logo hochladen",
+    "logoFileHint": "PNG oder JPG. Quadratische Bilder eignen sich am besten.",
+    "logoCropDescription": "Zum Neupositionieren ziehen, zum Zoomen scrollen oder den Regler verwenden. Der Rahmen wird zum Logo.",
+    "saveLogo": "Logo speichern",
+    "editLogo": "Logo bearbeiten",
+    "themeSaved": "Design gespeichert. Es ist jetzt die Vorgabe für alle in {{organization}}, die kein eigenes gewählt haben.",
+    "themeSaveFailed": "Design konnte nicht gespeichert werden.",
+    "themeRemoved": "Design entfernt.",
+    "themeRemoveFailed": "Design konnte nicht entfernt werden.",
+    "saveTheme": "Design speichern",
+    "removeTheme": "Design entfernen",
+    "themeDescription": "Die eigenen Farben der Organisation {{organization}} stehen allen als Design zur Verfügung und werden verwendet, wenn keine eigene Wahl getroffen wurde. Alle Designs, einschliesslich hoher Kontrast, bleiben verfügbar.",
+    "noTheme": "Noch kein Design. Beginne mit den Farben unten und ersetze den Akzent durch deine Markenfarbe.",
+    "appearanceHelp": "Legt fest, ob Text dunkel auf hell oder hell auf dunkel erscheint. Hintergrund und Seitenleiste müssen dazu passen.",
+    "light": "Hell",
+    "dark": "Dunkel",
+    "accent": "Akzent",
+    "accentHelp": "Schaltflächen, Links, Auswahl und das aktive Element. Die Hauptfarbe deiner Marke.",
+    "background": "Hintergrund",
+    "backgroundHelp": "Die Fläche hinter den Seiten. Für ein helles Design fast weiss, für ein dunkles fast schwarz. Starke Farben erschweren das Lesen.",
+    "sidebar": "Seitenleiste",
+    "sidebarHelp": "Die Navigationsspalte. Wird aus dem Akzent abgeleitet, sofern du nichts festlegst.",
+    "deriveSidebar": "Aus Akzent ableiten",
+    "resetToSaved": "Gespeichertes zurücksetzen",
+    "previewNotice": "Du siehst den Entwurf. Beim Verlassen der Seite wird dein eigenes Design wiederhergestellt. Wähle {{organization}} unter Konto → Darstellung, um es beizubehalten.",
+    "removeThemeConfirmation": "Für alle ohne eigenes Design gilt wieder Sandstein. Personen mit dem Design {{organization}} sehen Sandstein, bis erneut ein Design gespeichert wurde.",
+    "removeThemeTitle": "Organisationsdesign entfernen?",
+    "calls": "Anrufe",
+    "callsDescription": "Wähle den Anbieter, der für Anrufe in jedem Team verwendet wird.",
+    "noTeams": "Keine Teams verfügbar.",
+    "teamsLoadFailed": "Teams konnten nicht geladen werden.",
+    "teamsLoading": "Teams werden geladen…",
+    "providerUnavailable": "{{provider}} ist für diese Bereitstellung nicht konfiguriert.",
+    "callProviderFor": "Anrufanbieter für {{team}}",
+    "noCallProviders": "Für diese Bereitstellung sind keine Anrufanbieter konfiguriert.",
+    "providerSaveFailed": "Anrufanbieter konnte nicht gespeichert werden.",
+    "callsCreateLink": "Anrufe in diesem Team erstellen einen {{provider}}-Link.",
+    "checks": {
+      "title": "Prüfungen",
+      "text": "Text auf Hintergrund",
+      "secondaryText": "Sekundärtext auf Hintergrund",
+      "link": "Link auf Hintergrund",
+      "button": "Schaltflächenbeschriftung auf Akzent",
+      "accentMain": "Akzent auf Hintergrund",
+      "blocked": "Blockiert",
+      "check": "Prüfen",
+      "surface-band": {
+        "label": "Hintergrund",
+        "light": "Bei einem hellen Design muss der Hintergrund hell sein, etwa #f8fafc.",
+        "dark": "Bei einem dunklen Design muss der Hintergrund dunkel sein, etwa #14171c."
+      },
+      "surface-chroma": {
+        "label": "Hintergrund",
+        "detail": "Der Hintergrund ist zu farbig, damit Text darauf gut lesbar bleibt. Halte ihn neutral und verwende Farbe für Akzent oder Seitenleiste."
+      },
+      "sidebar-band": {
+        "label": "Seitenleiste",
+        "detail": "Die Seitenleiste muss so dunkel (oder hell) wie der Hintergrund sein, da beide dieselben Textfarben verwenden."
+      },
+      "accent-on-main": {
+        "label": "Akzent auf Hintergrund",
+        "detail": "Der Akzent hebt sich nicht ausreichend vom Hintergrund ab ({{ratio}}:1; erforderlich sind 3:1). Wähle einen helleren oder dunkleren Akzent oder passe den Hintergrund an."
+      },
+      "accent-on-panel": {
+        "label": "Akzent auf Karten",
+        "detail": "Der Akzent hebt sich nicht ausreichend von Karten ab ({{ratio}}:1; erforderlich sind 3:1). Wähle einen helleren oder dunkleren Akzent oder passe den Hintergrund an."
+      },
+      "accent-on-sidebar": {
+        "label": "Akzent auf Seitenleiste",
+        "detail": "Das hervorgehobene Navigationselement ist nur schwach sichtbar ({{ratio}}:1)."
+      },
+      "accent-near-danger": {
+        "label": "Akzent und Fehler",
+        "detail": "Dein Akzent ähnelt dem Rot für Fehler. Dadurch sehen destruktive Schaltflächen wie gewöhnliche aus."
+      }
+    }
   }
 }

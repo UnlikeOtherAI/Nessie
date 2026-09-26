@@ -7,7 +7,8 @@
     "disabled": "Desactivado",
     "cancel": "Cancelar",
     "remove": "Quitar",
-    "delete": "Eliminar"
+    "delete": "Eliminar",
+    "loading": "Cargando…"
   },
   "profile": {
     "title": "Perfil",
@@ -259,5 +260,130 @@
     "saveStatus": "Guardar estado",
     "deleteConfirmation": "Esto también elimina sus horarios y reglas de contacto.",
     "deleteConfirmationTitle": "¿Eliminar “{{label}}”?"
+  },
+  "team": {
+    "settingsSections": "Secciones de configuración del equipo",
+    "agents": "Agentes",
+    "team": "Equipo",
+    "teams": "Equipos",
+    "name": "Nombre",
+    "teamName": "Nombre del equipo",
+    "renameHelp": "Este nombre pertenece a tu equipo de UnlikeOtherAI. Al guardarlo, se cambia allí y en los demás productos de UnlikeOtherAI.",
+    "renameInactiveHelp": "Este nombre pertenece a tu equipo de UnlikeOtherAI y solo se puede cambiar desde dentro del equipo. Cambia a este equipo para renombrarlo.",
+    "addressHelp": "Esta es la dirección de tu equipo. Si la cambias, cambiará la dirección web y la anterior dejará de funcionar: {{slug}}.{{domain}}.",
+    "address": "Dirección del equipo",
+    "addressPlaceholder": "direccion-equipo",
+    "saveFailed": "No se pudo guardar el equipo.",
+    "saved": "Equipo guardado.",
+    "save": "Guardar",
+    "avatarTypeError": "Elige una imagen PNG, JPEG o WebP.",
+    "avatarSizeError": "La imagen debe ocupar menos de 1 MB.",
+    "avatarUpdated": "Se actualizó el avatar del equipo.",
+    "avatarSaveFailed": "No se pudo guardar el avatar",
+    "avatarRemoved": "Se quitó el avatar del equipo.",
+    "avatarRemoveFailed": "No se pudo quitar el avatar",
+    "avatar": "Avatar del equipo",
+    "avatarDescription": "La imagen de {{team}}, gestionada por UnlikeOtherAI, se muestra donde aparece el equipo, también en los demás productos de UnlikeOtherAI. Es distinta del logotipo de la organización, que representa a todo el tenant.",
+    "uploading": "Subiendo…",
+    "uploadImage": "Subir imagen",
+    "removing": "Quitando…",
+    "avatarFileHint": "PNG, JPEG o WebP, hasta 1 MB. Las imágenes cuadradas son ideales. Al quitarla, se mostrará el icono del equipo o una imagen generada.",
+    "avatarOwnerOnly": "Solo los propietarios y administradores de la organización pueden cambiar el avatar del equipo.",
+    "avatarActiveTeamOnly": "UnlikeOtherAI solo acepta este cambio desde dentro del equipo. Cambia a él para modificar su imagen."
+  },
+  "organization": {
+    "settingsSections": "Secciones de configuración de la organización",
+    "appearance": "Apariencia",
+    "organisation": "Organización",
+    "name": "Nombre",
+    "organisationName": "Nombre de la organización",
+    "managedNameHelp": "Este nombre pertenece a tu organización de UnlikeOtherAI. Al guardarlo, se cambia allí, en la pantalla de inicio de sesión y en los demás productos de UnlikeOtherAI.",
+    "nameSaveFailed": "No se pudo guardar el nombre de la organización.",
+    "nameSaved": "Se guardó el nombre de la organización.",
+    "saveName": "Guardar nombre",
+    "logo": "Logotipo",
+    "logoSaved": "Se guardó el logotipo.",
+    "logoSaveFailed": "No se pudo guardar el logotipo",
+    "logoRemoveFailed": "No se pudo quitar el logotipo",
+    "logoRemoved": "Se quitó el logotipo.",
+    "logoDescription": "Logotipo de {{organization}}, visible en la barra lateral y en la pantalla de inicio de sesión.",
+    "companyLogo": "Logotipo de la empresa",
+    "replaceLogo": "Reemplazar logotipo",
+    "uploadLogo": "Subir logotipo",
+    "logoFileHint": "PNG o JPG. Las imágenes cuadradas son ideales.",
+    "logoCropDescription": "Arrastra para cambiar la posición, desplázate o usa el control para ampliar. El marco delimita el logotipo.",
+    "saveLogo": "Guardar logotipo",
+    "editLogo": "Editar logotipo",
+    "themeSaved": "Se guardó el tema. Ahora es el predeterminado para quienes no hayan elegido uno en {{organization}}.",
+    "themeSaveFailed": "No se pudo guardar el tema.",
+    "themeRemoved": "Se quitó el tema.",
+    "themeRemoveFailed": "No se pudo quitar el tema.",
+    "saveTheme": "Guardar tema",
+    "removeTheme": "Quitar tema",
+    "themeDescription": "Los colores propios de {{organization}} se ofrecen a todos como tema predeterminado para quienes no elijan otro. Cada persona puede elegir cualquier tema, incluido Alto contraste.",
+    "noTheme": "Aún no hay un tema. Empieza con los colores de abajo y cambia el acento por el color de tu marca.",
+    "appearanceHelp": "Determina si el texto es oscuro sobre claro o claro sobre oscuro. El fondo y la barra lateral deben coincidir.",
+    "light": "Claro",
+    "dark": "Oscuro",
+    "accent": "Acento",
+    "accentHelp": "Botones, enlaces, selección y el elemento activo. El color principal de tu marca.",
+    "background": "Fondo",
+    "backgroundHelp": "El color detrás de las páginas. Casi blanco para un tema claro o casi negro para uno oscuro: los colores intensos dificultan la lectura.",
+    "sidebar": "Barra lateral",
+    "sidebarHelp": "La columna de navegación. Se deriva del acento, salvo que la configures.",
+    "deriveSidebar": "Derivar del acento",
+    "resetToSaved": "Restablecer lo guardado",
+    "previewNotice": "Estás viendo el borrador. Tu tema vuelve al salir de esta página. Elige {{organization}} en Cuenta → Apariencia para conservarlo.",
+    "removeThemeConfirmation": "Quienes no hayan elegido un tema volverán a Arenisca. Quienes eligieron {{organization}} verán Arenisca hasta que se guarde otro tema.",
+    "removeThemeTitle": "¿Quitar el tema de la organización?",
+    "calls": "Llamadas",
+    "callsDescription": "Elige el proveedor que se usará al iniciar una llamada en cada equipo.",
+    "noTeams": "No hay equipos disponibles.",
+    "teamsLoadFailed": "No se pudieron cargar los equipos.",
+    "teamsLoading": "Cargando equipos…",
+    "providerUnavailable": "{{provider}} no está configurado en esta implementación.",
+    "callProviderFor": "Proveedor de llamadas para {{team}}",
+    "noCallProviders": "No hay proveedores de llamadas configurados en esta implementación.",
+    "providerSaveFailed": "No se pudo guardar el proveedor de llamadas.",
+    "callsCreateLink": "Las llamadas de este equipo crean un enlace de {{provider}}.",
+    "checks": {
+      "title": "Comprobaciones",
+      "text": "Texto sobre el fondo",
+      "secondaryText": "Texto secundario sobre el fondo",
+      "link": "Enlace sobre el fondo",
+      "button": "Etiqueta del botón sobre el acento",
+      "accentMain": "Acento sobre el fondo",
+      "blocked": "Bloqueado",
+      "check": "Comprobar",
+      "surface-band": {
+        "label": "Fondo",
+        "light": "En un tema claro, el fondo debe ser claro, como #f8fafc.",
+        "dark": "En un tema oscuro, el fondo debe ser oscuro, como #14171c."
+      },
+      "surface-chroma": {
+        "label": "Fondo",
+        "detail": "El fondo tiene demasiado color para que el texto se lea bien. Mantenlo neutro y reserva el color para el acento o la barra lateral."
+      },
+      "sidebar-band": {
+        "label": "Barra lateral",
+        "detail": "La barra lateral debe ser tan oscura (o clara) como el fondo porque comparten los colores del texto."
+      },
+      "accent-on-main": {
+        "label": "Acento sobre el fondo",
+        "detail": "El acento no destaca lo suficiente sobre el fondo ({{ratio}}:1; se necesita 3:1). Elige un acento más claro u oscuro, o ajusta el fondo."
+      },
+      "accent-on-panel": {
+        "label": "Acento sobre las tarjetas",
+        "detail": "El acento no destaca lo suficiente sobre las tarjetas ({{ratio}}:1; se necesita 3:1). Elige un acento más claro u oscuro, o ajusta el fondo."
+      },
+      "accent-on-sidebar": {
+        "label": "Acento en la barra lateral",
+        "detail": "El elemento resaltado de la navegación apenas se distinguirá ({{ratio}}:1)."
+      },
+      "accent-near-danger": {
+        "label": "Acento y errores",
+        "detail": "El acento se parece al rojo de los errores, así que los botones destructivos parecerán normales."
+      }
+    }
   }
 }

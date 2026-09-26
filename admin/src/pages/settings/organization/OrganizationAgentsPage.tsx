@@ -10,10 +10,11 @@ import { useCurrentOrganization } from '../../../facades/organization/hooks'
  * override unless this level locks them.
  */
 export const OrganizationAgentsPage = ({ tabs }: SettingsTabHostProps) => {
+  const { t } = useTranslation('settings')
   const { data: organization } = useCurrentOrganization()
 
   return (
-    <SettingsPanel eyebrow="Organisation" title="Agents">
+    <SettingsPanel eyebrow={t('organization.organisation')} title={t('team.agents')}>
       {tabs}
       <div className="grid gap-4">
         <CallProviderSettingsPanel />
@@ -23,3 +24,4 @@ export const OrganizationAgentsPage = ({ tabs }: SettingsTabHostProps) => {
     </SettingsPanel>
   )
 }
+import { useTranslation } from 'react-i18next'

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { OrganizationAgentsPage } from './organization/OrganizationAgentsPage'
 import { OrganizationAppearancePage } from './organization/OrganizationAppearancePage'
 import { OrganizationProfilePage } from './organization/OrganizationProfilePage'
@@ -10,12 +11,6 @@ const ORGANIZATION_SETTINGS_TABS = ['profile', 'agents', 'appearance'] as const
 
 type OrganizationSettingsTab = (typeof ORGANIZATION_SETTINGS_TABS)[number]
 
-const TABS: ReadonlyArray<{ label: string; value: OrganizationSettingsTab }> = [
-  { label: 'Profile', value: 'profile' },
-  { label: 'Agents', value: 'agents' },
-  { label: 'Appearance', value: 'appearance' },
-]
-
 const PAGES: Record<
   OrganizationSettingsTab,
   (props: { tabs?: React.ReactNode }) => React.JSX.Element | null
@@ -26,6 +21,7 @@ const PAGES: Record<
 }
 
 export const OrganizationSettingsPage = () => {
+  const { t } = useTranslation('settings')
   const { me } = useAuthSession()
   const [activeTab, setActiveTab] = useTabParam('tab', ORGANIZATION_SETTINGS_TABS, 'profile')
 
@@ -37,8 +33,12 @@ export const OrganizationSettingsPage = () => {
   const tabs = (
     <div className="-mt-1 mb-4 flex items-center">
       <TabBar
-        ariaLabel="Organisation settings sections"
-        items={TABS}
+        ariaLabel={t('organization.settingsSections')}
+        items={[
+          { label: t('profile.title'), value: 'profile' as const },
+          { label: t('team.agents'), value: 'agents' as const },
+          { label: t('organization.appearance'), value: 'appearance' as const },
+        ]}
         onChange={setActiveTab}
         value={activeTab}
       />
