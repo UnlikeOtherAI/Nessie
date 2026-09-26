@@ -279,7 +279,7 @@ const view = scenarios[scenarioName]
 createRoot(document.getElementById('root')!).render(
   <QueryClientProvider client={queryClient}>
     <ApiClientProvider client={client}>
-      <MemoryRouter initialEntries={['/agents/executors?tab=permissions']}>
+      <MemoryRouter initialEntries={['/admin/computers?tab=permissions']}>
         <div style={{ background: 'var(--bg)', minHeight: '100vh', padding: '24px' }}>
           <div style={{ margin: '0 auto', maxWidth: '720px' }}>
             {grantingWholeSuite ? (

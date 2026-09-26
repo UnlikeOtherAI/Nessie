@@ -85,7 +85,7 @@ export const AGENT_MODEL_SELECTION_ERROR_CODES = {
 
 /**
  * An organisation owner switched this pair off on
- * `/settings/organization/models`. Refused here so the switch is real at every
+ * `/admin/models`. Refused here so the switch is real at every
  * write path — the picker already hides it, and a picker-only filter would be
  * bypassed by the personal assistant's `agent_create` tool and by any client
  * posting the pair directly.
@@ -110,7 +110,7 @@ const assertPairEnabled = async (
     throw new AgentModelSelectionError(
       AGENT_MODEL_SELECTION_ERROR_CODES.DISABLED,
       'That model is switched off for this organisation. '
-        + 'An organisation owner can turn it back on under Organization → Models.',
+        + 'An organisation owner can turn it back on under Admin › AI models.',
     )
   }
   if (input.teamId) {
@@ -119,7 +119,7 @@ const assertPairEnabled = async (
       throw new AgentModelSelectionError(
         AGENT_MODEL_SELECTION_ERROR_CODES.TEAM_DISABLED,
         'That model is switched off for this team. '
-          + 'A team administrator can turn it back on under Team → Models.',
+          + 'A team administrator can turn it back on under Admin › AI models, in this team\'s scope.',
       )
     }
   }

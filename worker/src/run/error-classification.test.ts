@@ -99,7 +99,7 @@ test('a typed Ledger 402 is exhausted credits, never a generic billing error', (
   assert.equal(classifyError(error), 'credits_exhausted')
   assert.equal(
     userMessageForFailureReason(classifyError(error)),
-    'Your team has no AI credits remaining. Ask a billing manager to add credits or update billing in Credits & billing (/tokens), then try again.',
+    'Your team has no AI credits remaining. Ask a billing manager to add credits or update billing in Credits and billing (/admin/billing), then try again.',
   )
   assert.deepEqual(
     resolveRecovery(classifyError(error), 0, { remaining: 0, total: 6 }),

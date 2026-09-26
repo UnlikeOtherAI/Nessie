@@ -60,7 +60,7 @@ try {
     const errors = []
     page.on('pageerror', (error) => errors.push(String(error)))
     await page.goto(`${ADMIN_URL}/e2e/executor-pairing/index.html`)
-    await page.getByRole('button', { name: 'Add executor', exact: true }).click()
+    await page.getByRole('button', { name: 'Pair a computer', exact: true }).click()
     await page.getByLabel('Eight-digit code').fill('88888888')
     await page.getByRole('button', { name: 'Continue', exact: true }).click()
     await page.getByText('Too many attempts.', { exact: false }).waitFor()
@@ -86,14 +86,14 @@ try {
     await page.getByRole('heading', { name: 'Machine paired' }).waitFor({ timeout: 12_000 })
     await page.getByRole('button', { name: 'Open executor', exact: true }).click()
     await page.getByText('Executor opened', { exact: true }).waitFor()
-    await page.getByRole('button', { name: 'Add executor', exact: true }).click()
+    await page.getByRole('button', { name: 'Pair a computer', exact: true }).click()
     assert.equal(await page.getByLabel('Eight-digit code').inputValue(), '')
     await page.keyboard.press('Escape')
     assert.equal(await page.getByRole('dialog').count(), 0)
 
     // All doorways pair personally into the current team; sharing lives on Permissions.
     await page.goto(`${ADMIN_URL}/e2e/executor-pairing/index.html?team=1`)
-    await page.getByRole('button', { name: 'Add executor', exact: true }).click()
+    await page.getByRole('button', { name: 'Pair a computer', exact: true }).click()
     await page.getByLabel('Eight-digit code').fill('01234567')
     await page.getByRole('button', { name: 'Continue', exact: true }).click()
     assert.equal(await page.getByRole('combobox').count(), 0)
@@ -101,7 +101,7 @@ try {
 
     // The existing project's doorway pins its actual team and project.
     await page.goto(`${ADMIN_URL}/e2e/executor-pairing/index.html?project=1`)
-    await page.getByRole('button', { name: 'Add executor', exact: true }).click()
+    await page.getByRole('button', { name: 'Pair a computer', exact: true }).click()
     await page.getByLabel('Eight-digit code').fill('01234567')
     await page.getByRole('button', { name: 'Continue', exact: true }).click()
     await page.getByText('UnlikeOtherAI · Product', { exact: true }).waitFor()
@@ -140,7 +140,7 @@ try {
         } }
       }, platform)
       await page.goto(`${ADMIN_URL}/e2e/executor-pairing/index.html?native=${platform}`)
-      await page.getByRole('button', { name: 'Add executor', exact: true }).click()
+      await page.getByRole('button', { name: 'Pair a computer', exact: true }).click()
       await page.getByRole('button', { name: 'Connect this computer', exact: true }).click()
       assert.equal(await page.getByRole('combobox').count(), 0, 'Desktop pairing also uses the current team')
       await page.getByLabel('The fingerprint matches').check()

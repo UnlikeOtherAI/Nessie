@@ -286,7 +286,7 @@ summary and points here; **this file is the rule**.
   `budget.threshold_alert` `TaskEvent` and enqueues `budget.alert-dispatch`,
   notifying org owners + the scope's managers through the shared push pipeline
   (`worker/src/control/push-delivery-core.ts`), respecting preferences and
-  deep-linking `/ops/usage`. Every terminal run persists its inference spend —
+  deep-linking `/admin/usage`. Every terminal run persists its inference spend —
   the generic failure/crash path too, via a caller-owned invocation accumulator
   threaded through `runAgenticLoop`, so a failed run's tokens stay attributable
   (idempotent on `inferenceInvocationId`). Owners read spend by run outcome at

@@ -12,7 +12,7 @@ import {
 import { toAppSlug } from './app-slug.js'
 
 /**
- * "Add a custom app" — the `/apps` page's own doorway for a server that is not
+ * "Add a custom app" — the `/admin/apps` page's own doorway for a server that is not
  * in the catalogue yet. Discovery records its requirements, but it deliberately
  * stops before creating an account: the Apps review dialog owns that explicit
  * confirmation.
@@ -91,7 +91,7 @@ const resolveCustomCatalogEntry = async (
   // that same mapping applied to a discovery proposal instead of a library row.
   // Published, matching `POST /api/mcp/library/import`, so an app added here
   // and one imported from the Library tab are the same kind of row — and, as
-  // publishing shares it, the whole organisation sees it on `/apps`.
+  // publishing shares it, the whole organisation sees it on `/admin/apps`.
   return createCatalogEntry(
     ctx.prisma,
     ctx.actorContext,

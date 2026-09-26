@@ -13,7 +13,7 @@ import {
 } from '../src/inference-model-availability.js'
 
 /**
- * The exception list behind Organization → Models.
+ * The exception list behind Admin › AI models.
  *
  * Two shapes are load-bearing and neither is obvious from the call sites: an
  * ABSENT row means available (so a model Ledger adds tomorrow is usable

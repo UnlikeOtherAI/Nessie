@@ -411,7 +411,7 @@ Required invariants:
 
 > **Member lifecycle & account security (implemented 2026-06-14).** The admin
 > settings surface now manages organisation membership and account security:
-> - **Member management** (`/settings/members`, owner-only): change a member's
+> - **Member management** (`/admin/people`, owner-only): change a member's
 >   org role (`owner`/`admin`/`member`/`viewer`) via `PATCH /api/users/:id`, and
 >   **deactivate/reactivate** members (`POST /api/users/:id/deactivate` |
 >   `/reactivate`). Removal is **deactivate-only and reversible** — the
@@ -429,7 +429,7 @@ Required invariants:
 >   password for local accounts (`POST /api/auth/password`; SSO accounts manage
 >   credentials at their IdP). Changing a password evicts the user's other
 >   sessions.
-> - **Organisation profile** (`/settings/organization`, owner/admin): rename the
+> - **Organisation profile** (`/admin/organisation`, owner/admin): rename the
 >   org and set its logo (`PATCH /api/organizations/current`).
 > - **Approvals** are actionable by any signed-in member (the approvals API is
 >   ungated by design); other governance surfaces (audit, token usage, policy,

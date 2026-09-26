@@ -187,7 +187,7 @@ const main = async () => {
       await subscription
       const browserDoor = page.getByRole('button', { name: 'Browser', exact: true })
       assert.equal(await browserDoor.count(), 0, 'an ungranted agent must not expose a browser doorway')
-      await page.goto(`${ADMIN_URL}/agents/${agent.id}?agentTab=tools`, { waitUntil: 'domcontentloaded' })
+      await page.goto(`${ADMIN_URL}/admin/agents/${agent.id}?agentTab=tools`, { waitUntil: 'domcontentloaded' })
       await page.getByRole('tab', { name: 'Tools', exact: true }).waitFor()
       await page.getByText('Loading tools…', { exact: true }).waitFor({ state: 'hidden' })
       await page.getByText(

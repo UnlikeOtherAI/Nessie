@@ -147,7 +147,7 @@ try {
   assert.ok((await calls()).some((call) => call.body?.action === 'retry' && !call.body.itemId))
 
   await open('list')
-  await page.getByRole('heading', { name: 'Task Sets', exact: true }).waitFor()
+  await page.getByRole('heading', { name: 'Batch jobs', exact: true }).waitFor()
   await shot('task-set-home')
   await page.setViewportSize({ height: 844, width: 390 })
   await shot('task-set-home-phone')

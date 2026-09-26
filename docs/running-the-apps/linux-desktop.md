@@ -4,7 +4,7 @@ Chapter of [Running the Native Apps](overview.md).
 
 ## Pairing and unpairing
 
-In Nessie Desktop, open **Executors → Pair executor → Connect this computer**.
+In Nessie Desktop, open **Admin › Computers › Pair a computer › Connect this computer**.
 Choose a workspace, review the account and team, then confirm the native dialog.
 Repeat while signed into another account to add an independent connection;
 existing connections continue running. Each executor has its own Start/Stop
@@ -20,7 +20,7 @@ mkdir -p "$HOME/NessieWorkspace"
 nessie-executor pair --api nessie --workspace "$HOME/NessieWorkspace"
 ```
 
-Claim the displayed code in Nessie's **Executors → Pair executor**, choose the
+Claim the displayed code in Nessie's **Admin › Computers › Pair a computer**, choose the
 real team and private access for personal terminal programs, then confirm the
 named organisation and team in the CLI. The interactive pairing command enables
 the service after confirmation. A JSON/noninteractive pairing client must enable
@@ -85,7 +85,7 @@ existing process rather than being lost when the second process exits.
 WSLg is the development exception: its Linux window is displayed by Windows,
 so a Windows browser sends `nessie://` to the installed Windows app. Use the
 Linux login screen's **Use Windows session** doorway, copy Session debug from
-**Account → Debug** in the signed-in Windows app, and paste it there. Only the
+**Admin › Advanced › Session debug** in the signed-in Windows app, and paste it there. Only the
 same-server short-lived access token is imported; cookies, identity claims,
 storage, and refresh credentials are ignored. Repeat the transfer after that
 token expires. A normal Linux desktop browser does not need this bridge.
@@ -121,7 +121,7 @@ sha256sum --check dist/nessie-executor_<version>_amd64.deb.sha256
 sudo apt install ./dist/nessie-executor_<version>_amd64.deb
 ```
 
-**Pair.** Copy the command from **Agents → Executors → Pair executor**; it
+**Pair.** Copy the command from **Admin › Computers › Pair a computer**; it
 carries the enrollment id and challenge:
 
 ```sh

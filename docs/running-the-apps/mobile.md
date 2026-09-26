@@ -450,7 +450,7 @@ Android uses the same in-house sender, but Firebase issues the raw FCM token.
 Before an Android production build can register or receive pushes for
 `com.km.nessie`, add the Firebase project's `google-services.json` to the
 mobile build configuration and upload the corresponding Firebase
-**service-account JSON** through **Settings → Push credentials**. The first is
+**service-account JSON** through **Admin › Advanced › Mobile push setup**. The first is
 safe client build configuration; the second is the server credential used by
 Nessie to call FCM directly and must remain in the encrypted server-side secret
 store. Both files must belong to the same Firebase project and Android app ID.
@@ -485,7 +485,7 @@ already-running release pipeline.
    requests — including those from a former account — cannot reclaim it. Logout
    retains a non-deliverable tombstone with a newer generation for the same
    reason. A simulator cannot prove APNs delivery.
-2. Sign in as a platform super-admin, open **Settings → Push credentials**, and
+2. Sign in as a platform super-admin, open **Admin › Advanced › Mobile push setup**, and
    upload the `.p8` key with its Key ID, Team ID, topic
    `com.km.nessie`, and either environment. The secret is encrypted
    in Nessie's server-side secret store and is never returned to a client.
@@ -519,7 +519,7 @@ the production APNs host; a sandbox development token must not be sent there.
 
 ### Per-user delivery controls and open-page suppression
 
-Each person controls their own delivery at **Settings → Notifications**. All
+Each person controls their own delivery at **Your settings › Notifications**. All
 important categories start enabled: channel messages, direct mentions, and
 operational budget warnings/blocks for organisation owners. The account-level switch and quiet hours
 remain a higher-priority stop for every category; a muted channel continues to

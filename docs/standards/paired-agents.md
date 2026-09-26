@@ -96,6 +96,13 @@ which is the one that blocks agents today.
   arrivals come through `verification_uri_complete` with the code already in
   the query, which the section reads and strips. Each program opens
   `/settings/security/programs/:id`.
+
+  `verification_uri` is the admin origin's `/settings/security`, and
+  `verification_uri_complete` is `/settings/security?code=<user_code>`
+  (`api/src/routes/mcp-agent-auth.ts`); discovery's `resource_documentation`
+  names the same page (`api/src/routes/well-known-mcp-resource.ts`). No older
+  address forwards here: a URI an agent printed before the page moved no longer
+  resolves, and that pairing is simply started again.
 - `/admin/security?tab=programs` (**Programs signed in as people**) — owner
   and organisation admin. Every credential in the organisation, whose account
   each borrows, and the pairing switch; each opens

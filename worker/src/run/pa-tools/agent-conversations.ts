@@ -210,7 +210,7 @@ const listAddressableAgents = async (
 const agentNotFound = (needle: string): Error =>
   new Error(
     `I can't find an agent called "${needle}" that you can reach. `
-    + 'Call agent_list, then pass the last path segment of its /agents/<agentId> link.',
+    + 'Call agent_list, then pass the last path segment of its /admin/agents/<agentId> link.',
   )
 
 const resolveAddressableAgent = async (

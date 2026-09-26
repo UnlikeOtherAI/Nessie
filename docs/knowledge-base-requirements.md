@@ -391,7 +391,7 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
 
 The admin renders Knowledge in its own section, not inside the channels column.
 On `/knowledge-base` the shell swaps the channels/DMs second column for a
-dedicated `KnowledgeSidebarNav` (mirrors how `/agents` and the admin routes swap
+dedicated `KnowledgeSidebarNav` (mirrors how the `/admin` routes swap
 that column):
 
 - The second column starts with the Spaces list — styled like the channels list

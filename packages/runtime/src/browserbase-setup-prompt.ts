@@ -10,7 +10,7 @@ export type BrowserbaseSetupPromptFacts = {
    * True when this agent holds `agent_tool_access_set`, which grants another
    * agent the browser tools with the requesting person's own authority. Without
    * it the owner surface is the only truthful path; with it, sending an owner
-   * to Agents → Tools is a refusal to do work the agent is holding the tool
+   * to the Tool registry is a refusal to do work the agent is holding the tool
    * for. It never covers this agent's own toolset, which the deployment fixes.
    */
   canGrantBrowserTools?: boolean
@@ -18,7 +18,7 @@ export type BrowserbaseSetupPromptFacts = {
    * True for one of Nessie's own agents — the Personal Assistant, the Agent
    * Designer — whose toolset the deployment fixes: nobody, owners included,
    * can add `browser_login_request` to it, so "the owner must enable it at
-   * Agents → Tools" is a door that does not exist. The Designer relayed that
+   * the Tool registry" is a door that does not exist. The Designer relayed that
    * sentence about ITS OWN toolset to a person asking about the agent it was
    * building, for which the tool is an ordinary grant.
    */
@@ -43,8 +43,8 @@ const loginRequestLine = (facts: BrowserbaseSetupPromptFacts): string => {
       + 'Do not substitute card_post, prose, or a fabricated permission card.'
   }
   return 'Temporary personal browser access is unavailable because `browser_login_request` is not in your toolset. '
-    + 'Explain that the owner must explicitly enable `browser_login_request` at Agents → Tools '
-    + '(`/agents/tools`). Do not substitute card_post, prose, or a fabricated permission card.'
+    + 'Explain that the owner must explicitly enable `browser_login_request` at Admin › Advanced › Tool registry '
+    + '(`/admin/advanced/tools`). Do not substitute card_post, prose, or a fabricated permission card.'
 }
 
 export const buildBrowserbaseSetupPrompt = (facts: BrowserbaseSetupPromptFacts): string => [
@@ -52,9 +52,10 @@ export const buildBrowserbaseSetupPrompt = (facts: BrowserbaseSetupPromptFacts):
   'If a cloud browser would materially help the work, explain that it uses a Browserbase account. '
     + 'A saved private browser context and a temporary personal browser grant are separate: never attach '
     + 'a person\'s sign-in to a shared or team agent browser.',
-  'For a personal Browserbase account, go to Settings → Agents (`/settings/account?tab=agents`). '
-    + 'An owner can set up a shared organisation account at Settings → Organization → Agents '
-    + '(`/settings/organization?tab=agents`). Do not send people to Apps.',
+  'For a personal Browserbase account, go to Your settings › Connected accounts › Browsers '
+    + '(`/settings/accounts?tab=browsers`). '
+    + 'An owner can set up a shared organisation account at Admin › Company connections '
+    + '(`/admin/connections`). Do not send people to Apps.',
   facts.hasCardTool
     ? 'You can ask for a Browserbase API key only through a masked card secret field with '
       + '`destination.kind` `browserbase_connection`; never ask for it in prose or receive it yourself. '
@@ -75,10 +76,10 @@ export const buildBrowserbaseSetupPrompt = (facts: BrowserbaseSetupPromptFacts):
       + 'themselves you grant to the named agent with `agent_tool_access_set`, which is refused '
       + 'unless the person asking is an organisation owner. The grant does not wait for the account: '
       + 'grant the tools now and they work the moment an account is connected — say so, rather than '
-      + 'holding the agent back for a key. Do not send an owner to Agents → Tools '
+      + 'holding the agent back for a key. Do not send an owner to the Tool registry '
       + 'for that grant, and never claim it is done before the tool returns.'
     : 'A Browserbase account connection is separate from cloud-browser access for an agent. '
-      + 'An owner must explicitly grant the named agent the browser tools at Agents → Tools '
-      + '(`/agents/tools`); '
+      + 'An owner must explicitly grant the named agent the browser tools at Admin › Advanced › Tool registry '
+      + '(`/admin/advanced/tools`); '
       + 'never enable or imply that grant yourself.',
 ].join('\n')

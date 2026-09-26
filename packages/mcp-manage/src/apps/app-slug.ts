@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 
 /**
- * `McpCatalogEntry.slug` is the immutable public identity behind `/apps/:slug`.
+ * `McpCatalogEntry.slug` is the immutable public identity behind `/admin/apps/:slug`.
  * `name` cannot do that job: it is mutable and unique only among public
  * entries, so a rename would break every link already in somebody's hands.
  *

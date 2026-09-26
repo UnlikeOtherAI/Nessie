@@ -144,7 +144,7 @@ reconciles its session again so it cannot remain at **Loading workspace…**.
 
 The desktop app uses the same authenticated realtime message controller as the
 web UI, then sends its system alert through Tauri's native macOS notification
-API. Enable **Push enabled** in Nessie’s **Settings → Notifications** while the
+API. Enable **Push enabled** in Nessie’s **Your settings › Notifications** while the
 desktop app is open to trigger the macOS permission prompt; then leave Nessie
 allowed in **System Settings → Notifications**. This handles new messages and
 agent replies, honours the exact conversation focus rule, and opens the exact
