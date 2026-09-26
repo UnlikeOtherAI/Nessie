@@ -160,6 +160,7 @@ const AgentCreateInputSchema = z.object({
   systemPrompt: z.string().optional(),
   model: z.string().optional(),
   provider: z.string().optional(),
+  modelSubscriptionId: z.string().uuid().optional(),
   effort: AgentEffortSchema.optional(),
   runLimits: AgentRunLimitsSchema.nullish(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
@@ -195,6 +196,9 @@ export const runAgentCreateTool = async (
         ? { ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL }
         : {}),
       model: args.model,
+      // Which of two linked accounts at one provider: the validator resolves a
+      // single link on its own and refuses to guess between two.
+      ...(args.modelSubscriptionId ? { modelSubscriptionId: args.modelSubscriptionId } : {}),
       organizationId: member.organizationId,
       ownerUserId: member.userId,
       provider: args.provider,

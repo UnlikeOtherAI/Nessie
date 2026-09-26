@@ -161,6 +161,17 @@ export const buildModelPrompt = (
     /** True when `browser_login_request` is in this run's resolved builtin toolset. */
     hasBrowserLoginRequestTool?: boolean
     /**
+     * True when `agent_tool_access_set` is in this run's resolved toolset:
+     * this run grants another agent the browser tools itself, so the
+     * Browserbase block must not send an owner to the Tools tab for it.
+     * The Designer's catalogue said "you grant it" while this block, rendered
+     * for every agent without the fact, said "an owner must" — and it quoted
+     * the refusal.
+     */
+    canGrantBrowserTools?: boolean
+    /** One of Nessie's own agents, whose toolset the deployment fixes. */
+    ownToolsetFixed?: boolean
+    /**
      * What the model can reach on a person's machine this turn, from the
      * run's bindings and its conversation lease (`loadExecutorReachFacts`).
      */
@@ -187,8 +198,10 @@ export const buildModelPrompt = (
     buildAgentTodoFactsBlock(options.todoFacts ?? null) ?? '',
     options.documents ? buildAgentDocumentsBlock(options.documents) ?? '' : '',
     buildAgentCardsBlock({
+      canGrantBrowserTools: options.canGrantBrowserTools ?? false,
       hasBrowserLoginRequestTool: options.hasBrowserLoginRequestTool ?? false,
       hasCardTool: options.hasCardTool ?? false,
+      ownToolsetFixed: options.ownToolsetFixed ?? false,
     }) ?? '',
     options.temporaryBrowserAccess
       ? [
