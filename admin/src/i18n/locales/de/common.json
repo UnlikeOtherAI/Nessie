@@ -120,5 +120,7 @@
       "unusableToken": "Dieser Sitzungsauszug enthält kein verwendbares Zugriffstoken.",
       "conflictingTokens": "Dieser Sitzungsauszug enthält widersprüchliche Zugriffstoken."
     }
-  }
+  },
+  "ownerAccessRequired": "Zugriff als Eigentümer erforderlich",
+  "superAdminAccessRequired": "Zugriff als Instanz-Superadmin erforderlich"
 }

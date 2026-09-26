@@ -120,5 +120,7 @@
       "unusableToken": "Este volcado de sesión no contiene un token de acceso utilizable.",
       "conflictingTokens": "Este volcado de sesión contiene tokens de acceso contradictorios."
     }
-  }
+  },
+  "ownerAccessRequired": "Se requiere acceso de propietario",
+  "superAdminAccessRequired": "Se requiere acceso de superadministrador de la instancia"
 }

@@ -120,5 +120,7 @@
       "unusableToken": "Výpis relace neobsahuje použitelný přístupový token.",
       "conflictingTokens": "Výpis relace obsahuje navzájem odlišné přístupové tokeny."
     }
-  }
+  },
+  "ownerAccessRequired": "Vyžaduje se přístup vlastníka",
+  "superAdminAccessRequired": "Vyžaduje se přístup správce instance"
 }

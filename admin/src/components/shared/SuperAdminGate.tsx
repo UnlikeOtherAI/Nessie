@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { MeResponse } from '@nessie/schemas'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 
@@ -31,12 +32,13 @@ type SuperAdminGateProps = {
 }
 
 export const SuperAdminGate = ({ children }: SuperAdminGateProps) => {
+  const { t } = useTranslation('common')
   const isSuperAdmin = useIsSuperAdmin()
 
   if (!isSuperAdmin) {
     return (
       <section className="flex h-full items-center justify-center text-[color:var(--tx3)]">
-        Instance super-admin access required
+        {t('superAdminAccessRequired')}
       </section>
     )
   }

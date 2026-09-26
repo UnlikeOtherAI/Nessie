@@ -120,5 +120,7 @@
       "unusableToken": "Cet extrait de session ne contient aucun jeton d’accès utilisable.",
       "conflictingTokens": "Cet extrait de session contient des jetons d’accès contradictoires."
     }
-  }
+  },
+  "ownerAccessRequired": "Accès propriétaire requis",
+  "superAdminAccessRequired": "Accès super-administrateur de l’instance requis"
 }

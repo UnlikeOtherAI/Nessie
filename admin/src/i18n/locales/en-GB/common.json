@@ -120,5 +120,7 @@
       "unusableToken": "This session dump does not contain a usable access token.",
       "conflictingTokens": "This session dump contains conflicting access tokens."
     }
-  }
+  },
+  "ownerAccessRequired": "Owner access required",
+  "superAdminAccessRequired": "Instance super-admin access required"
 }

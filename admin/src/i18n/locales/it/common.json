@@ -120,5 +120,7 @@
       "unusableToken": "Questi dati della sessione non contengono un token di accesso utilizzabile.",
       "conflictingTokens": "Questi dati della sessione contengono token di accesso in conflitto."
     }
-  }
+  },
+  "ownerAccessRequired": "È richiesto l’accesso come proprietario",
+  "superAdminAccessRequired": "È richiesto l’accesso come amministratore dell’istanza"
 }

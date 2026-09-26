@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useIsOwner } from '../../facades/auth/hooks'
 
 /**
@@ -23,12 +24,13 @@ type OwnerGateProps = {
 }
 
 export const OwnerGate = ({ children }: OwnerGateProps) => {
+  const { t } = useTranslation('common')
   const isOwner = useIsOwner()
 
   if (!isOwner) {
     return (
       <section className="flex h-full items-center justify-center text-[color:var(--tx3)]">
-        Owner access required
+        {t('ownerAccessRequired')}
       </section>
     )
   }
