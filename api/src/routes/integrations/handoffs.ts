@@ -95,7 +95,6 @@ export const registerIntegrationHandoffRoutes = (
           launchUrl: product.launchUrl,
           productSlug: product.slug,
         }),
-        teamId,
       })
     } catch {
       sendApiError(reply, 500, 'PERSONAL_ASSISTANT_UNAVAILABLE', 'Personal Assistant is unavailable')
@@ -156,7 +155,6 @@ export const registerIntegrationHandoffRoutes = (
           launchUrl: product.launchUrl,
           productSlug: product.slug,
         }),
-        teamId,
       })
     } catch {
       sendApiError(reply, 500, 'PERSONAL_ASSISTANT_UNAVAILABLE', 'Personal Assistant is unavailable')

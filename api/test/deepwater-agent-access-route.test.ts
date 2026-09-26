@@ -231,13 +231,23 @@ const makeOwnerBootstrapApp = () => {
         }
       },
     },
+    // The PA bootstrap hangs its system team from the organisation's
+    // channel-root project: this fixture's one project stands in for the root,
+    // its own team is found by name, and the PA's team is created fresh.
+    project: {
+      findFirst: async () => ({ id: projectId }),
+    },
     team: {
       create: async () => ({ id: systemTeamId }),
       findFirst: async ({ where }: { where: { id?: string; name?: string } }) =>
-        where.id ? { projectId } : null,
+        where.name === 'Standalone channels' ? { id: 'root-team', projectId } : null,
       findUnique: async () => ({
         project: { id: projectId, organizationId },
       }),
+    },
+    channel: {
+      // The root has held its default channels, so nothing is seeded here.
+      count: async () => 1,
     },
     mcpServerInstance: {
       findFirst: async () => ({ id: connectorId }),
@@ -282,7 +292,7 @@ const makeOwnerBootstrapApp = () => {
         return { count }
       },
     },
-    channel: { upsert: async () => ({ id: channelId }) },
+    channel: { ...db.channel, upsert: async () => ({ id: channelId }) },
     channelMember: {
       deleteMany: async () => ({ count: 0 }),
       upsert: async () => ({}),

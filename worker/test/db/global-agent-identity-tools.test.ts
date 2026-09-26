@@ -63,7 +63,6 @@ runDatabaseTest('the bootstrapped Designer wields identity tools in its home DM 
   const bootstrap = await ensureGlobalAgentBootstrap(prisma, {
     blueprint: AGENT_DESIGNER_BLUEPRINT,
     organizationId: organization.id,
-    teamId: team.id,
     userId: user.id,
   })
 

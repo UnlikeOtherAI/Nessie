@@ -353,6 +353,14 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
         projects.push(row)
         return row
       },
+      // The shared-channel root is resolved project first, oldest root wins.
+      findFirst: async ({ where }: { where?: Row } = {}) => {
+        record('project.findFirst')
+        return projects.find((project) =>
+          (where?.channelRoot === undefined || project.channelRoot === where.channelRoot)
+          && (where?.organizationId === undefined
+            || project.organizationId === where.organizationId)) ?? null
+      },
     },
     // A project's default board is created nested, so the fake needs the
     // `board` delegate `seedDefaultBoard` reaches for, not `boardColumn`.
@@ -379,6 +387,7 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
             || team.externalTeamId === where.externalTeamId)
           && (where?.name === undefined || team.name === where.name)
           && (where?.id === undefined || team.id === where.id)
+          && (where?.projectId === undefined || team.projectId === where.projectId)
           && (where?.project?.organizationId === undefined
             || projectRow(team)?.organizationId === where.project.organizationId)
           && (where?.systemManaged === undefined || team.systemManaged === where.systemManaged))

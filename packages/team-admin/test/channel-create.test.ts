@@ -23,9 +23,13 @@ const createStandalonePrisma = (slugTaken = false) => {
   let channelCreateData: Record<string, unknown> | undefined
   let seededChannelNames: string[] = []
 
+  // The root is resolved project first, then its team by name, then "has
+  // this root ever held a standard channel" — a fresh organisation answers
+  // nothing to each, so the ensure creates all three.
   const transaction = {
     $executeRaw: async () => 0,
     channel: {
+      count: async () => 0,
       createMany: async ({ data }: { data: Array<{ label: string; slug: string }> }) => {
         seededChannelNames = data.map((row) => row.slug)
         return { count: data.length }
@@ -36,6 +40,7 @@ const createStandalonePrisma = (slugTaken = false) => {
         createdProject = true
         return { id: IDS.project }
       },
+      findFirst: async () => null,
     },
     team: {
       create: async () => {

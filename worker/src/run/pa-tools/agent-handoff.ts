@@ -160,12 +160,10 @@ export const runAgentHandoffTool = async (
   }
 
   // Idempotent, and the same function login runs — the person may never have
-  // opened this DM. The origin channel's team only seeds the hidden system team
-  // the first time; afterwards it is found by name and the seed is unused.
+  // opened this DM.
   const home = await ensureGlobalAgentBootstrap(context.prisma, {
     blueprint,
     organizationId,
-    teamId: runContext.channel.teamId,
     userId: requesterUserId,
   })
   const destination = await context.prisma.channel.findUniqueOrThrow({

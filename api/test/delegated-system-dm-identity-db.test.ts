@@ -83,7 +83,6 @@ const seed = async (label: string): Promise<Seed> => {
   const home = await ensureGlobalAgentBootstrap(prisma, {
     blueprint: AGENT_DESIGNER_BLUEPRINT,
     organizationId,
-    teamId: team.id,
     userId,
   })
 

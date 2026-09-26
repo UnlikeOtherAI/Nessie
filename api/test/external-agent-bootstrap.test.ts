@@ -22,14 +22,12 @@ test('external-agent bootstrap is idempotent across repeated calls', async () =>
   const first = await ensureExternalAgentBootstrap(prisma, {
     organizationId: seed.organizationId,
     product,
-    teamId: seed.teamId,
     userId,
     externalTeamId: 'uoa-team',
   })
   const second = await ensureExternalAgentBootstrap(prisma, {
     organizationId: seed.organizationId,
     product,
-    teamId: seed.teamId,
     userId,
     externalTeamId: 'uoa-team',
   })
@@ -49,9 +47,15 @@ test('external-agent bootstrap is idempotent across repeated calls', async () =>
   assert.equal(fake.threads.length, 1)
   assert.equal(fake.agentBindings.length, 1)
 
-  // A system-managed host team was created; the channel has exactly one member.
-  const systemTeams = [...fake.teams.values()].filter((t) => t.systemManaged)
-  assert.equal(systemTeams.length, 1)
+  // A system-managed host team was created under the organisation's channel
+  // root — beside the root's own team, never under the seed team's project,
+  // which a person could delete; the channel has exactly one member.
+  const host = [...fake.teams.values()].find(
+    (t) => t.systemManaged && t.name === 'External Agent System',
+  )
+  assert.ok(host)
+  assert.equal(host.projectId, fake.rootProjects.get(seed.organizationId))
+  assert.notEqual(host.projectId, seed.projectId)
   assert.equal(fake.channelMembers.length, 1)
   assert.equal(fake.channelMembers[0]?.userId, userId)
   assert.equal(fake.channelMembers[0]?.role, 'owner')
@@ -73,14 +77,12 @@ test('different UOA teams use distinct channels and conversations', async () => 
   const first = await ensureExternalAgentBootstrap(prisma, {
     organizationId: seed.organizationId,
     product,
-    teamId: seed.teamId,
     userId,
     externalTeamId: 'uoa-team-a',
   })
   const second = await ensureExternalAgentBootstrap(prisma, {
     organizationId: seed.organizationId,
     product,
-    teamId: seed.teamId,
     userId,
     externalTeamId: 'uoa-team-b',
   })

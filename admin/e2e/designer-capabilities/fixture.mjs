@@ -29,7 +29,6 @@ export const seedDesignerFixture = async (prisma, seedScope) => {
   const designer = await ensureGlobalAgentBootstrap(prisma, {
     blueprint: AGENT_DESIGNER_BLUEPRINT,
     organizationId: scope.organizationId,
-    teamId: scope.teamId,
     userId: scope.userId,
   })
   const { ensureBuiltinToolsRegistered } = await import('../../../api/src/services/tools.ts')

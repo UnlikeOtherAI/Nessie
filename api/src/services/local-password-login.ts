@@ -75,11 +75,7 @@ export const authenticateLocalPassword = async (
   const actorContext = createActorContextFromClaims(session.claims)
   await ensureSystemAgentsForMember(
     deps.prisma,
-    {
-      organizationId: actorContext.tenant.organizationId,
-      teamId: actorContext.tenant.teamId!,
-      userId: user.id,
-    },
+    { organizationId: actorContext.tenant.organizationId, userId: user.id },
     (error) => request.log.error({ err: error }, 'global_agent_bootstrap_failed'),
   )
   await attemptPersonalAssistantAvatar({

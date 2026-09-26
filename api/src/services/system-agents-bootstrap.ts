@@ -17,10 +17,13 @@ import type { PrismaClient } from '@prisma/client'
 import { attemptGlobalAgentsBootstrap } from './global-agents.js'
 import { ensurePersonalAssistantBootstrap } from './personal-assistant.js'
 
+/**
+ * An organisation and a person, nothing else: the hidden system teams these
+ * agents' DMs hang from live under the organisation's channel root
+ * (`ensureSystemTeam`), so no team of the person's is involved.
+ */
 export type SystemAgentsBootstrapInput = {
   organizationId: string
-  /** The team the person is entering; seeds the hidden system teams the first time per organisation. */
-  teamId: string
   userId: string
 }
 
