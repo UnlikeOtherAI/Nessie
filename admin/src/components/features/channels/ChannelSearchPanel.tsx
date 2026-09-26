@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { MessageSearchResult } from '../../../lib/api-client'
 import { formatClock } from './channel-feed'
 
@@ -17,7 +18,9 @@ export const ChannelSearchPanel = ({
   onChangeQuery,
   onClose,
   onSelectResult,
-}: ChannelSearchPanelProps) => (
+}: ChannelSearchPanelProps) => {
+  const { t } = useTranslation('channels')
+  return (
   <div className="border-b border-[color:var(--sep)] px-5 py-2">
     <input
       autoFocus
@@ -28,7 +31,7 @@ export const ChannelSearchPanel = ({
           onClose()
         }
       }}
-      placeholder="Search messages in this channel"
+      placeholder={t('search.placeholder')}
       type="text"
       value={searchQuery}
     />
@@ -36,7 +39,7 @@ export const ChannelSearchPanel = ({
       <div className="mt-2 max-h-64 overflow-y-auto">
         {searchResults.length === 0 ? (
           <div className="px-1 py-2 text-sm text-[color:var(--tx3)]">
-            No matches.
+            {t('search.noMatches')}
           </div>
         ) : (
           searchResults.map((result) => (
@@ -61,4 +64,5 @@ export const ChannelSearchPanel = ({
       </div>
     ) : null}
   </div>
-)
+  )
+}

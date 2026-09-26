@@ -1,6 +1,7 @@
 import { faXmark } from '@fortawesome/free-solid-svg-icons'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import { useAgents } from '../facades/agents/hooks'
 import { useStartChannelConversation } from '../facades/channels/hooks'
@@ -46,6 +47,7 @@ const getRecipientName = (
 }
 
 export const ChannelConversationComposePage = () => {
+  const { t } = useTranslation('channels')
   const location = useLocation()
   const navigate = useNavigate()
   const phoneLayout = usePhoneLayout()
@@ -100,7 +102,7 @@ export const ChannelConversationComposePage = () => {
     id: 'channel-conversation-compose',
     initialFocusRef: addressInputRef,
     kind: 'modal',
-    label: 'Close new message',
+    label: t('compose.close'),
     onClose: close,
     open: !phoneLayout,
   })
@@ -153,7 +155,7 @@ export const ChannelConversationComposePage = () => {
       }
       if (recipients.length === 0) {
         restoreText(content)
-        setError('Choose at least one recipient.')
+        setError(t('compose.chooseRecipient'))
         addressInputRef.current?.focus()
         return
       }
@@ -192,12 +194,12 @@ export const ChannelConversationComposePage = () => {
         void navigate(`/channels/${channel.id}/threads/${channel.defaultThreadId}`, { replace: true })
       } catch (err) {
         restoreText(content)
-        setError(err instanceof Error ? err.message : 'Could not start chat.')
+        setError(err instanceof Error ? err.message : t('compose.startError'))
       } finally {
         sending.current = false
       }
     },
-    [attachments, interceptSecret, navigate, recipients, restoreText, sendMessage, startConversation],
+    [attachments, interceptSecret, navigate, recipients, restoreText, sendMessage, startConversation, t],
   )
 
   // Saved to the vault: the masked text starts the conversation like any
@@ -252,14 +254,14 @@ export const ChannelConversationComposePage = () => {
                 compact: true,
                 icon: faXmark,
                 id: 'close-compose',
-                label: 'Close new message',
+                label: t('compose.close'),
                 onSelect: close,
                 priority: 100,
               }]}
-              backLabel="Back to Channels"
+              backLabel={t('compose.back')}
               flowOwnsBack
               onBack={phoneLayout ? close : undefined}
-              title="New message"
+              title={t('compose.title')}
               titleId="channel-conversation-compose-title"
             />
 
@@ -271,13 +273,13 @@ export const ChannelConversationComposePage = () => {
                   agents={agents}
                   autoFocus
                   inputRef={addressInputRef}
-                  label="To"
+                  label={t('compose.to')}
                   // People are listed first, so a short cap would push every
                   // agent out of reach until the person typed; the list
                   // scrolls instead.
                   limit={50}
                   onChange={setRecipients}
-                  placeholder="Search people or agents"
+                  placeholder={t('compose.searchRecipients')}
                   recipients={recipients}
                   token={token}
                   users={users}
@@ -311,7 +313,7 @@ export const ChannelConversationComposePage = () => {
                     )
                   }}
                   onSubmitText={(text, agentMentions) => void submit(text, agentMentions)}
-                  placeholder="Message"
+                  placeholder={t('compose.messagePlaceholder')}
                   sendError={error}
                   // The questions a send can raise in an existing conversation
                   // do not arise before one exists. Every mention here names a
@@ -342,7 +344,7 @@ export const ChannelConversationComposePage = () => {
               open={oversizePaste !== null}
               pastedText={oversizePaste ?? ''}
             />
-            <DropZoneOverlay active={drop.isDragging} label="Drop files to attach" />
+            <DropZoneOverlay active={drop.isDragging} label={t('compose.dropFiles')} />
           </OverlayOwnerProvider>
         </div>
       </div>

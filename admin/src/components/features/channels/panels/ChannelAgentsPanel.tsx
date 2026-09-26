@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import type {
   AgentRecord,
   ChannelRecord,
@@ -70,15 +71,16 @@ export const ChannelAgentsPanel = ({
   personalAssistantPresences: PersonalAssistantPresenceParticipant[]
   onCreateAgent: () => void
 }) => {
+  const { t } = useTranslation('channels')
   const navigate = useNavigate()
 
   return (
     <div className="grid gap-4 p-5" data-testid="channel-agents-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <SectionLabel>Agents in this channel</SectionLabel>
+          <SectionLabel>{t('agentsPanel.title')}</SectionLabel>
           <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
-            Open one to see its identity, tools, to-dos, and triggers.
+            {t('agentsPanel.description')}
           </p>
         </div>
         <button
@@ -86,7 +88,7 @@ export const ChannelAgentsPanel = ({
           onClick={onCreateAgent}
           type="button"
         >
-          Create agent
+          {t('agentsPanel.create')}
         </button>
       </div>
 
@@ -102,7 +104,7 @@ export const ChannelAgentsPanel = ({
         </div>
       ) : (
         <EmptyState>
-          No agents are bound to this channel yet.
+          {t('agentsPanel.empty')}
         </EmptyState>
       )}
 

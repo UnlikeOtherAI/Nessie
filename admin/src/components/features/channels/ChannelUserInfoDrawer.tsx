@@ -4,6 +4,7 @@ import {
   useMemo,
   useState,
 } from 'react'
+import { useTranslation } from 'react-i18next'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import { useOpenDm } from '../../../facades/channels/hooks'
 import { useThreadMessages, useThreadStream } from '../../../facades/threads/hooks'
@@ -54,6 +55,7 @@ export const ChannelUserInfoDrawer = ({
   token,
   users,
 }: ChannelUserInfoDrawerProps) => {
+  const { t } = useTranslation('channels')
   const { mutate: openDirectMessage } = useOpenDm()
   const [dmChannel, setDmChannel] = useState<ChannelRecord | null>(null)
   const [openError, setOpenError] = useState<string | null>(null)
@@ -88,7 +90,7 @@ export const ChannelUserInfoDrawer = ({
     openDirectMessage(target.id, {
       onError: () => {
         if (!cancelled) {
-          setOpenError('Conversation unavailable')
+          setOpenError(t('userInfo.conversationUnavailable'))
         }
       },
       onSuccess: (channel) => {
@@ -101,7 +103,7 @@ export const ChannelUserInfoDrawer = ({
     return () => {
       cancelled = true
     }
-  }, [openDirectMessage, target])
+  }, [openDirectMessage, t, target])
 
   const messageHistory = useThreadMessages(dmChannel?.defaultThreadId)
   // Memoised so the empty-array fallback is not a fresh literal on every
@@ -183,7 +185,7 @@ export const ChannelUserInfoDrawer = ({
 
   return (
     <>
-      <Sheet onClose={onClose} open side="right" size="md" title={`${user.displayName} info`}>
+      <Sheet onClose={onClose} open side="right" size="md" title={t('userInfo.title', { name: user.displayName })}>
         <div
           className={[
             'admin-chat-surface flex h-full w-full min-h-0 flex-col',
@@ -225,7 +227,7 @@ export const ChannelUserInfoDrawer = ({
                 onClick={onClose}
                 type="button"
               >
-                Close
+                {t('userInfo.close')}
               </button>
             </div>
           </header>
@@ -243,7 +245,7 @@ export const ChannelUserInfoDrawer = ({
               ) : null}
               {!dmChannel && !openError ? (
                 <div className="px-5 py-4 text-sm text-[color:var(--tx3)]">
-                  Opening conversation...
+                  {t('userInfo.opening')}
                 </div>
               ) : null}
               {dmChannel ? (
@@ -288,7 +290,7 @@ export const ChannelUserInfoDrawer = ({
               mentionEntities={emptyMentions}
               mentionRef={mentionRef}
               message={message}
-              placeholder={`Message ${user.displayName}`}
+              placeholder={t('userInfo.messagePlaceholder', { name: user.displayName })}
               onChangeMessage={setMessage}
               onInsertAtSign={() => mentionRef.current?.insertAtSign()}
               onInsertEmoji={insertEmoji}

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { useTranslation } from 'react-i18next'
 
 import { useAgentTodoById } from '../../../facades/agent-todos/hooks'
 import type { AgentTodoRecord } from '@nessie/schemas'
@@ -32,11 +33,12 @@ export const TodoProgressCardView = ({
   todoId?: string
   unavailable: boolean
 }) => {
+  const { t } = useTranslation('channels')
   if (!todoId) return null
   if (unavailable) {
-    return <div className="mt-2 text-xs text-[color:var(--tx3)]" data-testid="todo-progress-unavailable">To-do details are unavailable.</div>
+    return <div className="mt-2 text-xs text-[color:var(--tx3)]" data-testid="todo-progress-unavailable">{t('todo.unavailable')}</div>
   }
-  if (!todo) return <div className="mt-2 text-xs text-[color:var(--tx3)]">Loading to-do…</div>
+  if (!todo) return <div className="mt-2 text-xs text-[color:var(--tx3)]">{t('todo.loading')}</div>
   const complete = todo.steps.filter((step) => ['completed', 'failed', 'skipped'].includes(step.status)).length
 
   return (
@@ -45,7 +47,7 @@ export const TodoProgressCardView = ({
         <span className="text-sm font-semibold text-[color:var(--tx)]">{todo.title}</span>
         <Pill size="sm" tone={todo.status === 'completed' ? 'success' : 'accent'}>{todo.status}</Pill>
       </div>
-      <p className="mt-1 text-xs text-[color:var(--tx3)]">{complete}/{todo.steps.length} steps finished</p>
+      <p className="mt-1 text-xs text-[color:var(--tx3)]">{t('todo.stepsFinished', { complete, count: todo.steps.length })}</p>
     </section>
   )
 }

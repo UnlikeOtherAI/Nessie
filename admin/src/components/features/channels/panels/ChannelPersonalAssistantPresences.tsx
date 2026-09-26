@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { ChannelRecord, PersonalAssistantPresenceParticipant } from '../../../../lib/api-client'
 import {
   useAddPersonalAssistantPresence,
@@ -25,6 +26,7 @@ export const ChannelPersonalAssistantPresences = ({
   isPersonalAssistantConversation: boolean
   presences: PersonalAssistantPresenceParticipant[]
 }) => {
+  const { t } = useTranslation('channels')
   const addPersonalAssistant = useAddPersonalAssistantPresence()
   const removePersonalAssistant = useRemovePersonalAssistantPresence()
   const canManage = Boolean(
@@ -36,10 +38,9 @@ export const ChannelPersonalAssistantPresences = ({
 
   return (
     <article className="admin-card p-4">
-      <SectionLabel>Personal Assistant presences</SectionLabel>
+      <SectionLabel>{t('assistantPresences.title')}</SectionLabel>
       <p className="mt-2 text-sm leading-6 text-[color:var(--tx2)]">
-        Each presence is a colleague's assistant in this conversation, without exposing its
-        private configuration.
+        {t('assistantPresences.description')}
       </p>
       <div className="mt-3 grid gap-1">
         {presences.map((presence) => (
@@ -63,7 +64,7 @@ export const ChannelPersonalAssistantPresences = ({
           }}
           type="button"
         >
-          {addPersonalAssistant.isPending ? 'Adding…' : 'Add my assistant'}
+          {addPersonalAssistant.isPending ? t('members.adding') : t('assistantPresences.addMine')}
         </button>
       ) : null}
     </article>

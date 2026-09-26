@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   AgentHandoffDoorwayMetadataSchema,
   type AgentHandoffDoorwayMetadata,
@@ -26,6 +27,7 @@ export const AgentHandoffDoorway = ({
 }: {
   metadata: Record<string, unknown> | undefined
 }) => {
+  const { t } = useTranslation('channels')
   const doorway = readDoorway(metadata)
   if (!doorway) {
     return null
@@ -46,7 +48,7 @@ export const AgentHandoffDoorway = ({
         <span className="min-w-0 truncate font-semibold text-[var(--tx)]">
           {doorway.targetName}
         </span>
-        <span className="flex-shrink-0 text-[color:var(--tx3)]">Continue there</span>
+        <span className="flex-shrink-0 text-[color:var(--tx3)]">{t('handoff.continueThere')}</span>
       </Link>
     </div>
   )

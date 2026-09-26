@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { useTranslation } from 'react-i18next'
 import { useRestartRun } from '../../../facades/runs/hooks'
 import { useToasts } from '../../../providers/ToastProvider'
 
@@ -20,6 +21,7 @@ export const RunRestart = ({
 }: {
   metadata: Record<string, unknown> | undefined
 }) => {
+  const { t } = useTranslation('channels')
   const runRestart = readRunRestart(metadata)
   const restartRun = useRestartRun()
   const { pushToast } = useToasts()
@@ -41,16 +43,16 @@ export const RunRestart = ({
           event.stopPropagation()
           restartRun.mutate(runRestart.runId, {
             onError: (error) => {
-              pushToast({ body: error.message, title: 'Could not restart the run' })
+              pushToast({ body: error.message, title: t('run.restartError') })
             },
             onSuccess: () => {
-              pushToast({ body: 'The repaired local model is handling a new run.', title: 'Run restarted' })
+              pushToast({ body: t('run.restartedBody'), title: t('run.restartedTitle') })
             },
           })
         }}
         type="button"
       >
-        {restartRun.isPending ? 'Restarting…' : 'Restart'}
+        {restartRun.isPending ? t('run.restarting') : t('run.restart')}
       </button>
     </div>
   )

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { TabBar, type TabBarItem } from '../../primitives/TabBar'
 import type { ChannelTab } from './channel-tabs'
 
@@ -47,14 +48,15 @@ export const ChannelTabBar = ({
   showTodosTab,
   onSelectTab,
 }: ChannelTabBarProps) => {
+  const { t } = useTranslation('channels')
   const items: Array<TabBarItem<ChannelTab>> = [
-    { icon: <TabIcon d={MESSAGES_ICON} />, label: 'Messages', value: 'messages' },
-    { icon: <TabIcon d={FILES_ICON} />, label: 'Files', value: 'files' },
+    { icon: <TabIcon d={MESSAGES_ICON} />, label: t('tabs.messages'), value: 'messages' },
+    { icon: <TabIcon d={FILES_ICON} />, label: t('tabs.files'), value: 'files' },
     ...(showAgentTab
       ? [
           {
             icon: <TabIcon d={AGENT_ICON} round />,
-            label: 'Agent',
+            label: t('tabs.agent'),
             testId: 'channel-tab-agent',
             value: 'agent' as const,
           },
@@ -64,7 +66,7 @@ export const ChannelTabBar = ({
       ? [
           {
             icon: <TabIcon d={TODOS_ICON} />,
-            label: 'To-dos',
+            label: t('tabs.todos'),
             testId: 'channel-tab-to-dos',
             value: 'to-dos' as const,
           },
@@ -74,7 +76,7 @@ export const ChannelTabBar = ({
       ? [
           {
             icon: <TabIcon d={TRIGGERS_ICON} />,
-            label: 'Triggers',
+            label: t('tabs.triggers'),
             testId: 'channel-tab-triggers',
             value: 'triggers' as const,
           },
@@ -84,7 +86,7 @@ export const ChannelTabBar = ({
       ? [
           {
             icon: <TabIcon d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />,
-            label: 'Automations',
+            label: t('tabs.automations'),
             testId: 'channel-tab-automations',
             value: 'automations' as const,
           },
@@ -94,7 +96,7 @@ export const ChannelTabBar = ({
       ? [
           {
             icon: <TabIcon d={AGENT_ICON} round />,
-            label: 'Agents',
+            label: t('tabs.agents'),
             value: 'agents' as const,
           },
         ]
@@ -104,7 +106,7 @@ export const ChannelTabBar = ({
   return (
     <div className="flex items-center border-b border-[color:var(--sep)] px-3 py-1.5">
       <TabBar
-        ariaLabel="Channel sections"
+        ariaLabel={t('tabs.sections')}
         items={items}
         onChange={onSelectTab}
         value={visibleActiveTab}

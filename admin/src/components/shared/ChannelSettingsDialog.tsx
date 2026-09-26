@@ -7,6 +7,7 @@ import {
 } from '@nessie/schemas'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import type { AgentRecord, ChannelRecord } from '../../lib/api-client'
 import {
   useArchiveChannel,
@@ -31,6 +32,7 @@ type ChannelSettingsDialogProps = {
 export const ChannelSettingsDialog = (
   { boundAgents = [], channel, onClose, open }: ChannelSettingsDialogProps,
 ) => {
+  const { t } = useTranslation('channels')
   const navigate = useNavigate()
   const updateChannel = useUpdateChannel()
   const archiveChannel = useArchiveChannel()
@@ -100,7 +102,7 @@ export const ChannelSettingsDialog = (
       })
       onClose()
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Unable to save channel.')
+      setFormError(error instanceof Error ? error.message : t('settings.saveError'))
     }
   }
 
@@ -117,7 +119,7 @@ export const ChannelSettingsDialog = (
     } catch (error) {
       setConfirmArchive(false)
       setFormError(
-        error instanceof Error ? error.message : 'Unable to change the channel archive state.',
+        error instanceof Error ? error.message : t('settings.archiveError'),
       )
       return
     }
@@ -142,12 +144,12 @@ export const ChannelSettingsDialog = (
 
   return (
     <>
-      <Dialog description={`#${channel.label}`} onClose={onClose} open={open} size="lg" title="Channel settings">
+      <Dialog description={`#${channel.label}`} onClose={onClose} open={open} size="lg" title={t('settings.title')}>
         <form className="grid min-w-0 gap-4" noValidate onSubmit={handleSubmit}>
           <TabBar
-            ariaLabel="Channel settings sections"
+            ariaLabel={t('settings.sections')}
             idPrefix="channel-settings"
-            items={[{ label: 'Channel', value: 'channel' }, { label: 'Agent decisions', value: 'decisions' }]}
+            items={[{ label: t('settings.channelTab'), value: 'channel' }, { label: t('settings.decisionsTab'), value: 'decisions' }]}
             onChange={setTab}
             value={tab}
           />
@@ -166,7 +168,7 @@ export const ChannelSettingsDialog = (
                 ].join(' ')}
                 htmlFor="channel-settings-name"
               >
-                Name
+                {t('createChannel.name')}
               </label>
               <input
                 {...fieldErrorAria('channel-settings-name', formError)}
@@ -181,7 +183,7 @@ export const ChannelSettingsDialog = (
                 value={label}
               />
               <div className="text-xs text-[color:var(--tx3)]">
-                Lowercase letters, numbers and hyphens. Spaces become hyphens.
+                {t('createChannel.nameHelp')}
               </div>
               {/*
                 Same shape as CreateChannelDialog: the red line is unchanged, and
@@ -206,14 +208,14 @@ export const ChannelSettingsDialog = (
                 ].join(' ')}
                 htmlFor="channel-settings-topic"
               >
-                Topic
+                {t('settings.topic')}
               </label>
               <input
                 autoComplete="off"
                 className="admin-input"
                 id="channel-settings-topic"
                 onChange={(e) => setTopic(e.target.value)}
-                placeholder="What is this channel about?"
+                placeholder={t('settings.topicPlaceholder')}
                 value={topic}
               />
             </div>
@@ -226,13 +228,13 @@ export const ChannelSettingsDialog = (
                 ].join(' ')}
                 htmlFor="channel-settings-description"
               >
-                Description
+                {t('settings.description')}
               </label>
               <textarea
                 className="admin-input"
                 id="channel-settings-description"
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Longer description (optional)"
+                placeholder={t('settings.descriptionPlaceholder')}
                 rows={3}
                 value={description}
               />
@@ -246,7 +248,7 @@ export const ChannelSettingsDialog = (
           >
             {policyConflict ? (
               <div className="mb-4 grid gap-2 text-sm" role="alert">
-                <p>These decisions changed while you were editing. Load the latest version before saving.</p>
+                <p>{t('settings.policyConflict')}</p>
                 <button
                   className="admin-button admin-button-secondary justify-self-start"
                   onClick={() => {
@@ -257,7 +259,7 @@ export const ChannelSettingsDialog = (
                   }}
                   type="button"
                 >
-                  Load latest decisions
+                  {t('settings.loadLatest')}
                 </button>
               </div>
             ) : null}
@@ -285,7 +287,7 @@ export const ChannelSettingsDialog = (
                 }}
                 type="button"
               >
-                {isArchived ? 'Unarchive' : 'Archive'}
+                {isArchived ? t('settings.unarchive') : t('settings.archive')}
               </button>
               <button
                 className="admin-button admin-button-secondary admin-button-danger"
@@ -293,7 +295,7 @@ export const ChannelSettingsDialog = (
                 onClick={handleDelete}
                 type="button"
               >
-                {confirmDelete ? 'Confirm delete' : 'Delete'}
+                {confirmDelete ? t('settings.confirmDelete') : t('settings.delete')}
               </button>
             </div>
             <div className="flex gap-2">
@@ -302,14 +304,14 @@ export const ChannelSettingsDialog = (
                 onClick={onClose}
                 type="button"
               >
-                Cancel
+                {t('createChannel.cancel')}
               </button>
               <button
                 className="admin-button admin-button-primary"
                 disabled={!toChannelSlug(label) || updateChannel.isPending}
                 type="submit"
               >
-                Save
+                {t('settings.save')}
               </button>
             </div>
           </div>
@@ -320,13 +322,13 @@ export const ChannelSettingsDialog = (
           already-open settings dialog above, in the blocking layer. */}
       <ConfirmDialog
         blocking
-        body={`Are you sure you want to archive #${channel.label}? It will be hidden from the channel list. You can unarchive it later.`}
-        confirmLabel="Archive"
+        body={t('settings.archiveConfirm', { channel: channel.label })}
+        confirmLabel={t('settings.archive')}
         onCancel={() => setConfirmArchive(false)}
         onConfirm={() => void handleArchiveToggle()}
         open={confirmArchive}
         pending={archiveChannel.isPending}
-        title="Archive channel?"
+        title={t('settings.archiveTitle')}
       />
     </>
   )

@@ -12,11 +12,12 @@ type Props = {
 }
 
 /** The channel's one policy editor; the settings dialog owns saving. */
-export const ChannelDecisionPolicyEditor = ({ agents, errors, onChange, policy }: Props) => (
-  <section aria-label="Agent decisions" className="grid min-w-0 gap-4">
+export const ChannelDecisionPolicyEditor = ({ agents, errors, onChange, policy }: Props) => {
+  const { t } = useTranslation('channels')
+  return (
+  <section aria-label={t('decisions.title')} className="grid min-w-0 gap-4">
     <p className="text-sm text-[color:var(--tx2)]">
-      Jev helps agents choose when to reply, acknowledge a message, or do follow-up work.
-      Set the choices that matter in this channel.
+      {t('decisions.intro')}
     </p>
     <label className="flex items-center gap-3 text-sm font-semibold">
       <input
@@ -24,14 +25,14 @@ export const ChannelDecisionPolicyEditor = ({ agents, errors, onChange, policy }
         onChange={(event) => onChange({ ...policy, enabled: event.target.checked })}
         type="checkbox"
       />
-      Use Jev for this channel
+      {t('decisions.useJev')}
     </label>
     <p className="text-xs text-[color:var(--tx3)]">
       {policy.enabled
-        ? 'Saving enables these decisions for new messages. Follow-up work uses the selected agent’s existing access and approvals.'
-        : 'These choices stay saved while Jev is off. Agents use their usual response decisions.'}
+        ? t('decisions.enabledHelp')
+        : t('decisions.disabledHelp')}
     </p>
-    <FormField error={errors.instructions} label="Channel guidance">
+    <FormField error={errors.instructions} label={t('decisions.guidance')}>
       <Textarea
         maxLength={4000}
         onChange={(event) => onChange({ ...policy, instructions: event.target.value })}
@@ -41,8 +42,8 @@ export const ChannelDecisionPolicyEditor = ({ agents, errors, onChange, policy }
     </FormField>
     <FormField
       error={errors.minimumProbability}
-      help="Low-confidence choices do not start automatic actions. Directly addressed agents can still reply."
-      label="Minimum confidence (%)"
+      help={t('decisions.confidenceHelp')}
+      label={t('decisions.minimumConfidence')}
     >
       <Input
         className="max-w-32"
@@ -56,13 +57,13 @@ export const ChannelDecisionPolicyEditor = ({ agents, errors, onChange, policy }
     </FormField>
 
     <details open={Object.keys(errors).some((path) => path.startsWith('reactions.')) || undefined}>
-      <summary className="cursor-pointer text-sm font-semibold">Acknowledgements ({policy.reactions.length})</summary>
+      <summary className="cursor-pointer text-sm font-semibold">{t('decisions.acknowledgements', { count: policy.reactions.length })}</summary>
       <div className="mt-4 grid gap-4">
-        <p className="text-xs text-[color:var(--tx3)]">Choose which reactions agents may use and what each one means here.</p>
+        <p className="text-xs text-[color:var(--tx3)]">{t('decisions.reactionsHelp')}</p>
         {policy.reactions.map((reaction, index) => (
-          <div aria-label={`Reaction ${index + 1}`} className="grid gap-3" key={index} role="group">
+          <div aria-label={t('decisions.reactionGroup', { index: index + 1 })} className="grid gap-3" key={index} role="group">
             <div className="flex items-end gap-2">
-              <FormField className="min-w-0 flex-1" error={errors[`reactions.${index}.emoji`]} label="Reaction">
+              <FormField className="min-w-0 flex-1" error={errors[`reactions.${index}.emoji`]} label={t('decisions.reaction')}>
                 <Input
                   maxLength={32}
                   onChange={(event) => onChange({
@@ -74,15 +75,15 @@ export const ChannelDecisionPolicyEditor = ({ agents, errors, onChange, policy }
                 />
               </FormField>
               <button
-                aria-label={`Remove reaction ${index + 1}`}
+                aria-label={t('decisions.removeReaction', { index: index + 1 })}
                 className="admin-button admin-button-secondary"
                 onClick={() => onChange({ ...policy, reactions: policy.reactions.filter((_, i) => i !== index) })}
                 type="button"
               >
-                Remove
+                {t('decisions.remove')}
               </button>
             </div>
-            <FormField error={errors[`reactions.${index}.description`]} label="When to use it">
+            <FormField error={errors[`reactions.${index}.description`]} label={t('decisions.whenToUse')}>
               <Input
                 maxLength={500}
                 onChange={(event) => onChange({
@@ -101,16 +102,16 @@ export const ChannelDecisionPolicyEditor = ({ agents, errors, onChange, policy }
           onClick={() => onChange({ ...policy, reactions: [...policy.reactions, { emoji: '', description: '' }] })}
           type="button"
         >
-          Add reaction
+          {t('decisions.addReaction')}
         </button>
       </div>
     </details>
 
     <div className="grid gap-4">
       <div>
-        <h3 className="text-sm font-semibold">Decisions and follow-up work</h3>
+        <h3 className="text-sm font-semibold">{t('decisions.followUpTitle')}</h3>
         <p className="mt-1 text-xs text-[color:var(--tx3)]">
-          Ask a question and define its possible outcomes, such as confirmed, proposed, superseded or unrelated.
+          {t('decisions.followUpHelp')}
         </p>
       </div>
       {policy.questions.map((question, index) => (
@@ -137,8 +138,10 @@ export const ChannelDecisionPolicyEditor = ({ agents, errors, onChange, policy }
         })}
         type="button"
       >
-        Add decision
+        {t('decisions.addDecision')}
       </button>
     </div>
   </section>
-)
+  )
+}
+import { useTranslation } from 'react-i18next'

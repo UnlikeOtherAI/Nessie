@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useMemo, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import type {
   AgentRecord,
   PersonalAssistantPresenceParticipant,
@@ -53,11 +54,14 @@ export type MessageHistoryStatus = {
 
 // Tombstone for a deleted message that still has replies below it: a small
 // light-dashed bubble in place of the original row (no avatar/name).
-const DeletedBubble = () => (
+const DeletedBubble = () => {
+  const { t } = useTranslation('channels')
+  return (
   <div className="py-0.5 pl-12 pr-5">
-    <span className="admin-deleted-bubble">Message has been deleted</span>
+    <span className="admin-deleted-bubble">{t('messageFeed.deleted')}</span>
   </div>
-)
+  )
+}
 
 interface ChannelMessageFeedProps {
   /**
@@ -180,6 +184,7 @@ export const ChannelMessageFeed = ({
   threadId,
   thinkingSurface = 'channel',
 }: ChannelMessageFeedProps) => {
+  const { t } = useTranslation('channels')
   const getPresence = usePresenceLookup()
   const conversation = useMemo(() => (channelId ? { channelId } : null), [channelId])
   const personalAssistantPresenceByIdentity = useMemo(
@@ -293,17 +298,17 @@ export const ChannelMessageFeed = ({
               className="px-5 py-2 text-center text-xs text-[color:var(--tx3)]"
               role="status"
             >
-              Loading earlier messages…
+              {t('messageFeed.loadingEarlier')}
             </div>
           ) : historyStatus?.olderLoadFailed && historyStatus.hasOlder ? (
             <div className="flex items-center justify-center gap-2 px-5 py-2 text-xs text-[color:var(--danger-text)]">
-              <span>Earlier messages could not be loaded.</span>
+              <span>{t('messageFeed.earlierError')}</span>
               <button
                 className="admin-button admin-button-secondary admin-button-compact"
                 onClick={historyStatus.retryOlder}
                 type="button"
               >
-                Retry
+                {t('messageFeed.retry')}
               </button>
             </div>
           ) : null}
@@ -314,8 +319,8 @@ export const ChannelMessageFeed = ({
             historyStatus?.initialQuery?.isLoading ? <Skeleton variant="feed" />
             : historyStatus?.initialQuery?.isError ? (
               <QueryState
-                errorLabel="Could not load messages."
-                loadingLabel="Loading messages…"
+                errorLabel={t('messageFeed.error')}
+                loadingLabel={t('messageFeed.loading')}
                 query={historyStatus.initialQuery}
               >
                 {() => null}
@@ -323,7 +328,7 @@ export const ChannelMessageFeed = ({
             ) : emptyState ?? (
               <div className="p-5">
                 <div className="admin-card p-4 text-sm text-[color:var(--tx3)]">
-                  No messages yet. Send the first message to start this thread.
+                  {t('messageFeed.empty')}
                 </div>
               </div>
             )
@@ -445,7 +450,7 @@ export const ChannelMessageFeed = ({
           */}
           {showLivenessHint ? (
             <div
-              aria-label="Waiting for a reply"
+              aria-label={t('messageFeed.waiting')}
               className="flex items-center py-1 pl-12 pr-5"
               data-testid="liveness-hint"
               role="status"

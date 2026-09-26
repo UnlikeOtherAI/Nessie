@@ -1,5 +1,6 @@
 import { isDesktopApp } from '../../lib/desktop'
 import { isReactNativeWebView } from '../../lib/native-shell'
+import { useTranslation } from 'react-i18next'
 import { Dialog } from './Dialog'
 import type { CallIncomingEvent } from '@nessie/schemas'
 
@@ -44,43 +45,44 @@ export const IncomingCallDialog = ({
   pending,
   presentation,
 }: IncomingCallDialogProps) => {
+  const { t } = useTranslation('channels')
   const nativeShell = isNativeShell()
   const title = presentation === 'ringing'
-    ? 'Incoming call'
+    ? t('incomingCall.incoming')
     : presentation === 'open'
-      ? 'Call is open'
+      ? t('incomingCall.open')
       : presentation === 'missed'
-        ? 'Call missed'
-        : 'Couldn’t accept call'
+        ? t('incomingCall.missed')
+        : t('incomingCall.acceptError')
 
   return (
     <Dialog onClose={onClose} open={call !== null} title={title}>
       {call ? (
         <div className="grid gap-4">
           <div className="grid gap-1">
-            <p className="text-sm font-medium text-[color:var(--tx)]">{call.caller.displayName} started a call</p>
-            <p className="text-sm text-[color:var(--tx2)]">in #{call.channelName}</p>
+            <p className="text-sm font-medium text-[color:var(--tx)]">{t('incomingCall.started', { name: call.caller.displayName })}</p>
+            <p className="text-sm text-[color:var(--tx2)]">{t('incomingCall.inChannel', { channel: call.channelName })}</p>
           </div>
 
           {presentation === 'ringing' ? (
-            <p className="text-sm text-[color:var(--tx2)]">Join when you’re ready, or decline this invitation.</p>
+            <p className="text-sm text-[color:var(--tx2)]">{t('incomingCall.ringingDescription')}</p>
           ) : presentation === 'open' ? (
-            <p className="text-sm text-[color:var(--tx2)]">This call is already open. You can still join with the link.</p>
+            <p className="text-sm text-[color:var(--tx2)]">{t('incomingCall.openDescription')}</p>
           ) : presentation === 'missed' ? (
-            <p className="text-sm text-[color:var(--tx2)]">This call is no longer ringing. The link remains available if the call is still running.</p>
+            <p className="text-sm text-[color:var(--tx2)]">{t('incomingCall.missedDescription')}</p>
           ) : (
-            <p className="text-sm text-[color:var(--danger-text)]">Try accepting again, or join from the link.</p>
+            <p className="text-sm text-[color:var(--danger-text)]">{t('incomingCall.errorDescription')}</p>
           )}
 
           <div className="flex flex-wrap justify-end gap-2">
             {presentation === 'ringing' ? (
               <>
                 <button className="admin-button admin-button-secondary" disabled={pending} onClick={onDecline} type="button">
-                  Decline
+                  {t('incomingCall.decline')}
                 </button>
                 {nativeShell ? (
                   <button className="admin-button admin-button-primary" disabled={pending} onClick={onAccept} type="button">
-                    Accept
+                    {t('incomingCall.accept')}
                   </button>
                 ) : (
                   <a
@@ -90,14 +92,14 @@ export const IncomingCallDialog = ({
                     rel="noopener noreferrer"
                     target="_blank"
                   >
-                    Accept
+                    {t('incomingCall.accept')}
                   </a>
                 )}
               </>
             ) : (
               <>
-                <button className="admin-button admin-button-secondary" onClick={onClose} type="button">Close</button>
-                <ExternalJoinControl call={call} label="Join call" onOpen={onJoin} />
+                <button className="admin-button admin-button-secondary" onClick={onClose} type="button">{t('incomingCall.close')}</button>
+                <ExternalJoinControl call={call} label={t('incomingCall.join')} onOpen={onJoin} />
               </>
             )}
           </div>

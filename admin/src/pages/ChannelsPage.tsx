@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Outlet, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useRedirect } from '../navigation/redirect'
 import { useChannelPlaceableAgents, useStartAgentConversation } from '../facades/agents/hooks'
 import { useChannels } from '../facades/channels/hooks'
@@ -39,6 +40,7 @@ import { useChannelMessageSurface } from './channels/useChannelMessageSurface'
 import { useTicketWorkThreadGate } from '../facades/ticket-work/hooks'
 
 export const ChannelsPage = () => {
+  const { t } = useTranslation('channels')
   const location = useLocation()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -186,7 +188,7 @@ export const ChannelsPage = () => {
                 })
               },
               onError: (error: unknown) => setSessionStartError(
-                error instanceof Error ? error.message : 'Could not start a conversation.',
+                error instanceof Error ? error.message : t('compose.startError'),
               ),
             },
           )

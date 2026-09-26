@@ -1,6 +1,7 @@
 import { toChannelNameInput, toChannelSlug } from '@nessie/schemas'
 import { useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useCreateChannel } from '../../facades/channels/hooks'
 import type { ChannelRecord } from '../../lib/api-client'
 import { Dialog } from './Dialog'
@@ -21,6 +22,7 @@ type CreateChannelDialogProps = {
 export const CreateChannelDialog = (
   { onClose, onCreated, open, projectId, projectName, scope, teamId }: CreateChannelDialogProps,
 ) => {
+  const { t } = useTranslation('channels')
   const nameInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const createChannel = useCreateChannel()
@@ -59,17 +61,17 @@ export const CreateChannelDialog = (
       handleClose()
       void navigate(`/channels/${created.id}`)
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Unable to create channel.')
+      setFormError(error instanceof Error ? error.message : t('createChannel.error'))
     }
   }
 
   return (
     <Dialog
-      description={projectName ? `in ${projectName}` : undefined}
+      description={projectName ? t('createChannel.inProject', { name: projectName }) : undefined}
       initialFocusRef={nameInputRef}
       onClose={handleClose}
       open={open}
-      title="Create a channel"
+      title={t('createChannel.title')}
     >
       <form className="grid gap-4" onSubmit={handleSubmit}>
         <div className="grid gap-1.5">
@@ -80,7 +82,7 @@ export const CreateChannelDialog = (
             ].join(' ')}
             htmlFor="channel-name"
           >
-            Name
+            {t('createChannel.name')}
           </label>
           <input
             ref={nameInputRef}
@@ -93,11 +95,11 @@ export const CreateChannelDialog = (
               setFormError(null)
             }}
             onBlur={() => setName(toChannelSlug(name))}
-            placeholder="e.g. design-reviews"
+            placeholder={t('createChannel.placeholder')}
             value={name}
           />
           <div className="text-xs text-[color:var(--tx3)]">
-            Lowercase letters, numbers and hyphens. Spaces become hyphens.
+            {t('createChannel.nameHelp')}
           </div>
           {/*
             The bare red line is the shipped treatment and stays: only the
@@ -123,7 +125,7 @@ export const CreateChannelDialog = (
             ].join(' ')}
             htmlFor="channel-visibility"
           >
-            Visibility
+            {t('createChannel.visibility')}
           </label>
           <select
             className="admin-input"
@@ -133,19 +135,19 @@ export const CreateChannelDialog = (
             )}
             value={visibility}
           >
-            <option value="public">Public</option>
-            <option value="protected">Protected</option>
+            <option value="public">{t('createChannel.public')}</option>
+            <option value="protected">{t('createChannel.protected')}</option>
           </select>
           <p className="text-xs text-[color:var(--tx3)]">
             {visibility === 'public'
-              ? 'Anyone in the organisation can find this channel, read it and join.'
-              : 'Shown with a lock. People outside it see only its name and who is in it, and are added by someone already here.'}
+              ? t('createChannel.publicHelp')
+              : t('createChannel.protectedHelp')}
           </p>
         </div>
 
         {projectTeamIsMissing ? (
           <p className="text-xs text-[color:var(--tx3)]" role="status">
-            This project has no resolved team. Channel creation is unavailable.
+            {t('createChannel.missingTeam')}
           </p>
         ) : null}
 
@@ -155,14 +157,14 @@ export const CreateChannelDialog = (
             onClick={handleClose}
             type="button"
           >
-            Cancel
+            {t('createChannel.cancel')}
           </button>
           <button
             className="admin-button admin-button-primary"
             disabled={!toChannelSlug(name) || projectTeamIsMissing}
             type="submit"
           >
-            Create channel
+            {t('createChannel.submit')}
           </button>
         </div>
       </form>
