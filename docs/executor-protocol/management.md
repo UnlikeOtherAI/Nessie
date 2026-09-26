@@ -136,8 +136,9 @@ out-of-order presence frames are harmless: the UI compares `updatedAt`, and
 in-flight older REST reads cannot overwrite newer presence. The browser does
 not poll the inventory to maintain status.
 
-Verification: the account menu's browser suite (`test:e2e:executor-menu`)
-left with the menu's Executors rows, so no browser suite walks the live
-socket on the computers lists yet. Database tests cover private-assignment
+Verification: no browser suite walks the live socket on the computers lists
+yet. The account menu's suite, `test:e2e:executor-menu`, was removed together
+with the menu's Executors rows and is not a command to run; a replacement
+belongs with the Computers surfaces. Database tests cover private-assignment
 and membership boundaries; API fan-out tests cover revocation on both live
 lanes.
