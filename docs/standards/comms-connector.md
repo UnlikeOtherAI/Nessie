@@ -59,7 +59,7 @@ Additional facts:
   claim Teams support. Gmail uses the same adapter-declared polling path only
   when no Pub/Sub topic is configured.
 - Chat-first: the `comms_connect_card` PA tool drives connect;
-  `/settings/connections` is the secondary UI. Authoritative spec:
+  `/settings/accounts` is the secondary UI. Authoritative spec:
   [docs/plans/2026-07-21-individual-communications-connector.md](../plans/2026-07-21-individual-communications-connector.md).
 
 ### Google scopes are a capability catalog, and the checks fail closed

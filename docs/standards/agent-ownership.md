@@ -48,7 +48,7 @@ file is the rule**.
   `loadAgentChildren` takes the viewer's scope for the same reason. Never
   backfill ownership: nothing recorded who created an agent, so old rows read
   `Unowned` and `agent.created`/`agent.owner_changed` now emit instead. The tree
-  itself is one `buildPeopleAgentsTree` rendered on `/settings/members` with the
+  itself is one `buildPeopleAgentsTree` rendered on `/admin/people` with the
   people source parameterised (UOA roster, or local `User` rows on a no-IdP
   install) — *unowned* and *owned outside this team* stay separate buckets,
   because the roster is team-keyed and a colleague on another team is otherwise

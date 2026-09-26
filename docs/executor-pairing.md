@@ -18,21 +18,17 @@ team and starts with personal access; share it afterwards from Permissions.
 API clients must use `/api/executor-pairing/options` for the selectable team
 IDs; these are UOA team identifiers, not Nessie's internal team-row IDs.
 
-## Find your machines from the account menu
+## Find your machines
 
-The user menu has **Executors** for personal machines and **Team executors**
-for shared machines you may see. Green means all are online, orange means some
-are unavailable, and red means none are online. Click the label to open
-**Agents → Executors**, or its arrow to expand the machines. Each machine opens
-its own detail page. The list opens into the available space, including from
-the top-right account menu on an iPad.
-
-An empty group has a gray indicator and a direct **Add Personal Executor** or
-**Add Team Executor** action, with no submenu. These open the same pairing
-flow in the current team. Pairing starts personal; use Permissions to share it.
+**Your settings › Your computers** (`/settings/computers`, from the avatar
+menu's **Your settings**) lists the machines you paired under **Mine** and the
+ones shared with you under **Shared with me**, with **Pair a computer**.
+**Admin › Computers** (`/admin/computers`) lists every machine you may see.
+Each machine opens its own detail page, `/admin/computers/:executorId`.
+Pairing starts personal; use Permissions to share it.
 
 Presence arrives over the signed-in tab's shared WebSocket and updates the
-menu, inventory and machine detail together. A missed heartbeat expires after
+lists and machine detail together. A missed heartbeat expires after
 60 seconds; a background sweep announces the change within the next ten
 seconds. Reconnecting the browser re-reads the current authorized inventory.
 Online describes the machine connection, not permission for an agent to act.
@@ -43,10 +39,11 @@ Open **Nessie Executor** on the machine and choose **Pair with Nessie**.
 Choose the folder it may work with. The app displays eight digits, a
 fingerprint and the time remaining.
 
-In Nessie, open **Agents → Executors → Pair executor** and enter those digits.
+In Nessie, open **Admin › Computers › Pair a computer** (or the same action on
+Your settings › Your computers) and enter those digits.
 Check the current team and the machine's fingerprint, then press **Pair
 machine**. Pairing starts with personal access; add agents and configure sharing
-on the machine's detail page. A project's **Executors** tab links to that page.
+on the machine's detail page. A project's **Computers** tab links to that page.
 
 Return to Nessie Executor on the machine. It names the organisation and team
 that claimed the code. Confirm them to finish pairing and start the executor,
@@ -58,13 +55,13 @@ If it expires, start again on the machine. Closing the website popup does not
 confirm a pending attempt.
 
 Verify that the machine says **Paired**, names the intended organisation and
-team, and appears **Online** in Nessie's Executors list. Online proves a daemon
+team, and appears **Online** in Nessie's Computers list. Online proves a daemon
 connection; it does not assign an agent. Add agents in **Agents** and share the
 machine with people, projects or the whole team in **Permissions**. Both changes
 take effect directly. Install and sign in to Claude or kimix separately as the
 same OS user.
 
-For live output, open **Executors → Sessions**, or an executor's **Sessions**
+For live output, open **Admin › Computers › Sessions**, or a computer's **Sessions**
 tab. Agents return the same session link. **Share session** gives named users
 in your organisation view-only access to that session, including scrollback;
 the URL alone grants nothing. Remove a viewer in the same dialog to revoke it.
@@ -80,7 +77,7 @@ one account never grants another account access.
   managed daemons.
 - Windows tray: choose **Add account**, select the server and workspace, and
   claim the code from the intended account. Start and Stop act on one row.
-- Windows and Linux Desktop: **Executors → Pair executor → Connect this
+- Windows and Linux Desktop: **Computers → Pair a computer → Connect this
   computer** opens the native folder picker, reuses the normal account/team
   review, and confirms the destination in a native dialog. Mac Desktop opens
   the menu bar app, which owns its connections.

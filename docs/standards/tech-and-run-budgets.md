@@ -260,7 +260,7 @@ summary and points here; **this file is the rule**.
   started spending, and across a period of long, partially-recorded runs the
   excess is bounded by their unrecorded headroom instead. Bounding a single
   run's own total remains the envelope's and the mid-run recheck's job.
-  Reservations are an estimate, so only admission reads them: `/ops/usage`,
+  Reservations are an estimate, so only admission reads them: `/admin/usage`,
   `listBudgetStatuses` and the mid-run recheck stay on recorded spend. A
   reservation is ignored once its run is terminal, and swept in
   `worker/src/control/budget-reservation-sweep.ts`. `warn`/`unlimited`/`off`

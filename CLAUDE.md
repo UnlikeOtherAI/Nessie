@@ -25,7 +25,7 @@ Assistant's `channel_list` / `channel_update` tools. Read
 [the channel policy standard](docs/standards/channel-decision-policy.md) and
 [its browser evaluation](docs/testing/channel-decisions.md) before changing them.
 
-Executor pairing, independent account/server connections on each platform, and live account-menu presence follow [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md), including their browser verification.
+Executor pairing, independent account/server connections on each platform, and live presence on the computers lists follow [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md), including their browser verification.
 Authorized executor access has no additional private-conversation write veto; output disclosure still follows [the disclosure standard](docs/standards/disclosure-boundaries.md).
 
 Sequential Task Sets, their native agent tools and the configured
@@ -211,7 +211,7 @@ sentence changes only if the invariant itself did.
 - **DeepWater research coverage:** run
   `pnpm --filter @nessie/admin test:e2e:research-brief`. A pure fixture suite
   (`NESSIE_RESEARCH_BRIEF_E2E_FIXTURE`) over the real brief dialog, research
-  card, Knowledge › Research and `/apps/deep-water` hero; The manual harness runs it after the
+  card, Knowledge › Research and `/admin/apps/deep-water` hero; The manual harness runs it after the
   agent-triggers one. The runner plays the server through `window.__research`
   (the planner answering, a launch landing, a revision conflict, DeepWater's
   progress pushes as `integration.run.updated` frames) and pins the whole

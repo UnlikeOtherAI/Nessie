@@ -358,7 +358,7 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   notification, not a repeating buzz — the browser path keeps its own
   repeating `navigator.vibrate` pattern via the same helper's fallback); the
   sheet-snap and tab-change triggers §4.15 describes arrive with steps 7–8.
-- **`nessie:app-icon { icon }` bridge message.** Settings → Appearance shows
+- **`nessie:app-icon { icon }` bridge message.** Your settings → Appearance shows
   an *App icon* panel (`admin/src/pages/settings/appearance/AppIconPanel.tsx`)
   only when `window.__nessieNativeShell.appIcon` is `true` — an iOS build that
   carries `mobile/modules/nessie-app-icon`. Picking *Dark* (the primary icon)

@@ -1,7 +1,7 @@
 # Model availability — the owner decides, and the decision is real
 
 An organisation owner governs which of the deployment's models may be used, on
-`/settings/organization/models` (**Organization → Models**). This file is the
+`/admin/models` (**Admin › AI models**). This file is the
 rule; `AGENTS.md` → "Architecture" carries the one-line signpost.
 
 ## The list is Ledger's, not Nessie's
@@ -187,14 +187,14 @@ carrying the provider's own words.
 
 | Screen | Element | Goes to |
 |---|---|---|
-| Sidebar → Organization | "Models", `ownerOnly: true` | `/settings/organization/models` — home |
-| Agent Designer → model picker | `ModelUnavailableNotice`, owner-only link | `/settings/organization/models` |
-| Sidebar → Team | "Models", same icon and catalogue surface as Organization | `/settings/team/models` — product-policy narrowing |
+| Admin sidebar → Organisation | "AI models", shown to owners and admins; the organisation catalogue itself answers owners only | `/admin/models` — home |
+| Agent Designer → model picker | `ModelUnavailableNotice`, owner-only link | `/admin/models` |
+| A team's page (Admin → Teams → the team) | "AI models" tab, the same catalogue surface as the organisation's | `/admin/teams/:teamId?tab=models` — product-policy narrowing |
 
 Registered in `admin/src/router-lazy-pages.ts`, `admin/src/router.tsx`,
 `admin/src/layouts/admin-shell/admin-nav-items.tsx` and
-`admin/src/navigation/admin-surfaces.ts` — all four, each enforced by its own
-admin test.
+`admin/src/navigation/admin-organization-surfaces.ts` — all four, each
+enforced by its own admin test.
 
 Organization decisions continue to use `inference_providers` and
 `inference_models`. Team decisions are persisted by the immutable

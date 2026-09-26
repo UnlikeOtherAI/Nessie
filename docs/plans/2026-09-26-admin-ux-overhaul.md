@@ -273,8 +273,10 @@ gate.
 
 Rail: **Channels · Projects · Knowledge · Admin**, unchanged, with Admin shown
 to everyone as today. Admin lands on its first item, Agents, for everyone;
-its second group appears only for a person who administers at least one team
-or the organisation, or is an instance operator. Bottom of the rail as today:
+its second group renders whenever any of its items is visible to the person,
+so a member on an SSO session sees "Organisation · People" and nothing else
+there (build brief, "Members keep their team roster"). Advanced is a third
+group of its own, collapsed, for owners and instance operators. Bottom of the rail as today:
 Focus, Create, avatar. Top bar as today: back, forward, recent, search, alerts
 bell, and the bell is added to the phone home header and the native root bars
 so `/alerts` is reachable on every shell.
@@ -308,7 +310,7 @@ single scrolling form. Nine pages:
 | **Your computers** | Computers you paired: pair this computer / pair with a code; per computer: status, what it offers (files, programs, local apps, AI models on it), which agents may use it, sharing, lifecycle | A person owns the machines they pair; sharing and agent access are actions on the machine, so this is the same computer page that Admin › Agents › Computers and a project's Settings › Computers open, filtered to mine and to those shared with me. |
 | **Saved keys** | Every vault key that reaches you, with where it comes from (Organisation · Team · Project · Yours), Locked and Overridden shown as chips; Add a key (for you, or for a project you are in); Revoke | The personal Secrets page, renamed, with the same cascade table. |
 | **Usage** | Your credit usage and the team totals (the member projection of Credits & billing); present only when the billing service is configured | Every member may see their own usage today; it does not belong beside administration. |
-| **Security** | Active sessions and devices (this device marked); programs signed in as you (pair with a code, Allow / Don't allow, revoke, `?code=` links land here); password (local accounts only) | Sessions and paired programs are both "things that hold my login", so they are one page. |
+| **Security** | Active sessions and devices (this device marked); programs signed in as you (pair with a code, Allow / Don't allow, revoke, `?code=` links land here); password (local accounts only); This device (session id, issued, auto redirect) | Sessions and paired programs are both "things that hold my login", so they are one page. |
 
 ### 6.3 Admin › Agents (the first group; everyone)
 
@@ -345,7 +347,8 @@ trigger's full detail with its deliveries and machine access.
 which write into the same tabs, and the Design Assistant stays as a dock on
 every tab and as "Continue in chat". What changes is that there is one agent
 page rather than a detail page and a separate designer page: editing is the
-page's own tabs, and the standalone designer route redirects into them.
+page's own tabs, and the standalone designer route is removed with every link
+to it moved, never redirected (build brief, "No redirects").
 
 **Apps.** The catalogue, with two tiers. **Integrations**: a curated shelf of
 the services corporate teams actually connect (Google Workspace, Microsoft
@@ -362,9 +365,11 @@ Lock. The same catalogue is the picker behind Connect an account (Your
 settings) and Connected tools (a project's settings), so a person never has
 to know that a Jira account and a Jira app are the same thing.
 
-**Computers.** All computers this person may use: Mine · Shared with me ·
-Team's, and a Sessions tab across machines. Pair a computer (this computer, or
-with a code). A computer's page: Overview (status sentence, what it offers,
+**Computers.** All computers this person may use, with Sessions across
+machines and Reviewed drafts as header actions — Reviewed drafts shows reviews
+from machines the person can no longer open, so it stays on the list (build
+brief) — and Pair a computer (this computer, or with a code). Your settings ›
+Your computers is the same list filtered to Mine · Shared with me. A computer's page: Overview (status sentence, what it offers,
 last seen) · Agents (whole-suite grant, Add agent, Remove) · Sharing (a
 person: Can use / Admin; a project; everyone in this team) · Activity (in use
 now with End, standing access with End, coding sessions with view and share,
@@ -385,9 +390,12 @@ the row that keeps its place for the other session.
 
 ### 6.4 Admin › Organisation (the second group; administrators)
 
-Sidebar group **Organisation**, shown only to team and organisation
-administrators and instance operators, in this order, with the audience each
-page shapes itself to:
+Sidebar group **Organisation**, rendered whenever any of its items is visible
+to the person (a member on an SSO session sees People alone), in this order,
+with the audience each page shapes itself to. Overview arrives in phase 3;
+Advanced is its own collapsed group beneath, for owners and instance
+operators, and gains Model pricing and Telemetry when Usage and limits is
+split in phase 6:
 
 | Page | Holds | Audience |
 |---|---|---|
@@ -557,7 +565,7 @@ functions with no consumer today (§9).
 
 | Today | New home |
 |---|---|
-| Rail Admin → `/settings` → own Profile | Rail Admin → Admin › Agents for everyone, with the Organisation group (Overview first) for administrators; Profile → avatar › Your settings |
+| Rail Admin → `/settings` → own Profile | Rail Admin → Admin › Agents for everyone, with the Organisation group rendered whenever any of its items is visible (People for any member on an SSO session; Overview first from phase 3); Profile → avatar › Your settings |
 | Team switcher: switch org+team, Invitations with Accept, Add team (tab New organisation) | Same switcher; "Organisation › Team" as text on desktop; Add team → Admin › Teams › New team; Create an organisation… its own row and dialog |
 | Avatar menu: Availability, Status, Executors rows, Feedback, Debug, Account settings, Log out | Availability, Status, Your settings, Send feedback, Sign out; Debug → Advanced › Session debug; computers → Your settings › Your computers |
 | Create menu: Message, Channel, Project, Agent | Same |
@@ -572,7 +580,7 @@ functions with no consumer today (§9).
 | Today | New home |
 |---|---|
 | Account › Profile: photo upload and crop (SSO relay or local), name, email, organisation, team, provider, Sign out | Your settings › Profile (same; teams listed with Switch; Sign out kept) |
-| Account › Profile: Session ID, Issued, Auto redirect | Your settings › Security › This device (session id and issued); Auto redirect → Advanced › Session debug |
+| Account › Profile: Session ID, Issued, Auto redirect | Your settings › Security › This device (session id, issued and auto redirect) |
 | Account › Agents: cloud browser connect / replace key / reconnect / disconnect, home page, lock gate | Your settings › Connected accounts › Cloud browser row and its page |
 | Account › Agents: Your browser sign-ins | Same row's page, "Signed in to", with Reset linking to the agent's Access tab |
 | Account › Notifications: focus mode, push, notify me about (6), quiet hours, browser notifications, muted channels | Your settings › Notifications (same; Budget alerts owner-only; muted list shows muted only) |
@@ -584,7 +592,7 @@ functions with no consumer today (§9).
 | Connected accounts › Email: Live IMAP mailboxes (Open mail, Test, Disconnect, Agents with access switches) | Connected accounts rows badged Live mailbox; Agents with access on the row's page and mirrored on each agent's Access tab (one switch, not two; see §10) |
 | Connect email / Connect mailbox ladder (address, provider rows, app password, server, leg, manual) | Same ladder, opened from Connect an account › Other email provider, or from the Google/Microsoft page when the address is not served |
 | Connected accounts › AI inference provider: subscriptions (Link, key or device code, confirm account, Disconnect) | Connected accounts › Your AI plans rows (same dialogs) |
-| Connected accounts › AI inference provider: Find Ollama on this computer, host status, parallel requests, pause/resume/disconnect local models | Your settings › Your computers › the computer's page › AI models on this computer (same controls) |
+| Connected accounts › AI inference provider: Find Ollama on this computer, host status, parallel requests, pause/resume/disconnect local models | Connected accounts › AI plans › Local AI, reachable whether or not a computer is paired (same controls; build brief) |
 | Connected accounts › Slack: Connect Slack, table | Connected accounts › Slack row |
 | Connected accounts › Calendar & Meet: capability picker, Continue with Google | The Google Workspace page › Connect with capabilities; Permissions section to widen later |
 | Connected accounts › Project tools: Connect Jira/Linear/Trello/GitHub, Reconnect, Remove | Connected accounts rows; "Use in a project" doorway to the project's Connected tools |
@@ -643,7 +651,7 @@ functions with no consumer today (§9).
 | Messages tab | Activity › Details (collapsed) or removed (§12) |
 | Documents tab: Knowledge workspace on the agent's space, core-doc notice | Instructions › Documents |
 | Email tab: claim address, send policy, Open mailbox, Delete mailbox | Access › Email address |
-| Design Assistant dock, Continue in chat, Create/Configure modes | Same, on the one agent page; the standalone designer route redirects into it |
+| Design Assistant dock, Continue in chat, Create/Configure modes | Same, on the one agent page; the standalone designer route is removed and its links move to the page (no redirect) |
 | Agent mailbox page: filters, thread list, reading pane | Same page, from Activity › Mailbox and Access › Email address |
 | Task Sets: list, form (work, processor, input, output, receiver), detail actions (start, resume, retry, pause, cancel, add item, refresh), items (retry, skip, edit), local host controls | Admin › Agents › Automations › Batch jobs (same, renamed fields; the Documents doorway kept) |
 | Triggers list: tabs, search, type filter, table, New trigger, `?create=` | Admin › Agents › Automations › Schedules and triggers (same, plus agent and project filters); each agent's own on its Schedule tab |
@@ -651,7 +659,7 @@ functions with no consumer today (§9).
 | Trigger detail: Run now, Reauthorize, Pause/Resume, Edit, Delete, health banner, facts, machine access (set up, card, confirm, End), webhook endpoint, deliveries | Same page; also summarised on the agent's Schedule tab |
 | Tools list: source tabs, search, status, tags, review bar (Approve / Disable selected) | Advanced › Tool registry (same); connector review also on the app's page › Review new capabilities |
 | Tool detail: id, scope key, version, schemas, transport, Review, Agent access panels | Advanced › Tool registry (same); per-agent access mirrored on Access and the app page |
-| Executors list: table, Pair executor (this computer, code, review, confirm), Sessions, Manage apps, Reviewed drafts, intents (`?create`, `#confirmationToken`, `?accessChange`, `?promotion`) | Admin › Agents › Computers (same table and pairing; Sessions → a Sessions tab; Reviewed drafts → the computer's Activity › Changes to review; Manage apps removed); Your settings › Your computers is the same list filtered to mine and shared with me |
+| Executors list: table, Pair executor (this computer, code, review, confirm), Sessions, Manage apps, Reviewed drafts, intents (`?create`, `#confirmationToken`, `?accessChange`, `?promotion`) | Admin › Agents › Computers (same table and pairing; Sessions and Reviewed drafts stay header actions, Reviewed drafts also on the computer's Activity › Changes to review; Manage apps removed); Your settings › Your computers is the same list filtered to mine and shared with me |
 | Executor detail: Machine menu (on this computer, local models, pause, resume, disconnect, delete with confirm), Agents (add, remove, capabilities), Sessions (local apps, device inventory, coding sessions, view, close), Permissions (team switch, people, projects), Activity (leases, standing access, recent sessions) | Computer page: Overview, Agents, Sharing, Activity (sessions folded in), the same menu |
 | Executor sessions page and session viewer (terminal, share with a viewer) | Admin › Agents › Computers › Sessions and the computer's Activity (same) |
 | Run on an executor launcher and lease chip (chat) | Same; copy rewritten in plain words |
@@ -662,8 +670,8 @@ functions with no consumer today (§9).
 | Today | New home |
 |---|---|
 | Credits & billing: balance, added/used/pending, View statement, Buy credits, automatic top-up dialog, credits by service, recent activity, Your plan, Upgrade plan, add-ons subscribe / cancel, statement (line items, usage tabs, actions, cancellation dialog) | Admin › Credits and billing (manager projection) and Your settings › Usage (member projection); the `?uoa_billing=` checkout return lands on Admin › Credits and billing, since only a billing manager can start a checkout; Compare plans and the seats row removed |
-| Operational usage: group select, tiles, breakdown, spend by outcome, file usage, connector usage | Admin › Usage and limits shows usage by team, agent and person in credits; the rest → Advanced › Telemetry |
-| Budgets: scope, mode (Off/Warn/Enforce/Degrade/Unlimited), period, storage cap, cost cap, token cap, warn at, block people's requests, fallback model, list with Edit / Delete | Admin › Usage and limits › Budgets (same fields; modes renamed Warn · Stop automations · Switch to a cheaper model · Unlimited; "also stop people's requests" as a checkbox under Stop automations) |
+| Operational usage: group select, tiles, breakdown, spend by outcome, file usage, connector usage | Admin › Usage and limits shows local usage by team, agent and person in tokens and estimated cost, never credits; the rest → Advanced › Telemetry (phase 6) |
+| Budgets: scope, mode (Off/Warn/Enforce/Degrade/Unlimited), period, storage cap, cost cap, token cap, warn at, block people's requests, fallback model, list with Edit / Delete | Admin › Usage and limits › Budgets (same fields; modes renamed Inherit (today's Off) · Warn · Stop automations · Switch to a cheaper model · Unlimited; "also stop people's requests" as a checkbox under Stop automations) |
 | Model pricing: provider, pattern, four rates, Save, list, Delete, Re-price historical usage | Advanced › Model pricing (same) |
 | Audit log: Filter by action, rows | Admin › Security › Audit log with who / what / outcome / date / project or team filters, entry detail, export, Verify integrity in words (all already in the API) |
 | Policy: Create rule (resource, action, effect, actor id), rules list, Delete | Advanced › Access rules (same; "Actor ID" relabelled Role); a readable role matrix later (§12) |
@@ -874,8 +882,9 @@ defect, not a simplification.
 
 ## 13. Rollout order
 
-Each step ships whole, with its redirects and its browser suite, in this
-order, because each one removes a class of confusion on its own:
+Each step ships whole, with its browser suite and every emitter of a route it
+moves (old routes are removed, never redirected), in this order, because each
+one removes a class of confusion on its own:
 
 1. Vocabulary pass and the avatar split: rename labels (§7), move personal
    pages under the avatar, land Admin on Agents, show the Organisation group

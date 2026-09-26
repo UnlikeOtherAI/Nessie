@@ -261,14 +261,15 @@ Pinned by `admin/test/navigation-overlay.test.ts`,
 `admin/test/card-viewport.test.ts`.
 
 
-### Account-menu submenus
+### Submenus
 
 A submenu reuses `Popover` and its flip/clamp placement. Its anchor can be the
 whole row while `returnFocusRef` names that row's disclosure button. The shared
 `useOverlay` Escape handler selects the highest-layer, most recently opened
 popover; one press closes that submenu and returns focus to its trigger,
-leaving the account menu open. An Escape is consumed only by an overlay
+leaving the menu beneath it open. An Escape is consumed only by an overlay
 claim; a focused Finder row preventing the browser default cannot disable
 menu dismissal. It does not install a second navigation or
-positioning system. `test:e2e:executor-menu` covers both side placements and
-this keyboard path.
+positioning system. The avatar menu has no submenus since its Executors rows
+left it for Admin › Computers and Your settings › Your computers; its
+browser suite (`test:e2e:executor-menu`) went with them.
