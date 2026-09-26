@@ -4,7 +4,10 @@
     "saving": "Enregistrement…",
     "retry": "Réessayer",
     "enabled": "Activé",
-    "disabled": "Désactivé"
+    "disabled": "Désactivé",
+    "cancel": "Annuler",
+    "remove": "Supprimer",
+    "delete": "Supprimer"
   },
   "profile": {
     "title": "Profil",
@@ -89,5 +92,172 @@
     "browserUpdateFailed": "Impossible de mettre à jour les notifications du navigateur.",
     "browserNotifications": "Notifications du navigateur",
     "toggleBrowser": "Activer ou désactiver les notifications du navigateur"
+  },
+  "appearance": {
+    "title": "Apparence",
+    "default": "Par défaut",
+    "editOrganisationTheme": "Modifier le thème de votre organisation →",
+    "setupOrganisationTheme": "Créer un thème aux couleurs de votre organisation →",
+    "theme": {
+      "title": "Thème",
+      "description": "Choisissez la palette de couleurs de l’administration pour votre compte.",
+      "legend": "Thème de l’administration",
+      "organisation": "Organisation",
+      "organisationDescription": "Les couleurs de votre organisation."
+    },
+    "themes": {
+      "nessie": {
+        "label": "Nessie",
+        "description": "Navigation bleu marine sur une surface de travail blanche."
+      },
+      "sandstone": {
+        "label": "Grès",
+        "description": "Surfaces sable chaudes et commandes terracotta."
+      },
+      "nebula": {
+        "label": "Classique",
+        "description": "Palette Nessie classique violette sur fond sombre."
+      },
+      "midnight": {
+        "label": "Minuit",
+        "description": "Surfaces ardoise neutres avec un accent bleu franc."
+      },
+      "daylight": {
+        "label": "Jour",
+        "description": "Surfaces claires, texte sombre et accents bleus lisibles."
+      },
+      "forest": {
+        "label": "Forêt",
+        "description": "Surfaces anthracite vert profond avec un accent émeraude apaisant."
+      },
+      "ocean": {
+        "label": "Océan",
+        "description": "Profondeurs bleu marine et sarcelle, avec commandes et liens cyan."
+      },
+      "sunset": {
+        "label": "Coucher de soleil",
+        "description": "Surfaces brun foncé chaleureuses avec un accent orange naturel."
+      },
+      "rose": {
+        "label": "Rose",
+        "description": "Prune foncé avec des touches de rose et de magenta."
+      },
+      "graphite": {
+        "label": "Graphite",
+        "description": "Niveaux de gris neutres avec des accents acier discrets."
+      },
+      "contrast": {
+        "label": "Contraste élevé",
+        "description": "Séparation maximale du texte, des commandes et des surfaces."
+      },
+      "system": {
+        "label": "Système",
+        "description": "Suivre le mode clair ou sombre de votre système."
+      }
+    },
+    "textSize": {
+      "title": "Taille du texte",
+      "description": "Définit la taille du texte sur toutes les pages. Enregistrée dans votre compte."
+    },
+    "textSizes": {
+      "small": {
+        "label": "Petite",
+        "description": "Texte compact — affichez davantage de contenu."
+      },
+      "medium": {
+        "label": "Moyenne",
+        "description": "La taille équilibrée par défaut."
+      },
+      "large": {
+        "label": "Grande",
+        "description": "Texte plus grand pour faciliter la lecture."
+      }
+    },
+    "appIcon": {
+      "title": "Icône de l’application",
+      "description": "Définit l’icône Nessie sur l’écran d’accueil de ce téléphone.",
+      "dark": "Sombre",
+      "light": "Claire"
+    }
+  },
+  "statuses": {
+    "title": "Statuts",
+    "description": "Votre activité, affichée à côté de votre nom. Chaque statut peut avoir un planning qui l’active automatiquement et des règles de contact qui déterminent qui peut vous joindre.",
+    "clearActive": "Effacer le statut actif",
+    "clearFailed": "Impossible d’effacer votre statut actif. Il reste affiché.",
+    "newStatus": "Nouveau statut",
+    "noStatuses": "Aucun statut",
+    "pageRange": "{{start}}–{{end}} sur {{count}}",
+    "empty": "Aucun statut pour le moment. Ajoutez-en un pour indiquer votre activité.",
+    "status": "Statut",
+    "schedules": "Plannings",
+    "contactRules": "Règles de contact",
+    "open": "Ouvrir",
+    "tableLabel": "Tableau des statuts",
+    "active": "Actif",
+    "responseAgentActive": "L’agent de réponse répond pendant ce statut",
+    "createFailed": "Impossible de créer le statut.",
+    "createDescription": "Un statut indique votre activité. Ses plannings et règles de contact se règlent sur sa propre page.",
+    "icon": "Icône",
+    "newStatusIcon": "Icône du nouveau statut",
+    "label": "Libellé",
+    "labelPlaceholder": "ex. Concentration",
+    "adding": "Ajout en cours…",
+    "addStatus": "Ajouter un statut",
+    "clearIcon": "Effacer l’icône",
+    "addRuleFailed": "Impossible d’ajouter la règle.",
+    "appliesTo": "S’applique à",
+    "everyone": "Tout le monde",
+    "channel": "Canal",
+    "project": "Projet",
+    "selectChannel": "Sélectionner un canal",
+    "selectProject": "Sélectionner un projet",
+    "agent": "Agent",
+    "defaultAgent": "Agent de statut par défaut",
+    "agentReplies": "Réponses de l’agent",
+    "enableRuleAgent": "Activer l’agent de la règle",
+    "instructions": "Instructions",
+    "ruleInstructionsPlaceholder": "Instructions propres à la règle",
+    "addRule": "Ajouter la règle",
+    "noContactRules": "Aucune règle de contact — l’agent de réponse utilise ses instructions par défaut.",
+    "anyContact": "Tout contact",
+    "unknown": "Inconnu",
+    "dateRangeBetween": "à",
+    "weekly": "Chaque semaine",
+    "weeklyScheduleDescription": "{{day}}, de {{start}} à {{end}} ({{timezone}})",
+    "type": "Type",
+    "dateRangeType": "Plage de dates",
+    "optionalLabel": "Libellé (facultatif)",
+    "scheduleLabelPlaceholder": "Libellé du planning",
+    "starts": "Début",
+    "ends": "Fin",
+    "day": "Jour",
+    "startTime": "Heure de début",
+    "endTime": "Heure de fin",
+    "addScheduleFailed": "Impossible d’ajouter le planning.",
+    "addSchedule": "Ajouter le planning",
+    "noSchedules": "Aucun planning — ce statut s’applique uniquement lorsqu’il est activé.",
+    "back": "Retour aux statuts",
+    "notFound": "Statut introuvable. Il a peut-être été supprimé.",
+    "loadFailed": "Impossible de charger les statuts.",
+    "loading": "Chargement du statut…",
+    "saveFailed": "Impossible d’enregistrer le statut.",
+    "deleting": "Suppression…",
+    "deleteStatus": "Supprimer le statut",
+    "setActive": "Activer",
+    "currentlyVisible": "Actuellement visible",
+    "notCurrentlyVisible": "Pas actuellement visible",
+    "scheduleCount": "Plannings : {{count}}",
+    "contactRuleCount": "Règles de contact : {{count}}",
+    "statusDetail": "Détails du statut",
+    "statusIcon": "Icône du statut",
+    "statusLabelPlaceholder": "Libellé du statut",
+    "enableResponseAgent": "Activer l’agent de réponse",
+    "responseAgentDescription": "Utilisez ces instructions lorsque quelqu’un vous contacte avec ce statut.",
+    "agentInstructions": "Instructions de l’agent",
+    "agentInstructionsPlaceholder": "Instructions de l’agent",
+    "saveStatus": "Enregistrer le statut",
+    "deleteConfirmation": "Cela supprime également ses plannings et règles de contact.",
+    "deleteConfirmationTitle": "Supprimer « {{label}} » ?"
   }
 }

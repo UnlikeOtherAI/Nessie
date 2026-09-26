@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useCurrentOrganization } from '../../../facades/organization/hooks'
 import { useTheme } from '../../../providers/ThemeProvider'
 import { DEFAULT_THEME } from '../../../providers/theme-resolution'
@@ -46,6 +47,7 @@ const ThemeSwatch = ({ colours }: { colours: readonly [string, string, string] }
  * `/settings/organization?tab=appearance`.
  */
 export const ColoursPanel = () => {
+  const { t } = useTranslation('settings')
   const { organizationTheme, setTheme, theme, themes } = useTheme()
   const { data: organization } = useCurrentOrganization()
 
@@ -61,13 +63,13 @@ export const ColoursPanel = () => {
 
   return (
     <section className="admin-card p-4">
-      <SectionLabel>Theme</SectionLabel>
+      <SectionLabel>{t('appearance.theme.title')}</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
-        Choose the admin color palette for your account.
+        {t('appearance.theme.description')}
       </div>
 
       <fieldset className="mt-4 grid gap-3 border-0 p-0 md:grid-cols-3">
-        <legend className="sr-only">Admin theme</legend>
+        <legend className="sr-only">{t('appearance.theme.legend')}</legend>
         {themes.map((themeOption) => {
           const selected = selectedTheme === themeOption.id
           const swatch = themeOption.id === 'organization'
@@ -100,13 +102,19 @@ export const ColoursPanel = () => {
               />
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0 truncate font-semibold text-[color:var(--tx)]">
-                  {themeOption.label}
+                  {themeOption.id === 'organization'
+                    ? organization?.name ?? t('appearance.theme.organisation')
+                    : t(`appearance.themes.${themeOption.id}.label`)}
                 </div>
                 <ThemeSwatch colours={swatch} />
               </div>
               <div className="mt-1 flex items-start justify-between gap-2">
-                <div className="text-sm text-[color:var(--tx2)]">{themeOption.description}</div>
-                {defaultTheme === themeOption.id ? <Pill tone="muted">Default</Pill> : null}
+              <div className="text-sm text-[color:var(--tx2)]">
+                {t(themeOption.id === 'organization'
+                  ? 'appearance.theme.organisationDescription'
+                  : `appearance.themes.${themeOption.id}.description`)}
+              </div>
+                {defaultTheme === themeOption.id ? <Pill tone="muted">{t('appearance.default')}</Pill> : null}
               </div>
             </label>
           )
@@ -119,8 +127,8 @@ export const ColoursPanel = () => {
           to="/settings/organization?tab=appearance"
         >
           {hasOrganizationTheme
-            ? "Edit your organisation's theme →"
-            : "Set up a theme in your organisation's colours →"}
+            ? t('appearance.editOrganisationTheme')
+            : t('appearance.setupOrganisationTheme')}
         </Link>
       ) : null}
     </section>

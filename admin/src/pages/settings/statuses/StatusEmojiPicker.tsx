@@ -1,4 +1,5 @@
 import { useId, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { faChevronDown, faCircleXmark } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Popover } from '../../../components/overlays/Popover'
@@ -12,6 +13,7 @@ type StatusEmojiPickerProps = {
 }
 
 export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerProps) => {
+  const { t } = useTranslation('settings')
   const [open, setOpen] = useState(false)
   const pickerId = useId()
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -47,7 +49,7 @@ export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerP
               : 'truncate text-[color:var(--tx3)]'
           }
         >
-          {value || 'Icon'}
+          {value || t('statuses.icon')}
         </span>
         <FontAwesomeIcon
           className="shrink-0 text-[10px] text-[color:var(--tx3)]"
@@ -65,14 +67,14 @@ export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerP
       >
         <div className="mb-2 flex justify-end">
           <button
-            aria-label="Clear icon"
+            aria-label={t('statuses.clearIcon')}
             className={[
               'flex h-8 w-8 items-center justify-center rounded text-sm',
               'text-[color:var(--tx3)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
               value ? '' : 'bg-[color:var(--accent-soft)] text-[color:var(--tx)]',
             ].join(' ')}
             onClick={() => pick('')}
-            title="Clear icon"
+            title={t('statuses.clearIcon')}
             type="button"
           >
             <FontAwesomeIcon icon={faCircleXmark} />

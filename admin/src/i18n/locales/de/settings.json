@@ -4,7 +4,10 @@
     "saving": "Wird gespeichert…",
     "retry": "Erneut versuchen",
     "enabled": "Aktiviert",
-    "disabled": "Deaktiviert"
+    "disabled": "Deaktiviert",
+    "cancel": "Abbrechen",
+    "remove": "Entfernen",
+    "delete": "Löschen"
   },
   "profile": {
     "title": "Profil",
@@ -89,5 +92,172 @@
     "browserUpdateFailed": "Browserbenachrichtigungen konnten nicht aktualisiert werden.",
     "browserNotifications": "Browserbenachrichtigungen",
     "toggleBrowser": "Browserbenachrichtigungen umschalten"
+  },
+  "appearance": {
+    "title": "Darstellung",
+    "default": "Standard",
+    "editOrganisationTheme": "Organisationsthema bearbeiten →",
+    "setupOrganisationTheme": "Thema in den Farben deiner Organisation einrichten →",
+    "theme": {
+      "title": "Design",
+      "description": "Wähle die Farbpalette der Verwaltung für dein Konto.",
+      "legend": "Verwaltungsdesign",
+      "organisation": "Organisation",
+      "organisationDescription": "Die Farben deiner Organisation."
+    },
+    "themes": {
+      "nessie": {
+        "label": "Nessie",
+        "description": "Marineblaue Navigation auf weißer Arbeitsfläche."
+      },
+      "sandstone": {
+        "label": "Sandstein",
+        "description": "Warme sandfarbene Flächen mit Terrakotta-Steuerelementen."
+      },
+      "nebula": {
+        "label": "Klassisch",
+        "description": "Klassische violette Nessie-Palette auf dunklem Hintergrund."
+      },
+      "midnight": {
+        "label": "Mitternacht",
+        "description": "Neutrale Schieferflächen mit klarem blauem Akzent."
+      },
+      "daylight": {
+        "label": "Tageslicht",
+        "description": "Helle Flächen, dunkler Text und gut lesbare blaue Akzente."
+      },
+      "forest": {
+        "label": "Wald",
+        "description": "Dunkelgrüne, anthrazitfarbene Flächen mit ruhigem Smaragdakzent."
+      },
+      "ocean": {
+        "label": "Ozean",
+        "description": "Marineblau-türkise Tiefe mit klaren cyanfarbenen Steuerelementen und Links."
+      },
+      "sunset": {
+        "label": "Sonnenuntergang",
+        "description": "Warme dunkelbraune Flächen mit geerdetem orangefarbenem Akzent."
+      },
+      "rose": {
+        "label": "Rose",
+        "description": "Dunkles Pflaumenblau mit rosa und magentafarbenen Akzenten."
+      },
+      "graphite": {
+        "label": "Graphit",
+        "description": "Neutrale Graustufen mit zurückhaltenden Stahlakzenten."
+      },
+      "contrast": {
+        "label": "Hoher Kontrast",
+        "description": "Maximale Trennung von Text, Steuerelementen und Flächen."
+      },
+      "system": {
+        "label": "System",
+        "description": "Hell- oder Dunkelmodus des Betriebssystems verwenden."
+      }
+    },
+    "textSize": {
+      "title": "Textgrösse",
+      "description": "Legt die Textgrösse auf allen Seiten fest. Wird in deinem Konto gespeichert."
+    },
+    "textSizes": {
+      "small": {
+        "label": "Klein",
+        "description": "Kompakter Text — mehr passt auf den Bildschirm."
+      },
+      "medium": {
+        "label": "Mittel",
+        "description": "Die ausgewogene Standardgrösse."
+      },
+      "large": {
+        "label": "Gross",
+        "description": "Grösserer Text für bessere Lesbarkeit."
+      }
+    },
+    "appIcon": {
+      "title": "App-Symbol",
+      "description": "Legt das Nessie-Symbol auf dem Home-Bildschirm dieses Telefons fest.",
+      "dark": "Dunkel",
+      "light": "Hell"
+    }
+  },
+  "statuses": {
+    "title": "Status",
+    "description": "Was du gerade machst, wird neben deinem Namen angezeigt. Jeder Status kann einen Zeitplan haben, der ihn automatisch aktiviert, sowie Kontaktregeln, die festlegen, wer dich erreicht.",
+    "clearActive": "Aktiven Status löschen",
+    "clearFailed": "Dein aktiver Status konnte nicht gelöscht werden. Er wird weiterhin angezeigt.",
+    "newStatus": "Neuer Status",
+    "noStatuses": "Keine Status",
+    "pageRange": "{{start}}–{{end}} von {{count}}",
+    "empty": "Noch keine Status. Füge einen hinzu, um zu zeigen, was du gerade machst.",
+    "status": "Status",
+    "schedules": "Zeitpläne",
+    "contactRules": "Kontaktregeln",
+    "open": "Öffnen",
+    "tableLabel": "Statustabelle",
+    "active": "Aktiv",
+    "responseAgentActive": "Der Antwortagent antwortet während dieses Status",
+    "createFailed": "Status konnte nicht erstellt werden.",
+    "createDescription": "Ein Status zeigt, was du gerade machst. Zeitpläne und Kontaktregeln legst du auf der eigenen Statusseite fest.",
+    "icon": "Symbol",
+    "newStatusIcon": "Symbol für neuen Status",
+    "label": "Bezeichnung",
+    "labelPlaceholder": "z. B. Konzentriert",
+    "adding": "Wird hinzugefügt…",
+    "addStatus": "Status hinzufügen",
+    "clearIcon": "Symbol löschen",
+    "addRuleFailed": "Regel konnte nicht hinzugefügt werden.",
+    "appliesTo": "Gilt für",
+    "everyone": "Alle",
+    "channel": "Kanal",
+    "project": "Projekt",
+    "selectChannel": "Kanal auswählen",
+    "selectProject": "Projekt auswählen",
+    "agent": "Agent",
+    "defaultAgent": "Standard-Statusagent",
+    "agentReplies": "Antworten des Agents",
+    "enableRuleAgent": "Regelagent aktivieren",
+    "instructions": "Anweisungen",
+    "ruleInstructionsPlaceholder": "Anweisungen für diese Regel",
+    "addRule": "Regel hinzufügen",
+    "noContactRules": "Noch keine Kontaktregeln — der Antwortagent verwendet seine Standardanweisungen.",
+    "anyContact": "Jeder Kontakt",
+    "unknown": "Unbekannt",
+    "dateRangeBetween": "bis",
+    "weekly": "Wöchentlich",
+    "weeklyScheduleDescription": "{{day}}, {{start}} bis {{end}} ({{timezone}})",
+    "type": "Typ",
+    "dateRangeType": "Datumsbereich",
+    "optionalLabel": "Bezeichnung (optional)",
+    "scheduleLabelPlaceholder": "Zeitplanbezeichnung",
+    "starts": "Beginn",
+    "ends": "Ende",
+    "day": "Tag",
+    "startTime": "Startzeit",
+    "endTime": "Endzeit",
+    "addScheduleFailed": "Zeitplan konnte nicht hinzugefügt werden.",
+    "addSchedule": "Zeitplan hinzufügen",
+    "noSchedules": "Noch keine Zeitpläne — dieser Status gilt nur, wenn er aktiviert wird.",
+    "back": "Zurück zu Status",
+    "notFound": "Dieser Status wurde nicht gefunden. Möglicherweise wurde er gelöscht.",
+    "loadFailed": "Status konnten nicht geladen werden.",
+    "loading": "Status wird geladen…",
+    "saveFailed": "Status konnte nicht gespeichert werden.",
+    "deleting": "Wird gelöscht…",
+    "deleteStatus": "Status löschen",
+    "setActive": "Aktivieren",
+    "currentlyVisible": "Derzeit sichtbar",
+    "notCurrentlyVisible": "Derzeit nicht sichtbar",
+    "scheduleCount": "Zeitpläne: {{count}}",
+    "contactRuleCount": "Kontaktregeln: {{count}}",
+    "statusDetail": "Statusdetails",
+    "statusIcon": "Statussymbol",
+    "statusLabelPlaceholder": "Statusbezeichnung",
+    "enableResponseAgent": "Antwortagent aktivieren",
+    "responseAgentDescription": "Verwende diese Anweisungen, wenn dich während dieses Status jemand kontaktiert.",
+    "agentInstructions": "Agentenanweisungen",
+    "agentInstructionsPlaceholder": "Agentenanweisungen",
+    "saveStatus": "Status speichern",
+    "deleteConfirmation": "Dadurch werden auch Zeitpläne und Kontaktregeln entfernt.",
+    "deleteConfirmationTitle": "„{{label}}“ löschen?"
   }
 }

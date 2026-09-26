@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { UserStatusRecord, UserStatusScheduleKind } from '../../../lib/api-client'
 import type { useCreateStatusSchedule, useDeleteStatusSchedule } from '../../../facades/statuses/hooks'
 import { toFormErrors } from '../../../facades/forms/form-errors'
@@ -28,6 +29,7 @@ export const StatusScheduleForm = ({
   deleteSchedule,
   selectedStatus,
 }: StatusScheduleFormProps) => {
+  const { t, i18n } = useTranslation('settings')
   const [scheduleKind, setScheduleKind] = useState<UserStatusScheduleKind>('weekly')
   const [scheduleLabel, setScheduleLabel] = useState('')
   const [startsAt, setStartsAt] = useState('')
@@ -63,35 +65,35 @@ export const StatusScheduleForm = ({
       )
       setScheduleLabel('')
     } catch (error) {
-      setScheduleError(toFormErrors(error).formError ?? 'Failed to add schedule.')
+      setScheduleError(toFormErrors(error).formError ?? t('statuses.addScheduleFailed'))
     }
   }
 
   return (
     <Card as="section">
-      <SectionLabel>Schedules</SectionLabel>
+      <SectionLabel>{t('statuses.schedules')}</SectionLabel>
       <form className="mt-4 grid gap-3" onSubmit={scheduleSubmit}>
         <div className="grid gap-2 md:grid-cols-3">
-          <FormField label="Type">
+          <FormField label={t('statuses.type')}>
             <Select
               onChange={(event) => setScheduleKind(event.target.value as UserStatusScheduleKind)}
               value={scheduleKind}
             >
-              <option value="weekly">Weekly</option>
-              <option value="date_range">Date range</option>
+              <option value="weekly">{t('statuses.weekly')}</option>
+              <option value="date_range">{t('statuses.dateRangeType')}</option>
             </Select>
           </FormField>
-          <FormField className="md:col-span-2" label="Label (optional)">
+          <FormField className="md:col-span-2" label={t('statuses.optionalLabel')}>
             <Input
               onChange={(event) => setScheduleLabel(event.target.value)}
-              placeholder="Schedule label"
+              placeholder={t('statuses.scheduleLabelPlaceholder')}
               value={scheduleLabel}
             />
           </FormField>
         </div>
         {scheduleKind === 'date_range' ? (
           <div className="grid gap-2 md:grid-cols-2">
-            <FormField label="Starts">
+            <FormField label={t('statuses.starts')}>
               <Input
                 onChange={(event) => setStartsAt(event.target.value)}
                 required
@@ -99,7 +101,7 @@ export const StatusScheduleForm = ({
                 value={startsAt}
               />
             </FormField>
-            <FormField label="Ends">
+            <FormField label={t('statuses.ends')}>
               <Input
                 onChange={(event) => setEndsAt(event.target.value)}
                 required
@@ -110,33 +112,33 @@ export const StatusScheduleForm = ({
           </div>
         ) : (
           <div className="grid gap-2 md:grid-cols-4">
-            <FormField label="Day">
+            <FormField label={t('statuses.day')}>
               <Select
                 onChange={(event) => setDayOfWeek(Number(event.target.value))}
                 value={dayOfWeek}
               >
-                {dayLabels.map((day, index) => (
+                {dayLabels(i18n.resolvedLanguage).map((day, index) => (
                   <option key={day} value={index}>
                     {day}
                   </option>
                 ))}
               </Select>
             </FormField>
-            <FormField label="Start time">
+            <FormField label={t('statuses.startTime')}>
               <Input
                 onChange={(event) => setStartTime(event.target.value)}
                 type="time"
                 value={startTime}
               />
             </FormField>
-            <FormField label="End time">
+            <FormField label={t('statuses.endTime')}>
               <Input
                 onChange={(event) => setEndTime(event.target.value)}
                 type="time"
                 value={endTime}
               />
             </FormField>
-            <FormField label="Timezone">
+            <FormField label={t('notifications.timezone')}>
               <Input
                 onChange={(event) => setTimezone(event.target.value)}
                 value={timezone}
@@ -147,18 +149,18 @@ export const StatusScheduleForm = ({
         <FormError>{scheduleError}</FormError>
         <FormActions>
           <button className="admin-button admin-button-secondary" type="submit">
-            Add schedule
+            {t('statuses.addSchedule')}
           </button>
         </FormActions>
       </form>
       <div className="mt-4">
         {selectedStatus.schedules.length > 0 ? (
-          <RowList label="Schedules">
+          <RowList label={t('statuses.schedules')}>
             {selectedStatus.schedules.map((schedule) => (
               <Row
                 key={schedule.id}
-                subtitle={describeSchedule(schedule)}
-                title={schedule.label || (schedule.kind === 'weekly' ? 'Weekly' : 'Date range')}
+                subtitle={describeSchedule(schedule, i18n.resolvedLanguage)}
+                title={schedule.label || (schedule.kind === 'weekly' ? t('statuses.weekly') : t('statuses.dateRangeType'))}
                 trailing={
                   <button
                     className="admin-button admin-button-secondary"
@@ -169,14 +171,14 @@ export const StatusScheduleForm = ({
                       })}
                     type="button"
                   >
-                    Remove
+                    {t('common.remove')}
                   </button>
                 }
               />
             ))}
           </RowList>
         ) : (
-          <EmptyState>No schedules yet — this status only applies when set active.</EmptyState>
+          <EmptyState>{t('statuses.noSchedules')}</EmptyState>
         )}
       </div>
     </Card>

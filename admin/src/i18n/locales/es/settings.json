@@ -4,7 +4,10 @@
     "saving": "Guardando…",
     "retry": "Reintentar",
     "enabled": "Activado",
-    "disabled": "Desactivado"
+    "disabled": "Desactivado",
+    "cancel": "Cancelar",
+    "remove": "Quitar",
+    "delete": "Eliminar"
   },
   "profile": {
     "title": "Perfil",
@@ -89,5 +92,172 @@
     "browserUpdateFailed": "No se pudieron actualizar las notificaciones del navegador.",
     "browserNotifications": "Notificaciones del navegador",
     "toggleBrowser": "Alternar notificaciones del navegador"
+  },
+  "appearance": {
+    "title": "Apariencia",
+    "default": "Predeterminado",
+    "editOrganisationTheme": "Editar el tema de tu organización →",
+    "setupOrganisationTheme": "Configurar un tema con los colores de tu organización →",
+    "theme": {
+      "title": "Tema",
+      "description": "Elige la paleta de colores de administración para tu cuenta.",
+      "legend": "Tema de administración",
+      "organisation": "Organización",
+      "organisationDescription": "Los colores de tu organización."
+    },
+    "themes": {
+      "nessie": {
+        "label": "Nessie",
+        "description": "Navegación azul marino sobre una superficie de trabajo blanca."
+      },
+      "sandstone": {
+        "label": "Arenisca",
+        "description": "Superficies cálidas color arena con controles terracota."
+      },
+      "nebula": {
+        "label": "Clásico",
+        "description": "Paleta clásica de Nessie en púrpura sobre fondo oscuro."
+      },
+      "midnight": {
+        "label": "Medianoche",
+        "description": "Superficies de pizarra neutras con un acento azul nítido."
+      },
+      "daylight": {
+        "label": "Luz diurna",
+        "description": "Superficies claras, texto oscuro y acentos azules legibles."
+      },
+      "forest": {
+        "label": "Bosque",
+        "description": "Superficies verde carbón profundas con un sereno acento esmeralda."
+      },
+      "ocean": {
+        "label": "Océano",
+        "description": "Profundidad azul marino y verde azulado con controles y enlaces cian."
+      },
+      "sunset": {
+        "label": "Atardecer",
+        "description": "Superficies cálidas marrón oscuro con un acento naranja natural."
+      },
+      "rose": {
+        "label": "Rosa",
+        "description": "Ciruela oscuro con énfasis rosa y magenta."
+      },
+      "graphite": {
+        "label": "Grafito",
+        "description": "Tonos grises neutros con discretos acentos de acero."
+      },
+      "contrast": {
+        "label": "Alto contraste",
+        "description": "Máxima separación entre texto, controles y superficies."
+      },
+      "system": {
+        "label": "Sistema",
+        "description": "Sigue el modo claro u oscuro del sistema operativo."
+      }
+    },
+    "textSize": {
+      "title": "Tamaño del texto",
+      "description": "Establece el tamaño del texto en todas las páginas. Se guarda en tu cuenta."
+    },
+    "textSizes": {
+      "small": {
+        "label": "Pequeño",
+        "description": "Texto compacto: cabe más contenido en pantalla."
+      },
+      "medium": {
+        "label": "Mediano",
+        "description": "El tamaño equilibrado predeterminado."
+      },
+      "large": {
+        "label": "Grande",
+        "description": "Texto más grande para facilitar la lectura."
+      }
+    },
+    "appIcon": {
+      "title": "Icono de la aplicación",
+      "description": "Establece el icono de Nessie en la pantalla de inicio de este teléfono.",
+      "dark": "Oscuro",
+      "light": "Claro"
+    }
+  },
+  "statuses": {
+    "title": "Estados",
+    "description": "Lo que estás haciendo, junto a tu nombre. Cada estado puede tener un horario que lo active automáticamente y reglas de contacto que deciden quién puede comunicarse contigo.",
+    "clearActive": "Borrar estado activo",
+    "clearFailed": "No se pudo borrar el estado activo. Sigue apareciendo.",
+    "newStatus": "Nuevo estado",
+    "noStatuses": "Sin estados",
+    "pageRange": "{{start}}–{{end}} de {{count}}",
+    "empty": "Aún no hay estados. Añade uno para indicar qué estás haciendo.",
+    "status": "Estado",
+    "schedules": "Horarios",
+    "contactRules": "Reglas de contacto",
+    "open": "Abrir",
+    "tableLabel": "Tabla de estados",
+    "active": "Activo",
+    "responseAgentActive": "El agente de respuesta contesta durante este estado",
+    "createFailed": "No se pudo crear el estado.",
+    "createDescription": "Un estado indica qué estás haciendo. Sus horarios y reglas de contacto se configuran en su propia pantalla.",
+    "icon": "Icono",
+    "newStatusIcon": "Icono del nuevo estado",
+    "label": "Etiqueta",
+    "labelPlaceholder": "p. ej., Concentrado",
+    "adding": "Añadiendo…",
+    "addStatus": "Añadir estado",
+    "clearIcon": "Borrar icono",
+    "addRuleFailed": "No se pudo añadir la regla.",
+    "appliesTo": "Se aplica a",
+    "everyone": "Todos",
+    "channel": "Canal",
+    "project": "Proyecto",
+    "selectChannel": "Seleccionar canal",
+    "selectProject": "Seleccionar proyecto",
+    "agent": "Agente",
+    "defaultAgent": "Agente de estado predeterminado",
+    "agentReplies": "Respuestas del agente",
+    "enableRuleAgent": "Activar agente de regla",
+    "instructions": "Instrucciones",
+    "ruleInstructionsPlaceholder": "Instrucciones específicas de la regla",
+    "addRule": "Añadir regla",
+    "noContactRules": "Aún no hay reglas de contacto: el agente de respuesta usa sus instrucciones predeterminadas.",
+    "anyContact": "Cualquier contacto",
+    "unknown": "Desconocido",
+    "dateRangeBetween": "a",
+    "weekly": "Cada semana",
+    "weeklyScheduleDescription": "{{day}}, de {{start}} a {{end}} ({{timezone}})",
+    "type": "Tipo",
+    "dateRangeType": "Intervalo de fechas",
+    "optionalLabel": "Etiqueta (opcional)",
+    "scheduleLabelPlaceholder": "Etiqueta del horario",
+    "starts": "Comienza",
+    "ends": "Termina",
+    "day": "Día",
+    "startTime": "Hora de inicio",
+    "endTime": "Hora de fin",
+    "addScheduleFailed": "No se pudo añadir el horario.",
+    "addSchedule": "Añadir horario",
+    "noSchedules": "Aún no hay horarios: este estado solo se aplica cuando se activa.",
+    "back": "Volver a estados",
+    "notFound": "No se encontró este estado. Puede que se haya eliminado.",
+    "loadFailed": "No se pudieron cargar los estados.",
+    "loading": "Cargando estado…",
+    "saveFailed": "No se pudo guardar el estado.",
+    "deleting": "Eliminando…",
+    "deleteStatus": "Eliminar estado",
+    "setActive": "Activar",
+    "currentlyVisible": "Visible actualmente",
+    "notCurrentlyVisible": "No visible actualmente",
+    "scheduleCount": "Horarios: {{count}}",
+    "contactRuleCount": "Reglas de contacto: {{count}}",
+    "statusDetail": "Detalles del estado",
+    "statusIcon": "Icono del estado",
+    "statusLabelPlaceholder": "Etiqueta del estado",
+    "enableResponseAgent": "Activar agente de respuesta",
+    "responseAgentDescription": "Usa estas instrucciones cuando alguien se ponga en contacto contigo durante este estado.",
+    "agentInstructions": "Instrucciones del agente",
+    "agentInstructionsPlaceholder": "Instrucciones del agente",
+    "saveStatus": "Guardar estado",
+    "deleteConfirmation": "Esto también elimina sus horarios y reglas de contacto.",
+    "deleteConfirmationTitle": "¿Eliminar “{{label}}”?"
   }
 }

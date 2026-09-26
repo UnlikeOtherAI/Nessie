@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { AppIconPanel } from './appearance/AppIconPanel'
 import { ColoursPanel } from './appearance/ColoursPanel'
 import { SettingsPanel, type SettingsTabHostProps } from '../../components/shared/SettingsPanel'
@@ -9,8 +10,10 @@ import { TypePanel } from './appearance/TypePanel'
  * inside the first would both read as nesting and fight over the `tab` URL
  * parameter the parent already owns.
  */
-export const AppearancePage = ({ tabs }: SettingsTabHostProps) => (
-  <SettingsPanel eyebrow="User" title="Appearance">
+export const AppearancePage = ({ tabs }: SettingsTabHostProps) => {
+  const { t } = useTranslation('settings')
+  return (
+  <SettingsPanel eyebrow={t('common.user')} title={t('appearance.title')}>
     {tabs}
     <div className="grid gap-4">
       <ColoursPanel />
@@ -18,4 +21,6 @@ export const AppearancePage = ({ tabs }: SettingsTabHostProps) => (
       <AppIconPanel />
     </div>
   </SettingsPanel>
-)
+  )
+}
+import { useTranslation } from 'react-i18next'

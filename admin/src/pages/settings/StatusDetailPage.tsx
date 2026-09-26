@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { faTrash } from '@fortawesome/free-solid-svg-icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAgents } from '../../facades/agents/hooks'
@@ -39,6 +40,7 @@ import { StatusScheduleForm } from './statuses/StatusScheduleForm'
  * so what changes the world sits apart from what edits a draft.
  */
 export const StatusDetailPage = () => {
+  const { t } = useTranslation('settings')
   const navigate = useNavigate()
   const { statusId } = useParams<{ statusId?: string }>()
   const statuses = useStatuses()
@@ -84,13 +86,13 @@ export const StatusDetailPage = () => {
     // The header is rendered here too: loading, failure and not-found are
     // states of this screen, and a phone with no header has no Back at all.
     return (
-      <SettingsPanel backLabel="Back to Statuses" eyebrow="Statuses" onBack={backToList} title="Status">
+      <SettingsPanel backLabel={t('statuses.back')} eyebrow={t('statuses.title')} onBack={backToList} title={t('statuses.status')}>
         <QueryState
           className="py-12"
-          emptyLabel="This status could not be found. It may have been deleted."
-          errorLabel="Could not load statuses."
+          emptyLabel={t('statuses.notFound')}
+          errorLabel={t('statuses.loadFailed')}
           isEmpty
-          loadingLabel="Loading status…"
+          loadingLabel={t('statuses.loading')}
           query={statuses}
         >
           {() => null}
@@ -113,7 +115,7 @@ export const StatusDetailPage = () => {
       })
     } catch (error) {
       const { fieldErrors, formError } = toFormErrors(error)
-      setSaveError(fieldErrors.label ?? formError ?? 'Failed to save status.')
+      setSaveError(fieldErrors.label ?? formError ?? t('statuses.saveFailed'))
     }
   }
 
@@ -127,7 +129,7 @@ export const StatusDetailPage = () => {
     {
       icon: faTrash,
       id: 'delete-status',
-      label: deleteStatus.isPending ? 'Deleting…' : 'Delete status',
+      label: deleteStatus.isPending ? t('statuses.deleting') : t('statuses.deleteStatus'),
       onSelect: () => setConfirmingDelete(true),
       priority: 10,
     },
@@ -135,7 +137,7 @@ export const StatusDetailPage = () => {
       ? []
       : [{
         id: 'set-active',
-        label: 'Set active',
+        label: t('statuses.setActive'),
         onSelect: () => activateStatus.mutate(status.id),
         primary: true,
         priority: 100,
@@ -145,18 +147,18 @@ export const StatusDetailPage = () => {
   return (
     <SettingsPanel
       actions={actions}
-      backLabel="Back to Statuses"
-      eyebrow="Statuses"
+      backLabel={t('statuses.back')}
+      eyebrow={t('statuses.title')}
       onBack={backToList}
       subtitle={
         <div className="flex flex-wrap items-center gap-2">
           <Pill height="control" tone={status.activeNow ? 'success' : 'muted'} uppercase={false}>
-            {status.activeNow ? 'Currently visible' : 'Not currently visible'}
+            {status.activeNow ? t('statuses.currentlyVisible') : t('statuses.notCurrentlyVisible')}
           </Pill>
           <p className="text-sm text-[color:var(--tx3)]">
-            {status.schedules.length} schedule{status.schedules.length === 1 ? '' : 's'}
+            {t('statuses.scheduleCount', { count: status.schedules.length })}
             {' · '}
-            {status.rules.length} contact rule{status.rules.length === 1 ? '' : 's'}
+            {t('statuses.contactRuleCount', { count: status.rules.length })}
           </p>
         </div>
       }
@@ -165,44 +167,44 @@ export const StatusDetailPage = () => {
       <div className="grid max-w-3xl gap-4">
         <Card as="section">
           <form className="grid gap-4" onSubmit={save}>
-            <SectionLabel>Status detail</SectionLabel>
+            <SectionLabel>{t('statuses.statusDetail')}</SectionLabel>
             <div className="grid gap-3 md:grid-cols-[90px_minmax(0,1fr)]">
-              <FormField label="Icon">
-                <StatusEmojiPicker label="Status icon" onChange={setEmoji} value={emoji} />
+              <FormField label={t('statuses.icon')}>
+                <StatusEmojiPicker label={t('statuses.statusIcon')} onChange={setEmoji} value={emoji} />
               </FormField>
-              <FormField label="Label">
+              <FormField label={t('statuses.label')}>
                 <Input
                   onChange={(event) => setLabel(event.target.value)}
-                  placeholder="Status label"
+                  placeholder={t('statuses.statusLabelPlaceholder')}
                   value={label}
                 />
               </FormField>
             </div>
             <div className="flex items-center justify-between gap-4">
               <div>
-                <div className="font-semibold text-[color:var(--tx)]">Enable response agent</div>
+                <div className="font-semibold text-[color:var(--tx)]">{t('statuses.enableResponseAgent')}</div>
                 <div className="text-sm text-[color:var(--tx3)]">
-                  Use these instructions when someone contacts you during this status.
+                  {t('statuses.responseAgentDescription')}
                 </div>
               </div>
               <Switch
                 checked={agentEnabled}
-                label="Enable response agent"
+                label={t('statuses.enableResponseAgent')}
                 onChange={setAgentEnabled}
               />
             </div>
-            <FormField label="Agent instructions">
+            <FormField label={t('statuses.agentInstructions')}>
               <Textarea
                 className="min-h-28"
                 onChange={(event) => setAgentInstructions(event.target.value)}
-                placeholder="Agent instructions"
+                placeholder={t('statuses.agentInstructionsPlaceholder')}
                 value={agentInstructions}
               />
             </FormField>
             <FormError>{saveError}</FormError>
             <FormActions>
               <button className="admin-button admin-button-primary" type="submit">
-                Save status
+                {t('statuses.saveStatus')}
               </button>
             </FormActions>
           </form>
@@ -225,14 +227,14 @@ export const StatusDetailPage = () => {
       </div>
 
       <ConfirmDialog
-        body="This also removes its schedules and contact rules."
-        confirmLabel="Delete"
+        body={t('statuses.deleteConfirmation')}
+        confirmLabel={t('common.delete')}
         destructive
         onCancel={() => setConfirmingDelete(false)}
         onConfirm={() => void remove()}
         open={confirmingDelete}
         pending={deleteStatus.isPending}
-        title={`Delete "${status.label}"?`}
+        title={t('statuses.deleteConfirmationTitle', { label: status.label })}
       />
     </SettingsPanel>
   )

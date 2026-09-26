@@ -4,7 +4,10 @@
     "saving": "Ukládání…",
     "retry": "Zkusit znovu",
     "enabled": "Zapnuto",
-    "disabled": "Vypnuto"
+    "disabled": "Vypnuto",
+    "cancel": "Zrušit",
+    "remove": "Odebrat",
+    "delete": "Smazat"
   },
   "profile": {
     "title": "Profil",
@@ -89,5 +92,172 @@
     "browserUpdateFailed": "Oznámení v prohlížeči se nepodařilo aktualizovat.",
     "browserNotifications": "Oznámení v prohlížeči",
     "toggleBrowser": "Přepnout oznámení v prohlížeči"
+  },
+  "appearance": {
+    "title": "Vzhled",
+    "default": "Výchozí",
+    "editOrganisationTheme": "Upravit motiv organizace →",
+    "setupOrganisationTheme": "Nastavit barvy motivu organizace →",
+    "theme": {
+      "title": "Motiv",
+      "description": "Vyberte barevnou paletu administrace pro svůj účet.",
+      "legend": "Motiv administrace",
+      "organisation": "Organizace",
+      "organisationDescription": "Barvy vaší organizace."
+    },
+    "themes": {
+      "nessie": {
+        "label": "Nessie",
+        "description": "Tmavě modrá navigace na bílé pracovní ploše."
+      },
+      "sandstone": {
+        "label": "Pískovec",
+        "description": "Teplé pískové plochy a terakotové ovládací prvky."
+      },
+      "nebula": {
+        "label": "Klasický",
+        "description": "Klasická fialová paleta Nessie na tmavém pozadí."
+      },
+      "midnight": {
+        "label": "Půlnoc",
+        "description": "Neutrální břidlicová plocha s jasně modrým akcentem."
+      },
+      "daylight": {
+        "label": "Denní světlo",
+        "description": "Světlé plochy, tmavý text a dobře čitelné modré akcenty."
+      },
+      "forest": {
+        "label": "Les",
+        "description": "Tmavě zelenošedé plochy s klidným smaragdovým akcentem."
+      },
+      "ocean": {
+        "label": "Oceán",
+        "description": "Tmavě modrá a tyrkysová s jasnými azurovými ovládacími prvky a odkazy."
+      },
+      "sunset": {
+        "label": "Západ slunce",
+        "description": "Teplé tmavě hnědé plochy s oranžovým akcentem."
+      },
+      "rose": {
+        "label": "Růže",
+        "description": "Tmavě švestková s růžovým a purpurovým zvýrazněním."
+      },
+      "graphite": {
+        "label": "Grafit",
+        "description": "Neutrální odstíny šedi s decentními ocelovými akcenty."
+      },
+      "contrast": {
+        "label": "Vysoký kontrast",
+        "description": "Maximální rozlišení textu, ovládacích prvků a ploch."
+      },
+      "system": {
+        "label": "Systém",
+        "description": "Přizpůsobit světlému nebo tmavému režimu operačního systému."
+      }
+    },
+    "textSize": {
+      "title": "Velikost textu",
+      "description": "Nastaví velikost textu na všech stránkách. Uloží se do vašeho účtu."
+    },
+    "textSizes": {
+      "small": {
+        "label": "Malá",
+        "description": "Kompaktní text — vejde se ho více na obrazovku."
+      },
+      "medium": {
+        "label": "Střední",
+        "description": "Vyvážená výchozí velikost."
+      },
+      "large": {
+        "label": "Velká",
+        "description": "Větší text pro snadnější čtení."
+      }
+    },
+    "appIcon": {
+      "title": "Ikona aplikace",
+      "description": "Nastaví ikonu Nessie na ploše tohoto telefonu.",
+      "dark": "Tmavá",
+      "light": "Světlá"
+    }
+  },
+  "statuses": {
+    "title": "Stavy",
+    "description": "Co právě děláte, zobrazené vedle vašeho jména. Každý stav může mít plán, který jej automaticky zapne, a pravidla kontaktů určující, kdo se vám dovolá.",
+    "clearActive": "Zrušit aktivní stav",
+    "clearFailed": "Aktivní stav se nepodařilo zrušit. Stále se zobrazuje.",
+    "newStatus": "Nový stav",
+    "noStatuses": "Žádné stavy",
+    "pageRange": "{{start}}–{{end}} z {{count}}",
+    "empty": "Zatím žádné stavy. Přidejte stav, který popíše, co právě děláte.",
+    "status": "Stav",
+    "schedules": "Plány",
+    "contactRules": "Pravidla kontaktů",
+    "open": "Otevřít",
+    "tableLabel": "Tabulka stavů",
+    "active": "Aktivní",
+    "responseAgentActive": "Agent odpovídá během tohoto stavu",
+    "createFailed": "Stav se nepodařilo vytvořit.",
+    "createDescription": "Stav popisuje, co právě děláte. Jeho plány a pravidla kontaktů nastavíte na samostatné stránce.",
+    "icon": "Ikona",
+    "newStatusIcon": "Ikona nového stavu",
+    "label": "Název",
+    "labelPlaceholder": "např. Soustředím se",
+    "adding": "Přidávání…",
+    "addStatus": "Přidat stav",
+    "clearIcon": "Vymazat ikonu",
+    "addRuleFailed": "Pravidlo se nepodařilo přidat.",
+    "appliesTo": "Platí pro",
+    "everyone": "Všichni",
+    "channel": "Kanál",
+    "project": "Projekt",
+    "selectChannel": "Vybrat kanál",
+    "selectProject": "Vybrat projekt",
+    "agent": "Agent",
+    "defaultAgent": "Výchozí agent stavu",
+    "agentReplies": "Odpovědi agenta",
+    "enableRuleAgent": "Zapnout agenta pravidla",
+    "instructions": "Pokyny",
+    "ruleInstructionsPlaceholder": "Pokyny pro toto pravidlo",
+    "addRule": "Přidat pravidlo",
+    "noContactRules": "Zatím bez pravidel kontaktů — agent odpovědí používá výchozí pokyny.",
+    "anyContact": "Libovolný kontakt",
+    "unknown": "Neznámý",
+    "dateRangeBetween": "až",
+    "weekly": "Týdně",
+    "weeklyScheduleDescription": "{{day}}, {{start}} až {{end}} ({{timezone}})",
+    "type": "Typ",
+    "dateRangeType": "Rozmezí dat",
+    "optionalLabel": "Název (volitelné)",
+    "scheduleLabelPlaceholder": "Název plánu",
+    "starts": "Začíná",
+    "ends": "Končí",
+    "day": "Den",
+    "startTime": "Čas začátku",
+    "endTime": "Čas konce",
+    "addScheduleFailed": "Plán se nepodařilo přidat.",
+    "addSchedule": "Přidat plán",
+    "noSchedules": "Zatím bez plánů — tento stav platí jen při ruční aktivaci.",
+    "back": "Zpět na stavy",
+    "notFound": "Tento stav nebyl nalezen. Možná byl smazán.",
+    "loadFailed": "Stavy se nepodařilo načíst.",
+    "loading": "Načítání stavu…",
+    "saveFailed": "Stav se nepodařilo uložit.",
+    "deleting": "Mazání…",
+    "deleteStatus": "Smazat stav",
+    "setActive": "Aktivovat",
+    "currentlyVisible": "Právě viditelný",
+    "notCurrentlyVisible": "Právě není viditelný",
+    "scheduleCount": "Plány: {{count}}",
+    "contactRuleCount": "Pravidla kontaktů: {{count}}",
+    "statusDetail": "Podrobnosti stavu",
+    "statusIcon": "Ikona stavu",
+    "statusLabelPlaceholder": "Název stavu",
+    "enableResponseAgent": "Zapnout agenta odpovědí",
+    "responseAgentDescription": "Používat tyto pokyny, když vás někdo kontaktuje v tomto stavu.",
+    "agentInstructions": "Pokyny agenta",
+    "agentInstructionsPlaceholder": "Pokyny agenta",
+    "saveStatus": "Uložit stav",
+    "deleteConfirmation": "Tím se smažou také jeho plány a pravidla kontaktů.",
+    "deleteConfirmationTitle": "Smazat „{{label}}“?"
   }
 }

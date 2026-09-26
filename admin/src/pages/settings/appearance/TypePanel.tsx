@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useFontScale, type FontScale } from '../../../providers/FontScaleProvider'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 
@@ -8,17 +9,18 @@ const PREVIEW_SIZE: Record<FontScale, string> = {
 }
 
 export const TypePanel = () => {
+  const { t } = useTranslation('settings')
   const { fontScale, scales, setFontScale } = useFontScale()
 
   return (
     <section className="admin-card p-4">
-      <SectionLabel>Text size</SectionLabel>
+      <SectionLabel>{t('appearance.textSize.title')}</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
-        Sets the text size across every page. Saved to your account.
+        {t('appearance.textSize.description')}
       </div>
 
       <fieldset className="mt-4 grid gap-3 border-0 p-0 md:grid-cols-3">
-        <legend className="sr-only">Text size</legend>
+        <legend className="sr-only">{t('appearance.textSize.title')}</legend>
         {scales.map((option) => {
           const selected = fontScale === option.id
 
@@ -43,7 +45,7 @@ export const TypePanel = () => {
                 value={option.id}
               />
               <div className="flex items-center justify-between gap-3">
-                <div className="font-semibold text-[color:var(--tx)]">{option.label}</div>
+                <div className="font-semibold text-[color:var(--tx)]">{t(`appearance.textSizes.${option.id}.label`)}</div>
                 <span
                   aria-hidden="true"
                   className="leading-none text-[color:var(--tx2)]"
@@ -52,7 +54,7 @@ export const TypePanel = () => {
                   Aa
                 </span>
               </div>
-              <div className="mt-1 text-sm text-[color:var(--tx2)]">{option.description}</div>
+              <div className="mt-1 text-sm text-[color:var(--tx2)]">{t(`appearance.textSizes.${option.id}.description`)}</div>
             </label>
           )
         })}
@@ -60,3 +62,4 @@ export const TypePanel = () => {
     </section>
   )
 }
+import { useTranslation } from 'react-i18next'

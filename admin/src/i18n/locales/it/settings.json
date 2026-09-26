@@ -4,7 +4,10 @@
     "saving": "Salvataggio…",
     "retry": "Riprova",
     "enabled": "Attivato",
-    "disabled": "Disattivato"
+    "disabled": "Disattivato",
+    "cancel": "Annulla",
+    "remove": "Rimuovi",
+    "delete": "Elimina"
   },
   "profile": {
     "title": "Profilo",
@@ -89,5 +92,172 @@
     "browserUpdateFailed": "Impossibile aggiornare le notifiche del browser.",
     "browserNotifications": "Notifiche del browser",
     "toggleBrowser": "Attiva o disattiva le notifiche del browser"
+  },
+  "appearance": {
+    "title": "Aspetto",
+    "default": "Predefinito",
+    "editOrganisationTheme": "Modifica il tema dell’organizzazione →",
+    "setupOrganisationTheme": "Imposta un tema con i colori dell’organizzazione →",
+    "theme": {
+      "title": "Tema",
+      "description": "Scegli la palette colori dell’amministrazione per il tuo account.",
+      "legend": "Tema amministrazione",
+      "organisation": "Organizzazione",
+      "organisationDescription": "I colori della tua organizzazione."
+    },
+    "themes": {
+      "nessie": {
+        "label": "Nessie",
+        "description": "Navigazione blu navy su una superficie di lavoro bianca."
+      },
+      "sandstone": {
+        "label": "Arenaria",
+        "description": "Superfici color sabbia con controlli color terracotta."
+      },
+      "nebula": {
+        "label": "Classico",
+        "description": "Palette classica Nessie viola su sfondo scuro."
+      },
+      "midnight": {
+        "label": "Mezzanotte",
+        "description": "Superfici ardesia neutre con accento blu intenso."
+      },
+      "daylight": {
+        "label": "Luce diurna",
+        "description": "Superfici chiare, testo scuro e accenti blu ben leggibili."
+      },
+      "forest": {
+        "label": "Foresta",
+        "description": "Superfici antracite verde scuro con un calmo accento smeraldo."
+      },
+      "ocean": {
+        "label": "Oceano",
+        "description": "Profondità blu navy e verde acqua con controlli e link ciano."
+      },
+      "sunset": {
+        "label": "Tramonto",
+        "description": "Superfici marrone scuro calde con accento arancione."
+      },
+      "rose": {
+        "label": "Rosa",
+        "description": "Prugna scuro con accenti rosa e magenta."
+      },
+      "graphite": {
+        "label": "Grafite",
+        "description": "Tonalità di grigio neutre con accenti acciaio discreti."
+      },
+      "contrast": {
+        "label": "Contrasto elevato",
+        "description": "Massima distinzione tra testo, controlli e superfici."
+      },
+      "system": {
+        "label": "Sistema",
+        "description": "Segui la modalità chiara o scura del sistema operativo."
+      }
+    },
+    "textSize": {
+      "title": "Dimensione del testo",
+      "description": "Imposta la dimensione del testo in tutte le pagine. Viene salvata nel tuo account."
+    },
+    "textSizes": {
+      "small": {
+        "label": "Piccola",
+        "description": "Testo compatto — mostra più contenuti sullo schermo."
+      },
+      "medium": {
+        "label": "Media",
+        "description": "La dimensione predefinita equilibrata."
+      },
+      "large": {
+        "label": "Grande",
+        "description": "Testo più grande per facilitare la lettura."
+      }
+    },
+    "appIcon": {
+      "title": "Icona app",
+      "description": "Imposta l’icona Nessie nella schermata Home di questo telefono.",
+      "dark": "Scura",
+      "light": "Chiara"
+    }
+  },
+  "statuses": {
+    "title": "Stati",
+    "description": "Cosa stai facendo, mostrato accanto al tuo nome. Ogni stato può avere una pianificazione che lo attiva automaticamente e regole di contatto che decidono chi può raggiungerti.",
+    "clearActive": "Cancella stato attivo",
+    "clearFailed": "Impossibile cancellare lo stato attivo. È ancora visibile.",
+    "newStatus": "Nuovo stato",
+    "noStatuses": "Nessuno stato",
+    "pageRange": "{{start}}–{{end}} di {{count}}",
+    "empty": "Ancora nessuno stato. Aggiungine uno per indicare cosa stai facendo.",
+    "status": "Stato",
+    "schedules": "Pianificazioni",
+    "contactRules": "Regole di contatto",
+    "open": "Apri",
+    "tableLabel": "Tabella degli stati",
+    "active": "Attivo",
+    "responseAgentActive": "L’agente di risposta risponde durante questo stato",
+    "createFailed": "Impossibile creare lo stato.",
+    "createDescription": "Uno stato indica cosa stai facendo. Pianificazioni e regole di contatto si configurano nella pagina dedicata.",
+    "icon": "Icona",
+    "newStatusIcon": "Icona del nuovo stato",
+    "label": "Etichetta",
+    "labelPlaceholder": "es. Concentrato",
+    "adding": "Aggiunta…",
+    "addStatus": "Aggiungi stato",
+    "clearIcon": "Cancella icona",
+    "addRuleFailed": "Impossibile aggiungere la regola.",
+    "appliesTo": "Si applica a",
+    "everyone": "Tutti",
+    "channel": "Canale",
+    "project": "Progetto",
+    "selectChannel": "Seleziona canale",
+    "selectProject": "Seleziona progetto",
+    "agent": "Agente",
+    "defaultAgent": "Agente stato predefinito",
+    "agentReplies": "Risposte dell’agente",
+    "enableRuleAgent": "Abilita agente regola",
+    "instructions": "Istruzioni",
+    "ruleInstructionsPlaceholder": "Istruzioni specifiche della regola",
+    "addRule": "Aggiungi regola",
+    "noContactRules": "Nessuna regola di contatto — l’agente di risposta usa le istruzioni predefinite.",
+    "anyContact": "Qualsiasi contatto",
+    "unknown": "Sconosciuto",
+    "dateRangeBetween": "a",
+    "weekly": "Ogni settimana",
+    "weeklyScheduleDescription": "{{day}}, dalle {{start}} alle {{end}} ({{timezone}})",
+    "type": "Tipo",
+    "dateRangeType": "Intervallo di date",
+    "optionalLabel": "Etichetta (facoltativa)",
+    "scheduleLabelPlaceholder": "Etichetta pianificazione",
+    "starts": "Inizio",
+    "ends": "Fine",
+    "day": "Giorno",
+    "startTime": "Ora di inizio",
+    "endTime": "Ora di fine",
+    "addScheduleFailed": "Impossibile aggiungere la pianificazione.",
+    "addSchedule": "Aggiungi pianificazione",
+    "noSchedules": "Nessuna pianificazione: questo stato si applica solo quando viene attivato.",
+    "back": "Torna agli stati",
+    "notFound": "Stato non trovato. Potrebbe essere stato eliminato.",
+    "loadFailed": "Impossibile caricare gli stati.",
+    "loading": "Caricamento stato…",
+    "saveFailed": "Impossibile salvare lo stato.",
+    "deleting": "Eliminazione…",
+    "deleteStatus": "Elimina stato",
+    "setActive": "Attiva",
+    "currentlyVisible": "Attualmente visibile",
+    "notCurrentlyVisible": "Attualmente non visibile",
+    "scheduleCount": "Pianificazioni: {{count}}",
+    "contactRuleCount": "Regole di contatto: {{count}}",
+    "statusDetail": "Dettagli stato",
+    "statusIcon": "Icona stato",
+    "statusLabelPlaceholder": "Etichetta stato",
+    "enableResponseAgent": "Abilita agente di risposta",
+    "responseAgentDescription": "Usa queste istruzioni quando qualcuno ti contatta durante questo stato.",
+    "agentInstructions": "Istruzioni agente",
+    "agentInstructionsPlaceholder": "Istruzioni agente",
+    "saveStatus": "Salva stato",
+    "deleteConfirmation": "Verranno eliminate anche le pianificazioni e le regole di contatto.",
+    "deleteConfirmationTitle": "Eliminare “{{label}}”?"
   }
 }

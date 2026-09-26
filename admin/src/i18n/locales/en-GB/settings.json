@@ -4,7 +4,10 @@
     "saving": "Saving…",
     "retry": "Retry",
     "enabled": "Enabled",
-    "disabled": "Disabled"
+    "disabled": "Disabled",
+    "cancel": "Cancel",
+    "remove": "Remove",
+    "delete": "Delete"
   },
   "profile": {
     "title": "Profile",
@@ -89,5 +92,172 @@
     "browserUpdateFailed": "Failed to update browser notifications.",
     "browserNotifications": "Browser notifications",
     "toggleBrowser": "Toggle browser notifications"
+  },
+  "appearance": {
+    "title": "Appearance",
+    "default": "Default",
+    "editOrganisationTheme": "Edit your organisation's theme →",
+    "setupOrganisationTheme": "Set up a theme in your organisation's colours →",
+    "theme": {
+      "title": "Theme",
+      "description": "Choose the admin colour palette for your account.",
+      "legend": "Admin theme",
+      "organisation": "Organisation",
+      "organisationDescription": "Your organisation's colours."
+    },
+    "themes": {
+      "nessie": {
+        "label": "Nessie",
+        "description": "Navy navigation around a white work surface."
+      },
+      "sandstone": {
+        "label": "Sandstone",
+        "description": "Warm sand surfaces with terracotta controls."
+      },
+      "nebula": {
+        "label": "Classic",
+        "description": "Classic purple-on-dark Nessie palette."
+      },
+      "midnight": {
+        "label": "Midnight",
+        "description": "Neutral slate surfaces with a clear blue accent."
+      },
+      "daylight": {
+        "label": "Daylight",
+        "description": "Light surfaces, dark text, and readable blue accents."
+      },
+      "forest": {
+        "label": "Forest",
+        "description": "Deep green-charcoal surfaces with a calm emerald accent."
+      },
+      "ocean": {
+        "label": "Ocean",
+        "description": "Navy-teal depth with clear cyan controls and links."
+      },
+      "sunset": {
+        "label": "Sunset",
+        "description": "Warm dark brown surfaces with a grounded orange accent."
+      },
+      "rose": {
+        "label": "Rose",
+        "description": "Dark plum surfaces with rose and magenta emphasis."
+      },
+      "graphite": {
+        "label": "Graphite",
+        "description": "Neutral grayscale surfaces with restrained steel accents."
+      },
+      "contrast": {
+        "label": "High Contrast",
+        "description": "Maximum separation for text, controls, and surfaces."
+      },
+      "system": {
+        "label": "System",
+        "description": "Follow your OS light/dark setting."
+      }
+    },
+    "textSize": {
+      "title": "Text size",
+      "description": "Sets the text size across every page. Saved to your account."
+    },
+    "textSizes": {
+      "small": {
+        "label": "Small",
+        "description": "Compact text — fit more on screen."
+      },
+      "medium": {
+        "label": "Medium",
+        "description": "The balanced default size."
+      },
+      "large": {
+        "label": "Large",
+        "description": "Larger text for easier reading."
+      }
+    },
+    "appIcon": {
+      "title": "App icon",
+      "description": "Sets the Nessie icon on this phone's Home Screen.",
+      "dark": "Dark",
+      "light": "Light"
+    }
+  },
+  "statuses": {
+    "title": "Statuses",
+    "description": "What you are doing, shown beside your name. Each one can carry a schedule that turns it on by itself, and contact rules that decide who still reaches you.",
+    "clearActive": "Clear active",
+    "clearFailed": "Your active status could not be cleared. It is still showing.",
+    "newStatus": "New status",
+    "noStatuses": "No statuses",
+    "pageRange": "{{start}}–{{end}} of {{count}}",
+    "empty": "No statuses yet. Add one to say what you are doing.",
+    "status": "Status",
+    "schedules": "Schedules",
+    "contactRules": "Contact rules",
+    "open": "Open",
+    "tableLabel": "Statuses table",
+    "active": "Active",
+    "responseAgentActive": "Response agent answers during this status",
+    "createFailed": "Failed to create status.",
+    "createDescription": "A status says what you are doing. Its schedules and contact rules are set on its own screen.",
+    "icon": "Icon",
+    "newStatusIcon": "New status icon",
+    "label": "Label",
+    "labelPlaceholder": "e.g. Heads down",
+    "adding": "Adding…",
+    "addStatus": "Add status",
+    "clearIcon": "Clear icon",
+    "addRuleFailed": "Failed to add rule.",
+    "appliesTo": "Applies to",
+    "everyone": "Everyone",
+    "channel": "Channel",
+    "project": "Project",
+    "selectChannel": "Select channel",
+    "selectProject": "Select project",
+    "agent": "Agent",
+    "defaultAgent": "Default status agent",
+    "agentReplies": "Agent replies",
+    "enableRuleAgent": "Enable rule agent",
+    "instructions": "Instructions",
+    "ruleInstructionsPlaceholder": "Rule-specific instructions",
+    "addRule": "Add rule",
+    "noContactRules": "No contact rules yet — the response agent uses its default instructions.",
+    "anyContact": "Any contact",
+    "unknown": "Unknown",
+    "dateRangeBetween": "to",
+    "weekly": "Weekly",
+    "weeklyScheduleDescription": "{{day}}, {{start}} to {{end}} ({{timezone}})",
+    "type": "Type",
+    "dateRangeType": "Date range",
+    "optionalLabel": "Label (optional)",
+    "scheduleLabelPlaceholder": "Schedule label",
+    "starts": "Starts",
+    "ends": "Ends",
+    "day": "Day",
+    "startTime": "Start time",
+    "endTime": "End time",
+    "addScheduleFailed": "Failed to add schedule.",
+    "addSchedule": "Add schedule",
+    "noSchedules": "No schedules yet — this status only applies when set active.",
+    "back": "Back to Statuses",
+    "notFound": "This status could not be found. It may have been deleted.",
+    "loadFailed": "Could not load statuses.",
+    "loading": "Loading status…",
+    "saveFailed": "Failed to save status.",
+    "deleting": "Deleting…",
+    "deleteStatus": "Delete status",
+    "setActive": "Set active",
+    "currentlyVisible": "Currently visible",
+    "notCurrentlyVisible": "Not currently visible",
+    "scheduleCount": "Schedules: {{count}}",
+    "contactRuleCount": "Contact rules: {{count}}",
+    "statusDetail": "Status detail",
+    "statusIcon": "Status icon",
+    "statusLabelPlaceholder": "Status label",
+    "enableResponseAgent": "Enable response agent",
+    "responseAgentDescription": "Use these instructions when someone contacts you during this status.",
+    "agentInstructions": "Agent instructions",
+    "agentInstructionsPlaceholder": "Agent instructions",
+    "saveStatus": "Save status",
+    "deleteConfirmation": "This also removes its schedules and contact rules.",
+    "deleteConfirmationTitle": "Delete “{{label}}”?"
   }
 }
