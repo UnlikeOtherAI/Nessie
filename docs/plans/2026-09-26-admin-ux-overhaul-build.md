@@ -542,7 +542,134 @@ _(the phase writes its task list and as-built notes here)_
 
 ### Phase 4: accounts
 
-_(the phase writes its task list and as-built notes here)_
+Worktree `.worktrees/p4`, branch `feat/admin-overhaul-p4`, ports 5486/5487,
+database `nessie_p4`. Plan §6.7, §10.1, §10.2 and §10.13. This list is
+kept true as the work lands and becomes the as-built record.
+
+**The account id.** Every account is addressed as `<kind>:<id>`, the
+`team:<id>` shape the scope switch already uses. The kinds are `comms`
+(Google, Microsoft, Slack), `mailbox` (another email provider, personal or a
+team's shared one), `app` (a person's own app connection), `tickets` (Jira,
+Linear, Trello, GitHub), `ai-plan` (a personal AI plan) and `browser` (a
+cloud browser account at any level). `computer:<id>` is accepted by the grant
+routes only, so the computer page can use the same grant component. It is
+never listed as an account. The bare comms id at `/settings/accounts/:id`
+is retired, and its three emitters move with it: the list page,
+`resource-links.ts`'s `connection` kind, and `phone-navigation-routes.test.ts`.
+
+**API, tests first** (`api/src/routes/accounts*.ts`, `access-check*.ts`,
+`api/src/services/accounts/`; row types in `packages/schemas/src/accounts.ts`):
+
+1. **One status mapper** (`account-status.ts`). It maps each source's raw
+   status and health reason to one of five words, Connected, Needs attention,
+   Turned off, Not finished and Error. Each word comes with a sentence that
+   names the remedy, and the remedy is a code, not prose. Unit tests cover
+   every value of every source.
+2. **`GET /api/accounts?scope=me|team:<id>|organisation`.** It projects the
+   six sources into one row: service, account label, owner, scope, status,
+   capabilities, agents with access (the rule and the count), actions, and
+   the integration the row belongs to. `me` is any member's own accounts:
+   comms connections, personal mailboxes, board-source connections, AI plans,
+   a personal cloud browser and personal app connections. `team:<id>` is that
+   team's shared mailboxes and cloud browser account. `organisation` is the
+   company cloud browser account. Team and organisation scopes use Company
+   connections' gate (owner or admin). A team or organisation the viewer may
+   not read is refused, never narrowed silently. The projection reads team
+   cloud browser accounts itself, which closes T2's open gap
+   (`GET /api/browser-cloud/connections` never returned a team's own).
+3. **`GET /api/accounts/:id`**: the row plus **Used in**, meaning the agents,
+   projects, automations and browsers that depend on the account. Sources are
+   access rows, `Agent.modelSubscriptionId`, board sources, agent browsers,
+   standing send grants and triggers that name the account. Only what the
+   viewer may already see is named; anything else is counted without names.
+4. **`GET /api/accounts/:id/agents` and `PUT /api/accounts/:id/agents/:agentId`.**
+   The grant write fans out to whichever table applies:
+   - a mailbox writes `setMailboxAgentAccess`, under
+     `loadManageableMailboxConnection`;
+   - an app writes the Agent.toolPolicy entry for every tool the connection
+     provides (`setAgentToolPolicyForRegistryEntry`, owner-only as today);
+   - a computer writes the executor's agent assignment under its manage check.
+   Any other kind answers `409 ACCOUNT_NOT_GRANTABLE`, with a sentence naming
+   where that decision lives. A mailbox's second decision, the agent's own
+   mailbox tools, is read and returned beside each row and never written here
+   (`connected-mailboxes.md`).
+5. **`GET /api/accounts/:id/access-check?agentId=&context=direct|unattended|channel:<id>`.**
+   It returns ordered steps. Each step has an outcome, a reason code, a
+   sentence and at most one remedy the viewer is allowed to take. It composes
+   the runtime's own evaluators rather than restating them:
+   - the status mapper;
+   - the Google capability catalog;
+   - `listReachableMailboxes`;
+   - the Google account selection, extracted from
+     `loadUserGoogleCommsCredential` into `selectUserGoogleConnection` so the
+     check selects without decrypting;
+   - `isMcpRegistryRowExposed`, moved from `worker/src/run/mcp-tool-access.ts`
+     to `@nessie/mcp-manage`, with the worker importing it back;
+   - channel access through `buildAccessibleChannelWhere`;
+   - the approval each send tool declares.
+   A refusal never names another person's account or a conversation the
+   viewer cannot open.
+
+Tests: `api/test/account-status.test.ts` (pure),
+`api/test/accounts-routes.test.ts` and `api/test/access-check.test.ts`
+(database), plus the refactored evaluators' own tests in their packages.
+
+**Admin** (facade `facades/accounts`; components in
+`components/features/accounts/`):
+
+6. `AccountStatusPill`, `AccountsList` (the one list: service, account,
+   status sentence, "N agents may use this" as a link, Open), `AllowAgents`,
+   `CheckAccess` with its own dialog, and `AccountUsedIn`. `AllowAgents`
+   takes either an account (Agents with access) or an agent (the mirror an
+   Access tab mounts). A mailbox row shows both of its decisions side by side.
+7. **Connected accounts** (`/settings/accounts`, every tab) and **Company
+   connections** (`/admin/connections`, both scopes) render their lists from
+   the read model. Each tab's connect flows stay: Connect mailbox, Connect
+   Calendar or Meet, Connect Slack, the ticket tools' sign-ins, the cloud
+   browser form, AI plan linking and Local AI. Tab ids and the OAuth landing
+   intents are unchanged. The landing notice and the mailbox form's success
+   line end with what is still missing ("Connected. Choose which agents may
+   use this mailbox.").
+8. **One account page for every kind** at `/settings/accounts/:accountId`
+   (depth 2, parent Connected accounts, unchanged row), and the same page at
+   `/admin/connections/:accountId` (new; depth 2, parent Company
+   connections). Sections: status and the kind's own actions, then its own
+   settings (for Google: Permissions, Acting on your behalf, Included
+   channels and labels, all moved from `ConnectionCard`), then Agents with
+   access, Check access and Used in.
+9. **`/admin/apps/integrations/:slug`** (new; depth 2, parent Apps) for
+   `google-workspace`, `microsoft-365`, `slack`, `jira`, `linear`, `github`,
+   `trello`, `deep-water`, `cloud-browser` and `local-ai`. There is one page
+   and one registry (`pages/admin/integrations/integrations.ts`). Each page
+   says every way the service can be connected (for you, for a project or
+   channel, for the company) and lists that service's accounts with their
+   status. It never offers a community app beside a first-party sign-in; it
+   names the community app once, in words. Google Workspace has:
+   - Sign in with Google, with read mail, send mail, calendar and Meet as
+     checkboxes;
+   - Permissions;
+   - Let an agent act without asking;
+   - Other email provider (IMAP) as the fallback.
+   DeepWater reuses `DeepWaterTeamControls`, and Local AI reuses the Local AI
+   section. The catalogue page is phase 2's and is not touched.
+10. Registry rows: `settings-surfaces.ts` (unchanged pattern, note the id
+    form), `admin-organization-surfaces.ts` (the company account page) and
+    `admin-surfaces.ts` (the integrations rows). Nothing else in the shared
+    files changes.
+
+**Order:** this list; the schemas; the status mapper and the list route with
+tests; the detail and Used in; the grant read and write; the two evaluator
+refactors and Check access; the facade; the components; the pages and rows;
+the integrations; the docs (`connected-mailboxes.md` both copies,
+`google-workspace.md`, `comms-connector.md`,
+`personal-model-subscriptions.md`, the navigation tab-host table and
+intents); the gates, screenshots, the kimix review and the pull request.
+
+**Left for later, by name:** phase 2 swaps the app page's and the computer
+page's grant panels to `AllowAgents`, and mounts `CheckAccessDialog` on the
+agent's Access tab, after both phases land. Project and channel app installs
+in Company connections are not in the read model (§10.1 names person-scope
+app connections only). The vault as the one key store is §12.3's decision.
 
 ### Phase 5: project and conversation settings
 
