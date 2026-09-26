@@ -300,5 +300,16 @@
     "close": "Schließen",
     "opening": "Unterhaltung wird geöffnet…",
     "messagePlaceholder": "Nachricht an {{name}}"
+  },
+  "composer": {
+    "inviteAgent": "{{name}} ist noch nicht in diesem Kanal. Lade ihn ein, um auf diese Nachricht zu antworten.",
+    "inviting": "Wird eingeladen…",
+    "inviteAndReply": "Einladen und antworten",
+    "dismiss": "Ausblenden",
+    "mentionPersonAgent": "Person oder Agent erwähnen",
+    "mentionChannel": "Kanal erwähnen",
+    "runOnExecutor": "Auf Executor ausführen",
+    "attachFiles": "Dateien anhängen",
+    "sendMessage": "Nachricht senden"
   }
 }

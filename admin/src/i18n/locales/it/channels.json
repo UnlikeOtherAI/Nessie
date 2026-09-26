@@ -300,5 +300,16 @@
     "close": "Chiudi",
     "opening": "Apertura della conversazione…",
     "messagePlaceholder": "Messaggio per {{name}}"
+  },
+  "composer": {
+    "inviteAgent": "{{name}} non è ancora in questo canale. Invitalo a rispondere a questo messaggio.",
+    "inviting": "Invito…",
+    "inviteAndReply": "Invita e rispondi",
+    "dismiss": "Ignora",
+    "mentionPersonAgent": "Menziona una persona o un agente",
+    "mentionChannel": "Menziona un canale",
+    "runOnExecutor": "Esegui nell’executor",
+    "attachFiles": "Allega file",
+    "sendMessage": "Invia messaggio"
   }
 }

@@ -300,5 +300,16 @@
     "close": "Zavřít",
     "opening": "Otevírání konverzace…",
     "messagePlaceholder": "Zpráva pro {{name}}"
+  },
+  "composer": {
+    "inviteAgent": "{{name}} zatím není v tomto kanálu. Pozvěte ho, aby odpověděl na tuto zprávu.",
+    "inviting": "Odesílání pozvánky…",
+    "inviteAndReply": "Pozvat a odpovědět",
+    "dismiss": "Zavřít",
+    "mentionPersonAgent": "Zmínit osobu nebo agenta",
+    "mentionChannel": "Zmínit kanál",
+    "runOnExecutor": "Spustit na exekutoru",
+    "attachFiles": "Připojit soubory",
+    "sendMessage": "Odeslat zprávu"
   }
 }

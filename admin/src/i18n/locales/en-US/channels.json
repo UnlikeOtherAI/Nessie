@@ -300,5 +300,16 @@
     "close": "Close",
     "opening": "Opening conversation…",
     "messagePlaceholder": "Message {{name}}"
+  },
+  "composer": {
+    "inviteAgent": "{{name}} isn’t in this channel yet. Invite it to answer this message.",
+    "inviting": "Inviting…",
+    "inviteAndReply": "Invite & reply",
+    "dismiss": "Dismiss",
+    "mentionPersonAgent": "Mention person or agent",
+    "mentionChannel": "Mention channel",
+    "runOnExecutor": "Run on executor",
+    "attachFiles": "Attach files",
+    "sendMessage": "Send message"
   }
 }
