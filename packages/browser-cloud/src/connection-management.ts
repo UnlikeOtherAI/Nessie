@@ -3,6 +3,7 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { createBrowserbaseClient, type BrowserbaseClient } from './browserbase-client.js'
 import { CLOUD_BROWSER_ERROR_CODES, CloudBrowserError, isCloudBrowserError } from './errors.js'
 import { BLOCKING_SESSION_STATUSES } from './session-lifecycle.js'
+import { listCloudBrowserConnectionMetadata, type ConnectionDirectoryViewer } from './connection-directory.js'
 
 /**
  * Connecting and disconnecting a Browserbase account.
@@ -20,6 +21,7 @@ export type ConnectionSummary = {
   id: string
   scope: ConnectionScope
   userId: string | null
+  teamId: string | null
   /** Null for every connection made since the project id stopped being asked for. */
   projectId: string | null
   status: 'active' | 'needs_attention' | 'disabled'
@@ -242,31 +244,14 @@ export const connectCloudBrowser = async (
 }
 
 /**
- * What the caller may see: the organization connection (everyone — its
- * existence is what makes the tools available) and their own personal one.
- * Never another member's.
+ * The entitled directory plus usage for Settings. Team connections remain
+ * identified by their team, never by the caller's ambient session team.
  */
 export const listCloudBrowserConnections = async (
   prisma: PrismaClient,
-  input: { organizationId: string; userId: string },
+  input: ConnectionDirectoryViewer,
 ): Promise<ConnectionSummary[]> => {
-  const rows = await prisma.cloudBrowserConnection.findMany({
-    where: {
-      organizationId: input.organizationId,
-      OR: [{ scope: 'organization' }, { scope: 'user', userId: input.userId }],
-    },
-    select: {
-      id: true,
-      scope: true,
-      userId: true,
-      projectId: true,
-      status: true,
-      healthReason: true,
-      healthDetail: true,
-      createdAt: true,
-    },
-    orderBy: { scope: 'asc' },
-  })
+  const rows = await listCloudBrowserConnectionMetadata(prisma, input)
   if (rows.length === 0) return []
 
   const usage = await prisma.cloudBrowserSession.groupBy({
@@ -307,6 +292,7 @@ export const listCloudBrowserConnections = async (
     id: row.id,
     scope: row.scope,
     userId: row.userId,
+    teamId: row.teamId,
     projectId: row.projectId,
     status: row.status,
     healthReason: row.healthReason,

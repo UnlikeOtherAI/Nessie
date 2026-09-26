@@ -53,3 +53,11 @@ The stronger pre-action truncation scenario reproduced a second recovery defect:
 the run completed without invoking even `tool_spec` because no-tools finalization
 prevented all requested mutations. Its assertions check stored changes and exact
 tool-call counts, so a premature success message cannot make this evaluation pass.
+
+The evaluation also seeds an active team Browserbase connection and a Kimi
+plan, then requires successful metadata discovery in both Designer and Personal
+Assistant conversations. Settings is checked with two teams whose connections
+have different states; switching the team must switch the displayed state.
+`worker/test/account-connections.test.ts` covers membership revocation,
+other-person and cross-organisation isolation, inactive plans, unknown reads,
+private disclosure, and the live-requester tool gate against real database rows.

@@ -39,7 +39,29 @@ export const seedDesignerFixture = async (prisma, seedScope) => {
   const conversations = await Promise.all(['Configure CTO', 'Revoke browser access'].map((title) =>
     prisma.thread.create({ data: { agentId: designer.agentId, channelId: designer.channelId, title } }),
   ))
-  return { browserTool, conversations, designer, scope, sessionId }
+  const otherProject = await prisma.project.create({ data: {
+    name: 'Other browser team', organizationId: scope.organizationId,
+  } })
+  const otherTeam = await prisma.team.create({ data: { name: 'Other browser team', projectId: otherProject.id } })
+  const secretRefs = []
+  for (const [teamId, status] of [[otherTeam.id, 'disabled'], [scope.teamId, 'active']]) {
+    const ref = `secret_browserbase_${randomUUID()}`
+    secretRefs.push(ref)
+    await prisma.mcpOAuthSecret.create({ data: { ref, iv: 'iv', authTag: 'tag', ciphertext: 'fixture-not-a-key' } })
+    await prisma.cloudBrowserConnection.create({ data: {
+      organizationId: scope.organizationId, scope: 'team', teamId, status,
+      apiKeyRef: ref, createdByUserId: scope.userId,
+    } })
+  }
+  await prisma.modelSubscription.create({ data: {
+    organizationId: scope.organizationId, userId: scope.userId,
+    provider: 'kimi', providerAccountId: randomUUID(),
+  } })
+  const { ensurePersonalAssistantBootstrap } = await import('../../../api/src/services/personal-assistant.ts')
+  const assistant = await ensurePersonalAssistantBootstrap(prisma, {
+    organizationId: scope.organizationId, userId: scope.userId,
+  })
+  return { assistant, browserTool, conversations, designer, otherTeam, scope, secretRefs, sessionId }
 }
 
 export const waitForRun = async (prisma, agentId, threadId) => {

@@ -244,9 +244,9 @@ test('the gate admits an operator verb to a shared agent on the operator arm alo
   assert.equal(allowed('project_create', operator, { project_create: false }), false)
 })
 
-test('standing work runs only on a live person\'s turn, on every arm', () => {
+test('standing work and account discovery run only on a live person\'s turn, on every arm', () => {
   const live = ['workflow_create', 'workflow_update', 'workflow_install', 'workflow_trigger_create', 'workflow_run',
-    'ticket_board_column_create', 'ticket_board_column_update', 'kb_space_create']
+    'ticket_board_column_create', 'ticket_board_column_update', 'kb_space_create', 'account_connections_list']
   assert.deepEqual(
     BUILTIN_TOOL_DEFINITIONS.filter((tool) => tool.requiresLiveRequester).map((tool) => tool.id).sort(),
     [...live].sort(),
