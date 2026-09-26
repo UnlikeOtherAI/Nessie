@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { SectionLabel } from '../primitives/SectionLabel'
 import { SkeletonBlock } from '../primitives/Skeleton'
 import { ExpandableTable } from './ExpandableTable'
@@ -111,6 +112,7 @@ export const DataTable = <T,>({
   skeletonRows = 5,
   sort,
 }: DataTableProps<T>) => {
+  const { t } = useTranslation('common')
   const body = (
     <table
       className="admin-table w-full border-collapse"
@@ -164,7 +166,7 @@ export const DataTable = <T,>({
               </th>
             )
           })}
-          {onRowClick && rowActionLabel ? <th className={headCellClass} scope="col"><span className="sr-only">Open</span></th> : null}
+          {onRowClick && rowActionLabel ? <th className={headCellClass} scope="col"><span className="sr-only">{t('open')}</span></th> : null}
         </tr>
       </thead>
       <tbody>

@@ -1,4 +1,5 @@
 import { PAGE_SIZE_OPTIONS } from '@nessie/schemas'
+import { useTranslation } from 'react-i18next'
 
 import { Select } from './FormControls'
 
@@ -45,6 +46,7 @@ export const PaginationFooter = ({
   pageCount,
   pageSize,
 }: PaginationFooterProps) => {
+  const { t } = useTranslation('common')
   if (hideWhenSinglePage && pageCount <= 1 && page === 0 && !canPrevious && !canNext) return null
 
   return (
@@ -60,33 +62,33 @@ export const PaginationFooter = ({
     >
       <div className={compact ? 'flex items-center justify-between gap-3' : 'flex items-center gap-3'}>
         <button
-          aria-label="Previous page"
+          aria-label={t('pagination.previousPage')}
           className="admin-button admin-button-secondary"
           disabled={!canPrevious}
           onClick={() => onPageChange(page - 1)}
           type="button"
         >
-          Previous
+          {t('pagination.previous')}
         </button>
         {!compact ? (
           <span aria-live="polite" className="text-sm tabular-nums text-[color:var(--tx2)]">
-            Page {page + 1} of {pageCount}
+            {t('pagination.pageOf', { page: page + 1, total: pageCount })}
           </span>
         ) : null}
         <button
-          aria-label="Next page"
+          aria-label={t('pagination.nextPage')}
           className="admin-button admin-button-secondary"
           disabled={!canNext}
           onClick={() => onPageChange(page + 1)}
           type="button"
         >
-          Next
+          {t('pagination.next')}
         </button>
       </div>
 
       {compact ? (
         <span aria-live="polite" className="text-center text-sm tabular-nums text-[color:var(--tx2)]">
-          Page {page + 1} of {pageCount}
+          {t('pagination.pageOf', { page: page + 1, total: pageCount })}
         </span>
       ) : null}
 
@@ -96,9 +98,9 @@ export const PaginationFooter = ({
       >
         <span className="text-xs tabular-nums text-[color:var(--tx3)]">{label}</span>
         <label className="flex items-center gap-2 text-xs text-[color:var(--tx2)]">
-          <span>Items per page</span>
+          <span>{t('pagination.itemsPerPage')}</span>
           <Select
-            aria-label="Items per page"
+            aria-label={t('pagination.itemsPerPage')}
             onChange={(event) => onPageSizeChange(Number(event.target.value))}
             size="compact"
             value={pageSize}

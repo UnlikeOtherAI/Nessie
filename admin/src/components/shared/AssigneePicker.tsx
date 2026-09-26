@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { faChevronDown, faRobot, faUser } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { useTranslation } from 'react-i18next'
 import type { AgentVisibility } from '@nessie/schemas'
 import { Popover } from '../overlays/Popover'
 import { AgentVisibilityPill } from './AgentVisibilityPill'
@@ -27,6 +28,7 @@ const sameValue = (a: AssigneeValue, b: AssigneeOption) => a?.id === b.id && a?.
 // A searchable assignee combobox: type to filter people and agents, arrow keys
 // to move, Enter to pick, Escape to close. Selecting "Unassigned" clears it.
 export const AssigneePicker = ({ options, value, onChange, id, placeholder }: AssigneePickerProps) => {
+  const { t } = useTranslation('common')
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [highlight, setHighlight] = useState(0)
@@ -39,8 +41,8 @@ export const AssigneePicker = ({ options, value, onChange, id, placeholder }: As
     const term = query.trim().toLowerCase()
     const matches = term ? options.filter((o) => o.name.toLowerCase().includes(term)) : options
     // The clear option (id '') always leads the list.
-    return [{ id: '', name: 'Unassigned', kind: 'user' as AssigneeKind }, ...matches]
-  }, [options, query])
+    return [{ id: '', name: t('assignee.unassigned'), kind: 'user' as AssigneeKind }, ...matches]
+  }, [options, query, t])
 
   useEffect(() => {
     if (!open) return
@@ -87,7 +89,7 @@ export const AssigneePicker = ({ options, value, onChange, id, placeholder }: As
       >
         <span className="flex min-w-0 flex-1 items-center gap-2">
           <span className={selected ? 'truncate text-[color:var(--tx)]' : 'truncate text-[color:var(--tx3)]'}>
-            {selected ? selected.name : placeholder ?? 'Unassigned'}
+            {selected ? selected.name : placeholder ?? t('assignee.unassigned')}
           </span>
           {selected?.kind === 'agent' && selected.agentVisibility ? (
             <AgentVisibilityPill visibility={selected.agentVisibility} />
@@ -99,7 +101,7 @@ export const AssigneePicker = ({ options, value, onChange, id, placeholder }: As
       <Popover
         anchorRef={triggerRef}
         className="overflow-hidden rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] shadow-lg"
-        label={placeholder ?? 'Assignee'}
+        label={placeholder ?? t('assignee.label')}
         matchAnchorWidth
         onClose={() => setOpen(false)}
         open={open}
@@ -115,7 +117,7 @@ export const AssigneePicker = ({ options, value, onChange, id, placeholder }: As
               setHighlight(0)
             }}
             onKeyDown={onKeyDown}
-            placeholder="Search people or agents…"
+            placeholder={t('assignee.search')}
             value={query}
           />
         </div>
@@ -155,7 +157,7 @@ export const AssigneePicker = ({ options, value, onChange, id, placeholder }: As
             )
           })}
           {filtered.length === 1 ? (
-            <li className="px-3 py-1.5 text-xs text-[color:var(--tx3)]">No matches</li>
+            <li className="px-3 py-1.5 text-xs text-[color:var(--tx3)]">{t('noMatches')}</li>
           ) : null}
         </ul>
       </Popover>

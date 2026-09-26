@@ -1,5 +1,6 @@
 import { faLock } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { useTranslation } from 'react-i18next'
 
 /**
  * The one lock marker for a protected project or channel.
@@ -34,14 +35,16 @@ type ChannelGlyphProps = {
  * padlock for a protected one. It occupies the same box either way, so a list
  * of channels does not reflow when one of them is locked.
  */
-export const ChannelGlyph = ({ className, visibility }: ChannelGlyphProps) =>
-  isProtectedRoom(visibility) ? (
-    <span aria-label="Protected channel" className={className} role="img" title="Protected — people outside it see only its name and members">
+export const ChannelGlyph = ({ className, visibility }: ChannelGlyphProps) => {
+  const { t } = useTranslation('common')
+  return isProtectedRoom(visibility) ? (
+    <span aria-label={t('visibility.protectedChannel')} className={className} role="img" title={t('visibility.protectedDescription')}>
       <FontAwesomeIcon className="h-3 w-3" icon={faLock} />
     </span>
   ) : (
     <span className={className}>#</span>
   )
+}
 
 /**
  * The same marker beside a project's name, where there is no `#` to replace.
@@ -52,13 +55,15 @@ export const ProjectLockMarker = ({
   visibility,
 }: {
   visibility: RoomVisibility | null | undefined
-}) =>
-  isProtectedRoom(visibility) ? (
+}) => {
+  const { t } = useTranslation('common')
+  return isProtectedRoom(visibility) ? (
     <FontAwesomeIcon
-      aria-label="Protected project"
+      aria-label={t('visibility.protectedProject')}
       className="h-3 w-3 flex-shrink-0 text-[color:var(--tx3)]"
       icon={faLock}
       role="img"
-      title="Protected — people outside it see only its name and members"
+      title={t('visibility.protectedDescription')}
     />
   ) : null
+}

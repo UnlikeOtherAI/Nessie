@@ -1,0 +1,54 @@
+{
+  "close": "Close",
+  "closeNamed": "Close {{name}}",
+  "loading": "Loading…",
+  "noMatches": "No matches",
+  "pagination": {
+    "previousPage": "Previous page",
+    "previous": "Previous",
+    "pageOf": "Page {{page}} of {{total}}",
+    "nextPage": "Next page",
+    "next": "Next",
+    "itemsPerPage": "Items per page"
+  },
+  "assignee": {
+    "unassigned": "Unassigned",
+    "label": "Assignee",
+    "search": "Search people or agents…"
+  },
+  "person": {
+    "people": "People",
+    "add": "Add a person…",
+    "search": "Search people…"
+  },
+  "attachment": {
+    "closeNamedPreview": "Close {{name}} preview",
+    "downloading": "Downloading…",
+    "download": "Download",
+    "closePreview": "Close preview"
+  },
+  "open": "Open",
+  "visibility": {
+    "protectedChannel": "Protected channel",
+    "protectedProject": "Protected project",
+    "protectedDescription": "Protected — people outside it see only its name and members"
+  },
+  "pdf": {
+    "previewFailed": "This PDF couldn’t be previewed. Download it to open it in another app.",
+    "loading": "Loading PDF…",
+    "namedPage": "{{title}}, page {{page}}"
+  },
+  "screenshot": {
+    "singular": "Screenshot",
+    "viewNamed": "View {{name}}",
+    "count": "{{count}} screenshots",
+    "count_one": "Screenshot",
+    "count_few": "{{count}} screenshots",
+    "count_many": "{{count}} screenshots",
+    "count_other": "{{count}} screenshots"
+  },
+  "header": {
+    "moreActions": "More page actions",
+    "backFrom": "Back from {{title}}"
+  }
+}

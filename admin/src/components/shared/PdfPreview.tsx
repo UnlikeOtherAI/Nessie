@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 
 type PdfState = { document: PDFDocumentProxy | null; error: boolean; loading: boolean }
 
 /** Draws uploaded PDFs as pixels, without depending on the host WebView's PDF plugin. */
 export const PdfPreview = ({ title, url }: { title: string; url: string }) => {
+  const { t } = useTranslation('common')
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [state, setState] = useState<PdfState>({ document: null, error: false, loading: true })
@@ -96,21 +98,21 @@ export const PdfPreview = ({ title, url }: { title: string; url: string }) => {
     <div className="flex h-full min-h-0 w-full flex-col" ref={containerRef}>
       {state.error || renderError ? (
         <p className="p-8 text-center text-sm text-[color:var(--tx3)]">
-          This PDF couldn’t be previewed. Download it to open it in another app.
+          {t('pdf.previewFailed')}
         </p>
       ) : state.loading ? (
-        <p className="p-8 text-center text-sm text-[color:var(--tx3)]">Loading PDF…</p>
+        <p className="p-8 text-center text-sm text-[color:var(--tx3)]">{t('pdf.loading')}</p>
       ) : null}
       {state.document && !renderError ? (
         <>
           <div className="min-h-0 flex-1 overflow-auto p-3">
-            <canvas aria-label={`${title}, page ${pageNumber}`} className="mx-auto" ref={canvasRef} role="img" />
+            <canvas aria-label={t('pdf.namedPage', { title, page: pageNumber })} className="mx-auto" ref={canvasRef} role="img" />
           </div>
           {state.document.numPages > 1 ? (
             <div className="flex items-center justify-center gap-3 border-t border-[color:var(--sep)] p-2 text-sm">
-              <button className="admin-button admin-button-secondary admin-button-compact" disabled={pageNumber === 1} onClick={() => setPageNumber((page) => page - 1)} type="button">Previous</button>
-              <span>Page {pageNumber} of {state.document.numPages}</span>
-              <button className="admin-button admin-button-secondary admin-button-compact" disabled={pageNumber === state.document.numPages} onClick={() => setPageNumber((page) => page + 1)} type="button">Next</button>
+              <button className="admin-button admin-button-secondary admin-button-compact" disabled={pageNumber === 1} onClick={() => setPageNumber((page) => page - 1)} type="button">{t('pagination.previous')}</button>
+              <span>{t('pagination.pageOf', { page: pageNumber, total: state.document.numPages })}</span>
+              <button className="admin-button admin-button-secondary admin-button-compact" disabled={pageNumber === state.document.numPages} onClick={() => setPageNumber((page) => page + 1)} type="button">{t('pagination.next')}</button>
             </div>
           ) : null}
         </>

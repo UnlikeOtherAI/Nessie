@@ -55,3 +55,5 @@ New namespaces should keep their files feature-owned and focused. Avoid one
 global catalog per language: independent page work can then add a namespace
 without creating conflicts in unrelated features. CI verifies that every
 registered catalog has the same key paths for all supported languages.
+The `common` namespace contains controls reused across features, such as
+dialogs, pickers, pagination and attachment previews.

@@ -1,0 +1,54 @@
+{
+  "close": "Fermer",
+  "closeNamed": "Fermer {{name}}",
+  "loading": "Chargement…",
+  "noMatches": "Aucun résultat",
+  "pagination": {
+    "previousPage": "Page précédente",
+    "previous": "Précédent",
+    "pageOf": "Page {{page}} sur {{total}}",
+    "nextPage": "Page suivante",
+    "next": "Suivant",
+    "itemsPerPage": "Éléments par page"
+  },
+  "assignee": {
+    "unassigned": "Non attribué",
+    "label": "Responsable",
+    "search": "Rechercher des personnes ou des agents…"
+  },
+  "person": {
+    "people": "Personnes",
+    "add": "Ajouter une personne…",
+    "search": "Rechercher des personnes…"
+  },
+  "attachment": {
+    "closeNamedPreview": "Fermer l’aperçu de {{name}}",
+    "downloading": "Téléchargement…",
+    "download": "Télécharger",
+    "closePreview": "Fermer l’aperçu"
+  },
+  "open": "Ouvrir",
+  "visibility": {
+    "protectedChannel": "Canal protégé",
+    "protectedProject": "Projet protégé",
+    "protectedDescription": "Protégé — les personnes extérieures ne voient que son nom et ses membres"
+  },
+  "pdf": {
+    "previewFailed": "Impossible de prévisualiser ce PDF. Téléchargez-le pour l’ouvrir dans une autre application.",
+    "loading": "Chargement du PDF…",
+    "namedPage": "{{title}}, page {{page}}"
+  },
+  "screenshot": {
+    "singular": "Capture d’écran",
+    "viewNamed": "Afficher {{name}}",
+    "count": "{{count}} captures d’écran",
+    "count_one": "Capture d’écran",
+    "count_few": "{{count}} captures d’écran",
+    "count_many": "{{count}} captures d’écran",
+    "count_other": "{{count}} captures d’écran"
+  },
+  "header": {
+    "moreActions": "Autres actions de la page",
+    "backFrom": "Retour depuis {{title}}"
+  }
+}

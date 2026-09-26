@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   attachmentPath,
   downloadAuthedPath,
@@ -53,11 +54,12 @@ const AttachmentViewerDialog = ({
   onClose: () => void
   token: string | null
 }) => {
+  const { t } = useTranslation('common')
   const close = useCallback(() => onClose(), [onClose])
   const overlay = useOverlay({
     id: 'attachment-viewer',
     kind: blocking ? 'blocking' : 'modal',
-    label: `Close ${attachment.filename} preview`,
+    label: t('attachment.closeNamedPreview', { name: attachment.filename }),
     onClose: close,
     open: true,
   })
@@ -134,10 +136,10 @@ const AttachmentViewerDialog = ({
                 onClick={handleDownload}
                 type="button"
               >
-                {downloading ? 'Downloading…' : 'Download'}
+                {downloading ? t('attachment.downloading') : t('attachment.download')}
               </button>
               <button
-                aria-label="Close preview"
+                aria-label={t('attachment.closePreview')}
                 className={[
                   'flex h-8 w-8 items-center justify-center rounded text-[var(--tx3)]',
                   'hover:bg-[var(--overlay)] hover:text-[var(--tx)]',
@@ -155,7 +157,7 @@ const AttachmentViewerDialog = ({
             data-testid="attachment-viewer-body"
           >
             {!url ? (
-              <p className="p-8 text-sm text-[color:var(--tx3)]">Loading…</p>
+              <p className="p-8 text-sm text-[color:var(--tx3)]">{t('loading')}</p>
             ) : pdf ? (
               <div className="h-[calc(100dvh-10rem)] w-full overflow-hidden rounded bg-[var(--panel)]">
                 <PdfPreview title={attachment.filename} url={url} />

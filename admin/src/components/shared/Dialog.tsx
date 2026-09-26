@@ -4,6 +4,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react'
+import { useTranslation } from 'react-i18next'
 import { OverlayPortal } from '../overlays/OverlayPortal'
 import { OverlayOwnerProvider } from '../overlays/overlay-owner'
 import { useOverlay } from '../overlays/useOverlay'
@@ -131,6 +132,7 @@ export const Dialog = ({
   size = 'md',
   title,
 }: DialogProps) => {
+  const { t } = useTranslation('common')
   const titleId = useId()
   const descriptionId = useId()
   const overlay = useOverlay({
@@ -138,7 +140,7 @@ export const Dialog = ({
     id: titleId,
     initialFocusRef,
     kind: blocking ? 'blocking' : 'modal',
-    label: `Close ${title}`,
+    label: t('closeNamed', { name: title }),
     onClose,
     open,
   })
@@ -180,7 +182,7 @@ export const Dialog = ({
             <div className="flex items-center gap-1">
               {headerActions}
               <button
-                aria-label="Close"
+                aria-label={t('close')}
                 className={closeButtonClass}
                 onClick={requestClose}
                 type="button"

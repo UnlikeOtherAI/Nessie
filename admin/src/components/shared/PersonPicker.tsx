@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { faChevronDown, faUser } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { useTranslation } from 'react-i18next'
 import { Popover } from '../overlays/Popover'
 
 export type PersonOption = { id: string; name: string; subtitle?: string }
@@ -43,14 +44,15 @@ type PersonPickerProps = {
  */
 export const PersonPicker = ({
   disabled = false,
-  emptyLabel = 'No matches',
+  emptyLabel,
   id,
   layer = 'popover',
-  label = 'People',
+  label,
   onSelect,
   options,
-  placeholder = 'Add a person…',
+  placeholder,
 }: PersonPickerProps) => {
+  const { t } = useTranslation('common')
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [highlight, setHighlight] = useState(0)
@@ -107,14 +109,14 @@ export const PersonPicker = ({
         ref={triggerRef}
         type="button"
       >
-        <span className="truncate text-[color:var(--tx3)]">{placeholder}</span>
+        <span className="truncate text-[color:var(--tx3)]">{placeholder ?? t('person.add')}</span>
         <FontAwesomeIcon className="shrink-0 text-[10px] text-[color:var(--tx3)]" icon={faChevronDown} />
       </button>
 
       <Popover
         anchorRef={triggerRef}
         className="overflow-hidden rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] shadow-lg"
-        label={label}
+        label={label ?? t('person.people')}
         layer={layer}
         matchAnchorWidth
         onClose={() => setOpen(false)}
@@ -130,7 +132,7 @@ export const PersonPicker = ({
               setHighlight(0)
             }}
             onKeyDown={onKeyDown}
-            placeholder="Search people…"
+            placeholder={t('person.search')}
             ref={inputRef}
             value={query}
           />
@@ -159,7 +161,7 @@ export const PersonPicker = ({
             </li>
           ))}
           {filtered.length === 0 ? (
-            <li className="px-3 py-1.5 text-xs text-[color:var(--tx3)]">{emptyLabel}</li>
+            <li className="px-3 py-1.5 text-xs text-[color:var(--tx3)]">{emptyLabel ?? t('noMatches')}</li>
           ) : null}
         </ul>
       </Popover>

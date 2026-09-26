@@ -1,0 +1,54 @@
+{
+  "close": "Schließen",
+  "closeNamed": "{{name}} schließen",
+  "loading": "Wird geladen…",
+  "noMatches": "Keine Treffer",
+  "pagination": {
+    "previousPage": "Vorherige Seite",
+    "previous": "Zurück",
+    "pageOf": "Seite {{page}} von {{total}}",
+    "nextPage": "Nächste Seite",
+    "next": "Weiter",
+    "itemsPerPage": "Einträge pro Seite"
+  },
+  "assignee": {
+    "unassigned": "Nicht zugewiesen",
+    "label": "Zuständige Person",
+    "search": "Personen oder Agenten suchen…"
+  },
+  "person": {
+    "people": "Personen",
+    "add": "Person hinzufügen…",
+    "search": "Personen suchen…"
+  },
+  "attachment": {
+    "closeNamedPreview": "Vorschau für {{name}} schließen",
+    "downloading": "Wird heruntergeladen…",
+    "download": "Herunterladen",
+    "closePreview": "Vorschau schließen"
+  },
+  "open": "Öffnen",
+  "visibility": {
+    "protectedChannel": "Geschützter Kanal",
+    "protectedProject": "Geschütztes Projekt",
+    "protectedDescription": "Geschützt — Außenstehende sehen nur den Namen und die Mitglieder"
+  },
+  "pdf": {
+    "previewFailed": "Dieses PDF konnte nicht als Vorschau angezeigt werden. Lade es herunter und öffne es in einer anderen App.",
+    "loading": "PDF wird geladen…",
+    "namedPage": "{{title}}, Seite {{page}}"
+  },
+  "screenshot": {
+    "singular": "Screenshot",
+    "viewNamed": "{{name}} anzeigen",
+    "count": "{{count}} Screenshots",
+    "count_one": "Screenshot",
+    "count_few": "{{count}} Screenshots",
+    "count_many": "{{count}} Screenshots",
+    "count_other": "{{count}} Screenshots"
+  },
+  "header": {
+    "moreActions": "Weitere Seitenaktionen",
+    "backFrom": "Zurück von {{title}}"
+  }
+}

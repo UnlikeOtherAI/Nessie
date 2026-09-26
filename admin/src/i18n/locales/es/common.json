@@ -1,0 +1,54 @@
+{
+  "close": "Cerrar",
+  "closeNamed": "Cerrar {{name}}",
+  "loading": "Cargando…",
+  "noMatches": "Sin resultados",
+  "pagination": {
+    "previousPage": "Página anterior",
+    "previous": "Anterior",
+    "pageOf": "Página {{page}} de {{total}}",
+    "nextPage": "Página siguiente",
+    "next": "Siguiente",
+    "itemsPerPage": "Elementos por página"
+  },
+  "assignee": {
+    "unassigned": "Sin asignar",
+    "label": "Responsable",
+    "search": "Buscar personas o agentes…"
+  },
+  "person": {
+    "people": "Personas",
+    "add": "Añadir una persona…",
+    "search": "Buscar personas…"
+  },
+  "attachment": {
+    "closeNamedPreview": "Cerrar vista previa de {{name}}",
+    "downloading": "Descargando…",
+    "download": "Descargar",
+    "closePreview": "Cerrar vista previa"
+  },
+  "open": "Abrir",
+  "visibility": {
+    "protectedChannel": "Canal protegido",
+    "protectedProject": "Proyecto protegido",
+    "protectedDescription": "Protegido — quienes no pertenecen a él solo ven su nombre y sus miembros"
+  },
+  "pdf": {
+    "previewFailed": "No se pudo mostrar una vista previa de este PDF. Descárgalo para abrirlo en otra aplicación.",
+    "loading": "Cargando PDF…",
+    "namedPage": "{{title}}, página {{page}}"
+  },
+  "screenshot": {
+    "singular": "Captura de pantalla",
+    "viewNamed": "Ver {{name}}",
+    "count": "{{count}} capturas de pantalla",
+    "count_one": "Captura de pantalla",
+    "count_few": "{{count}} capturas de pantalla",
+    "count_many": "{{count}} capturas de pantalla",
+    "count_other": "{{count}} capturas de pantalla"
+  },
+  "header": {
+    "moreActions": "Más acciones de la página",
+    "backFrom": "Volver desde {{title}}"
+  }
+}

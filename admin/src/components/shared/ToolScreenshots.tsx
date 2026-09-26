@@ -1,4 +1,5 @@
 import type { ToolCallAttachment } from '@nessie/schemas'
+import { useTranslation } from 'react-i18next'
 
 import {
   attachmentPath,
@@ -35,13 +36,14 @@ const ToolScreenshot = ({
   onOpen: (attachment: ViewableAttachment) => void
   token: string | null
 }) => {
+  const { t } = useTranslation('common')
   const url = useAuthedObjectUrlFromPath(
     image.hasThumbnail ? attachmentThumbnailPath(image.attachmentId) : attachmentPath(image.attachmentId),
     token,
   )
   return (
     <button
-      aria-label={`View ${image.filename}`}
+      aria-label={t('screenshot.viewNamed', { name: image.filename })}
       className={[
         'flex aspect-[5/3] w-full cursor-zoom-in items-center justify-center overflow-hidden',
         'rounded-md border border-[color:var(--sep)] bg-[var(--scrim)]',
@@ -63,7 +65,7 @@ const ToolScreenshot = ({
           src={url}
         />
       ) : (
-        <span className="text-[11px] text-[color:var(--tx3)]">Screenshot</span>
+        <span className="text-[11px] text-[color:var(--tx3)]">{t('screenshot.singular')}</span>
       )}
     </button>
   )
@@ -81,10 +83,11 @@ export const ToolScreenshots = ({
   onOpen: (attachment: ViewableAttachment) => void
   token: string | null
 }) => {
+  const { t } = useTranslation('common')
   if (!attachments || attachments.length === 0) return null
   return (
     <ul
-      aria-label={attachments.length === 1 ? 'Screenshot' : `${attachments.length} screenshots`}
+      aria-label={t('screenshot.count', { count: attachments.length })}
       className={['flex flex-wrap gap-2', className].filter(Boolean).join(' ')}
       data-testid="tool-screenshots"
     >

@@ -1,0 +1,54 @@
+{
+  "close": "Chiudi",
+  "closeNamed": "Chiudi {{name}}",
+  "loading": "Caricamento…",
+  "noMatches": "Nessun risultato",
+  "pagination": {
+    "previousPage": "Pagina precedente",
+    "previous": "Precedente",
+    "pageOf": "Pagina {{page}} di {{total}}",
+    "nextPage": "Pagina successiva",
+    "next": "Successiva",
+    "itemsPerPage": "Elementi per pagina"
+  },
+  "assignee": {
+    "unassigned": "Non assegnato",
+    "label": "Assegnatario",
+    "search": "Cerca persone o agenti…"
+  },
+  "person": {
+    "people": "Persone",
+    "add": "Aggiungi una persona…",
+    "search": "Cerca persone…"
+  },
+  "attachment": {
+    "closeNamedPreview": "Chiudi l’anteprima di {{name}}",
+    "downloading": "Download in corso…",
+    "download": "Scarica",
+    "closePreview": "Chiudi anteprima"
+  },
+  "open": "Apri",
+  "visibility": {
+    "protectedChannel": "Canale protetto",
+    "protectedProject": "Progetto protetto",
+    "protectedDescription": "Protetto — chi non ne fa parte vede solo il nome e i membri"
+  },
+  "pdf": {
+    "previewFailed": "Impossibile visualizzare l’anteprima di questo PDF. Scaricalo per aprirlo in un’altra app.",
+    "loading": "Caricamento PDF…",
+    "namedPage": "{{title}}, pagina {{page}}"
+  },
+  "screenshot": {
+    "singular": "Schermata",
+    "viewNamed": "Visualizza {{name}}",
+    "count": "{{count}} schermate",
+    "count_one": "Schermata",
+    "count_few": "{{count}} schermate",
+    "count_many": "{{count}} schermate",
+    "count_other": "{{count}} schermate"
+  },
+  "header": {
+    "moreActions": "Altre azioni della pagina",
+    "backFrom": "Indietro da {{title}}"
+  }
+}

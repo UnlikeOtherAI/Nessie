@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 
 /**
  * A panel that slides in beside the content rather than over it.
@@ -20,7 +21,9 @@ type SidePanelProps = {
   title: string
 }
 
-export const SidePanel = ({ children, className, onClose, title }: SidePanelProps) => (
+export const SidePanel = ({ children, className, onClose, title }: SidePanelProps) => {
+  const { t } = useTranslation('common')
+  return (
   <aside
     aria-label={title}
     className={[
@@ -36,7 +39,7 @@ export const SidePanel = ({ children, className, onClose, title }: SidePanelProp
     <div className="flex items-center justify-between gap-2 border-b border-[color:var(--sep)] px-3 py-2.5">
       <h2 className="text-sm font-semibold text-[color:var(--tx)]">{title}</h2>
       <button
-        aria-label="Close"
+        aria-label={t('close')}
         className={[
           'flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx3)]',
           'hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
@@ -61,4 +64,5 @@ export const SidePanel = ({ children, className, onClose, title }: SidePanelProp
 
     <div className="min-h-0 flex-1 overflow-y-auto p-3">{children}</div>
   </aside>
-)
+  )
+}

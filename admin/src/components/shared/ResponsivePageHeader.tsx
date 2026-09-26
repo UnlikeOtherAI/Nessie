@@ -1,6 +1,7 @@
 import { faChevronDown, faEllipsis } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Popover } from '../overlays/Popover'
 import { PageHeaderMenu } from './PageHeaderMenu'
 import { SectionLabel } from '../primitives/SectionLabel'
@@ -130,6 +131,7 @@ export const ResponsivePageHeader = ({
   titleInput,
   titleTone = 'page',
 }: ResponsivePageHeaderProps) => {
+  const { t } = useTranslation('common')
   const showHeaderAccountMenu = useHeaderAccountMenuVisible() && !actionBar
   const {
     actionMeasureRefs,
@@ -270,18 +272,18 @@ export const ResponsivePageHeader = ({
               aria-controls={`${menuIdPrefix}-${MORE_ACTION_ID}`}
               aria-expanded={openMenu === MORE_ACTION_ID}
               aria-haspopup="menu"
-              aria-label="More page actions"
+              aria-label={t('header.moreActions')}
               className={actionClassName(moreAction, openMenu === MORE_ACTION_ID)}
               onClick={() => toggleMenu(MORE_ACTION_ID)}
               ref={(element) => { triggerRefs.current[MORE_ACTION_ID] = element }}
-              title="More page actions"
+              title={t('header.moreActions')}
               type="button"
             ><FontAwesomeIcon className="h-3 w-3" icon={faEllipsis} /></button>
             <Popover
               anchorRef={anchorRefFor(MORE_ACTION_ID)}
               className={menuPanelClassName}
               id={`${menuIdPrefix}-${MORE_ACTION_ID}`}
-              label="More page actions"
+              label={t('header.moreActions')}
               onClose={() => closeMenu()}
               onKeyDown={handleMenuKeys}
               open={openMenu === MORE_ACTION_ID}
@@ -324,7 +326,7 @@ export const ResponsivePageHeader = ({
             <div className="flex flex-shrink-0 items-center gap-[var(--page-header-gap)]">
               {leading}
               {onBack ? (
-                <PhoneBackButton label={`Back from ${title}`} onBack={onBack} />
+                <PhoneBackButton label={t('header.backFrom', { title })} onBack={onBack} />
               ) : null}
             </div>
           ) : null}
@@ -382,11 +384,11 @@ export const ResponsivePageHeader = ({
                   aria-controls={`${menuIdPrefix}-${MORE_ACTION_ID}`}
                   aria-expanded={openMenu === MORE_ACTION_ID}
                   aria-haspopup="menu"
-                  aria-label="More page actions"
+                  aria-label={t('header.moreActions')}
                   className={actionClassName(moreAction, openMenu === MORE_ACTION_ID)}
                   onClick={() => toggleMenu(MORE_ACTION_ID)}
                   ref={(element) => { triggerRefs.current[MORE_ACTION_ID] = element }}
-                  title="More page actions"
+                  title={t('header.moreActions')}
                   type="button"
                 >
                   <FontAwesomeIcon className="h-3 w-3" icon={faEllipsis} />
@@ -395,7 +397,7 @@ export const ResponsivePageHeader = ({
                   anchorRef={anchorRefFor(MORE_ACTION_ID)}
                   className={menuPanelClassName}
                   id={`${menuIdPrefix}-${MORE_ACTION_ID}`}
-                  label="More page actions"
+                  label={t('header.moreActions')}
                   onClose={() => closeMenu()}
                   onKeyDown={handleMenuKeys}
                   open={openMenu === MORE_ACTION_ID}
@@ -430,7 +432,7 @@ export const ResponsivePageHeader = ({
         <div className="flex items-center gap-[var(--page-header-gap)]" ref={leadingMeasureRef}>
           {leading}
           {onBack ? (
-            <PhoneBackButton label={`Back from ${title}`} onBack={onBack} />
+            <PhoneBackButton label={t('header.backFrom', { title })} onBack={onBack} />
           ) : null}
         </div>
         {actions.map((action) => (

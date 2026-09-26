@@ -1,0 +1,54 @@
+{
+  "close": "Zavřít",
+  "closeNamed": "Zavřít {{name}}",
+  "loading": "Načítání…",
+  "noMatches": "Žádné výsledky",
+  "pagination": {
+    "previousPage": "Předchozí stránka",
+    "previous": "Předchozí",
+    "pageOf": "Strana {{page}} z {{total}}",
+    "nextPage": "Další stránka",
+    "next": "Další",
+    "itemsPerPage": "Položek na stránku"
+  },
+  "assignee": {
+    "unassigned": "Nepřiřazeno",
+    "label": "Přiřazená osoba",
+    "search": "Hledat lidi nebo agenty…"
+  },
+  "person": {
+    "people": "Lidé",
+    "add": "Přidat osobu…",
+    "search": "Hledat lidi…"
+  },
+  "attachment": {
+    "closeNamedPreview": "Zavřít náhled souboru {{name}}",
+    "downloading": "Stahování…",
+    "download": "Stáhnout",
+    "closePreview": "Zavřít náhled"
+  },
+  "open": "Otevřít",
+  "visibility": {
+    "protectedChannel": "Chráněný kanál",
+    "protectedProject": "Chráněný projekt",
+    "protectedDescription": "Chráněno — lidé mimo něj vidí jen název a členy"
+  },
+  "pdf": {
+    "previewFailed": "Náhled PDF se nepodařilo zobrazit. Stáhněte soubor a otevřete ho v jiné aplikaci.",
+    "loading": "Načítání PDF…",
+    "namedPage": "{{title}}, strana {{page}}"
+  },
+  "screenshot": {
+    "singular": "Snímek obrazovky",
+    "viewNamed": "Zobrazit {{name}}",
+    "count": "{{count}} snímků obrazovky",
+    "count_one": "Snímek obrazovky",
+    "count_few": "{{count}} snímky obrazovky",
+    "count_many": "{{count}} snímků obrazovky",
+    "count_other": "{{count}} snímků obrazovky"
+  },
+  "header": {
+    "moreActions": "Další akce stránky",
+    "backFrom": "Zpět z {{title}}"
+  }
+}
