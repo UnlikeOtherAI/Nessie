@@ -1,4 +1,5 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import type {
   ApnsStatus,
   PushApnsEnvironment,
@@ -26,6 +27,7 @@ type ApnsCardProps = {
 }
 
 export const ApnsCard = ({ status }: ApnsCardProps) => {
+  const { t } = useTranslation('settings')
   const upload = useUploadApns()
   const test = useTestPush()
   const remove = useDeletePushCredential()
@@ -88,17 +90,17 @@ export const ApnsCard = ({ status }: ApnsCardProps) => {
 
   return (
     <section className="admin-card p-4">
-      <SectionLabel>Apple (APNs)</SectionLabel>
+      <SectionLabel>{t('push.apple')}</SectionLabel>
 
       {status?.configured && (
         <div className="mt-3 grid gap-1.5 rounded-md bg-[color:var(--main-hover)] p-3 text-sm">
-          <div className="font-semibold text-[color:var(--accent)]">Configured ✓</div>
-          <PushStatusRow label="Key ID" value={status.keyId} />
-          <PushStatusRow label="Team ID" value={status.teamId} />
-          <PushStatusRow label="Topic" value={status.topic} />
-          <PushStatusRow label="Environment" value={status.environment} />
+          <div className="font-semibold text-[color:var(--accent)]">{t('push.configured')} ✓</div>
+          <PushStatusRow label={t('push.keyId')} value={status.keyId} />
+          <PushStatusRow label={t('push.teamId')} value={status.teamId} />
+          <PushStatusRow label={t('push.topic')} value={status.topic} />
+          <PushStatusRow label={t('push.environment')} value={t(`push.environments.${status.environment}`)} />
           <PushStatusRow
-            label="Updated"
+            label={t('push.updated')}
             value={new Date(status.updatedAt).toLocaleString()}
           />
         </div>
@@ -106,11 +108,11 @@ export const ApnsCard = ({ status }: ApnsCardProps) => {
 
       <form className="mt-4 grid gap-3" onSubmit={(event) => void onSubmit(event)}>
         <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-          <span>Signing key (.p8)</span>
+          <span>{t('push.signingKey')}</span>
           <input accept=".p8" onChange={onFileChange} type="file" />
         </label>
         <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-          <span>Key ID</span>
+          <span>{t('push.keyId')}</span>
           <input
             className="admin-input"
             onChange={(event) => setKeyId(event.target.value)}
@@ -119,7 +121,7 @@ export const ApnsCard = ({ status }: ApnsCardProps) => {
           />
         </label>
         <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-          <span>Team ID</span>
+          <span>{t('push.teamId')}</span>
           <input
             className="admin-input"
             onChange={(event) => setTeamId(event.target.value)}
@@ -128,7 +130,7 @@ export const ApnsCard = ({ status }: ApnsCardProps) => {
           />
         </label>
         <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-          <span>Bundle ID (topic)</span>
+          <span>{t('push.bundleId')}</span>
           <input
             className="admin-input"
             onChange={(event) => setTopic(event.target.value)}
@@ -137,14 +139,14 @@ export const ApnsCard = ({ status }: ApnsCardProps) => {
           />
         </label>
         <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-          <span>Environment</span>
+          <span>{t('push.environment')}</span>
           <select
             className="admin-input"
             onChange={(event) => setEnvironment(event.target.value as PushApnsEnvironment)}
             value={environment}
           >
-            <option value="production">Production</option>
-            <option value="sandbox">Sandbox</option>
+            <option value="production">{t('push.environments.production')}</option>
+            <option value="sandbox">{t('push.environments.sandbox')}</option>
           </select>
         </label>
 
@@ -154,7 +156,7 @@ export const ApnsCard = ({ status }: ApnsCardProps) => {
             disabled={!file || !teamId.trim() || !topic.trim() || upload.isPending}
             type="submit"
           >
-            {upload.isPending ? 'Saving…' : 'Save'}
+            {upload.isPending ? t('common.saving') : t('push.save')}
           </button>
           {configured && (
             <>
@@ -164,7 +166,7 @@ export const ApnsCard = ({ status }: ApnsCardProps) => {
                 onClick={() => void onTest()}
                 type="button"
               >
-                Send test to this iPhone
+                {t('push.sendTest')}
               </button>
               <button
                 className="admin-button admin-button-secondary"
@@ -172,7 +174,7 @@ export const ApnsCard = ({ status }: ApnsCardProps) => {
                 onClick={() => setConfirmingRemove(true)}
                 type="button"
               >
-                Remove
+                {t('common.remove')}
               </button>
             </>
           )}
@@ -182,14 +184,14 @@ export const ApnsCard = ({ status }: ApnsCardProps) => {
       <PushResultBanner result={result} />
 
       <ConfirmDialog
-        body="Push notifications through Apple will stop until a new key is uploaded."
-        confirmLabel="Remove"
+        body={t('push.removeApnsBody')}
+        confirmLabel={t('common.remove')}
         destructive
         onCancel={() => setConfirmingRemove(false)}
         onConfirm={() => void onRemove()}
         open={confirmingRemove}
         pending={remove.isPending}
-        title="Remove the APNs credential?"
+        title={t('push.removeApnsTitle')}
       />
     </section>
   )

@@ -577,5 +577,33 @@
     "people": "Personen",
     "useEverywhere": "Überall verwenden.",
     "cannotOverride": "{{below}} können keine eigene Einstellung wählen; das Steuerelement ist für sie deaktiviert und erklärt den Grund."
+  },
+  "push": {
+    "platform": "Plattform",
+    "title": "Push-Anmeldedaten",
+    "google": "Google (FCM)",
+    "apple": "Apple (APNs)",
+    "configured": "Konfiguriert",
+    "projectId": "Projekt-ID",
+    "clientEmail": "Client-E-Mail",
+    "updated": "Aktualisiert",
+    "serviceAccount": "Dienstkonto-JSON",
+    "save": "Speichern",
+    "validate": "Konto prüfen",
+    "removeFcmBody": "Push-Benachrichtigungen über Google werden bis zum Upload eines neuen Dienstkontos angehalten.",
+    "removeFcmTitle": "FCM-Anmeldedaten entfernen?",
+    "keyId": "Key-ID",
+    "teamId": "Team-ID",
+    "topic": "Topic",
+    "environment": "Umgebung",
+    "signingKey": "Signaturschlüssel (.p8)",
+    "bundleId": "Bundle-ID (Topic)",
+    "environments": {
+      "production": "Produktion",
+      "sandbox": "Sandbox"
+    },
+    "sendTest": "Test an dieses iPhone senden",
+    "removeApnsBody": "Push-Benachrichtigungen über Apple werden bis zum Upload eines neuen Schlüssels angehalten.",
+    "removeApnsTitle": "APNs-Anmeldedaten entfernen?"
   }
 }

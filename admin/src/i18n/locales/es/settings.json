@@ -577,5 +577,33 @@
     "people": "Personas",
     "useEverywhere": "Usar en todas partes.",
     "cannotOverride": "Los {{below}} no pueden elegir una opción propia; el control aparece desactivado con una explicación."
+  },
+  "push": {
+    "platform": "Plataforma",
+    "title": "Credenciales push",
+    "google": "Google (FCM)",
+    "apple": "Apple (APNs)",
+    "configured": "Configurado",
+    "projectId": "ID del proyecto",
+    "clientEmail": "Correo del cliente",
+    "updated": "Actualizado",
+    "serviceAccount": "JSON de la cuenta de servicio",
+    "save": "Guardar",
+    "validate": "Validar cuenta",
+    "removeFcmBody": "Las notificaciones push de Google se detendrán hasta que se suba una nueva cuenta de servicio.",
+    "removeFcmTitle": "¿Eliminar las credenciales de FCM?",
+    "keyId": "ID de clave",
+    "teamId": "ID del equipo",
+    "topic": "Tema",
+    "environment": "Entorno",
+    "signingKey": "Clave de firma (.p8)",
+    "bundleId": "ID del paquete (tema)",
+    "environments": {
+      "production": "Producción",
+      "sandbox": "Sandbox"
+    },
+    "sendTest": "Enviar prueba a este iPhone",
+    "removeApnsBody": "Las notificaciones push de Apple se detendrán hasta que se suba una nueva clave.",
+    "removeApnsTitle": "¿Eliminar las credenciales de APNs?"
   }
 }

@@ -577,5 +577,33 @@
     "people": "Lidé",
     "useEverywhere": "Použít všude.",
     "cannotOverride": "Níže uvedení {{below}} si nemohou zvolit vlastní nastavení; ovládací prvek je pro ně neaktivní a zobrazuje vysvětlení."
+  },
+  "push": {
+    "platform": "Platforma",
+    "title": "Přihlašovací údaje push oznámení",
+    "google": "Google (FCM)",
+    "apple": "Apple (APNs)",
+    "configured": "Nastaveno",
+    "projectId": "ID projektu",
+    "clientEmail": "E-mail klienta",
+    "updated": "Aktualizováno",
+    "serviceAccount": "JSON účtu služby",
+    "save": "Uložit",
+    "validate": "Ověřit účet",
+    "removeFcmBody": "Push oznámení přes Google se zastaví, dokud nenahrajete nový účet služby.",
+    "removeFcmTitle": "Odebrat přihlašovací údaj FCM?",
+    "keyId": "ID klíče",
+    "teamId": "ID týmu",
+    "topic": "Téma",
+    "environment": "Prostředí",
+    "signingKey": "Podpisový klíč (.p8)",
+    "bundleId": "ID balíčku (téma)",
+    "environments": {
+      "production": "Produkční",
+      "sandbox": "Testovací"
+    },
+    "sendTest": "Odeslat test na tento iPhone",
+    "removeApnsBody": "Push oznámení přes Apple se zastaví, dokud nenahrajete nový klíč.",
+    "removeApnsTitle": "Odebrat přihlašovací údaj APNs?"
   }
 }

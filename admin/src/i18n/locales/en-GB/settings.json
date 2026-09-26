@@ -577,5 +577,33 @@
     "people": "People",
     "useEverywhere": "Use this everywhere.",
     "cannotOverride": "{{below}} cannot choose their own; the control is greyed out for them with an explanation."
+  },
+  "push": {
+    "platform": "Platform",
+    "title": "Push credentials",
+    "google": "Google (FCM)",
+    "apple": "Apple (APNs)",
+    "configured": "Configured",
+    "projectId": "Project ID",
+    "clientEmail": "Client email",
+    "updated": "Updated",
+    "serviceAccount": "Service-account JSON",
+    "save": "Save",
+    "validate": "Validate account",
+    "removeFcmBody": "Push notifications through Google will stop until a new service account is uploaded.",
+    "removeFcmTitle": "Remove the FCM credential?",
+    "keyId": "Key ID",
+    "teamId": "Team ID",
+    "topic": "Topic",
+    "environment": "Environment",
+    "signingKey": "Signing key (.p8)",
+    "bundleId": "Bundle ID (topic)",
+    "environments": {
+      "production": "Production",
+      "sandbox": "Sandbox"
+    },
+    "sendTest": "Send test to this iPhone",
+    "removeApnsBody": "Push notifications through Apple will stop until a new key is uploaded.",
+    "removeApnsTitle": "Remove the APNs credential?"
   }
 }

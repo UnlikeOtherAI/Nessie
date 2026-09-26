@@ -577,5 +577,33 @@
     "people": "Personnes",
     "useEverywhere": "Appliquer partout.",
     "cannotOverride": "Les {{below}} ne peuvent pas choisir leur propre valeur ; le contrôle est désactivé et une explication s’affiche."
+  },
+  "push": {
+    "platform": "Plateforme",
+    "title": "Identifiants push",
+    "google": "Google (FCM)",
+    "apple": "Apple (APNs)",
+    "configured": "Configuré",
+    "projectId": "ID du projet",
+    "clientEmail": "E-mail client",
+    "updated": "Mis à jour",
+    "serviceAccount": "Fichier JSON du compte de service",
+    "save": "Enregistrer",
+    "validate": "Vérifier le compte",
+    "removeFcmBody": "Les notifications push via Google seront interrompues jusqu’au téléversement d’un nouveau compte de service.",
+    "removeFcmTitle": "Supprimer l’identifiant FCM ?",
+    "keyId": "ID de clé",
+    "teamId": "ID d’équipe",
+    "topic": "Sujet",
+    "environment": "Environnement",
+    "signingKey": "Clé de signature (.p8)",
+    "bundleId": "ID de bundle (sujet)",
+    "environments": {
+      "production": "Production",
+      "sandbox": "Bac à sable"
+    },
+    "sendTest": "Envoyer un test sur cet iPhone",
+    "removeApnsBody": "Les notifications push via Apple seront interrompues jusqu’au téléversement d’une nouvelle clé.",
+    "removeApnsTitle": "Supprimer l’identifiant APNs ?"
   }
 }

@@ -1,4 +1,5 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { FcmStatus, PushCredentialResult, PushTestResult } from '@nessie/schemas'
 import {
   useDeletePushCredential,
@@ -14,6 +15,7 @@ type FcmCardProps = {
 }
 
 export const FcmCard = ({ status }: FcmCardProps) => {
+  const { t } = useTranslation('settings')
   const upload = useUploadFcm()
   const test = useTestPush()
   const remove = useDeletePushCredential()
@@ -60,15 +62,15 @@ export const FcmCard = ({ status }: FcmCardProps) => {
 
   return (
     <section className="admin-card p-4">
-      <SectionLabel>Google (FCM)</SectionLabel>
+      <SectionLabel>{t('push.google')}</SectionLabel>
 
       {status?.configured && (
         <div className="mt-3 grid gap-1.5 rounded-md bg-[color:var(--main-hover)] p-3 text-sm">
-          <div className="font-semibold text-[color:var(--accent)]">Configured ✓</div>
-          <PushStatusRow label="Project ID" value={status.projectId} />
-          <PushStatusRow label="Client email" value={status.clientEmail} />
+          <div className="font-semibold text-[color:var(--accent)]">{t('push.configured')} ✓</div>
+          <PushStatusRow label={t('push.projectId')} value={status.projectId} />
+          <PushStatusRow label={t('push.clientEmail')} value={status.clientEmail} />
           <PushStatusRow
-            label="Updated"
+            label={t('push.updated')}
             value={new Date(status.updatedAt).toLocaleString()}
           />
         </div>
@@ -76,7 +78,7 @@ export const FcmCard = ({ status }: FcmCardProps) => {
 
       <form className="mt-4 grid gap-3" onSubmit={(event) => void onSubmit(event)}>
         <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
-          <span>Service-account JSON</span>
+          <span>{t('push.serviceAccount')}</span>
           <input accept=".json,application/json" onChange={onFileChange} type="file" />
         </label>
 
@@ -86,7 +88,7 @@ export const FcmCard = ({ status }: FcmCardProps) => {
             disabled={!file || upload.isPending}
             type="submit"
           >
-            {upload.isPending ? 'Saving…' : 'Save'}
+            {upload.isPending ? t('common.saving') : t('push.save')}
           </button>
           {configured && (
             <>
@@ -96,7 +98,7 @@ export const FcmCard = ({ status }: FcmCardProps) => {
                 onClick={() => void onTest()}
                 type="button"
               >
-                Validate account
+                {t('push.validate')}
               </button>
               <button
                 className="admin-button admin-button-secondary"
@@ -104,7 +106,7 @@ export const FcmCard = ({ status }: FcmCardProps) => {
                 onClick={() => setConfirmingRemove(true)}
                 type="button"
               >
-                Remove
+                {t('common.remove')}
               </button>
             </>
           )}
@@ -114,14 +116,14 @@ export const FcmCard = ({ status }: FcmCardProps) => {
       <PushResultBanner result={result} />
 
       <ConfirmDialog
-        body="Push notifications through Google will stop until a new service account is uploaded."
-        confirmLabel="Remove"
+        body={t('push.removeFcmBody')}
+        confirmLabel={t('common.remove')}
         destructive
         onCancel={() => setConfirmingRemove(false)}
         onConfirm={() => void onRemove()}
         open={confirmingRemove}
         pending={remove.isPending}
-        title="Remove the FCM credential?"
+        title={t('push.removeFcmTitle')}
       />
     </section>
   )
