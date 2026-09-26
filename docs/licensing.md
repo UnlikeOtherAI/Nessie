@@ -36,6 +36,12 @@ release.
 
 ## Contributions
 
+Third-party packages retain their own licenses. The shared mobile navigation
+uses MIT-licensed Ionic Core; its complete notice is distributed at
+`/licenses/ionic.txt` by the admin bundle. The
+[navigation review](navigation/mobile-navigation-review.md) records the
+dependency choice and compatibility assessment.
+
 Contributions to this repository are licensed under the same terms as the
 rest of the codebase: FSL-1.1-ALv2, on the same two-year path to Apache
 License 2.0. If you are contributing on behalf of an organisation other than

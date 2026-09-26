@@ -211,6 +211,11 @@ The stack settles a slide, never mid-slide (`navigation/settle.ts`):
 
 ## 13. Interruption and visibility — **built** (step 14)
 
+- A held edge swipe raises the same transition guard as its release, so
+  data-arrival redirects wait throughout the gesture. Changing the current
+  layer retires its gesture and inline poses; its pending release cannot
+  navigate the new screen. Backgrounding cancels unfinished gesture work.
+
 - **A navigation arriving mid-slide settles the running slide first**: its
   end pose commits, its released entries drop and its settle runs, then the
   new transition starts from a clean stack. Nothing preempts a half-finished

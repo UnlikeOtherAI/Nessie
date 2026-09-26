@@ -1,8 +1,7 @@
 import { NavigationType, UNSAFE_LocationContext } from 'react-router-dom'
 import { adminQueryClient } from '../../providers/QueryProvider'
-import { useCallback, useRef, type ContextType, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useRef, type ContextType, type ReactNode } from 'react'
 import { OverlayLayerProvider } from '../../navigation/overlay-layer'
-import { dimAt, NAV_MOTION } from '../../navigation/motion'
 import { ScreenBarLayerProvider } from '../../navigation/ScreenBarLayer'
 import { usePullToRefresh } from '../../navigation/pull-to-refresh'
 import { matchSurface } from '../../navigation/surfaces'
@@ -53,15 +52,9 @@ export type LayerRole = 'top' | 'bottom' | 'hidden'
 
 type PhoneNavigationLayerProps = {
   entry: PhoneNavigationStackEntry<LayerPayload>
-  // The finger's live displacement (0..1) during an edge swipe, else null.
-  gestureProgress: number | null
   role: LayerRole
-  // True when the top layer has something beneath it to reveal.
-  hasUnderlay: boolean
   transition: LayerTransition | null
 }
-
-const percent = (value: number): string => `${(value * 100).toFixed(2)}%`
 
 const StageMount = ({ container }: { container: HTMLElement }) => (
   <div
@@ -142,8 +135,6 @@ const layerName = (role: LayerRole, transition: LayerTransition | null): string 
 
 export const PhoneNavigationLayer = ({
   entry,
-  gestureProgress,
-  hasUnderlay,
   role,
   transition,
 }: PhoneNavigationLayerProps) => {
@@ -153,11 +144,6 @@ export const PhoneNavigationLayer = ({
   const screenElement = useCallback(() => screenRef.current, [])
   const inertLayer = role === 'bottom' || Boolean(transition && role === 'top')
   const classes = ['phone-navigation-screen']
-  let style: CSSProperties | undefined
-  // The finger drives the revealed layer's scrim inline, like its
-  // transform; a scripted transition animates it from the same poses.
-  let dimStyle: CSSProperties | undefined
-
   if (role === 'top') {
     if (transition) {
       classes.push(
@@ -169,12 +155,6 @@ export const PhoneNavigationLayer = ({
       )
     } else {
       classes.push('phone-navigation-screen--current')
-      if (gestureProgress !== null && hasUnderlay) {
-        style = {
-          boxShadow: 'var(--nav-shadow)',
-          transform: `translate3d(${percent(gestureProgress)}, 0, 0)`,
-        }
-      }
     }
   } else if (role === 'bottom') {
     if (transition) {
@@ -187,10 +167,6 @@ export const PhoneNavigationLayer = ({
       )
     } else {
       classes.push('phone-navigation-screen--underlay')
-      if (gestureProgress !== null) {
-        style = { transform: `translate3d(${percent(-(1 - gestureProgress) * NAV_MOTION.parallax)}, 0, 0)` }
-        dimStyle = { opacity: dimAt(gestureProgress) }
-      }
     }
   }
 
@@ -204,7 +180,6 @@ export const PhoneNavigationLayer = ({
       hidden={hidden || undefined}
       inert={inertLayer || undefined}
       ref={screenRef}
-      style={style}
     >
       <OverlayLayerProvider element={screenElement}>
         <ScreenBarLayerProvider layerKey={entry.layerKey}>
@@ -215,7 +190,6 @@ export const PhoneNavigationLayer = ({
         aria-hidden
         className="phone-navigation-dim"
         data-phone-navigation-dim
-        style={dimStyle}
       />
     </div>
   )
