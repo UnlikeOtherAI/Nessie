@@ -6,9 +6,8 @@ import {
   disableExecutorService,
   enableExecutorService,
   executorServiceStatus,
-  executorServiceStateRoot,
-  type ExecutorServiceEnvironment,
 } from '../src/service-linux.js'
+import { executorServiceStateRoot, type ExecutorServiceEnvironment } from '../src/service-environment.js'
 
 type RecordedCommand = { args: string[]; file: string }
 

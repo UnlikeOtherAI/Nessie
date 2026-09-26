@@ -93,6 +93,7 @@ export const resolveWindowsPackagedNodeLicense = async (nodeExecutablePath = pro
  */
 export const prepareExecutorRuntime = async ({
   entryPoint,
+  executorVersion = 'development',
   nativeHelperPath,
   nodeLicenseContents,
   nodeExecutablePath = process.execPath,
@@ -112,6 +113,7 @@ export const prepareExecutorRuntime = async ({
 
   await build({
     bundle: true,
+    define: { __NESSIE_EXECUTOR_VERSION__: JSON.stringify(executorVersion) },
     entryPoints: [resolve(entryPoint)],
     format: 'cjs',
     outfile: executorBundlePath,

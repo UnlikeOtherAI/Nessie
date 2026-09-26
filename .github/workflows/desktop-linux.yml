@@ -96,7 +96,11 @@ jobs:
         run: pnpm --dir desktop run tauri:build:linux
 
       - name: Build the standalone executor package
-        run: node executor/packaging/linux/build-deb.mjs
+        run: |
+          sh executor/packaging/linux/install-nfpm.sh "$RUNNER_TEMP/executor-tools"
+          export PATH="$RUNNER_TEMP/executor-tools:$PATH"
+          cargo build --release --manifest-path executor/native/Cargo.toml
+          node executor/packaging/linux/build-deb.mjs
 
       - name: Collect artifacts and checksums
         run: |
@@ -276,6 +280,9 @@ jobs:
       - name: The packaged hypervisor and guest payload run on this host
         run: |
           set -euo pipefail
+          sh executor/packaging/linux/install-nfpm.sh "$RUNNER_TEMP/executor-tools"
+          export PATH="$RUNNER_TEMP/executor-tools:$PATH"
+          cargo build --release --manifest-path executor/native/Cargo.toml
           node executor/packaging/linux/build-deb.mjs
           sudo apt-get install --yes ./dist/nessie-executor_*.deb
           # Root ownership is the Linux trust root: only an administrator can
