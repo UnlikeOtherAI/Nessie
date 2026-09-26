@@ -137,5 +137,15 @@
     "join": "Připojit se",
     "searchMessages": "Hledat zprávy",
     "systemManaged": "Spravováno systémem"
+  },
+  "tabs": {
+    "messages": "Zprávy",
+    "files": "Soubory",
+    "agent": "Agent",
+    "agents": "Agenti",
+    "todos": "Úkoly",
+    "triggers": "Spouštěče",
+    "automations": "Automatizace",
+    "sections": "Sekce kanálu"
   }
 }

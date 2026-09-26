@@ -137,5 +137,15 @@
     "join": "Join",
     "searchMessages": "Search messages",
     "systemManaged": "System managed"
+  },
+  "tabs": {
+    "messages": "Messages",
+    "files": "Files",
+    "agent": "Agent",
+    "agents": "Agents",
+    "todos": "To-dos",
+    "triggers": "Triggers",
+    "automations": "Automations",
+    "sections": "Channel sections"
   }
 }

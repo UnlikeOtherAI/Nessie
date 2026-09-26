@@ -137,5 +137,15 @@
     "join": "Rejoindre",
     "searchMessages": "Rechercher des messages",
     "systemManaged": "Géré par le système"
+  },
+  "tabs": {
+    "messages": "Messages",
+    "files": "Fichiers",
+    "agent": "Agent",
+    "agents": "Agents",
+    "todos": "Tâches",
+    "triggers": "Déclencheurs",
+    "automations": "Automatisations",
+    "sections": "Sections du canal"
   }
 }

@@ -137,5 +137,15 @@
     "join": "Beitreten",
     "searchMessages": "Nachrichten suchen",
     "systemManaged": "Systemverwaltet"
+  },
+  "tabs": {
+    "messages": "Nachrichten",
+    "files": "Dateien",
+    "agent": "Agent",
+    "agents": "Agents",
+    "todos": "Aufgaben",
+    "triggers": "Trigger",
+    "automations": "Automatisierungen",
+    "sections": "Kanalbereiche"
   }
 }
