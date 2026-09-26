@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { CloudBrowserPanel } from '../../../components/features/browser-cloud/CloudBrowserPanel'
 import { LocalInferenceEnablement } from '../../../components/features/local-inference/LocalInferenceEnablement'
 import { SettingsPanel, type SettingsTabHostProps } from '../../../components/shared/SettingsPanel'
@@ -20,4 +21,3 @@ export const TeamAgentsPage = ({ tabs, team }: SettingsTabHostProps & { team?: T
   </SettingsPanel>
   )
 }
-import { useTranslation } from 'react-i18next'

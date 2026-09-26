@@ -65,4 +65,3 @@ export const AppIconPanel = () => {
     </section>
   )
 }
-import { useTranslation } from 'react-i18next'

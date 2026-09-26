@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { CallProviderSettingsPanel } from './CallProviderSettingsPanel'
 import { CloudBrowserPanel } from '../../../components/features/browser-cloud/CloudBrowserPanel'
 import { MailboxConnectionsPanel } from '../../../components/features/mailbox-connections/MailboxConnectionsPanel'
@@ -24,4 +25,3 @@ export const OrganizationAgentsPage = ({ tabs }: SettingsTabHostProps) => {
     </SettingsPanel>
   )
 }
-import { useTranslation } from 'react-i18next'

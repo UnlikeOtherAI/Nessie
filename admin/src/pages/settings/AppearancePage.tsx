@@ -23,4 +23,3 @@ export const AppearancePage = ({ tabs }: SettingsTabHostProps) => {
   </SettingsPanel>
   )
 }
-import { useTranslation } from 'react-i18next'
