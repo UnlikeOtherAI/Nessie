@@ -501,7 +501,8 @@
       }
     },
     "copyLabel": "Copy {{label}}",
-    "project": "Projekt"
+    "project": "Projekt",
+    "revokeSecret": "Zneplatnit tajný údaj"
   },
   "pairedAgents": {
     "pair": "Spárovat agenta",

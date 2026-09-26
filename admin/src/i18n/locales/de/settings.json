@@ -501,7 +501,8 @@
       }
     },
     "copyLabel": "Copy {{label}}",
-    "project": "Projekt"
+    "project": "Projekt",
+    "revokeSecret": "Geheimnis widerrufen"
   },
   "pairedAgents": {
     "pair": "Agent koppeln",
