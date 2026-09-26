@@ -50,9 +50,9 @@ type ShareDialogProps = {
   title: string
 }
 
-const LEVEL_OPTIONS: { value: KnowledgePageShareAccess; label: string; description: string }[] = [
-  { description: 'Read and download', label: 'Can view', value: 'view' },
-  { description: 'Also change what is in it', label: 'Can edit', value: 'edit' },
+const levelOptions = (translate: (key: string) => string) => [
+  { description: translate('shareViewDescription'), label: translate('shareCanView'), value: 'view' as const },
+  { description: translate('shareEditDescription'), label: translate('shareCanEdit'), value: 'edit' as const },
 ]
 
 /** One grantee: who they are, and the level button that changes or revokes it. */
@@ -92,14 +92,14 @@ const ShareRow = ({
       <Popover
         anchorRef={buttonRef}
         className="min-w-[180px] rounded-[var(--radius-md)] border border-[color:var(--sep)] bg-[color:var(--panel)] py-1 shadow-[0_16px_40px_var(--scrim-strong)]"
-        label={`Access for ${name}`}
+        label={t('accessFor', { name })}
         layer="modal"
         onClose={() => setOpen(false)}
         open={open}
         placement="bottom-end"
         role="menu"
       >
-        {LEVEL_OPTIONS.map((option) => (
+        {levelOptions(t).map((option) => (
           <button
             aria-checked={share.access === option.value}
             className="flex w-full items-center px-3 py-2 text-left text-[color:var(--tx)] hover:bg-[color:var(--accent)] hover:text-[color:var(--on-accent)]"
@@ -199,7 +199,7 @@ export const ShareDialog = ({
           <ChoiceGroup
             label={t('shareAccess')}
             onChange={setLevel}
-            options={LEVEL_OPTIONS}
+            options={levelOptions(t)}
             value={level}
           />
           <FormError>{formError}</FormError>
