@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 type PdfState = { document: PDFDocumentProxy | null; error: boolean; loading: boolean }
 
@@ -27,6 +26,8 @@ export const PdfPreview = ({ title, url }: { title: string; url: string }) => {
         const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer())
         if (cancelled) return
         const pdfjs = await import('pdfjs-dist')
+        const { default: pdfWorkerUrl } = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+        if (cancelled) return
         pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
         loadingTask = pdfjs.getDocument({ data: bytes })
         document = await loadingTask.promise
