@@ -69,6 +69,9 @@ summary and points here; **this file is the rule**.
   forcing one takes High Contrast away from the person who needs it. Full
   design, formulas and contrast floors:
   [docs/plans/2026-09-05-organisation-custom-theme.md](../plans/2026-09-05-organisation-custom-theme.md).
+- **Document titles** use the self-hosted Source Serif 4 variable font in
+  both editing and reading views through `--font-family-document-title` in
+  `admin/src/styles.css`. Headings inside the body retain their own styling.
 - **Content system (proposal, 2026-09-01).** Tables, lists, pagination, forms,
   validation, feedback, loading/empty/error states, chips, key-value views and
   confirm flows were audited across every content page; the primitives mostly
