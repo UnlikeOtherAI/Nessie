@@ -35,7 +35,7 @@ test('the document names this resource and how to reach its pairing', async () =
   assert.equal(body.resource, 'https://api.example.test/mcp')
   assert.deepEqual(body.bearer_methods_supported, ['header'])
   // Where a person goes, which is the thing an agent must print.
-  assert.equal(body.resource_documentation, 'https://app.example.test/settings/paired-agents')
+  assert.equal(body.resource_documentation, 'https://app.example.test/settings/security')
   await app.close()
 })
 
