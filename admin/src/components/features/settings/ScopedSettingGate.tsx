@@ -1,13 +1,8 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import type { ResolvedSetting, SettingScope } from '../../../facades/settings/hooks'
 import { Notice } from '../../primitives/Notice'
-
-const SCOPE_LABEL: Record<SettingScope, string> = {
-  organization: 'organisation',
-  team: 'team',
-  user: 'personal',
-}
 
 /**
  * A control whose value an ancestor level has locked.
@@ -29,6 +24,7 @@ export const ScopedSettingGate = ({
   children: ReactNode
   setting: ResolvedSetting | undefined
 }) => {
+  const { t } = useTranslation('settings')
   const inertRef = useRef<HTMLDivElement | null>(null)
   const gated = Boolean(setting && !setting.canEdit)
   useEffect(() => {
@@ -42,8 +38,8 @@ export const ScopedSettingGate = ({
     <div className="grid gap-3">
       <Notice tone="info">
         {lockedAt
-          ? `This has been set at the ${SCOPE_LABEL[lockedAt]} level and cannot be changed here.`
-          : 'This cannot be changed here.'}
+          ? t('settingsGate.lockedAt', { scope: t(`settingsGate.scopes.${lockedAt}`).toLowerCase() })
+          : t('settingsGate.locked')}
       </Notice>
       <div aria-disabled="true" className="opacity-60" ref={inertRef}>
         {children}
@@ -67,8 +63,9 @@ export const ScopedSettingLock = ({
   locked: boolean
   scope: SettingScope
 }) => {
+  const { t } = useTranslation('settings')
   if (scope === 'user') return null
-  const below = scope === 'organization' ? 'Teams and people' : 'People'
+  const below = t(scope === 'organization' ? 'settingsGate.teamsAndPeople' : 'settingsGate.people')
   return (
     <label className="flex items-start gap-2 text-sm text-[color:var(--tx2)]">
       <input
@@ -79,10 +76,9 @@ export const ScopedSettingLock = ({
         type="checkbox"
       />
       <span>
-        Use this everywhere.{' '}
+        {t('settingsGate.useEverywhere')}{' '}
         <span className="text-[color:var(--tx3)]">
-          {below} below cannot choose their own; the control is greyed out for them with an
-          explanation.
+          {t('settingsGate.cannotOverride', { below: below.toLowerCase() })}
         </span>
       </span>
     </label>

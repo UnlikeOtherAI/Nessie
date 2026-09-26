@@ -384,7 +384,12 @@
         "label": "Accent and errors",
         "detail": "Your accent is close to the red used for errors, so destructive buttons will look like ordinary ones."
       }
-    }
+    },
+    "checkingAccess": "Checking organization access…",
+    "unavailable": "Organization unavailable",
+    "accessLoadFailed": "We couldn’t load your organization access. Try again in a moment.",
+    "accessCheckFailed": "We couldn’t check whether you’re an organization admin. Try again in a moment.",
+    "adminOnlyPage": "Only organization admins can see this page."
   },
   "security": {
     "title": "Security",
@@ -559,5 +564,18 @@
         "detail": "Create and edit documents as drafts. Publishing one still comes to you as an approval — an agent can ask, but it cannot publish."
       }
     }
+  },
+  "settingsGate": {
+    "lockedAt": "This has been set at the {{scope}} level and cannot be changed here.",
+    "locked": "This cannot be changed here.",
+    "scopes": {
+      "organization": "Organization",
+      "team": "Team",
+      "user": "Personal"
+    },
+    "teamsAndPeople": "Teams and people",
+    "people": "People",
+    "useEverywhere": "Use this everywhere.",
+    "cannotOverride": "{{below}} cannot choose their own; the control is greyed out for them with an explanation."
   }
 }

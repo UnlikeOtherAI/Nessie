@@ -384,7 +384,12 @@
         "label": "Zvýraznění a chyby",
         "detail": "Zvýraznění je podobné červené pro chyby, takže destruktivní tlačítka budou vypadat jako běžná."
       }
-    }
+    },
+    "checkingAccess": "Ověřování přístupu k organizaci…",
+    "unavailable": "Organizace není dostupná",
+    "accessLoadFailed": "Přístup k organizaci se nepodařilo načíst. Zkuste to za chvíli znovu.",
+    "accessCheckFailed": "Nepodařilo se ověřit, zda jste správcem organizace. Zkuste to za chvíli znovu.",
+    "adminOnlyPage": "Tuto stránku mohou zobrazit pouze správci organizace."
   },
   "security": {
     "title": "Zabezpečení",
@@ -559,5 +564,18 @@
         "detail": "Vytvářet a upravovat koncepty. Publikování stále vyžaduje vaše schválení — agent o něj může požádat, ale sám publikovat nemůže."
       }
     }
+  },
+  "settingsGate": {
+    "lockedAt": "Toto nastavení bylo určeno na úrovni {{scope}} a zde jej nelze změnit.",
+    "locked": "Toto zde nelze změnit.",
+    "scopes": {
+      "organization": "Organizace",
+      "team": "Tým",
+      "user": "Osobní"
+    },
+    "teamsAndPeople": "Týmy a lidé",
+    "people": "Lidé",
+    "useEverywhere": "Použít všude.",
+    "cannotOverride": "Níže uvedení {{below}} si nemohou zvolit vlastní nastavení; ovládací prvek je pro ně neaktivní a zobrazuje vysvětlení."
   }
 }

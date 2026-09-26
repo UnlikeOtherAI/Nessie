@@ -384,7 +384,12 @@
         "label": "Acento y errores",
         "detail": "El acento se parece al rojo de los errores, así que los botones destructivos parecerán normales."
       }
-    }
+    },
+    "checkingAccess": "Comprobando el acceso a la organización…",
+    "unavailable": "Organización no disponible",
+    "accessLoadFailed": "No se pudo cargar tu acceso a la organización. Inténtalo de nuevo dentro de un momento.",
+    "accessCheckFailed": "No se pudo comprobar si eres administrador de la organización. Inténtalo de nuevo dentro de un momento.",
+    "adminOnlyPage": "Solo los administradores de la organización pueden ver esta página."
   },
   "security": {
     "title": "Seguridad",
@@ -559,5 +564,18 @@
         "detail": "Crear y editar borradores. La publicación sigue requiriendo tu aprobación: el agente puede solicitarla, pero no publicar por su cuenta."
       }
     }
+  },
+  "settingsGate": {
+    "lockedAt": "Esta opción se configuró en el nivel {{scope}} y no se puede cambiar aquí.",
+    "locked": "Esta opción no se puede cambiar aquí.",
+    "scopes": {
+      "organization": "Organización",
+      "team": "Equipo",
+      "user": "Personal"
+    },
+    "teamsAndPeople": "Equipos y personas",
+    "people": "Personas",
+    "useEverywhere": "Usar en todas partes.",
+    "cannotOverride": "Los {{below}} no pueden elegir una opción propia; el control aparece desactivado con una explicación."
   }
 }

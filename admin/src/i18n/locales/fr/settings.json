@@ -384,7 +384,12 @@
         "label": "Accent et erreurs",
         "detail": "Votre accent est proche du rouge des erreurs ; les boutons destructifs ressembleront donc aux boutons ordinaires."
       }
-    }
+    },
+    "checkingAccess": "Vérification de l’accès à l’organisation…",
+    "unavailable": "Organisation indisponible",
+    "accessLoadFailed": "Impossible de charger votre accès à l’organisation. Réessayez dans un instant.",
+    "accessCheckFailed": "Impossible de vérifier si vous êtes administrateur de l’organisation. Réessayez dans un instant.",
+    "adminOnlyPage": "Cette page est réservée aux administrateurs de l’organisation."
   },
   "security": {
     "title": "Sécurité",
@@ -559,5 +564,18 @@
         "detail": "Créer et modifier des brouillons. Toute publication nécessite votre approbation : l’agent peut la demander, mais ne peut pas publier lui-même."
       }
     }
+  },
+  "settingsGate": {
+    "lockedAt": "Ce paramètre a été défini au niveau {{scope}} et ne peut pas être modifié ici.",
+    "locked": "Ce paramètre ne peut pas être modifié ici.",
+    "scopes": {
+      "organization": "Organisation",
+      "team": "Équipe",
+      "user": "Personnel"
+    },
+    "teamsAndPeople": "Équipes et personnes",
+    "people": "Personnes",
+    "useEverywhere": "Appliquer partout.",
+    "cannotOverride": "Les {{below}} ne peuvent pas choisir leur propre valeur ; le contrôle est désactivé et une explication s’affiche."
   }
 }

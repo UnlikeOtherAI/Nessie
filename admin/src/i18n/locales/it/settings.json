@@ -384,7 +384,12 @@
         "label": "Accento ed errori",
         "detail": "L’accento è simile al rosso degli errori, quindi i pulsanti distruttivi sembreranno normali."
       }
-    }
+    },
+    "checkingAccess": "Verifica dell’accesso all’organizzazione…",
+    "unavailable": "Organizzazione non disponibile",
+    "accessLoadFailed": "Impossibile caricare l’accesso all’organizzazione. Riprova tra poco.",
+    "accessCheckFailed": "Impossibile verificare se sei un amministratore dell’organizzazione. Riprova tra poco.",
+    "adminOnlyPage": "Solo gli amministratori dell’organizzazione possono vedere questa pagina."
   },
   "security": {
     "title": "Sicurezza",
@@ -559,5 +564,18 @@
         "detail": "Creare e modificare bozze. La pubblicazione richiede comunque la tua approvazione: l’agente può chiederla, ma non pubblicare."
       }
     }
+  },
+  "settingsGate": {
+    "lockedAt": "Questa impostazione è stata definita a livello {{scope}} e non può essere modificata qui.",
+    "locked": "Non è possibile modificare questa impostazione qui.",
+    "scopes": {
+      "organization": "Organizzazione",
+      "team": "Team",
+      "user": "Personale"
+    },
+    "teamsAndPeople": "Team e persone",
+    "people": "Persone",
+    "useEverywhere": "Usa ovunque.",
+    "cannotOverride": "I {{below}} non possono scegliere un’impostazione personale; il controllo è disattivato e mostra una spiegazione."
   }
 }

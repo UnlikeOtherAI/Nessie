@@ -384,7 +384,12 @@
         "label": "Akzent und Fehler",
         "detail": "Dein Akzent ähnelt dem Rot für Fehler. Dadurch sehen destruktive Schaltflächen wie gewöhnliche aus."
       }
-    }
+    },
+    "checkingAccess": "Organisationszugriff wird überprüft…",
+    "unavailable": "Organisation nicht verfügbar",
+    "accessLoadFailed": "Ihr Organisationszugriff konnte nicht geladen werden. Versuchen Sie es gleich erneut.",
+    "accessCheckFailed": "Es konnte nicht überprüft werden, ob Sie Organisationsadministrator sind. Versuchen Sie es gleich erneut.",
+    "adminOnlyPage": "Nur Organisationsadministratoren können diese Seite sehen."
   },
   "security": {
     "title": "Sicherheit",
@@ -559,5 +564,18 @@
         "detail": "Dokumente als Entwurf erstellen und bearbeiten. Zum Veröffentlichen ist weiterhin Ihre Freigabe erforderlich. Der Agent kann sie anfragen, aber nicht selbst veröffentlichen."
       }
     }
+  },
+  "settingsGate": {
+    "lockedAt": "Diese Einstellung wurde auf der Ebene {{scope}} festgelegt und kann hier nicht geändert werden.",
+    "locked": "Dies kann hier nicht geändert werden.",
+    "scopes": {
+      "organization": "Organisation",
+      "team": "Team",
+      "user": "Persönlich"
+    },
+    "teamsAndPeople": "Teams und Personen",
+    "people": "Personen",
+    "useEverywhere": "Überall verwenden.",
+    "cannotOverride": "{{below}} können keine eigene Einstellung wählen; das Steuerelement ist für sie deaktiviert und erklärt den Grund."
   }
 }
