@@ -272,11 +272,27 @@ dbTest('the migration moves the legacy rows and restores the DMs a deletion took
       .split(';')
       .map((statement) => statement.trim())
       .filter((statement) => statement.length > 0 && !/^LOCK TABLE/i.test(statement))
-    await value.prisma.$transaction(async (tx) => {
-      for (const statement of statements) {
-        await tx.$executeRaw(Prisma.raw(statement))
+    // Without that lock the replay races the rest of the shared database: its
+    // first statement backfills a root project for *every* organisation still
+    // lacking one, and another suite deleting its own organisation between
+    // that statement's read and its insert fails the foreign key (23503). The
+    // deployment's lock is exactly what excludes that; here a fresh attempt
+    // simply reads the organisations again.
+    const isForeignKeyRace = (error: unknown): boolean =>
+      error instanceof Prisma.PrismaClientKnownRequestError
+      && (error.meta as { code?: unknown } | undefined)?.code === '23503'
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await value.prisma.$transaction(async (tx) => {
+          for (const statement of statements) {
+            await tx.$executeRaw(Prisma.raw(statement))
+          }
+        })
+        break
+      } catch (error) {
+        if (attempt >= 3 || !isForeignKeyRace(error)) throw error
       }
-    })
+    }
 
     const root = await value.prisma.project.findFirstOrThrow({
       where: { channelRoot: true, organizationId: value.organizationId },
