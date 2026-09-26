@@ -64,5 +64,26 @@
     "accept": "Accept",
     "close": "Close",
     "join": "Join call"
+  },
+  "settings": {
+    "saveError": "Unable to save channel.",
+    "archiveError": "Unable to change the channel archive state.",
+    "title": "Channel settings",
+    "sections": "Channel settings sections",
+    "channelTab": "Channel",
+    "decisionsTab": "Agent decisions",
+    "topic": "Topic",
+    "topicPlaceholder": "What is this channel about?",
+    "description": "Description",
+    "descriptionPlaceholder": "Longer description (optional)",
+    "policyConflict": "These decisions changed while you were editing. Load the latest version before saving.",
+    "loadLatest": "Load latest decisions",
+    "unarchive": "Unarchive",
+    "archive": "Archive",
+    "confirmDelete": "Confirm delete",
+    "delete": "Delete",
+    "save": "Save",
+    "archiveConfirm": "Are you sure you want to archive #{{channel}}? It will be hidden from the channel list. You can unarchive it later.",
+    "archiveTitle": "Archive channel?"
   }
 }

@@ -64,5 +64,26 @@
     "accept": "Accepter",
     "close": "Fermer",
     "join": "Rejoindre l’appel"
+  },
+  "settings": {
+    "saveError": "Impossible d’enregistrer le canal.",
+    "archiveError": "Impossible de modifier l’état d’archivage du canal.",
+    "title": "Paramètres du canal",
+    "sections": "Sections des paramètres du canal",
+    "channelTab": "Canal",
+    "decisionsTab": "Décisions des agents",
+    "topic": "Sujet",
+    "topicPlaceholder": "Quel est le sujet de ce canal ?",
+    "description": "Description",
+    "descriptionPlaceholder": "Description plus détaillée (facultatif)",
+    "policyConflict": "Ces décisions ont changé pendant votre modification. Chargez la dernière version avant d’enregistrer.",
+    "loadLatest": "Charger les dernières décisions",
+    "unarchive": "Désarchiver",
+    "archive": "Archiver",
+    "confirmDelete": "Confirmer la suppression",
+    "delete": "Supprimer",
+    "save": "Enregistrer",
+    "archiveConfirm": "Voulez-vous vraiment archiver #{{channel}} ? Le canal sera masqué de la liste. Vous pourrez le désarchiver plus tard.",
+    "archiveTitle": "Archiver le canal ?"
   }
 }

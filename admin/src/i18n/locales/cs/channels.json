@@ -64,5 +64,26 @@
     "accept": "Přijmout",
     "close": "Zavřít",
     "join": "Připojit se k hovoru"
+  },
+  "settings": {
+    "saveError": "Kanál se nepodařilo uložit.",
+    "archiveError": "Stav archivace kanálu se nepodařilo změnit.",
+    "title": "Nastavení kanálu",
+    "sections": "Sekce nastavení kanálu",
+    "channelTab": "Kanál",
+    "decisionsTab": "Rozhodnutí agentů",
+    "topic": "Téma",
+    "topicPlaceholder": "O čem tento kanál je?",
+    "description": "Popis",
+    "descriptionPlaceholder": "Delší popis (volitelné)",
+    "policyConflict": "Tato rozhodnutí se během úprav změnila. Před uložením načtěte nejnovější verzi.",
+    "loadLatest": "Načíst nejnovější rozhodnutí",
+    "unarchive": "Obnovit z archivu",
+    "archive": "Archivovat",
+    "confirmDelete": "Potvrdit odstranění",
+    "delete": "Odstranit",
+    "save": "Uložit",
+    "archiveConfirm": "Opravdu chcete archivovat kanál #{{channel}}? Skryje se ze seznamu kanálů. Později ho můžete obnovit.",
+    "archiveTitle": "Archivovat kanál?"
   }
 }

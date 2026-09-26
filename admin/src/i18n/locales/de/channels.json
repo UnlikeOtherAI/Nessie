@@ -64,5 +64,26 @@
     "accept": "Annehmen",
     "close": "Schließen",
     "join": "Anruf beitreten"
+  },
+  "settings": {
+    "saveError": "Kanal konnte nicht gespeichert werden.",
+    "archiveError": "Archivstatus des Kanals konnte nicht geändert werden.",
+    "title": "Kanaleinstellungen",
+    "sections": "Bereiche der Kanaleinstellungen",
+    "channelTab": "Kanal",
+    "decisionsTab": "Agentenentscheidungen",
+    "topic": "Thema",
+    "topicPlaceholder": "Worum geht es in diesem Kanal?",
+    "description": "Beschreibung",
+    "descriptionPlaceholder": "Längere Beschreibung (optional)",
+    "policyConflict": "Diese Entscheidungen wurden während der Bearbeitung geändert. Lade vor dem Speichern die aktuelle Version.",
+    "loadLatest": "Aktuelle Entscheidungen laden",
+    "unarchive": "Aus Archiv holen",
+    "archive": "Archivieren",
+    "confirmDelete": "Löschen bestätigen",
+    "delete": "Löschen",
+    "save": "Speichern",
+    "archiveConfirm": "Möchtest du #{{channel}} wirklich archivieren? Der Kanal wird aus der Kanalliste ausgeblendet. Du kannst ihn später wiederherstellen.",
+    "archiveTitle": "Kanal archivieren?"
   }
 }

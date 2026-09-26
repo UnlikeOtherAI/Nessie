@@ -64,5 +64,26 @@
     "accept": "Accetta",
     "close": "Chiudi",
     "join": "Partecipa alla chiamata"
+  },
+  "settings": {
+    "saveError": "Impossibile salvare il canale.",
+    "archiveError": "Impossibile modificare lo stato di archiviazione del canale.",
+    "title": "Impostazioni del canale",
+    "sections": "Sezioni delle impostazioni del canale",
+    "channelTab": "Canale",
+    "decisionsTab": "Decisioni degli agenti",
+    "topic": "Argomento",
+    "topicPlaceholder": "Di cosa parla questo canale?",
+    "description": "Descrizione",
+    "descriptionPlaceholder": "Descrizione più lunga (facoltativa)",
+    "policyConflict": "Queste decisioni sono cambiate durante la modifica. Carica l’ultima versione prima di salvare.",
+    "loadLatest": "Carica le decisioni più recenti",
+    "unarchive": "Rimuovi dall’archivio",
+    "archive": "Archivia",
+    "confirmDelete": "Conferma eliminazione",
+    "delete": "Elimina",
+    "save": "Salva",
+    "archiveConfirm": "Vuoi davvero archiviare #{{channel}}? Il canale verrà nascosto dall’elenco. Potrai ripristinarlo in seguito.",
+    "archiveTitle": "Archiviare il canale?"
   }
 }

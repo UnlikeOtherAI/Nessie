@@ -64,5 +64,26 @@
     "accept": "Aceptar",
     "close": "Cerrar",
     "join": "Unirse a la llamada"
+  },
+  "settings": {
+    "saveError": "No se pudo guardar el canal.",
+    "archiveError": "No se pudo cambiar el estado de archivo del canal.",
+    "title": "Configuración del canal",
+    "sections": "Secciones de configuración del canal",
+    "channelTab": "Canal",
+    "decisionsTab": "Decisiones de agentes",
+    "topic": "Tema",
+    "topicPlaceholder": "¿De qué trata este canal?",
+    "description": "Descripción",
+    "descriptionPlaceholder": "Descripción más larga (opcional)",
+    "policyConflict": "Estas decisiones cambiaron mientras editabas. Carga la versión más reciente antes de guardar.",
+    "loadLatest": "Cargar las decisiones más recientes",
+    "unarchive": "Desarchivar",
+    "archive": "Archivar",
+    "confirmDelete": "Confirmar eliminación",
+    "delete": "Eliminar",
+    "save": "Guardar",
+    "archiveConfirm": "¿Seguro que quieres archivar #{{channel}}? Se ocultará de la lista de canales. Puedes desarchivarlo más tarde.",
+    "archiveTitle": "¿Archivar canal?"
   }
 }
