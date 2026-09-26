@@ -71,6 +71,9 @@ const menuPanelClassName = [
   'min-w-52 rounded-lg border border-[color:var(--sep)]',
   'bg-[color:var(--main)] p-1 shadow-lg',
 ].join(' ')
+const menuClassName = (action: PageHeaderAction): string => action.kind === 'menu' && action.menuStyle === 'sidebar'
+  ? 'w-[220px] rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] p-1.5 shadow-lg'
+  : menuPanelClassName
 
 // The action's role, not its colours. Which fill a role wears — and what a
 // theme does to it — belongs to `.admin-page-action*` in `styles.css`, where
@@ -247,7 +250,7 @@ export const ResponsivePageHeader = ({
             {action.kind === 'menu' ? (
               <Popover
                 anchorRef={anchorRefFor(action.id)}
-                className={menuPanelClassName}
+                className={menuClassName(action)}
                 id={`${menuIdPrefix}-${action.id}`}
                 label={action.label}
                 onClose={() => closeMenu()}
@@ -359,7 +362,7 @@ export const ResponsivePageHeader = ({
                 {action.kind === 'menu' ? (
                   <Popover
                     anchorRef={anchorRefFor(action.id)}
-                    className={menuPanelClassName}
+                    className={menuClassName(action)}
                     id={`${menuIdPrefix}-${action.id}`}
                     label={action.label}
                     onClose={() => closeMenu()}

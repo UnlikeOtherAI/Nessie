@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   faClockRotateLeft,
   faDownload,
   faEllipsis,
   faPen,
+  faPaperclip,
   faTable,
   faUpload,
 } from '@fortawesome/free-solid-svg-icons'
@@ -14,6 +15,7 @@ import { versionDownloadPath } from '../../../facades/knowledge/file-hooks'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { EmptyState } from '../../shared/EmptyState'
 import { RetryableTextFilePreview } from '../../shared/TextFilePreview'
+import { PdfPreview } from '../../shared/PdfPreview'
 import { MessageMarkdown } from '../channels/MessageMarkdown'
 import { CommentsSection } from './comments/CommentsSection'
 import {
@@ -74,6 +76,7 @@ export const FileNodeViewer = ({
   const markdownPreview = previewKind === 'text'
     && (Boolean(version?.sourceContentHash) || isMarkdownFilename(page.title))
   const [markdownEditorOpen, setMarkdownEditorOpen] = useState(false)
+  const attachmentPickerRef = useRef<HTMLInputElement>(null)
   const [markdownEditorBaseVersionId, setMarkdownEditorBaseVersionId] = useState<string | null>(null)
   // Pin the PDF preview blob's MIME to application/pdf so a file with an
   // attacker-controlled content-type (e.g. text/html bytes named "x.pdf") can
@@ -98,6 +101,15 @@ export const FileNodeViewer = ({
     previewMime,
   )
   const detailActions: PageHeaderAction[] = [
+    ...(canWrite
+      ? [{
+          icon: faPaperclip,
+          id: 'add-attachment',
+          label: 'Add attachment',
+          onSelect: () => attachmentPickerRef.current?.click(),
+          priority: 110,
+        } satisfies PageHeaderAction]
+      : []),
     {
       compact: true,
       icon: faClockRotateLeft,
@@ -131,7 +143,6 @@ export const FileNodeViewer = ({
       : []),
     ...(canWrite && markdownPreview && downloadPath && onSaveMarkdown
       ? [{
-          compact: true,
           icon: faPen,
           id: 'edit-markdown',
           label: 'Edit',
@@ -140,7 +151,8 @@ export const FileNodeViewer = ({
             setMarkdownEditorBaseVersionId(version.id)
             setMarkdownEditorOpen(true)
           },
-          priority: 70,
+          primary: true,
+          priority: 120,
           title: 'Edit text file',
         } satisfies PageHeaderAction]
       : []),
@@ -168,7 +180,7 @@ export const FileNodeViewer = ({
       id: 'download',
       label: 'Download',
       onSelect: () => downloadPath && void downloadAuthedPath(downloadPath, page.title, token),
-      primary: true,
+      primary: !(canWrite && markdownPreview && downloadPath && onSaveMarkdown),
       priority: 100,
     },
   ]
@@ -196,17 +208,9 @@ export const FileNodeViewer = ({
               src={previewUrl}
             />
           ) : previewKind === 'pdf' && previewUrl ? (
-            <iframe
-              className="h-[70vh] w-full rounded-lg border border-[color:var(--sep)] bg-[var(--surface-inverse)]"
-              // previewUrl's blob MIME is pinned to application/pdf (above), so a
-              // file with an attacker-controlled content-type (e.g. text/html
-              // named "x.pdf") renders as a failed PDF, never executable HTML.
-              // Deliberately NOT sandboxed: any `sandbox` attribute stops
-              // Chrome's PDF viewer from loading a blob: URL at all (verified),
-              // and the MIME pin already closes the script-execution path.
-              src={previewUrl}
-              title={page.title}
-            />
+            <div className="h-[70vh] w-full overflow-hidden rounded-lg border border-[color:var(--sep)] bg-[var(--surface-inverse)]">
+              <PdfPreview title={page.title} url={previewUrl} />
+            </div>
           ) : previewKind === 'video' && previewUrl ? (
             <video
               className="mx-auto max-h-[70vh] w-full rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-strong)]"
@@ -282,13 +286,14 @@ export const FileNodeViewer = ({
         </div>
 
         </div>
-        <div className="mx-auto mt-8 w-full max-w-4xl border-t border-[color:var(--sep)] px-4 pt-6">
+        <div className="mx-auto w-full max-w-4xl px-4">
         <AttachmentsDrawer
           canWrite={canWrite}
           inline
           onClose={() => undefined}
           open
           pageId={page.id}
+          pickerRef={attachmentPickerRef}
         />
         </div>
         <div className="mx-auto mt-8 w-full max-w-4xl border-t border-[color:var(--sep)] px-4 pt-6">

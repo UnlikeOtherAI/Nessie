@@ -179,6 +179,7 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
           ],
           kind: 'menu',
           label: 'New',
+          menuStyle: 'sidebar',
           primary: true,
           priority: 100,
         } satisfies PageHeaderAction]

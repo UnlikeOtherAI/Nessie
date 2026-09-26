@@ -351,7 +351,7 @@ export const ExecutorsPage = () => (
       Choose the installer for the computer and for the way it will stay online. The Mac menu bar
       app runs under your signed-in account; the Windows standalone service starts at boot under a
       service account; the Linux headless package runs as a systemd user service. A Windows service
-      cannot run a personal Claude terminal — use Nessie Desktop in that user's session for that.
+      cannot run a personal Claude terminal ï¿½ use Nessie Desktop in that user's session for that.
     </p>
     <p>
       The <Link to="/docs/executor-setup">setup and pairing guide</Link> covers available packages,
@@ -633,7 +633,7 @@ loginctl disable-linger                # only if your user manager should stop r
           <td>
             The build is not verifiably from the expected publisher. On Linux the runtime must be
             root-owned with no group or world write bit; on Windows and macOS the signature must match
-            the thumbprint or team pinned into the build. Each of these refuses in words and names the
+            the publisher or team pinned into the build. Each of these refuses in words and names the
             remedy rather than hiding the controls.
           </td>
         </tr>

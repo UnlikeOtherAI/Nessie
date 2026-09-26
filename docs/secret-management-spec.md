@@ -207,7 +207,7 @@ between the organisation and each team:
 
 | Page | Route | Shows | "New secret" writes |
 | --- | --- | --- | --- |
-| Your settings → Saved keys | `/settings/keys` | organisation + team + project + own | personal, or a project |
+| Your settings → Saved keys | `/settings/keys` | organisation + team + project + own | personal; a project too, for an organisation owner |
 | Admin → Keys, a team's scope | `/admin/keys?scope=team:<id>` | organisation + that team | that team |
 | Admin → Keys, the organisation's scope | `/admin/keys` | organisation | the organisation |
 
@@ -219,6 +219,25 @@ their team and organisation set is the part of the cascade that applies to
 them. A team's scope is named in the address and never taken from the team the
 owner happens to be working in; a team's page links to it from its Overrides
 tab.
+
+"New secret" offers only what the viewer's role may write.
+
+- **The rule.** `secretCreationScopes` filters the page's
+  `SECRET_CREATION_SCOPES` through `secretScopeWritable`
+  (`admin/src/lib/secret-scopes.ts`). That is the admin's render gate for
+  `canManageSecretScope`, which stays the authority. Personal is anyone's;
+  every level above it is an organisation owner's alone, admins included, so
+  the role comes from `useIsOwner`.
+- **A member or an admin** on their own page is offered their own secret only.
+  In place of the Scope picker, a line says that only an organisation owner
+  can save a project secret, so they know whom to ask instead of saving one
+  for themselves.
+- **Why.** The form used to offer Project to everyone, and the server then
+  refused their save with `403 SECRET_SCOPE_DENIED`.
+- **A page with nothing left to write** offers no "New secret" at all. Keys
+  never reaches that state: it refuses anyone but an organisation owner at
+  every scope and points them at Saved keys, so a non-owner who opens an upper
+  level by its address sees the refusal, not an empty page.
 
 ## Capture and ingestion
 
@@ -242,7 +261,8 @@ credential the project's is therefore the person's choice, never the default.
   project", never preselected, only in an ordinary project room
   (`type: 'standard'`, `scope: 'project'`, neither a group DM nor a system
   conversation). It is offered only to an organisation owner, the one role
-  that may write it. `secretCaptureProjectId` states the rule.
+  that may write it. `secretCaptureProjectId` states the rule, and asks the
+  same `secretScopeWritable` the Secrets pages use (see "The three screens").
 - **Where it never is.** A DM, a group DM and a system conversation are stored
   in their team's own project whoever they address, and a standalone room in a
   hidden container. That project says nothing about who is being written to,

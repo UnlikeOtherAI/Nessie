@@ -196,9 +196,9 @@ Explicitly, so nothing lingers.
   preserved and opens the tree directly.
 - **`NestedStage` layers.** `knowledge:folder` is retired: the Finder sits on
   `ColumnBrowserViewport`, whose columns are already `column:<k>` stages on
-  `single`. `knowledge:document` (12), `knowledge:history` (13) and
-  `knowledge:editor` (14) stay exactly as they are.
-- **`KnowledgePane`** stays as the chrome of the document, history and editor
+  `single`. `knowledge:document` (12) and `knowledge:editor` (14) remain
+  stages; version history now opens in the shared `Dialog` shell.
+- **`KnowledgePane`** stays as the chrome of the document and editor
   panes. The browser's own header is `ColumnBrowserColumn screen` for column
   0 on the root route and `ScreenHeader` actions elsewhere.
 - **Header actions.** `View: Column`, `Needs review (n)`, `Upload file`,

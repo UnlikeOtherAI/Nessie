@@ -14,6 +14,10 @@ map: Rule zero, workflow and required CI checks, ports, deployment, and the
 invariants that apply wherever you are working. It is **not** imported into
 this file — open it.
 
+Android APKs are built with local Gradle signing on a developer machine or in
+GitHub Actions, never Expo Cloud. Follow [Android signing](docs/standards/build-and-release.md#android-signing);
+iOS distribution is pending the approved Apple account.
+
 For real-provider testing before deployment, follow
 [local CTO verification](docs/testing/local-cto.md).
 
@@ -158,7 +162,11 @@ sentence changes only if the invariant itself did.
   builds, matching Windows. Windows releases authenticate to Azure Artifact
   Signing through the approved release environment's immutable GitHub OIDC
   subject and pin the certificate profile's durable EKU, never a rotating leaf
-  thumbprint; see [build and release](docs/standards/build-and-release.md).
+  thumbprint. A merge to `main` that changes what the desktop or the executor
+  is built from is signed in the `windows-signing` environment, with no
+  approval, and republished to that component's rolling `desktop-edge` /
+  `executor-edge` pre-release by `windows-edge.yml`; unchanged components are
+  left alone. See [build and release](docs/standards/build-and-release.md).
 - **Preview fixtures stay out of production bundles.** Register the fixture
   in `admin/vite.config.ts` behind its `NESSIE_<NAME>_E2E_FIXTURE` flag, set
   that flag for a manual preview build, and list it in `@nessie/admin#build`

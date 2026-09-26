@@ -14,7 +14,7 @@ test('Tree detail omits its redundant Back while other Finder views retain it', 
   assert.match(pane, /<SpreadsheetPane[\s\S]*?onBack=\{detailBack\}/)
 })
 
-test('file detail keeps sections inline and Download in the floating action bar', () => {
+test('file detail keeps attachments in the floating bar and makes Edit primary when available', () => {
   const file = source('../src/components/features/knowledge/FileNodeViewer.tsx')
   const actions = file.slice(file.indexOf('const detailActions'), file.indexOf('\n  ]', file.indexOf('const detailActions')))
 
@@ -23,11 +23,13 @@ test('file detail keeps sections inline and Download in the floating action bar'
   assert.doesNotMatch(actions, /id: 'attachments'/)
   assert.match(actions, /id: 'history'[\s\S]*?title: 'Version history'/)
   assert.match(actions, /id: 'upload-version'[\s\S]*?title: 'Upload new version'/)
-  assert.match(actions, /id: 'download'[\s\S]*?primary: true/)
+  assert.match(actions, /id: 'add-attachment'[\s\S]*?label: 'Add attachment'/)
+  assert.match(actions, /id: 'edit-markdown'[\s\S]*?primary: true/)
+  assert.match(actions, /id: 'download'[\s\S]*?primary: !\(canWrite && markdownPreview/)
   assert.match(file, /bottomActions=\{detailActions\}/)
 })
 
-test('document detail keeps sections inline and Publish in the floating action bar', () => {
+test('document detail keeps attachments in the floating bar and makes Edit primary', () => {
   const preview = source('../src/components/features/knowledge/PagePreview.tsx')
   const actions = preview.slice(preview.indexOf('const detailActions'), preview.indexOf('\n  ]', preview.indexOf('const detailActions')))
 
@@ -35,6 +37,8 @@ test('document detail keeps sections inline and Publish in the floating action b
   assert.match(preview, /<AttachmentsDrawer[\s\S]*?<CommentsSection/)
   assert.doesNotMatch(actions, /id: 'attachments'/)
   assert.match(actions, /id: 'history'[\s\S]*?title: 'Version history'/)
-  assert.match(actions, /id: 'publish'[\s\S]*?primary: true/)
+  assert.match(actions, /id: 'add-attachment'[\s\S]*?label: 'Add attachment'/)
+  assert.match(actions, /id: 'edit'[\s\S]*?primary: true/)
+  assert.match(actions, /id: 'publish'[\s\S]*?onSelect: onPublish/)
   assert.match(preview, /bottomActions=\{detailActions\}/)
 })

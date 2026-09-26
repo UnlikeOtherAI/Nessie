@@ -157,8 +157,11 @@ what it built, and then proves both packages install, launch, and uninstall. The
 desktop native helper is signed before its runtime hash is written; the
 standalone service, tray, native helper, Hyper-V bridge, and Windows initrd
 builder are signed before packaging. Both packaged Node executables must retain
-their valid upstream Authenticode signature. It
-runs on `workflow_dispatch` and on a `desktop-v*` tag.
+their valid upstream Authenticode signature. It runs on `workflow_dispatch`,
+for every merge to `main` that changes a Windows download through
+`windows-edge.yml` (which publishes the `desktop-edge` and `executor-edge`
+pre-releases — see [releasing](../releasing.md#edge-builds-from-main)), and for
+a `v*` release tag through `release.yml`.
 
 The Windows job also runs the executor's real control loop against a local
 protocol peer: enrollment, fresh challenge and claim, descriptor, heartbeat,
@@ -190,7 +193,7 @@ the pinned production kernel. These are temporary CI inputs: the source check
 receives no signing secrets and neither uploads nor publishes them; signing
 remains the release workflow's separate responsibility.
 
-Signing is a deployment fact, configured through repository secrets. The
+Signing is a deployment fact, configured through repository variables. The
 recommended configuration is **Azure Artifact Signing** (formerly Azure Trusted
 Signing) through Tauri's `bundle.windows.signCommand`, because no private key
 is ever present on a runner and SmartScreen reputation attaches to the managed
@@ -203,19 +206,25 @@ rest are `null`) and the workflow overrides them:
 A `v*` tag is a release boundary: the workflow fails immediately when any
 signing setting is absent, and every Nessie executable and installer must have
 a valid signature whose subject and profile-specific EKU match the pinned
-publisher. A manual run of the exact `main` branch with `source_ref`
-empty is also a signed verification boundary and fails closed when the signer
-is absent. This produces an installable security-test artifact without minting
-a release tag. The environment admits only `v*` tags and `main`, so manual
-source overrides and non-main runs cannot enter the signing job or receive an
-OIDC token. The persistent self-hosted Hyper-V runner's administrator-level job
-is likewise gated to the exact trusted `main` run or a release tag, after the
-signed build and install checks pass.
+publisher. A build of `main` itself — `windows-edge.yml`'s build of a merge, or
+a manual run with `source_ref` empty — is signed the same way and fails closed
+when the signer is absent. Manual source overrides and any other branch build
+unsigned: they join no environment, so they receive no OIDC token the identity
+accepts, and they need no approval. The persistent self-hosted Hyper-V runner's
+administrator-level job is likewise gated to the exact trusted `main` run or a
+release tag, after the signed build and install checks pass.
 
-The `direct-download-release` GitHub environment is the trust boundary. Its
-release-owner approval and `v*`/`main` deployment policies gate the job; the job
-then exchanges GitHub's immutable repository-and-environment OIDC subject for
-an Azure token. No client secret or exportable certificate key exists.
+The GitHub environment is the trust boundary, because it fixes the immutable
+repository-and-environment OIDC subject the `nessie-github-signing` managed
+identity trusts; the job exchanges that token for an Azure one, and no client
+secret or exportable certificate key exists. A release tag signs in
+`direct-download-release`, whose release-owner approval and `v*`/`main`
+deployment policies gate the job. `main` signs in `windows-signing`, which
+deploys only from `main` and has no reviewer, so every merge's edge build signs
+without waiting on a person. The identity carries one federated credential per
+environment, in the form
+`repo:UnlikeOtherAI@253458965/Nessie@1202770373:environment:<name>`, because
+this repository issues OIDC tokens with `use_immutable_subject`.
 
 | Repository variable | What it holds |
 | --- | --- |
@@ -243,7 +252,9 @@ Get-AuthenticodeSignature .\Nessie_<version>_x64-setup.exe |
 ```
 
 `Status` must be `Valid` and the certificate subject must be the expected
-publisher. The same file's SHA-256 is in `SHA256SUMS` beside it:
+publisher. The certificate's thumbprint changes daily — Artifact Signing renews
+it — so compare the subject, not the thumbprint. The same file's SHA-256 is in
+`SHA256SUMS` (or the `.sha256` beside an edge download):
 
 ```powershell
 Get-FileHash .\Nessie_<version>_x64-setup.exe -Algorithm SHA256

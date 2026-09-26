@@ -2267,8 +2267,8 @@ html[data-desktop-platform='linux'] #root {
 }
 
 .knowledge-sidebar-tree-panel {
-  flex: 0 0 280px;
-  width: 280px;
+  width: 100%;
+  height: 100%;
   overflow-y: auto;
   padding: 14px 10px;
 }
@@ -4471,6 +4471,22 @@ button.reaction-pill-active:focus-visible {
    from the same token as the action labels: the header is one scale. */
 .admin-page-menu-row {
   font-size: var(--page-header-action-font-size);
+}
+
+/* Knowledge's New menu uses the same compact rhythm as the Channels menu. */
+.admin-page-menu-row-sidebar {
+  min-height: 32px;
+  padding: 6px 10px;
+  color: var(--tx);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.admin-page-menu-row-sidebar svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: var(--tx2);
 }
 
 .admin-page-action-secondary {
