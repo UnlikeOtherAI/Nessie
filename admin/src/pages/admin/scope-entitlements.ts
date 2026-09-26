@@ -1,5 +1,7 @@
+import type { OrganizationAdministrationStatus } from '../../facades/organization/hooks'
 import {
   ORGANISATION_SCOPE,
+  teamScopedPath,
   teamScopeValue,
   type AdminScopeOption,
 } from '../../lib/admin-scope'
@@ -45,6 +47,40 @@ export const teamScopeOption = (
   teamId: string,
 ): AdminScopeOption | undefined =>
   options.find((option) => option.value === teamScopeValue(teamId))
+
+/** A team page's row: the page it opens, or — greyed — who holds that page. */
+export type ScopeDoorway = { href: string } | { reason: string }
+
+/** Where a team page's doorway goes for this viewer, or who holds the page it would open. */
+export const teamDoorway = (
+  options: readonly AdminScopeOption[],
+  path: string,
+  teamId: string,
+): ScopeDoorway => {
+  const reason = teamScopeOption(options, teamId)?.unavailableReason
+  return reason ? { reason } : { href: teamScopedPath(path, teamId) }
+}
+
+/**
+ * The own-computers row opens AI models at the team's scope, but the policy
+ * there answers only the organisation-administration standing — the sign-in
+ * provider's capability on a bound organisation, which owner or admin alone is
+ * not. So the row is a doorway only with that standing and otherwise greyed
+ * with the reason: never a live row into a refusal. On an unbound local
+ * install the server's answer already allows a local owner or admin.
+ */
+export const ownComputersDoorway = (
+  models: ScopeDoorway,
+  administration: OrganizationAdministrationStatus | undefined,
+): ScopeDoorway => {
+  if ('reason' in models || administration === 'allowed') return models
+  if (administration === 'forbidden') {
+    return { reason: 'Only an organisation administrator sees or sets this policy.' }
+  }
+  return administration === 'unavailable'
+    ? { reason: 'Your organisation access could not be checked. Try again in a moment.' }
+    : { reason: 'Checking who may see this policy…' }
+}
 
 /**
  * AI models. The organisation's catalogue answers its owner only
@@ -95,20 +131,43 @@ export const connectionScopeOptions = (
   return [organisationOption(reason), ...teamOptions(teams, reason)]
 }
 
+type PeopleViewer = {
+  administration: OrganizationAdministrationStatus | undefined
+  isOwner: boolean
+  /** A session from the sign-in provider rather than a local account. */
+  isUoaSession: boolean
+}
+
 /**
- * People. The organisation's roster is answered to its administrators — on a
- * session from the sign-in provider by that provider's administration
- * capability, on a local install to the owner — and a team's roster to anybody
- * in the team. A team the viewer is not in is not listed: its roster is not
- * theirs to read short of administering the organisation, which is the
- * organisation scope.
+ * Why the organisation's roster is not the viewer's, or undefined when it is.
+ *
+ * Two rosters answer to two gates. A session from the sign-in provider reads
+ * the provider's roster, which answers the organisation-administration
+ * standing. A local session reads the local roster, whose management is the
+ * owner's alone — `/api/users` gives anybody else the directory view and every
+ * roster write is `requireOwner` — so on a local install this is owner-only
+ * even though the administration standing there also allows a local admin.
+ */
+const peopleOrganisationReason = (viewer: PeopleViewer): string | undefined => {
+  if (!viewer.isUoaSession) {
+    return viewer.isOwner ? undefined : 'Only the organisation owner manages the people on this install.'
+  }
+  if (viewer.administration === 'allowed') return undefined
+  return viewer.administration === 'forbidden'
+    ? 'Only organisation administrators see everyone in it.'
+    : 'Your organisation access could not be checked. Try again in a moment.'
+}
+
+/**
+ * People. The organisation's roster is answered to the people who manage it
+ * (`peopleOrganisationReason`), and a team's roster to anybody in the team. A
+ * team the viewer is not in is not listed: its roster is not theirs to read
+ * short of administering the organisation, which is the organisation scope.
  */
 export const peopleScopeOptions = (
-  { canSeeOrganization }: { canSeeOrganization: boolean },
+  viewer: PeopleViewer,
   teams: readonly ScopeTeam[],
 ): AdminScopeOption[] => [
-  organisationOption(
-    canSeeOrganization ? undefined : 'Only organisation administrators see everyone in it.',
-  ),
+  organisationOption(peopleOrganisationReason(viewer)),
   ...teamOptions(teams.filter((team) => team.viewerIsMember)),
 ]

@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { getAlertLink } from '../src/facades/alerts/hooks.js'
 import {
+  parsePushSurfaceReport,
   resolvePushSurface,
   resolveReportedPushSurface,
 } from '../src/lib/push-surface.js'
@@ -42,6 +43,22 @@ test('maps only exact push-targetable destinations to a structured surface', () 
   assert.equal(resolvePushSurface('/channels'), null)
   assert.equal(resolvePushSurface('/projects/00000000-0000-4000-8000-000000000004/docs'), null)
   assert.equal(resolvePushSurface('/settings/notifications'), null)
+})
+
+test('Automations is the triggers surface only while it shows Schedules & triggers', () => {
+  // The bare address opens that tab, so it is the same list a trigger-health
+  // push opens (`/admin/automations?tab=triggers`).
+  assert.deepEqual(resolvePushSurface('/admin/automations'), { kind: 'triggers' })
+  assert.deepEqual(resolvePushSurface('/admin/automations', 'triggers'), { kind: 'triggers' })
+  assert.equal(resolvePushSurface('/admin/automations', 'batch-jobs'), null)
+  assert.equal(resolvePushSurface('/admin/automations', 'workflows'), null)
+  // One trigger's own page is not the list the push opens.
+  assert.equal(resolvePushSurface('/admin/automations/triggers/00000000-0000-4000-8000-000000000006'), null)
+  // The heartbeat body is validated against the same contract.
+  assert.deepEqual(
+    parsePushSurfaceReport({ pathname: '/admin/automations', search: '', surface: { kind: 'triggers' } }),
+    { pathname: '/admin/automations', search: '', surface: { kind: 'triggers' } },
+  )
 })
 
 test('keeps the selected Files, Info, or Runs tab from suppressing its reply URL', () => {

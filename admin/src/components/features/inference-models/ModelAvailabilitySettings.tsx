@@ -10,7 +10,7 @@ import { PaginationFooter } from '../../shared/PaginationFooter'
 import { SettingsPanel, type SettingsTabHostProps } from '../../shared/SettingsPanel'
 import { LocalInferenceEnablement } from '../local-inference/LocalInferenceEnablement'
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue'
-import { useCurrentOrganization } from '../../../facades/organization/hooks'
+import { useOrganizationAdministration } from '../../../facades/organization/hooks'
 import {
   useDeploymentModelCatalog,
   useSetDeploymentModelsEnabled,
@@ -59,14 +59,15 @@ type ModelAvailabilitySettingsProps = {
 
 /**
  * AI on people's own computers, at the scope on screen. Reading or writing it
- * needs the organisation-administration standing the sign-in provider grants
- * (the API's check for this administrator-authored key), which owner or admin
- * alone is not — so the control is shown to that standing, and anybody else is
- * told who holds it.
+ * needs the organisation-administration standing (the API's check for this
+ * administrator-authored key): the sign-in provider's capability on a bound
+ * organisation, the local owner or admin role on an unbound install. Owner or
+ * admin alone is not it on a bound organisation — so the control is shown to
+ * that standing, read from the server's one answer, and anybody else is told
+ * who holds it.
  */
 const OwnComputersPolicy = ({ teamId }: { teamId?: string }) => {
-  const organization = useCurrentOrganization()
-  const status = organization.data?.administration.status
+  const status = useOrganizationAdministration()
   if (status !== 'allowed') {
     return (
       <section className="border-y border-[color:var(--sep)] py-4 text-sm text-[color:var(--tx2)]">
