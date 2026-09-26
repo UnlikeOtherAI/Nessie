@@ -196,6 +196,7 @@ export {
   createAccessTokenRefreshCoordinator,
   createAuthSessionApi,
   createSessionMutationCoordinator,
+  decodeJwtPayload,
   getAccessTokenExpiresAtMs,
   getAccessTokenRenewalDelayMs,
   type AccessTokenRefreshCoordinator,
