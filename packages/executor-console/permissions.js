@@ -2,6 +2,7 @@ let terminalFolder = null
 const lines = (id) => byId(id).value.split('\n').map((line) => line.trim()).filter(Boolean)
 
 const renderPermissions = (value) => {
+  byId('existing-coding-sessions').checked = value.existingCodingSessionsEnabled !== false
   const folders = byId('reach-folders')
   folders.replaceChildren()
   for (const folder of value.reach.folders) {
@@ -78,3 +79,7 @@ byId('autostart').onchange = () => act(async () => {
   try { await invoke('executor_set_autostart', { enabled: byId('autostart').checked }) }
   finally { await loadAutostart() }
 })
+
+byId('existing-coding-sessions').onchange = () => act(() => saveConfiguration({
+  existingCodingSessionsEnabled: byId('existing-coding-sessions').checked,
+}))

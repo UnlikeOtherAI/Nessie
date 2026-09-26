@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { writeAuditEntryInTransaction } from '@nessie/db'
 import {
+  EXISTING_CODING_SESSION_OWNER_KEY,
   EXECUTOR_CODING_SESSION_CLOSE_MAXIMUM,
   EXECUTOR_CODING_SESSION_REPORT_MAXIMUM,
   EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME,
@@ -273,7 +274,8 @@ export const requestExecutorCodingSessionClose = async (
       )
     }
     const listed = reportedExecutorCodingSessions(executor.localMcp).some((session) => (
-      session.status !== 'closed' && session.sessionId === input.sessionId && session.ownerKey === input.ownerKey
+      session.ownerKey !== EXISTING_CODING_SESSION_OWNER_KEY
+      && session.status !== 'closed' && session.sessionId === input.sessionId && session.ownerKey === input.ownerKey
     ))
     if (!listed) {
       throw new ExecutorError(

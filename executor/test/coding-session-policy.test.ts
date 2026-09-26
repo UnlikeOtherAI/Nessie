@@ -85,6 +85,7 @@ test('configure generates the bridge entry itself and states its power facts', a
     assert.equal(isBuiltinCodingSessionsServer(bridge), true)
     assert.deepEqual({ ...plan.facts, configDigest: 'x' }, {
       serverName: 'coding-sessions',
+      existingSessions: true,
       agents: ['claude', 'codex'],
       permissionMode: { claude: 'acceptEdits', codex: 'bypassApprovalsAndSandbox' },
       allowedToolCount: 3,

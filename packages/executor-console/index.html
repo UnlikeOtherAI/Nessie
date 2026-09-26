@@ -42,6 +42,10 @@
     </section>
     <section id="tab-commands" hidden>
       <h2>Command permissions</h2>
+      <section aria-label="Existing coding sessions">
+        <label><input id="existing-coding-sessions" type="checkbox" checked> Existing coding sessions</label>
+        <p class="hint">Let Nessie find and interact with your existing Codex and Claude sessions through experimental native interfaces. Turning this off keeps those sessions running.</p>
+      </section>
       <form id="command-form">
         <label for="command-mode">Commands this team may run</label><select id="command-mode"><option value="all">Allow all commands</option><option value="allowlist">Only allowlisted commands</option></select>
         <label for="command-allowlist">Allowlist</label><textarea id="command-allowlist" placeholder="git *&#10;pnpm run *" rows="3"></textarea>

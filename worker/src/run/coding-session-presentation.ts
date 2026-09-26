@@ -111,6 +111,12 @@ const TICKET_END_TURN = `End your turn: ${TICKET_WOKEN}`
 
 const leadFor = (toolName: CodingSessionToolName, body: Record<string, unknown>, ticket: boolean): string => {
   switch (toolName) {
+    case CODING_SESSION_TOOL_NAMES.queue:
+    case CODING_SESSION_TOOL_NAMES.push:
+    case CODING_SESSION_TOOL_NAMES.steer:
+      return 'The provider input outcome follows. Acceptance or a transport write does not prove the session consumed it.'
+    case CODING_SESSION_TOOL_NAMES.wait:
+      return 'The session overview as observed on the machine. Unknown live state is not idle.'
     case CODING_SESSION_TOOL_NAMES.terminalStart:
       return 'Terminal opened. Read its screen with terminal_session_read. Share its viewPath when asked to show it.'
     case CODING_SESSION_TOOL_NAMES.terminalRead:

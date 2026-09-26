@@ -81,6 +81,7 @@ export const codingSessionsFacts = (
   const agents = (['claude', 'codex', 'terminal'] as const).filter((agent) => config.agents[agent] !== undefined)
   return ExecutorCodingSessionsFactsSchema.parse({
     serverName: EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME,
+    existingSessions: true,
     agents,
     permissionMode: Object.fromEntries(agents.map((agent) => [
       agent, agent === 'terminal' ? 'hostUser'

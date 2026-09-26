@@ -358,3 +358,7 @@ sentence changes only if the invariant itself did.
 - Executor terminal sessions use tmux on Mac/Linux and ConPTY on Windows; agent writes send exact text or a named key; read [the session guide](docs/executor-protocol/terminal-sessions.md) for setup, sharing, agent tools and native verification.
 
 Executor sharing is direct: people receive use or admin access, projects and the current team receive use access; read [executor sharing](docs/standards/executor-sharing.md) before changing it.
+
+Existing Codex/Claude session discovery and experimental Queue/Push use the
+existing executor authorization and one default-on local disable switch; see
+[existing coding sessions](docs/plans/2026-09-26-existing-coding-sessions/overview.md).

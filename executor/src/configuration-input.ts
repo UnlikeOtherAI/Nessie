@@ -17,6 +17,7 @@ import { workspaceFoldersFromInput, type ExecutorWorkspaceFolder } from './works
  * says; `[]` (or `null` for `codingSessions`) removes it.
  */
 export type ExecutorConfigurationInput = {
+  existingCodingSessionsEnabled?: boolean
   terminalProgram?: TerminalProgramInput
   commandPolicy?: LocalCommandPolicy
   codingSessions?: unknown
@@ -48,7 +49,8 @@ export const parseConfigurationInput = (text: string): ExecutorConfigurationInpu
   const codingSessions = input.codingSessions
   if (codingSessions !== undefined && input.terminalProgram !== undefined) return malformed()
   if (
-    !Array.isArray(input.operationKeys)
+    (input.existingCodingSessionsEnabled !== undefined && typeof input.existingCodingSessionsEnabled !== 'boolean')
+    || !Array.isArray(input.operationKeys)
     || !input.operationKeys.every((key) => typeof key === 'string')
     // Absent keeps the permitted programs the policy already names; present it
     // must be a list of names, and `[]` is the instruction to clear them.
@@ -80,6 +82,8 @@ export const parseConfigurationInput = (text: string): ExecutorConfigurationInpu
       terminalProgram: parseTerminalProgramInput(input.terminalProgram),
     }),
     ...(input.commandPolicy === undefined ? {} : { commandPolicy: parseLocalCommandPolicy(input.commandPolicy) }),
+    ...(input.existingCodingSessionsEnabled === undefined ? {}
+      : { existingCodingSessionsEnabled: input.existingCodingSessionsEnabled as boolean }),
     ...(codingSessions === undefined ? {} : { codingSessions }),
     ...(allowlist === undefined ? {} : { commandAllowlist: allowlist as string[] }),
     ...(servers === undefined ? {} : { mcpServers: servers as ExecutorLocalMcpServer[] }),

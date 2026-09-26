@@ -1,4 +1,5 @@
 import { isAbsolute } from 'node:path'
+import { serveExistingClaudeChannel } from './existing-session/claude-channel.js'
 
 import { AGENT_GUARD_COMMAND, AGENT_GUARD_USAGE, runCodingAgentGuard } from './coding-session/agent-guard.js'
 import { serveCodingSessionMcp } from './coding-session/bridge-server.js'
@@ -23,6 +24,13 @@ const configPath = (args: readonly string[], usage: string): string => {
 }
 
 export const runBuiltinMcpCli = async (args: string[]): Promise<boolean> => {
+  if (args[0] === 'serve-existing-claude-channel') {
+    if (args.length !== 3 || args[1] !== '--state-dir' || !args[2] || !isAbsolute(args[2])) {
+      throw new Error('Usage: nessie-executor serve-existing-claude-channel --state-dir <absolute-pairing-directory>')
+    }
+    await serveExistingClaudeChannel(args[2])
+    return true
+  }
   if (args[0] === 'terminal-session-process') {
     if (args.length !== 1) throw new Error('Usage: nessie-executor terminal-session-process')
     await runTerminalProcess()

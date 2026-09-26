@@ -37,10 +37,20 @@ export const codingBridgeTools = (loaded: LoadedCodingSessionsConfig) => {
     },
   })
   return [
+    ...(['queue', 'push', 'steer'] as const).map((action) => ({
+      name: `session_${action}`, description: `Existing native session ${action}; inspect its capabilities first.`,
+      inputSchema: { type: 'object' as const, additionalProperties: false,
+        required: action === 'steer' ? ['sessionId', 'message', 'expectedTurnId'] : ['sessionId', 'message'],
+        properties: { sessionId: sessionIdSchema, message: { type: 'string', minLength: 1, maxLength: 32_000 },
+          ...(action === 'steer' ? { expectedTurnId: { type: 'string', maxLength: 128 } } : {}) } },
+    })),
     {
       name: 'session_list',
       description: 'List the folders and coding agents this machine offers, and your own coding sessions.',
-      inputSchema: { type: 'object' as const, additionalProperties: false, properties: {} },
+      inputSchema: { type: 'object' as const, additionalProperties: false, properties: {
+        provider: { type: 'string', enum: ['codex', 'claude'] }, cursor: { type: 'string', maxLength: 1_024 },
+        search: { type: 'string', maxLength: 200 },
+      } },
     },
     {
       name: 'session_start',

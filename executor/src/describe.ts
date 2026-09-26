@@ -18,6 +18,7 @@ import { localCommandPolicyOf, type LocalCommandPolicy } from './command-policy.
  * machine, and the person reading it is the person whose directories these are.
  */
 export type ExecutorDescription = {
+  existingCodingSessionsEnabled: boolean
   commandPolicy: LocalCommandPolicy
   apiBaseUrl: string
   executorId: string
@@ -78,6 +79,7 @@ export const describeExecutor = (state: ExecutorLocalState): ExecutorDescription
   const bridge = codingSessionsPolicyOf(state.descriptor.codingSessions, state.mcpServers)
   const bridgeConfig = bridge ? codingSessionsServerConfigPath(bridge.server) : undefined
   return {
+    existingCodingSessionsEnabled: true,
     commandPolicy: localCommandPolicyOf(state),
     apiBaseUrl: state.apiBaseUrl,
     executorId: state.executorId,

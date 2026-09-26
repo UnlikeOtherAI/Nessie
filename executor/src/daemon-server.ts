@@ -1,4 +1,6 @@
 import type { Readable } from 'node:stream'
+import { enableExistingSessionBridge } from './existing-session/enable.js'
+import type { ExecutorRuntime } from './coding-sessions-policy.js'
 
 import { executorApi } from './api-client.js'
 import { createExecutorBrowserSessionManager } from './browser-session-manager.js'
@@ -38,11 +40,11 @@ const withinShutdownBudget = (work: Promise<void>): Promise<void> => Promise.rac
 export const serveExecutor = async (
   stateDir: string,
   state: ExecutorLocalState,
-  options: { parentLiveness?: Readable } = {},
+  options: { parentLiveness?: Readable; runtime?: ExecutorRuntime } = {},
 ): Promise<void> => {
   const daemonLease = await acquireExecutorDaemonLease(stateDir)
   try {
-    let live = await claimExecutor(stateDir, state)
+    let live = await claimExecutor(stateDir, await enableExistingSessionBridge(stateDir, state, options.runtime))
     const localInference = await startExecutorLocalInferenceSupervisor(stateDir, live)
     live = localInference.state
     const browserSessions = createExecutorBrowserSessionManager(stateDir, live)

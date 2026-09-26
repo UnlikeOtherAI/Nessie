@@ -1,5 +1,11 @@
 # Host coding sessions: the `coding-sessions` bridge
 
+The same bridge also discovers and communicates with externally owned Codex
+and Claude sessions. Its default-on local switch, experimental native APIs,
+privacy rules and lifecycle split are described in
+[existing coding sessions](../plans/2026-09-26-existing-coding-sessions/overview.md).
+Managed-session close and teardown rules below never apply to external sessions.
+
 Back to the [protocol overview](overview.md). The design, and the reviews it
 answers, are in
 [the plan chapter](../plans/2026-09-22-executor-local-apps/coding-sessions.md).

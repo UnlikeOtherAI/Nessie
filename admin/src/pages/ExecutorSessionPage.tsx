@@ -20,7 +20,9 @@ export const ExecutorSessionPage = () => {
         actions={view.data?.canShare ? [{
           id: 'share-session', kind: 'button', label: 'Share session', priority: 80, onSelect: () => setSharing(true),
         }] : []}
-        subtitle="View only · The agent controls this session" />
+        subtitle={session?.origin === 'external'
+          ? 'Existing native session · Ask your Nessie agent to inspect it or send input'
+          : 'View only · The agent controls this session'} />
       <div className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto px-[var(--page-gutter)] py-4">
         <QueryState query={view} loadingLabel="Connecting to session…"
           errorLabel="This session is unavailable or you no longer have permission to view it.">
@@ -33,7 +35,8 @@ export const ExecutorSessionPage = () => {
               {view.data.screen ? <>
                 <ExecutorTerminalScreen screen={view.data.screen} />
                 <p className="text-xs text-[color:var(--tx3)]">
-                  {view.data.screen.kind === 'terminal'
+                  {session?.origin === 'external' ? 'Native session overview · Experimental provider controls and delivery limits are shown above.'
+                    : view.data.screen.kind === 'terminal'
                     ? 'Live terminal · current screen and up to 500 lines of scrollback. Scroll sideways on smaller screens.'
                     : 'Agent activity · recent projected messages and tool results. This session uses a structured CLI protocol.'}
                 </p>

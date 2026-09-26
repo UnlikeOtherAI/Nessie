@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import assert from 'node:assert/strict'
 import { createHash, createPublicKey, verify, type KeyObject } from 'node:crypto'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -156,7 +157,15 @@ test('pairing, signed control traffic, and selected-folder enforcement work end 
           signed.descriptor as Record<string, unknown>,
           signed.signature,
         )
-        send(response, { reviewStatus: 'approved', revision: 1 })
+        const revision = (signed.descriptor as { revision: number }).revision
+        for (const command of commands) command.capabilityRevision = revision
+        send(response, { reviewStatus: 'approved', revision })
+        return
+      }
+      if (path === '/api/executor-daemon/session-views') {
+        const { signature, ...payload } = body
+        assertSignature(publicKey, 'nessie.executor.daemon.session_view.v1', payload, signature)
+        send(response, { requests: [] })
         return
       }
       if (path === '/api/executor-daemon/heartbeat') {
@@ -225,7 +234,11 @@ test('pairing, signed control traffic, and selected-folder enforcement work end 
     const claimed = await claimExecutor(stateDir, paired)
     await heartbeatExecutor(claimed)
 
-    daemon = serveExecutor(stateDir, claimed, { parentLiveness: liveness })
+    await writeFile(join(stateDir, 'existing-coding-sessions.json'), JSON.stringify({ enabled: false }))
+    daemon = serveExecutor(stateDir, claimed, { parentLiveness: liveness, runtime: {
+      entry: fileURLToPath(new URL('../src/index.ts', import.meta.url)), execArgv: ['--import', 'tsx'],
+      execPath: process.execPath, packaged: process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1',
+    } })
     const timeout = setTimeout(() => resolveComplete?.(), 12_000)
     await complete
     clearTimeout(timeout)

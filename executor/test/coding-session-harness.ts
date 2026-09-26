@@ -143,6 +143,8 @@ export const createCodingHarness = async (options: {
   await mkdir(recordDir)
   const configDir = join(dir, 'config')
   await mkdir(configDir)
+  // Managed-session fixtures must never discover the developer's real provider sessions.
+  await writeFile(join(configDir, 'existing-coding-sessions.json'), JSON.stringify({ enabled: false }))
   const configPath = join(configDir, 'coding-sessions.json')
   const agent = { command: [process.execPath, SCRIPTED_AGENT] }
   const agentEnv = options.agentEnv ?? { inheritUserSession: false }

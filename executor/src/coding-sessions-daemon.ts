@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { dirname } from 'node:path'
+import { existingAuthorityWriter } from './existing-session/authority.js'
 
 import {
+  EXISTING_CODING_SESSION_OWNER_KEY,
   EXECUTOR_CODING_SESSION_REPORT_MAXIMUM,
   ExecutorCodingSessionCloseListSchema,
   executorCodingSessionOwnerKeyInput,
@@ -141,6 +144,9 @@ export const createCodingSessionsDaemon = (input: {
   now?: () => number
 }): CodingSessionsDaemon => {
   const bridge = codingSessionsPolicyOf(input.facts, input.servers)?.server
+  const bridgeConfig = bridge ? codingSessionsServerConfigPath(bridge) : undefined
+  const writeAuthority = bridgeConfig && input.facts?.existingSessions
+    ? existingAuthorityWriter(dirname(bridgeConfig)) : async () => undefined
   const log = input.log ?? ((message: string) => { console.error(`[nessie-executor] ${message}`) })
   const owners = new Set<string>()
   let earlierSessionsMayExist = bridge !== undefined
@@ -191,6 +197,11 @@ export const createCodingSessionsDaemon = (input: {
   return {
     inventory: () => sessionReport('session_inventory'),
     screen: async (request) => {
+      if (request.ownerKey === EXISTING_CODING_SESSION_OWNER_KEY) {
+        const answer = await daemonCall('existing_session_screen', request)
+        const parsed = ExecutorSessionScreenSchema.safeParse(answer?.screen)
+        return parsed.success ? parsed.data : null
+      }
       const configPath = bridge ? codingSessionsServerConfigPath(bridge) : undefined
       if (!configPath) return null
       const loaded = await loadCodingSessionsConfig(configPath)
@@ -215,12 +226,16 @@ export const createCodingSessionsDaemon = (input: {
       const code = (error as { code?: unknown } | undefined)?.code
       failingSince ??= now()
       if (typeof code === 'string' && DEFINITIVE_FAILURES.has(code)) {
+        await writeAuthority(false)
         await closeAll(reason)
       } else if (now() - failingSince >= DISCONNECT_CLOSE_MS) {
         await closeAll('connection_lost')
       }
     },
-    connectionHealthy: () => { failingSince = undefined },
+    connectionHealthy: () => {
+      failingSince = undefined
+      void writeAuthority(true).catch(() => undefined)
+    },
     close: (instructions) => serially(async () => {
       if (!bridge) return
       // The heartbeat lists every close the API still has open, and absent
@@ -251,6 +266,7 @@ export const createCodingSessionsDaemon = (input: {
       }
     }),
     shutdown: async () => {
+      await writeAuthority(false)
       if (!bridge) return
       const configPath = codingSessionsServerConfigPath(bridge)
       const loaded = configPath ? await loadCodingSessionsConfig(configPath).catch(() => undefined) : undefined
