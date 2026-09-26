@@ -308,6 +308,8 @@ export const useAgentConversationSuggestions = (agentId: string, channelId: stri
   const apiClient = useApiClient()
   return useQuery({
     queryKey: agentKeys.suggestions(agentId, channelId),
+    // Private questions from the previous DM must never paint under another agent.
+    placeholderData: undefined,
     queryFn: () => apiClient.get(
       `/api/agents/${encodeURIComponent(agentId)}/conversation-suggestions?channelId=${encodeURIComponent(channelId)}`,
       AgentConversationSuggestionsSchema,
