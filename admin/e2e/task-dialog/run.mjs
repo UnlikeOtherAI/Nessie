@@ -779,14 +779,25 @@ try {
   // with its machine access, each with the newest history row that says it;
   // the line a wake that ran without a machine leaves on live work; and a
   // history of a queue, an offline pause and two resumes — at 1280 and 390 px.
+  // T5 adds when an offline machine was last heard from (21), the work queued
+  // again for another machine after its own stayed away (29), the machine back
+  // in its history (28), and a wake by the coding session's turn (30).
   // The record the chip reads carries no machine, so none is named on it.
+  // A time the chip gives: "14:32", or with its day when that is not today ("25 Sept 23:53", "Sep 25 11:53 PM").
+  const OFFLINE_SINCE = String.raw`(?:\d{1,2} \p{L}+\.? |\p{L}+\.? \d{1,2},? )?\d{1,2}:\d{2}(?:\s?[AP]M)?`
   const MACHINE_CHIP_STATES = [
     ['queued', '20-work-queued', 'queued', /^Perf agent · queued · started /,
       'Queued: position 2 — every machine is busy.',
       / · Perf agent queued the work: every machine is busy · by Ondřej Rafaj$/],
+    // T5: since when its machine has been away — its time, with the day when that is not today (the
+    // fixture's 38 minutes ago is yesterday just after midnight), never the machine.
     ['machine-offline', '21-work-machine-offline', 'waiting_machine', /^Perf agent · waiting for a machine · /,
-      'Paused: the machine is offline. Work resumes when it reconnects.',
+      new RegExp(`^Paused: the machine is offline since ${OFFLINE_SINCE}\\. Work resumes when it reconnects\\.$`, 'u'),
       / · Perf agent paused the work: the machine is offline$/],
+    // T5: its own machine stayed away past waitingMachineHours; it waits for another.
+    ['moved-machine', '29-work-moved-machine', 'queued', /^Perf agent · queued · started /,
+      'Queued: position 1 — every machine is busy.',
+      / · Perf agent queued the work for another machine, because its machine stayed offline: every machine is busy$/],
     ['access-not-set-up', '22-work-access-not-set-up', 'waiting_machine', /^Perf agent · waiting for a machine · /,
       'Waiting for machine access: its owner has not set it up yet.',
       / · Perf agent started work, waiting for machine access · by Ondřej Rafaj$/],
@@ -825,7 +836,9 @@ try {
       const { chip, dialog, page } = await chipOf(state)
       assert.equal(await chip.getAttribute('data-work-status'), status, state)
       assert.match(await chip.getByTestId('ticket-work-headline').innerText(), headline, state)
-      assert.equal((await chip.getByTestId('ticket-work-state').innerText()).trim(), line, state)
+      const stateLine = (await chip.getByTestId('ticket-work-state').innerText()).trim()
+      if (line instanceof RegExp) assert.match(stateLine, line, state)
+      else assert.equal(stateLine, line, state)
       assert.equal(await chip.getByTestId('ticket-work-machine-refusal').count(), 0, `${state}: no refused wake to say`)
       assert.doesNotMatch(await chip.innerText(), NAMES_A_MACHINE, `${state}: the chip names no machine`)
       // The history's newest row says the same, folded away: textContent, not
@@ -862,7 +875,7 @@ try {
       await history.locator('summary').click()
       const rows = await history.locator('li').allInnerTexts()
       assert.equal(rows.length, 5, rows.join('\n'))
-      assert.match(rows[0], / · Perf agent resumed the work$/)
+      assert.match(rows[0], / · Perf agent resumed the work: its machine is back online$/)
       assert.match(rows[1], / · Perf agent paused the work: the machine is offline$/)
       assert.match(rows[2], / · Perf agent resumed the work$/)
       assert.match(rows[3], / · Perf agent queued the work: every machine is busy · by Ondřej Rafaj$/)
@@ -874,6 +887,18 @@ try {
       assert.ok(scroll <= width, `the open history does not scroll sideways at ${width}px (${scroll})`)
       await settled(page)
       await section.screenshot({ path: shot(`28-work-machine-history-${width}.png`) })
+      await page.close()
+    }
+    // 30 — T5: back at work, woken because its coding session's turn ended.
+    {
+      const { chip, page } = await chipOf('session-wake')
+      assert.equal(await chip.getAttribute('data-work-status'), 'active')
+      assert.match(await chip.getByTestId('ticket-work-headline').innerText(), /^Perf agent · working · started /)
+      assert.match(await chip.innerText(), /Last woken .+: a coding session’s turn ended · wake 7 of 30/)
+      assert.equal(await chip.getByTestId('ticket-work-state').count(), 0, 'working work has no state line')
+      assert.doesNotMatch(await chip.innerText(), NAMES_A_MACHINE, 'the wake names no machine')
+      await settled(page)
+      await chip.screenshot({ path: shot(`30-work-session-wake-${width}.png`) })
       await page.close()
     }
     await context.close()

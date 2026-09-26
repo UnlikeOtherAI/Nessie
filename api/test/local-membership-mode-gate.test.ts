@@ -52,6 +52,9 @@ const dbAuditChainUrl = new URL(
   import.meta.url,
 ).href
 const dbStub = [
+  `export { lockThreadRunSlot } from ${JSON.stringify(
+    new URL('../../packages/db/src/thread-serialization.ts', import.meta.url).href,
+  )}`,
   `export { stableStringify } from ${JSON.stringify(dbAuditChainUrl)}`,
   'export {',
   '  clearRateLimitWindows,',

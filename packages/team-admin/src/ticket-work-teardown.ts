@@ -4,6 +4,7 @@ import {
   endTicketWork,
   enqueueTicketWorkSweep,
   recordTicketWorkActivity,
+  renumberTicketWorkQueueInTransaction,
   syncTicketWorkClock,
 } from '@nessie/executor-manage'
 import {
@@ -105,10 +106,12 @@ export const applyTicketWorkColumnEntry = async (
     }
     const pickup = new Set(config.data.pickup?.columnIds ?? [])
     if (column.category === 'review' && !pickup.has(column.id) && record.status !== 'parked') {
+      // Queued work parked leaves its place in the queue, and the rest move up.
       await tx.agentTicketWork.update({
         where: { id: record.id },
-        data: { status: 'parked', stateReason: null },
+        data: { status: 'parked', stateReason: null, queuePosition: null },
       })
+      if (record.status === 'queued' && record.policyId) await renumberTicketWorkQueueInTransaction(tx, record.policyId)
       // Parked work waits for people, so its hours clock pauses and its
       // reminder goes: a person moving it back wakes the agent anyway.
       await syncTicketWorkClock(tx, record.id)

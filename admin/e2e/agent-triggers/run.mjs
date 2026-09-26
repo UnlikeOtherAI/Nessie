@@ -192,6 +192,18 @@ try {
       await toggle.click()
       await minutes.fill('45')
 
+      // Waiting for an offline machine (T5): beside the limits, 24 hours by
+      // default, and the hours a person sets are what the create posts.
+      const limits = dialog.locator('fieldset', { has: page.locator('legend', { hasText: /^Limits$/ }) })
+      const waiting = limits.getByLabel('Hours to wait for an offline machine')
+      assert.equal(await waiting.inputValue(), '24', `${name}: waiting starts at its default`)
+      await limits.scrollIntoViewIfNeeded()
+      await limits.getByText('Work whose machine goes offline pauses until it reconnects.', { exact: false }).waitFor()
+      await settled(page)
+      await assertNoSidewaysScroll(page, `${name} waiting hours`)
+      await limits.screenshot({ path: resolve(SHOTS, `ticket-waiting-hours-${width}.png`) })
+      await waiting.fill('12')
+
       await dialog.getByRole('button', { name: 'Create trigger', exact: true }).click()
       const refusal = dialog.locator('[data-field-error="pickup"]')
       await refusal.waitFor()
@@ -227,6 +239,7 @@ try {
         limits: { startsPerDay: 20, wakesPerTicket: 30 },
         pickup: { assignOnPickup: true, columns: [{ id: DOING }] },
         quietWakeMinutes: 45,
+        waitingMachineHours: 12,
       })
       assert.deepEqual(errors, [], `${name}: no page errors`)
       await context.close()
@@ -303,7 +316,13 @@ try {
       const lines = page.getByTestId('ticket-delivery-line')
       await lines.first().waitFor()
       await page.getByText('After 30 minutes with nothing scheduled', { exact: false }).waitFor()
+      // T5: how long work waits for its own machine, from the trigger's stored config.
+      await page.getByText('Work waits 24 hours for its machine to reconnect, then moves to another').waitFor()
       assert.deepEqual(await lines.allInnerTexts(), [
+        'A coding session closed, but the agent had closed it itself, the work had moved to another machine, or the '
+          + 'work was not active, so it was not woken for it.',
+        'Woke the agent: the machine came back.',
+        'Woke the agent: a coding session’s turn ended.',
         'Ran without a machine: the machine was offline or no longer offers its coding tools.',
         'Woke the agent: nothing else was scheduled.',
         'Woke the agent: a reminder.',

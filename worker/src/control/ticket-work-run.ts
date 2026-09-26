@@ -98,7 +98,7 @@ export const stopTicketWorkAtWakeLimit = async (
 type PendingKickoff = { messageId: string; metadata: Prisma.JsonValue }
 
 /** The kickoff still pending for this record in its thread, if there is one. */
-const findPendingKickoff = async (
+export const findPendingKickoff = async (
   tx: Prisma.TransactionClient,
   input: { agentId: string; threadId: string; workId: string },
 ): Promise<PendingKickoff | null> => {
@@ -120,7 +120,7 @@ const findPendingKickoff = async (
   return null
 }
 
-const kickoffMetadata = (metadata: Prisma.JsonValue | null): TicketWorkKickoffMetadata | null => {
+export const kickoffMetadata = (metadata: Prisma.JsonValue | null): TicketWorkKickoffMetadata | null => {
   const record = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}
   const parsed = TicketWorkKickoffMetadataSchema.safeParse((record as Record<string, unknown>)['ticketWorkKickoff'])
   return parsed.success ? parsed.data : null
@@ -161,6 +161,7 @@ const kickoffEvent = (event: DescribedWakeEvent): TicketWorkKickoffEvent => ({
   text: event.text,
   ...(event.source ? { source: event.source } : {}),
   ...(event.by ? { by: event.by } : {}),
+  ...(event.session ? { session: event.session } : {}),
 })
 
 /**
@@ -210,7 +211,12 @@ export const queueTicketWorkRun = async (
   const touch = { lastWakeAt: new Date(), lastWakeReason: input.event.reason }
   const row = () => writeTicketWorkThreadRow(tx, {
     threadId: work.threadId,
-    event: { kind: 'woken', workId: work.id, reason: input.event.reason, summary: input.event.summary },
+    event: {
+      kind: 'woken', workId: work.id, reason: input.event.reason, summary: input.event.summary,
+      ...(input.event.session
+        ? { session: { sessionId: input.event.session.sessionId, turn: input.event.session.turn } }
+        : {}),
+    },
   })
 
   // What the agent will know the description as once this kickoff is read.

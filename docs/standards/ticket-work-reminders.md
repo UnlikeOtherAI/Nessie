@@ -114,14 +114,17 @@ win. Every rule here shipped in T3.
   quiet wakes (`decideTicketWorkSweep`), ends work a lowered `wakesPerTicket`
   left over its wakes (`limit_wakes`, with its `work_ended` row and stop row;
   `startsPerDay` is decided at each pickup, so no live record is over it), and
-  recovers a lost job: a `trigger.ticket.dispatch` or
-  `ticket-work.thread-message` job the queue dead-lettered in the last day is
+  recovers a lost job: a `trigger.ticket.dispatch`,
+  `ticket-work.thread-message` or **(T5)** `ticket-work.session` job the queue
+  dead-lettered in the last day is
   dispatched once more (`recoverLostTicketJobs`) — each dispatcher decides at
   most once per (trigger, event), so a person's move whose worker died still
   starts its work. Once is a claim, not luck: the sweep whose conditional
   update appends `[recovered by ticket-work.sweep]` to the job's own error
   dispatches it, and one that finds the mark skips it. It becomes the pool
-  dispatcher in T4 and T5.
+  dispatcher in T4 and T5: a transaction that may free a machine enqueues
+  its own job (`machinesOnly`, ten-second bucket), which runs the machine
+  steps alone and none of the above.
 
 ## Tests that hold these rules
 

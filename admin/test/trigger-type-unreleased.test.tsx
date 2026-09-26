@@ -133,6 +133,8 @@ test('editing a ticket trigger posts its typed config back, never an event list'
     limits: { startsPerDay: 5, wakesPerTicket: 12 },
     // A trigger stored before the quiet wake reads back with its default.
     quietWakeMinutes: 30,
+    // And one stored before waiting for an offline machine was an option, with its own (T5).
+    waitingMachineHours: 24,
     instructions: { general: 'Triage it.', onPickup: 'Comment a plan.' },
   })
   assert.equal(result.payload.nextRunAt, undefined, 'a ticket trigger has no schedule')

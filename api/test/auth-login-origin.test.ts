@@ -30,6 +30,9 @@ const dbRateLimitUrl = new URL(
 // stub carries that one real export too.
 const dbAuditChainUrl = new URL('../../packages/db/src/audit-chain.ts', import.meta.url).href
 const dbStub = [
+  `export { lockThreadRunSlot } from ${JSON.stringify(
+    new URL('../../packages/db/src/thread-serialization.ts', import.meta.url).href,
+  )}`,
   `export { stableStringify } from ${JSON.stringify(dbAuditChainUrl)}`,
   'export {',
   '  clearRateLimitWindows,',

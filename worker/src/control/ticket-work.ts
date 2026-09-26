@@ -4,6 +4,7 @@ import {
   closeTicketWorkSessionsInTransaction,
   endTicketWork,
   enqueueTicketWorkSweep,
+  lockTicketWorkPoliciesInTransaction,
   recordTicketWorkActivity,
 } from '@nessie/executor-manage'
 import { TICKET_WORK_LIVE_STATUSES } from '@nessie/schemas'
@@ -245,8 +246,10 @@ const wakeSource = (event: TicketWorkWakeInput['event'], trigger: TicketWorkTrig
       return { kind: 'reminder', reminderId: event.id }
     case 'quiet':
       return { kind: 'quiet', quietMinutes: ticketWorkConfigOf(trigger.config).quietWakeMinutes ?? 0 }
-    // A document change arrives already told, metadata only, by its dispatcher.
+    // A document change arrives already told, metadata only, by its
+    // dispatcher; a session's turn as its machine reported it.
     case 'document':
+    case 'session':
       if (event.described) return { kind: 'described', ...event.described }
       return { kind: 'task_event', taskEventId: event.id }
     default:
@@ -272,16 +275,19 @@ const wakeTicketWork = async (
   if (!work || (!live && !input.machineLess)) return { outcome: 'refused', reason: 'no_longer_applies' }
   // Every lock before any write, in the one order ticket work takes them:
   // the ticket (only a move's wake needs it), then the thread's run slot,
-  // then the record — the order a pickup, a reminder's claim and a quiet
-  // wake's claim take them too, so no two of them can wait on each other.
+  // then the policy rows the wake reads, shared — so a suspension or an end
+  // waits for a resume that read its policy live (T5) — then the record: the
+  // order a pickup, a reminder's claim and a quiet wake's claim take them too,
+  // so no two of them can wait on each other.
   if (input.resumes || input.machineLess) await lockTicketForWork(tx, input.task.id)
   await lockThreadRunSlot(tx, { agentId: work.agentId, threadId: work.threadId })
+  if (live) await lockTicketWorkPoliciesInTransaction(tx, { policyId: work.policyId, triggerId: work.triggerId })
   const settled = await settleMoveAgainstColumn(tx, { ...input, work, live })
   if (settled) return settled
   await assertTargetChannel(tx, trigger)
   // A description change is told as a diff against what this agent last saw.
   const detailSeen = event.eventType === 'detail_edited' ? await loadDetailSeen(tx, work) : undefined
-  const described = await describeWakeEvent(prisma, {
+  const told = await describeWakeEvent(prisma, {
     detailSeen,
     organizationId: trigger.organizationId,
     projectId: work.projectId,
@@ -292,6 +298,8 @@ const wakeTicketWork = async (
     untrusted: input.untrusted,
     machineLess: input.machineLess,
   })
+  // A session wake names its turn and delivery on the kickoff: a wait that reads the turn withdraws it.
+  const described = event.session ? { ...told, session: { ...event.session, deliveryId: input.deliveryId } } : told
   // Live work over a limit stops instead of waking, and work whose machine is
   // offline waits for it without a run. A person's move back into a
   // start-work column resumes parked work on a machine — before the kickoff is
@@ -299,10 +307,10 @@ const wakeTicketWork = async (
   const resumed = input.resumes && work.status === 'parked'
   // A person's comment, message or move is the answer to any open question:
   // it closes, and the hours clock runs again. A reminder, a quiet wake, a
-  // connected board's event and an edit to one of the ticket's documents
-  // answer nothing (docs/standards/document-triggers.md).
+  // connected board's event, an edit to one of the ticket's documents and a
+  // coding session's turn answer nothing (docs/standards/document-triggers.md).
   const personEvent = live && !input.untrusted && !input.machineLess
-    && event.kind !== 'reminder' && event.kind !== 'quiet' && event.kind !== 'document'
+    && event.kind !== 'reminder' && event.kind !== 'quiet' && event.kind !== 'document' && event.kind !== 'session'
   if (personEvent) await closeTicketWorkQuestion(tx, work.id)
   const held = live && !input.machineLess ? await holdTicketWorkBeforeWake(tx, { work }) : null
   if (held) return { outcome: 'refused', reason: held }

@@ -26,12 +26,16 @@ export const TICKET_WORK_STEER_METADATA_KEY = 'ticketWorkSteer'
  * event row; its `summary` is all it shows, and it never repeats ticket text,
  * because the channel can be wider than the project the ticket belongs to.
  */
+/** Which coding session's turn a wake told of (T5): what withdraws the wake once the agent read that turn itself. */
+const SessionTurnSchema = z.object({ sessionId: uuid, turn: z.number().int().nonnegative() }).strict()
+
 export const TicketWorkThreadEventSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('woken'),
     workId: uuid,
     reason: TicketWorkWakeReasonSchema,
     summary: z.string().min(1),
+    session: SessionTurnSchema.optional(),
   }).strict(),
   z.object({
     kind: z.literal('stopped'),
@@ -86,6 +90,13 @@ export const TicketWorkKickoffEventSchema = z.object({
    */
   source: z.object({ kind: z.enum(['task_event', 'thread_message']), id: uuid }).strict().optional(),
   by: z.string().min(1).max(200).optional(),
+  /**
+   * A coding session's turn end (T5): the session, its turn and the delivery
+   * that woke for it. A wait or review of the agent's own that sees that turn
+   * end while this kickoff is still pending withdraws the event — and the
+   * whole kickoff, its wake refunded, when nothing else is left in it.
+   */
+  session: SessionTurnSchema.extend({ deliveryId: uuid }).strict().optional(),
 }).strict()
 export type TicketWorkKickoffEvent = z.infer<typeof TicketWorkKickoffEventSchema>
 

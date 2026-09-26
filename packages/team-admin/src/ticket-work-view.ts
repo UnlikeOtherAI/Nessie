@@ -216,6 +216,7 @@ const loadWorkHistory = async (prisma: PrismaClient, taskId: string): Promise<Ti
     agentName: agentName.get(payload.agentId) ?? 'The agent',
     status: payload.status,
     reason: payload.reason,
+    ...(payload.previousReason ? { previousReason: payload.previousReason } : {}),
     byName: nameOf(payload.by),
     at: row.createdAt.toISOString(),
   }))
@@ -259,6 +260,7 @@ export const loadTaskTicketWork = async (
       triggerId: true,
       wakeCount: true,
       awaitingAnswerAt: true,
+      executor: { select: { lastSeenAt: true } },
       reminders: {
         where: { status: 'pending' },
         orderBy: { dueAt: 'asc' },
@@ -300,6 +302,10 @@ export const loadTaskTicketWork = async (
       ? { id: parseThreadId(row.thread.id), channelId: parseChannelId(row.thread.channelId) }
       : null,
     queuePosition: row.status === 'queued' ? row.queuePosition : null,
+    // When the machine it waits for was last heard from; the machine itself is never named here.
+    machineOfflineSince: row.status === 'waiting_machine' && row.stateReason === 'machine_offline'
+      ? row.executor?.lastSeenAt?.toISOString() ?? null
+      : null,
     machineRefusal: refusals.get(row.id) ?? null,
     // Ended work cancels its reminders and answers nothing more.
     pendingReminder: LIVE.has(row.status) && row.reminders[0]

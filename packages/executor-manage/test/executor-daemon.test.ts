@@ -103,6 +103,9 @@ const claimPrisma = (machinePublicKey: string, challengeMatches: number) => {
   const client = {
     $transaction: async (callback: (tx: unknown) => unknown) => callback({
       $executeRaw: async () => undefined,
+      // A machine back online asks whether ticket work waits for it: none here.
+      agentTicketWork: { count: async () => 0 },
+      executorStandingPolicyExecutor: { count: async () => 0 },
       executor: {
         findUnique: async () => ({
           activeConnectionEpoch: 4n,

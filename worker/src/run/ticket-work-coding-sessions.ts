@@ -28,6 +28,7 @@ import {
 import type { CodingWaitTiming } from './coding-session-wait.js'
 import type { CodingSessionHooks, ExecutorCodingSessions } from './executor-coding-sessions.js'
 import { writeTicketWorkCodingAudit } from './ticket-work-coding-audit.js'
+import { withdrawSeenSessionWakes } from '../control/ticket-work-session-withdraw.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
 
@@ -62,7 +63,10 @@ import type { AgenticToolResult } from './tools.js'
  * - every answer's cost, turn end and pull request are written to the record
  *   as they are seen, and a review asks after the recorded pull request by URL
  *   — the model's own `pullRequest` argument is dropped, so it cannot point a
- *   review, and what the record keeps as merged, at another pull request.
+ *   review, and what the record keeps as merged, at another pull request;
+ *   a turn end seen here withdraws the same turn's session wake still pending
+ *   in the thread (T5), and the agent's own close takes the session off the
+ *   record, so neither wakes the agent for what it already knows.
  */
 
 export type TicketWorkCodingScope = {
@@ -219,8 +223,12 @@ const ticketSessions = async (
   const recorded = [...(work?.sessionIds ?? [])]
   const reported = reportedExecutorCodingSessions(executor?.localMcp)
     .filter((session) => session.ownerKey === scope.ownerKey)
+  const origins = ticketWorkSessionOriginsOf(work?.sessionOrigins)
   for (const session of reported) {
-    if (!recorded.includes(session.sessionId) && session.title === scope.title) {
+    // A lost start has no origin. One with an origin was recorded and then let go — closed by the
+    // agent, released when the work left, or closed in the heartbeat intake (T5) — and stays out.
+    if (!recorded.includes(session.sessionId) && !origins[session.sessionId] && session.title === scope.title
+      && session.status !== 'closed') {
       await appendTicketWorkSession(prisma, {
         executorId: scope.executorId, policyId: scope.policyId, sessionId: session.sessionId, workId: scope.workId,
       })
@@ -231,7 +239,7 @@ const ticketSessions = async (
     executorId: scope.executorId,
     localMcp: executor?.localMcp ?? null,
     localMcpObservedAt: executor?.localMcpObservedAt ?? null,
-    origins: ticketWorkSessionOriginsOf(work?.sessionOrigins),
+    origins,
     ownerKey: scope.ownerKey,
     sessionIds: recorded,
   }).filter((session) => recorded.includes(session.sessionId))
@@ -276,6 +284,9 @@ export const ticketWorkCodingObserver = (prisma: PrismaClient, scope: TicketWork
   if (sessionId) {
     await recordTicketWorkSessionObservation(prisma, {
       sessionId, workId: scope.workId,
+      // The agent's own close: the session leaves the ticket's live set, and its closing wakes nobody.
+      ...(toolName === CODING_SESSION_TOOL_NAMES.close ? { closedByAgent: true } : {}),
+      withdrawWakes: (tx, observed) => withdrawSeenSessionWakes(tx, { ...observed, workId: scope.workId }),
       ...(typeof body.status === 'string' ? { status: body.status } : {}),
       ...(typeof body.totalCostUsd === 'number' ? { totalCostUsd: body.totalCostUsd } : {}),
       ...(typeof body.turn === 'number' ? { turn: body.turn } : {}),

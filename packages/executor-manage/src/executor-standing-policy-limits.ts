@@ -5,10 +5,10 @@ import {
   type TicketWorkStateReason,
 } from '@nessie/schemas'
 
-import { closeTicketWorkSessionsInTransaction } from './executor-standing-policy-lifecycle.js'
 import { enqueueTicketWorkSweep } from './executor-standing-policy-pool.js'
 import { ticketWorkActiveMs } from './ticket-work-clock.js'
 import { endTicketWork, writeTicketWorkThreadRow } from './ticket-work-records.js'
+import { closeTicketWorkSessionsInTransaction } from './ticket-work-session-release.js'
 
 /**
  * A ticket's work limits under its standing policy, enforced by the platform

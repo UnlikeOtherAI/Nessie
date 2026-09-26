@@ -132,12 +132,14 @@ const ticketTrigger = {
   lastFiredAt: T0, name: 'Start work from In progress', status: 'active', targetChannelId: CHANNEL_ID,
   type: 'ticket_changed', updatedAt: T0,
 } as unknown as AgentTriggerRecord
+const NAMES_NO_EVENT = new Set(['reminder', 'quiet', 'session', 'machine_back_online'])
 const delivery = (n: number, source: string, status: string, payload: Record<string, unknown>) => ({
   createdAt: `2026-09-23T1${n}:00:00.000Z`, id: `60000000-0000-4000-8000-0000000002${n}0`,
-  // A reminder names its reminder and a quiet wake nothing; every other event its TaskEvent.
+  // A reminder names its reminder, a session its session, a quiet wake and a machine back
+  // nothing; every other event its TaskEvent.
   payload: {
     taskId: tasks[0]!.id,
-    ...(payload.eventType === 'reminder' || payload.eventType === 'quiet' || payload.kind === 'standing_policy_refused'
+    ...(NAMES_NO_EVENT.has(String(payload.eventType)) || payload.kind === 'standing_policy_refused'
       ? {}
       : { taskEventId: `60000000-0000-4000-8000-0000000003${n}0` }),
     ...payload,
@@ -146,6 +148,22 @@ const delivery = (n: number, source: string, status: string, payload: Record<str
   ...(status === 'skipped' ? { errorMessage: String(payload.skipReason ?? 'Ran without a machine.') } : {}),
 })
 const history = [
+  // T5: a close the agent made itself, which woke nobody.
+  delivery(9, 'session', 'skipped', {
+    eventType: 'session', originKind: 'system', outcome: 'skipped', skipReason: 'no_longer_applies',
+    session: { sessionId: '60000000-0000-4000-8000-000000000710', status: 'closed', turn: 4 },
+    workId: '60000000-0000-4000-8000-000000000400',
+  }),
+  // T5: the ticket's machine came back online, and its coding session ended a turn.
+  delivery(8, 'machine', 'delivered', {
+    eventType: 'machine_back_online', originKind: 'system', outcome: 'follow', wakeReason: 'machine_back_online',
+    workId: '60000000-0000-4000-8000-000000000400',
+  }),
+  delivery(7, 'session', 'delivered', {
+    eventType: 'session', originKind: 'system', outcome: 'follow', wakeReason: 'session_turn_ended',
+    session: { sessionId: '60000000-0000-4000-8000-000000000710', status: 'waiting_for_input', turn: 3 },
+    workId: '60000000-0000-4000-8000-000000000400',
+  }),
   // T4: a run the standing-policy binder bound no machine to.
   delivery(6, 'binding', 'skipped', {
     kind: 'standing_policy_refused', reason: 'machine_unavailable', runId: '60000000-0000-4000-8000-000000000700',

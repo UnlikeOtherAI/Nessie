@@ -3,7 +3,9 @@ import test from 'node:test'
 
 import {
   STANDING_ACCESS_STATE,
+  STANDING_ACCESS_UNREADABLE_HOLDER,
   standingAccessEndCopy,
+  standingAccessHolderLine,
   standingAccessStateLine,
   standingAccessTicketsLine,
 } from '../src/components/features/executors/executor-standing-access-presentation.js'
@@ -62,4 +64,15 @@ test('End says what it cancels and who has to set it up again', () => {
   assert.match(copy.body, /Ondrej has to set it up again/)
   assert.equal(standingAccessEndCopy({ authorName: 'Ondrej', trigger: null }).title,
     'End standing access for a deleted trigger?')
+})
+
+test('the ticket holding the machine says whether it works on it or waits for it (T5)', () => {
+  const holder = {
+    projectId: '11111111-0000-4000-8000-000000000002', status: 'active' as const,
+    taskId: '11111111-0000-4000-8000-000000000003', title: 'NES-1 Fix it',
+  }
+  assert.equal(standingAccessHolderLine(holder), 'holds this machine, working')
+  assert.equal(standingAccessHolderLine({ ...holder, status: 'waiting_machine' }),
+    'holds this machine, paused until it reconnects')
+  assert.equal(STANDING_ACCESS_UNREADABLE_HOLDER, 'A ticket you cannot open')
 })

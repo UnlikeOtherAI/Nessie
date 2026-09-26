@@ -56,8 +56,12 @@ Each rule is tagged with the PR that first enforces it in code:
   output kept to the ticket, the pull request tracked to its merge, and the
   audit rows of each; the sweep's machine half; and the screens — the
   trigger's Machine access section, the executor page's Standing access panel
-  and the chip's machine states. The dequeue across policies, session wakes
-  and a machine's return are T5's.
+  and the chip's machine states.
+- **(T5)** shipped: session wakes from the heartbeat's intake, the dequeue
+  across every policy that shares a machine with its re-checks, and a
+  machine's return — its work resumed with a `machine_back_online` wake, or
+  moved off it past `waitingMachineHours` — in
+  [ticket-work-machine-access.md](ticket-work-machine-access.md).
 - **(T3)** shipped: `check_back_in` and its reminders, the quiet wake, the
   open question (`awaitsAnswer`) with the hours clock it pauses, and the
   periodic `ticket-work.sweep`, in their own chapter,
@@ -125,7 +129,8 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   {category: in_progress | review})[], assignOnPickup = true }` (null or
   absent: the trigger starts no work), `follow` and `endOn` (the stored
   schema's own fields and defaults), **(T3)** `quietWakeMinutes = 30`
-  (15–1440, null turns the quiet wake off), `limits { wakesPerTicket = 30,
+  (15–1440, null turns the quiet wake off), **(T5)** `waitingMachineHours =
+  24` (1–168, not a pinned term), `limits { wakesPerTicket = 30,
   startsPerDay = 20 }` capped by `TICKET_TRIGGER_LIMIT_CEILINGS`, and
   `instructions { general, onPickup?, onTicketChanged?, onSessionTurnEnded?,
   onReminder?, onQueued? }`. It is strict: an unknown key is refused. A limit
@@ -322,7 +327,8 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   re-announces nothing — or for a live record the seam ends then, while the
   ticket is still in an end column; except when the trigger's own agent made
   the move (`own_agent_event`). A priority change on a `queued` record wakes
-  nothing (`priority_while_queued`).
+  nothing (`priority_while_queued`) and **(T5)** re-sorts its queue in the
+  change's own transaction.
 - **(T1) Only board editors write in a work thread**, checked live on every
   write by every writer (`findTicketWorkThread` and
   `canPostInTicketWorkThread`, `packages/team-admin/src/ticket-work-thread.ts`;
@@ -602,7 +608,8 @@ routes, and none of it names a machine.
   and its columns (a new trigger starts from the board's In progress
   columns, and a column an end rule covers cannot also start work); follow
   kinds with the connected-board opt-in explained, and the mirrored board
-  named when there is one; end columns; both limits; **(T3)** the quiet wake
+  named when there is one; end columns; both limits and **(T5)** the hours to
+  wait for an offline machine; **(T3)** the quiet wake
   (a switch and its minutes, off posting `null`, and what off costs); and
   sectioned instructions with a neutral example. It posts the typed config by
   column id, and a `TRIGGER_CONFIG_REFUSED` answer lands **on the field its
@@ -746,7 +753,7 @@ causes it**:
   while access is suspended or not yet set up gets one short, unbound pickup
   wake and then waits the same way, with `machine_access_suspended` or
   `machine_access_not_set_up`; the suspending and confirming transactions
-  enqueue the dispatcher, which (from T5) resumes them with a `dequeued` wake.
+  enqueue the dispatcher, which **(T5)** resumes them with a `dequeued` wake.
   **(T4) Ending machine access** (`endStandingPolicyInTransaction`) cancels
   every live record of the policy with `machine_access_ended`, and their
   sessions get close requests (`policy_ended`) — except a policy a
@@ -818,17 +825,16 @@ causes it**:
   subscribed beside them; [document-triggers.md](document-triggers.md)),
   `TICKET_WORK_SWEEP_TOPIC` (T3, one job a minute by its `bucket`, subscribed
   beside them) and `TICKET_WORK_SESSION_TOPIC`
-  (from T5, whose `status` is only one that wakes: `waiting_for_input`,
-  `interrupted`, `failed` or `closed`). The sweep is also **the pool
-  dispatcher**: every transaction that may free a machine — a record ending,
-  parking or moving to `waiting_machine`, a session closing, a machine coming
-  online, access being re-confirmed — enqueues it with a short idempotency
-  window, and the periodic tick is only the backstop (from T5). So dispatch is
-  one idempotent job that reads the queue and the pools afresh, and there is
-  no per-executor dispatch topic. Only `trigger.ticket.dispatch`,
-  `ticket-work.thread-message`, `trigger.document.dispatch` and
-  `ticket-work.sweep` have a subscriber so far; each other handler parses its
-  payload with its schema when it lands.
+  (T5, the heartbeat intake's, subscribed beside them; its `status` is only
+  one that wakes: `waiting_for_input`, `interrupted`, `failed` or `closed`).
+  The sweep is also **the pool dispatcher**: every transaction that may free
+  a machine — a record ending, parking or moving to `waiting_machine`, a
+  session closing, a machine coming online, access being re-confirmed —
+  enqueues it with a short idempotency window, and the periodic tick is only
+  the backstop (T5). So dispatch is one idempotent job that reads the queue
+  and the pools afresh, and there is no per-executor dispatch topic. Every
+  topic above has its subscriber, and each handler parses its payload with
+  its schema.
 - The dispatch vocabularies are in `packages/schemas/src/ticket-triggers.ts`:
   the stored `ticket_changed` config the dispatcher reads
   (`TicketChangedStoredConfigSchema`, the board and pickup columns by id),

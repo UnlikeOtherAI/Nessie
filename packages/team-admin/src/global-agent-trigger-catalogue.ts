@@ -4,6 +4,7 @@ import {
   TICKET_TRIGGER_LIMIT_CEILINGS,
   TICKET_QUIET_WAKE_MINUTES,
   TICKET_TRIGGER_LIMIT_DEFAULTS,
+  TICKET_WAITING_MACHINE_HOURS,
 } from '@nessie/schemas'
 
 /**
@@ -92,6 +93,13 @@ export const ticketWorkFactsSection = (): string[] => [
     + 'coding_session_* tools and no other program there, within the ticket\'s hours and spend limits '
     + '(ticketHours, ticketUsd, dailyUsd). Without it the agent triages, comments on and moves tickets, and '
     + 'cannot run code or start a coding session.',
+  ),
+  bullet(
+    'Each machine works one ticket at a time; more tickets wait in a queue by priority, then age, and the '
+    + 'agent is woken when one gets a machine. Its coding session ending a turn, being interrupted, failing '
+    + 'or closing wakes it too. Work whose machine goes offline pauses until it reconnects, and after '
+    + `${TICKET_WAITING_MACHINE_HOURS.default} hours (waitingMachineHours, ${TICKET_WAITING_MACHINE_HOURS.min} to `
+    + `${TICKET_WAITING_MACHINE_HOURS.max}) is queued again for another machine of its pool.`,
   ),
 ]
 

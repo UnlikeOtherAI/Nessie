@@ -133,7 +133,9 @@ const machineWaitLine = (record: TicketWorkChipRecord): string | null => {
   }
   if (record.status !== 'waiting_machine') return null
   switch (record.stateReason) {
-    case 'machine_offline': return 'Paused: the machine is offline. Work resumes when it reconnects.'
+    case 'machine_offline':
+      return `Paused: the machine is offline${record.machineOfflineSince ? ` since ${day(record.machineOfflineSince)}` : ''}. `
+        + 'Work resumes when it reconnects.'
     case 'machine_access_not_set_up': return 'Waiting for machine access: its owner has not set it up yet.'
     case 'machine_access_suspended':
       return 'Waiting for machine access: it is paused until its owner confirms it again.'
@@ -190,11 +192,16 @@ const historyPhrase = (entry: TicketWorkHistoryEntry): string => {
         ? `started work, waiting for ${machineWaitPhrase(entry.reason)}`
         : 'started work'
     case 'work_queued':
+      // Taken off a machine that stayed away too long, for another one to take (T5).
+      if (entry.previousReason === 'machine_offline') {
+        return `queued the work for another machine, because its machine stayed offline${why ? `: ${why}` : ''}`
+      }
       return why ? `queued the work: ${why}` : 'queued the work for a machine'
     // A pause with no reason is the park in review; one with a reason waits for a machine.
     case 'work_paused':
       return why ? `paused the work: ${why}` : 'parked the work while the ticket is in review'
     case 'work_resumed':
+      if (entry.previousReason === 'machine_offline') return 'resumed the work: its machine is back online'
       if (entry.status === 'queued') return 'resumed the work, which is queued for a machine'
       return entry.status === 'waiting_machine'
         ? `resumed the work, which waits for ${machineWaitPhrase(entry.reason)}`
@@ -221,6 +228,17 @@ export const ticketWorkWakeLine = (record: TicketWorkChipRecord): string | null 
 export const ticketSkipSentence = (reason: TicketTriggerSkipReason, options: { reentry?: boolean } = {}): string =>
   ticketTriggerSkipSentence(reason, options)
 
+const SESSION_SKIP_LINE = {
+  waiting_for_input: 'A coding session\'s turn ended, but the agent had already read it, the session had closed or '
+    + 'left the ticket by then, or the work was not active, so it was not woken for it.',
+  interrupted: 'A coding session was interrupted, but it had closed or left the ticket by then, or its work was not '
+    + 'active, so the agent was not woken for it.',
+  failed: 'A coding session failed, but it had closed or left the ticket by then, or its work was not active, so the '
+    + 'agent was not woken for it.',
+  closed: 'A coding session closed, but the agent had closed it itself, the work had moved to another machine, or the '
+    + 'work was not active, so it was not woken for it.',
+} as const
+
 /**
  * A ticket delivery on a trigger's page: what the dispatcher did with one
  * event, in words. Null for any other trigger's payload, which keeps its raw
@@ -234,6 +252,10 @@ export const ticketDeliveryLine = (payload: unknown): string | null => {
   const parsed = TicketTriggerDeliveryPayloadSchema.safeParse(payload)
   if (!parsed.success) return null
   const delivery = parsed.data
+  // A session wake the agent did not need (T5): what the session did, and why that woke nobody.
+  if (delivery.outcome === 'skipped' && delivery.session && delivery.skipReason === 'no_longer_applies') {
+    return SESSION_SKIP_LINE[delivery.session.status]
+  }
   if (delivery.outcome === 'skipped' && delivery.skipReason) {
     return ticketSkipSentence(delivery.skipReason, { reentry: delivery.reentry === true })
   }

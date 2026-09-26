@@ -4,6 +4,7 @@ import {
   executorHeartbeatCutoff,
   placeTicketWorkOnMachineInTransaction,
   recordTicketWorkActivity,
+  resumeTicketWorkOnItsMachineInTransaction,
   syncTicketWorkClock,
   writeTicketWorkAudit,
   type TicketWorkMachinePlacement,
@@ -29,7 +30,9 @@ import type { DescribedWakeEvent } from './ticket-work-events.js'
  * - Any other wake of live work checks its limits and its machine first. Over
  *   a limit, the work stops instead of waking. A pinned machine that is
  *   offline starts no model run at all: the record waits for it
- *   (`machine_offline`, still holding its slot), and its reconnect wakes it (T5).
+ *   (`machine_offline`, still holding its slot), later wakes skip the same way
+ *   while it stays away, and its reconnect wakes it (T5,
+ *   `ticket-work-machine-return.ts`).
  */
 
 type WorkRef = { agentId: string; id: string; taskId: string; triggerId: string | null }
@@ -126,8 +129,15 @@ export const placeTicketWorkForWake = async (
 
 /**
  * Before live work is woken: stop it if it is over one of its policy's
- * limits, or let it wait if the machine it holds is offline. Returns the skip
- * the wake's delivery is written with, or null to wake it.
+ * limits, or let it wait if the machine it holds is offline. Work already
+ * waiting for its machine is woken only once the machine is back — then it
+ * resumes on it first (T5) — and starts no run while it is not, nor while
+ * the machine cannot take it back on the terms its author confirmed (their
+ * drift, or a revision awaiting review: `unconfirmed`). Work that left its
+ * machine as it came back — waiting for machine access, or queued for
+ * another machine of the pool — is woken unbound, as any wake of work in
+ * either state is. Returns the skip the wake's delivery is written with, or
+ * null to wake it.
  */
 export const holdTicketWorkBeforeWake = async (
   tx: Prisma.TransactionClient,
@@ -136,6 +146,17 @@ export const holdTicketWorkBeforeWake = async (
   const now = input.now ?? new Date()
   const [ended] = await enforceTicketWorkLimitsInTransaction(tx, { now, where: { id: input.work.id } })
   if (ended) return ended.reason
+  switch (await resumeTicketWorkOnItsMachineInTransaction(tx, { now, workId: input.work.id })) {
+    case 'still_offline':
+    case 'unconfirmed':
+      return 'machine_offline'
+    case 'resumed':
+    case 'access_paused':
+    case 'requeued':
+      return null
+    case 'not_waiting':
+      break
+  }
   const record = await tx.agentTicketWork.findUniqueOrThrow({
     where: { id: input.work.id },
     select: { executor: { select: { lastSeenAt: true, status: true } }, executorId: true, status: true },

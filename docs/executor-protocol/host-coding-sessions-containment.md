@@ -219,7 +219,8 @@ The control plane keeps each instruction as a row of
 session id, a reason from `EXECUTOR_CODING_SESSION_CLOSE_REASONS` (`lease_ended`,
 `access_revoked`, `executor_paused`, `executor_revoked`, `person`, and for one
 ticket's work under a standing policy `ticket_left_flow`, `trigger_changed`,
-`policy_suspended`, `policy_ended` and `work_limit`, all pinned by a CHECK),
+`policy_suspended`, `policy_ended`, `work_limit`, `machine_reassigned` and
+`mover_lost_access`, all pinned by a CHECK),
 who asked, and when it was made and resolved — written in the transaction
 that causes it (`executor-coding-session-closes.ts`):
 
@@ -249,13 +250,20 @@ that causes it (`executor-coding-session-closes.ts`):
   (`requestExecutorCodingSessionClose`, "The executor page" below). A new
   lease withdraws only owner-wide requests, never this one;
 - one ticket's work ending its sessions, each named by id, for the ticket's
-  five reasons: the ticket entering an end column (`ticket_left_flow`), the
+  seven reasons: the ticket entering an end column (`ticket_left_flow`), the
   trigger disabled, deleted or edited in a pinned field (`trigger_changed`),
-  the policy suspended (`policy_suspended`) or ended (`policy_ended`), or the
-  work hitting a limit (`work_limit`)
+  the policy suspended (`policy_suspended`) or ended (`policy_ended`), the
+  work hitting a limit (`work_limit`), the work leaving this machine for
+  another — it stayed offline past the trigger's `waitingMachineHours`, or
+  the work was placed elsewhere — so the sessions it left here close when
+  this one next reports (`machine_reassigned`, T5), or queued work cancelled
+  because the person whose move started it can no longer edit the board
+  (`mover_lost_access`, T5; both in migration
+  `20260925090000_executor_coding_session_reassigned_close_reason`)
   ([ticket-driven agents](../plans/2026-09-23-ticket-driven-agents/machine-access.md#server-side-closes)).
-  The vocabulary and its CHECK exist; the writers come with the standing
-  policy. A ticket's sessions have an owner key of their own ("Owners" in
+  A request expires after a day like every other, counted from when it was
+  written — except `machine_reassigned`, which exists for a machine that is
+  away and so waits for a report of it that shows the session done. A ticket's sessions have an owner key of their own ("Owners" in
   [host-coding-sessions.md](host-coding-sessions.md)), so no owner-wide
   request above that is keyed without a context reaches them.
 

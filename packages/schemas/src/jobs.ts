@@ -606,7 +606,9 @@ export type TriggerDocumentDispatchJobPayload =
  * `lastObservedTurn`.
  *
  * `status` is only a status that wakes: a session that is `starting` or
- * `working` never does, so the payload cannot carry one.
+ * `working` never does, so the payload cannot carry one. `reason` is the
+ * report's categorical reason for an interruption or a failure
+ * (`max_turn_minutes`, `host_lost`, …), which the wake's one line names.
  */
 export const TICKET_WORK_SESSION_TOPIC = 'ticket-work.session'
 
@@ -616,6 +618,7 @@ export const TicketWorkSessionJobPayloadSchema = z.object({
   sessionId: z.string().uuid(),
   turn: z.number().int().nonnegative(),
   status: ExecutorCodingSessionStatusSchema.extract(['waiting_for_input', 'interrupted', 'failed', 'closed']),
+  reason: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).optional(),
 })
 export type TicketWorkSessionJobPayload = z.infer<typeof TicketWorkSessionJobPayloadSchema>
 
@@ -632,7 +635,16 @@ export type TicketWorkSessionJobPayload = z.infer<typeof TicketWorkSessionJobPay
  */
 export const TICKET_WORK_SWEEP_TOPIC = 'ticket-work.sweep'
 
-export const TicketWorkSweepJobPayloadSchema = z.object({ bucket: z.string().optional() }).strict()
+/**
+ * `machinesOnly`: an enqueue by a transaction that may have freed a machine
+ * (T5), which runs the machine steps alone — limits, machines back or gone,
+ * the dequeue — and leaves quiet wakes, lost jobs and the UOA author re-check
+ * to the periodic tick.
+ */
+export const TicketWorkSweepJobPayloadSchema = z.object({
+  bucket: z.string().optional(),
+  machinesOnly: z.literal(true).optional(),
+}).strict()
 export type TicketWorkSweepJobPayload = z.infer<typeof TicketWorkSweepJobPayloadSchema>
 
 /**

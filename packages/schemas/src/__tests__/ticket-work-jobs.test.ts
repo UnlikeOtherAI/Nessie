@@ -70,10 +70,14 @@ test('ticket-work.session carries the turn and only a status that wakes', () => 
     { ...payload, sessionId: 'session-1' },
     { organizationId: ORG, workId: WORK, sessionId: SESSION, status: 'failed' },
     { workId: WORK, sessionId: SESSION, turn: 3, status: 'failed' },
+    // The reason is the report's categorical code, never free text.
+    { ...payload, status: 'interrupted', reason: 'Hit the per-turn limit' },
   ]
   for (const candidate of refused) {
     assert.equal(TicketWorkSessionJobPayloadSchema.safeParse(candidate).success, false, JSON.stringify(candidate))
   }
+  const interrupted = { ...payload, status: 'interrupted', reason: 'max_turn_minutes' }
+  assert.deepEqual(TicketWorkSessionJobPayloadSchema.parse(interrupted), interrupted)
 })
 
 test('ticket-work.sweep takes only its idempotency bucket', () => {
@@ -84,4 +88,7 @@ test('ticket-work.sweep takes only its idempotency bucket', () => {
   // come free. It reads the queue and the pools afresh, so the enqueuer can
   // never steer it to a record or a machine.
   assert.equal(TicketWorkSweepJobPayloadSchema.safeParse({ executorId: EXECUTOR }).success, false)
+  // An enqueue by a transaction that may have freed a machine runs the machine steps only.
+  assert.deepEqual(TicketWorkSweepJobPayloadSchema.parse({ bucket: '1', machinesOnly: true }), { bucket: '1', machinesOnly: true })
+  assert.equal(TicketWorkSweepJobPayloadSchema.safeParse({ machinesOnly: false }).success, false)
 })

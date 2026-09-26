@@ -32,8 +32,10 @@ import {
   AgentEmailInboundJobPayloadSchema,
   AgentEmailRetentionJobPayloadSchema,
   AgentEmailSendJobPayloadSchema,
+  TICKET_WORK_SESSION_TOPIC,
   TICKET_WORK_SWEEP_TOPIC,
   TICKET_WORK_THREAD_MESSAGE_TOPIC,
+  TicketWorkSessionJobPayloadSchema,
   TicketWorkSweepJobPayloadSchema,
   TicketWorkThreadMessageJobPayloadSchema,
   TRIGGER_DOCUMENT_DISPATCH_TOPIC,
@@ -63,6 +65,7 @@ import {
 import { dispatchDocumentChange } from './control/document-trigger-dispatch.js'
 import { dispatchTicketEvent } from './control/ticket-trigger-dispatch.js'
 import { dispatchTicketThreadMessage } from './control/ticket-thread-message-dispatch.js'
+import { dispatchTicketWorkSession } from './control/ticket-work-session-wake.js'
 import { runTicketWorkSweep } from './control/ticket-work-sweep.js'
 import { enqueueBoardSourceHealthAlert } from './queue.js'
 import { registerExecutionRunners } from './control/execution.js'
@@ -210,13 +213,26 @@ subscribe(
   { signal: abortSignal },
 )
 
-// The periodic ticket-work sweep, one job a minute by its bucket: quiet
-// wakes, work over its wake limit, and lost dispatch jobs recovered.
+// One of a ticket's coding sessions ended a turn, was interrupted, failed or
+// closed, as its machine's heartbeat reported: a wake of the ticket's work.
+subscribe(
+  TICKET_WORK_SESSION_TOPIC,
+  async (job) => {
+    const payload = TicketWorkSessionJobPayloadSchema.parse(job.payload)
+    await dispatchTicketWorkSession(prisma, payload)
+  },
+  { signal: abortSignal },
+)
+
+// The periodic ticket-work sweep, one job a minute by its bucket, and the
+// pool dispatcher every transaction that may free a machine enqueues: quiet
+// wakes, work over its limits, lost dispatch jobs recovered, work resumed on
+// a machine that came back or moved off one that stayed away, and the dequeue.
 subscribe(
   TICKET_WORK_SWEEP_TOPIC,
   async (job) => {
-    TicketWorkSweepJobPayloadSchema.parse(job.payload)
-    await runTicketWorkSweep(prisma)
+    const payload = TicketWorkSweepJobPayloadSchema.parse(job.payload)
+    await runTicketWorkSweep(prisma, payload.machinesOnly ? { machinesOnly: true } : {})
   },
   { signal: abortSignal },
 )

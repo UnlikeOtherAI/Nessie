@@ -66,9 +66,15 @@ const policyOf = (
   viewerCanEnd: named && status !== 'ended', ...extra,
 })
 
+/** When Studio was last heard from: the ticket it holds is paused until it reconnects (T5). */
+const studioLastSeen = new Date(Date.now() - 38 * 60_000).toISOString()
+
 const liveTickets = (named: boolean) => [
   ticket(1, 'NES-140 Fix login redirect', { machineLabel: named ? 'Minis' : null }),
-  ticket(2, 'NES-141 Refactor billing', { machineLabel: named ? 'Studio' : null }),
+  ticket(2, 'NES-141 Refactor billing', {
+    machineLabel: named ? 'Studio' : null, offlineSince: studioLastSeen, stateReason: 'machine_offline',
+    status: 'waiting_machine',
+  }),
   ticket(5, 'NES-143 Speed up search', { position: 1, stateReason: 'queued_no_free_machine', status: 'queued' }),
   ticket(6, 'NES-144 Tidy settings', { position: 2, stateReason: 'queued_no_free_machine', status: 'queued' }),
 ]

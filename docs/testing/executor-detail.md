@@ -8,9 +8,13 @@ Run pnpm --filter @nessie/admin test:e2e:executor-detail on the worktree's
 fixed ports. The real page is exercised headlessly at 1280 and 390 pixels:
 people can receive use/admin access, projects receive use access, the current
 team has one switch, and each action applies without a confirmation dialog.
-Activity, conversation links, standing ticket access and local-model dialogs
-remain covered. The project's Executors tab reuses the inventory table and opens
-the same machine detail. Screenshots are in e2e/screenshots/executor-detail/.
+Activity, conversation links, standing ticket access — each ticket trigger's
+policy that runs on a private machine with the tickets working there, or the
+one ticket that holds the machine, linked to its board
+([ticket-work-machine-access.md](../standards/ticket-work-machine-access.md) →
+"What the screens show") — and local-model dialogs remain covered. The
+project's Executors tab reuses the inventory table and opens the same machine
+detail. Screenshots are in e2e/screenshots/executor-detail/.
 
 The executor-manage database suite proves authorization, project-scoped runtime
 use, team administrators' conditional visibility, membership removal and

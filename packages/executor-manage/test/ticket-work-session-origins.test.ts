@@ -71,3 +71,37 @@ test('an unreadable origin is as if absent, and a session from before origins fo
     localMcpObservedAt: reportedAt, origins: {}, ownerKey: OWNER, sessionIds: [OLD, OLDER],
   }), [{ sessionId: OLD, status: 'waiting_for_input', turn: null }])
 })
+
+test('a heartbeat whose bridge went unasked reads the sessions as of the last one that asked it (T5)', () => {
+  // The bridge was read ten minutes ago; the heartbeat carrying those sessions forward arrived a minute ago.
+  const origins = ticketWorkSessionOriginsOf({ [FRESH]: origin(MINIS, 5) })
+  const carried = report([], at(10))
+  assert.deepEqual(liveTicketWorkSessions({
+    executorId: MINIS, localMcp: carried, localMcpObservedAt: at(1), origins, ownerKey: OWNER, sessionIds: [FRESH],
+  }), [{ sessionId: FRESH, status: 'starting', turn: null }], 'started after the bridge was last read: still live')
+})
+
+test('a heartbeat that never read the bridge says nothing about the sessions: they stay live (T5)', () => {
+  // The session started five minutes ago; the heartbeat a minute ago carried the bridge without its
+  // sessions (its probe failed), and no earlier report had any to carry forward.
+  const origins = ticketWorkSessionOriginsOf({ [FRESH]: origin(MINIS, 5) })
+  const unasked = [{
+    available: true, observedAt: at(1).toISOString(), server: 'coding-sessions',
+  }] as ExecutorLocalMcpReport
+  const withoutBridge = [{
+    available: true, observedAt: at(1).toISOString(), server: 'kelpie',
+  }] as ExecutorLocalMcpReport
+  for (const localMcp of [unasked, withoutBridge]) {
+    assert.deepEqual(liveTicketWorkSessions({
+      executorId: MINIS, localMcp, localMcpObservedAt: at(1), origins, ownerKey: OWNER, sessionIds: [FRESH, OLD],
+    }), [
+      { sessionId: FRESH, status: 'starting', turn: null },
+      { sessionId: OLD, status: 'starting', turn: null },
+    ], 'not closed, and not a second start away')
+  }
+  // Once a report reads the bridge and leaves the session out, it is gone.
+  assert.deepEqual(liveTicketWorkSessions({
+    executorId: MINIS, localMcp: report([], at(1)), localMcpObservedAt: at(1), origins, ownerKey: OWNER,
+    sessionIds: [FRESH, OLD],
+  }), [])
+})

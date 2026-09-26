@@ -10,8 +10,11 @@
  * states: queued at position 2, paused with its machine offline, waiting for
  * machine access its owner has not set up or has paused, stopped at its hours
  * or its budget, ended with its machine access, a wake that ran without a
- * machine, and a history of a queue, an offline pause and two resumes. None
- * of it names a machine, because the record the chip reads carries none.
+ * machine, and a history of a queue, an offline pause and two resumes. And
+ * T5's: paused since the machine was last heard from, back online, queued
+ * again for another machine after its own stayed away, and woken by its
+ * coding session's turn. None of it names a machine, because the record the
+ * chip reads carries none.
  */
 
 import { standingPolicyRefusalSentence } from '@nessie/schemas'
@@ -50,7 +53,13 @@ const MACHINE_HISTORY = {
   queued: historyRow(5, 'work_queued', 'queued', 'Ondřej Rafaj', 'queued_no_free_machine', 52),
   dequeued: historyRow(6, 'work_resumed', 'active', null, null, 40),
   offline: historyRow(7, 'work_paused', 'waiting_machine', null, 'machine_offline', 20),
-  back: historyRow(8, 'work_resumed', 'active', null, null, 5),
+  // T5: back online, the row says where the work came back from.
+  back: { ...historyRow(8, 'work_resumed', 'active', null, null, 5), previousReason: 'machine_offline' },
+  // T5: taken off a machine that stayed offline past waitingMachineHours, for another one.
+  movedOff: {
+    ...historyRow(0, 'work_queued', 'queued', null, 'queued_no_free_machine', 3),
+    id: '70000000-0000-4000-8000-000000000030', previousReason: 'machine_offline',
+  },
   startedNoAccess: historyRow(9, 'work_started', 'waiting_machine', 'Ondřej Rafaj', 'machine_access_not_set_up', 52),
 }
 const machineRows = (eventType: string, status: string, reason: string) =>
@@ -110,7 +119,9 @@ export const ticketWorkFor = (state: string | null, agentId: string, options: { 
     // The machine the work holds went offline; it resumes when that machine reconnects.
     case 'machine-offline': return answer({
       history: machineRows('work_paused', 'waiting_machine', 'machine_offline'), lastSkip: null,
-      records: [record({ stateReason: 'machine_offline', status: 'waiting_machine' })],
+      records: [record({
+        machineOfflineSince: minutesAgo(38), stateReason: 'machine_offline', status: 'waiting_machine',
+      })],
     })
     // The trigger's machine access was never set up, or its owner paused it.
     case 'access-not-set-up': return answer({
@@ -158,6 +169,20 @@ export const ticketWorkFor = (state: string | null, agentId: string, options: { 
       ],
       lastSkip: null,
       records: [record({ lastWakeAt: minutesAgo(5), lastWakeReason: 'machine_back_online', wakeCount: 6 })],
+    })
+    // T5: its machine stayed offline past waitingMachineHours, so it waits in the queue for another.
+    case 'moved-machine': return answer({
+      history: [MACHINE_HISTORY.movedOff, MACHINE_HISTORY.offline, MACHINE_HISTORY.startedQueued],
+      lastSkip: null,
+      records: [record({
+        lastWakeAt: minutesAgo(20), lastWakeReason: 'session_turn_ended', queuePosition: 1,
+        stateReason: 'queued_no_free_machine', status: 'queued', wakeCount: 6,
+      })],
+    })
+    // T5: woken because its coding session's turn ended, and working.
+    case 'session-wake': return answer({
+      history: [MACHINE_HISTORY.dequeued, MACHINE_HISTORY.startedQueued], lastSkip: null,
+      records: [record({ lastWakeAt: minutesAgo(1), lastWakeReason: 'session_turn_ended', wakeCount: 7 })],
     })
     default: return answer({ history: [], lastSkip: null, records: [] })
   }

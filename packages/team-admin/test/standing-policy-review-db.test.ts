@@ -283,26 +283,32 @@ dbTest('each session closes on the machine it was started on, whichever machine 
   })
 })
 
-dbTest('returning work waits for its own machine, ahead of new tickets, and moves only once it is gone', async () => {
+dbTest('returning work goes back to its own machine while it could take it, and to another once it is held', async () => {
   await withWorld(async (world, prisma) => {
     const studio = await world.machine({ label: 'Studio' })
     const policyId = await confirmPolicy(world, [world.minis, studio])
-    // Another ticket holds Minis; the parked one worked there.
-    await world.work({ executorId: world.minis, policyId, status: 'active', taskId: await world.task('Busy') })
-    const parked = await world.work({ executorId: world.minis, policyId, status: 'parked', taskId: await world.task('Back') })
-    const fresh = await world.work({ policyId, status: 'queued', taskId: await world.task('New') })
     const place = (workId: string) => prisma.$transaction((tx) => placeTicketWorkOnMachineInTransaction(tx, { workId }))
-    const placed = await place(parked.id)
-    assert.deepEqual([placed.kind, placed.kind === 'queued' ? placed.reason : null], ['queued', 'queued_no_free_machine'],
-      'it waits for Minis, though Studio is free')
-    const positions = await prisma.agentTicketWork.findMany({
-      where: { id: { in: [parked.id, fresh.id] } }, select: { id: true, queuePosition: true },
+    // It last worked on Studio, the pool's second machine, which is free: it goes back there.
+    const back = await world.work({ executorId: studio, policyId, status: 'parked', taskId: await world.task('Back') })
+    const home = await place(back.id)
+    assert.deepEqual(home.kind === 'assigned' ? home.executorId : home.kind, studio)
+    // Another ticket's session was started on Studio, which is now held: it takes Minis rather than wait,
+    // and the session it leaves on Studio closes there (`machine_reassigned`) and leaves its live set.
+    const sessionId = randomUUID()
+    const other = await world.work({ policyId, sessionIds: [sessionId], status: 'parked', taskId: await world.task('Other') })
+    await prisma.agentTicketWork.update({
+      where: { id: other.id },
+      data: { sessionOrigins: { [sessionId]: { executorId: studio, policyId, startedAt: new Date().toISOString() } } },
     })
-    assert.equal(positions.find((row) => row.id === parked.id)?.queuePosition, 1, 'ahead of the new ticket')
-    // Its machine leaves the pool: now it may take another.
-    await prisma.executorStandingPolicyExecutor.deleteMany({ where: { executorId: world.minis, policyId } })
-    const moved = await place(parked.id)
-    assert.deepEqual(moved.kind === 'assigned' ? moved.executorId : moved.kind, studio)
+    const moved = await place(other.id)
+    assert.deepEqual(moved.kind === 'assigned' ? moved.executorId : moved.kind, world.minis, 'it never waits for a held machine')
+    const closes = await prisma.executorCodingSessionCloseRequest.findMany({
+      where: { executorId: studio, sessionId }, select: { reason: true },
+    })
+    assert.deepEqual(closes, [{ reason: 'machine_reassigned' }])
+    const record = await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: other.id } })
+    assert.deepEqual(record.sessionIds, [])
+    assert.ok((record.sessionOrigins as Record<string, unknown>)[sessionId], 'its origin stays, so it is charged until it closes')
   })
 })
 
