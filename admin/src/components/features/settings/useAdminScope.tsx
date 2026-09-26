@@ -64,12 +64,14 @@ export const useAdminScope = ({
   useEffect(() => {
     if (!landing) return
     const params = new URLSearchParams(location.search)
+    // A list page in an address that named no scope was never this team's.
+    for (const owned of clears ?? []) params.delete(owned)
     params.set('scope', landing)
     redirect(
       { hash: location.hash, pathname: location.pathname, search: `?${params.toString()}` },
       { state: location.state },
     )
-  }, [landing, location.hash, location.pathname, location.search, location.state, redirect])
+  }, [clears, landing, location.hash, location.pathname, location.search, location.state, redirect])
 
   const choosable = resolution.status !== 'loading'
     && resolution.status !== 'failed'

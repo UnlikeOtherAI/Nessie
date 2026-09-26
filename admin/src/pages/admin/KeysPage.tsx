@@ -36,14 +36,15 @@ export const KeysPage = () => {
       <AdminScopeNotice
         host={host}
         refusal={(
-          <p>
-            Only the organisation owner manages the organisation’s and teams’ keys. The keys that
-            reach you are in{' '}
-            <Link className="text-[color:var(--lnk)] hover:underline" to="/settings/keys">
-              Your settings › Saved keys
+          <div className="grid justify-items-start gap-3">
+            <p>
+              Only the organisation owner manages the organisation’s and teams’ keys. The keys
+              that reach you, and your own, are on your Saved keys page.
+            </p>
+            <Link className="admin-button admin-button-secondary admin-button-compact" to="/settings/keys">
+              Open Saved keys
             </Link>
-            .
-          </p>
+          </div>
         )}
         resolution={resolution}
         title="Keys"

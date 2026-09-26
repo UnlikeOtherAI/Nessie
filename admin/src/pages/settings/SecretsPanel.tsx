@@ -244,7 +244,7 @@ export const SecretsPanel = ({ host, scope, teamId: namedTeamId }: SecretsPanelP
         <div className="grid gap-1">
           <p className="text-sm text-[color:var(--tx2)]">{copy.intro}</p>
           <p className="text-sm text-[color:var(--tx3)]">
-            Values go directly to Infisical and are never displayed here. Copy a secret key or
+            Values go straight to the vault and are never displayed here. Copy a secret key or
             reference when you need to bind it elsewhere.
           </p>
           <p className="text-sm text-[color:var(--tx3)]">{copy.cascade}</p>

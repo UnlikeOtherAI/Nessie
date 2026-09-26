@@ -96,13 +96,22 @@ const mount = async (dom: JSDOM, viewer: Viewer, entry: string) => {
 
 test('an admin lands on a team, written into the address, with the organisation disabled and why', async () => {
   await withDom(async (dom) => {
-    const view = await mount(dom, { isOrganizationAdmin: true, isOwner: false }, '/admin/models')
+    const view = await mount(
+      dom,
+      { isOrganizationAdmin: true, isOwner: false },
+      '/admin/models?model=gpt&cursor=abc&page=2',
+    )
     try {
       // The landing is the working team, and the address now names it — a
       // replace, so Back leaves the page rather than returning to a bare one.
       assert.equal(view.scope(), `team:${SALES.id}`)
       assert.equal(view.router.state.historyAction, 'REPLACE')
       assert.equal(view.status(), 'ready')
+      // The page's filter stays; a list page that belonged to no team goes.
+      const params = new URLSearchParams(view.router.state.location.search)
+      assert.equal(params.get('model'), 'gpt')
+      assert.equal(params.get('cursor'), null)
+      assert.equal(params.get('page'), null)
 
       const [organisation, design, sales] = view.radios()
       assert.equal(organisation?.textContent, 'Organisation')
