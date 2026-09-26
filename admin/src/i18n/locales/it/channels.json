@@ -254,5 +254,25 @@
       "reassigned": "riassegnato"
     },
     "ticketChanges": "Ticket {{changes}}"
+  },
+  "files": {
+    "title": "File della conversazione",
+    "description": "I file condivisi in questa {{surface}} saranno raccolti qui, separati dalle esecuzioni e dai controlli degli agenti.",
+    "uploadBackendNext": "Caricamento file in arrivo",
+    "empty": "Ancora nessun file",
+    "emptyDescription": "Il prossimo passaggio è il caricamento degli allegati. Quando sarà disponibile, potrai cercare e gestire qui i file allegati ai messaggi e aggiunti direttamente a questa schermata.",
+    "scope": "Ambito",
+    "surface": "Schermata",
+    "conversation": "conversazione",
+    "channel": "canale",
+    "owner": "Proprietario",
+    "personalAssistantDm": "Chat diretta con l’assistente personale",
+    "currentChannel": "Canale attuale",
+    "scopeDescription": "Questa scheda è volutamente visibile in ogni canale per offrire un unico punto di gestione dei file."
+  },
+  "assistantPresences": {
+    "title": "Presenze degli assistenti personali",
+    "description": "Ogni presenza è l’assistente di un collega in questa conversazione; la sua configurazione privata non viene mostrata.",
+    "addMine": "Aggiungi il mio assistente"
   }
 }

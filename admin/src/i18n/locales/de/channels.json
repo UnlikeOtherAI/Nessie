@@ -254,5 +254,25 @@
       "reassigned": "neu zugewiesen"
     },
     "ticketChanges": "Ticket {{changes}}"
+  },
+  "files": {
+    "title": "Konversationsdateien",
+    "description": "In dieser {{surface}} geteilte Dateien findest du hier, getrennt von Ausführungen und Agentensteuerung.",
+    "uploadBackendNext": "Datei-Upload folgt",
+    "empty": "Noch keine Dateien",
+    "emptyDescription": "Der nächste Schritt ist der Upload von Anhängen. Danach kannst du Dateien aus Nachrichten und direkt hier suchen und verwalten.",
+    "scope": "Umfang",
+    "surface": "Bereich",
+    "conversation": "Unterhaltung",
+    "channel": "Kanal",
+    "owner": "Besitzer",
+    "personalAssistantDm": "Direktnachricht mit dem persönlichen Assistenten",
+    "currentChannel": "Aktueller Kanal",
+    "scopeDescription": "Dieser Tab ist bewusst in jedem Kanal sichtbar, damit die Dateiverwaltung einen festen Ort hat."
+  },
+  "assistantPresences": {
+    "title": "Präsenz persönlicher Assistenten",
+    "description": "Jede Präsenz gehört zum Assistenten eines Kollegen in dieser Unterhaltung, ohne dessen private Konfiguration offenzulegen.",
+    "addMine": "Meinen Assistenten hinzufügen"
   }
 }

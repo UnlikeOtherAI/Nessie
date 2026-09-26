@@ -254,5 +254,25 @@
       "reassigned": "znovu přiřazen"
     },
     "ticketChanges": "Úkol {{changes}}"
+  },
+  "files": {
+    "title": "Soubory konverzace",
+    "description": "Soubory sdílené v této části: {{surface}}, budou dostupné zde, odděleně od běhů a ovládání agentů.",
+    "uploadBackendNext": "Nahrávání souborů bude doplněno",
+    "empty": "Zatím žádné soubory",
+    "emptyDescription": "Nahrávání příloh bude dalším krokem. Po jeho zavedení bude možné soubory přiložené ke zprávám i přidané sem vyhledávat a spravovat na této kartě.",
+    "scope": "Rozsah",
+    "surface": "Plocha",
+    "conversation": "konverzaci",
+    "channel": "kanálu",
+    "owner": "Vlastník",
+    "personalAssistantDm": "Soukromá konverzace s osobním asistentem",
+    "currentChannel": "Aktuální kanál",
+    "scopeDescription": "Tato karta je záměrně viditelná v každém kanálu, aby správa souborů měla jedno stálé místo."
+  },
+  "assistantPresences": {
+    "title": "Přítomnost osobních asistentů",
+    "description": "Každý zobrazený asistent patří kolegovi v této konverzaci; jeho soukromé nastavení zůstává skryté.",
+    "addMine": "Přidat mého asistenta"
   }
 }

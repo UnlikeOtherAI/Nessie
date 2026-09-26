@@ -254,5 +254,25 @@
       "reassigned": "reasignado"
     },
     "ticketChanges": "Ticket {{changes}}"
+  },
+  "files": {
+    "title": "Archivos de la conversación",
+    "description": "Los archivos compartidos en esta {{surface}} estarán aquí, separados de las ejecuciones y los controles de agentes.",
+    "uploadBackendNext": "La carga de archivos llegará después",
+    "empty": "Aún no hay archivos",
+    "emptyDescription": "El siguiente paso es permitir la carga de archivos adjuntos. Cuando esté disponible, podrás buscar y administrar desde esta pestaña los archivos adjuntos a mensajes y los que se añadan directamente aquí.",
+    "scope": "Ámbito",
+    "surface": "Superficie",
+    "conversation": "conversación",
+    "channel": "canal",
+    "owner": "Propietario",
+    "personalAssistantDm": "Mensaje directo con el asistente personal",
+    "currentChannel": "Canal actual",
+    "scopeDescription": "Esta pestaña aparece intencionadamente en todos los canales para que la gestión de archivos tenga un único lugar."
+  },
+  "assistantPresences": {
+    "title": "Presencias del asistente personal",
+    "description": "Cada presencia es el asistente de un compañero en esta conversación, sin mostrar su configuración privada.",
+    "addMine": "Añadir mi asistente"
   }
 }

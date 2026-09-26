@@ -254,5 +254,25 @@
       "reassigned": "réattribué"
     },
     "ticketChanges": "Ticket {{changes}}"
+  },
+  "files": {
+    "title": "Fichiers de la conversation",
+    "description": "Les fichiers partagés dans cette {{surface}} seront regroupés ici, à part des exécutions et des commandes des agents.",
+    "uploadBackendNext": "Import de fichiers à venir",
+    "empty": "Aucun fichier pour le moment",
+    "emptyDescription": "L’ajout de pièces jointes est la prochaine étape. Une fois disponible, vous pourrez rechercher et gérer ici les fichiers joints aux messages ou ajoutés directement à cette surface.",
+    "scope": "Portée",
+    "surface": "Surface",
+    "conversation": "conversation",
+    "channel": "canal",
+    "owner": "Propriétaire",
+    "personalAssistantDm": "Conversation privée avec l’assistant personnel",
+    "currentChannel": "Canal actuel",
+    "scopeDescription": "Cet onglet est volontairement visible dans chaque canal pour offrir un emplacement unique à la gestion des fichiers."
+  },
+  "assistantPresences": {
+    "title": "Présences des assistants personnels",
+    "description": "Chaque présence correspond à l’assistant d’un collègue dans cette conversation, sans révéler sa configuration privée.",
+    "addMine": "Ajouter mon assistant"
   }
 }

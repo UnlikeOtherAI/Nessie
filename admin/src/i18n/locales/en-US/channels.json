@@ -254,5 +254,25 @@
       "reassigned": "reassigned"
     },
     "ticketChanges": "Ticket {{changes}}"
+  },
+  "files": {
+    "title": "Conversation files",
+    "description": "Files shared in this {{surface}} will live here instead of getting mixed into runs or agent controls.",
+    "uploadBackendNext": "Upload backend next",
+    "empty": "No files yet",
+    "emptyDescription": "Attachment upload is the next backend step. Once it lands, files attached to messages and added directly to this surface will be searchable and manageable from this tab.",
+    "scope": "Scope",
+    "surface": "Surface",
+    "conversation": "Conversation",
+    "channel": "Channel",
+    "owner": "Owner",
+    "personalAssistantDm": "Personal Assistant DM",
+    "currentChannel": "Current channel",
+    "scopeDescription": "This tab is intentionally visible on every channel so file management has one predictable home."
+  },
+  "assistantPresences": {
+    "title": "Personal Assistant presences",
+    "description": "Each presence is a colleague's assistant in this conversation, without exposing its private configuration.",
+    "addMine": "Add my assistant"
   }
 }
