@@ -171,7 +171,8 @@ export const shouldShowNativePhoneNavBar = (input: NativePhoneBarInput): boolean
 
 /**
  * Whether the band carries the team identity and account controls — the root
- * lanes. Portrait only wants them at a tab root; the admitted large-phone
+ * lanes. Android keeps them on every screen with a dock. iOS portrait only
+ * wants them at a tab root; the admitted large-phone
  * landscape lane has room for its compact toolbar on any page, so it keeps
  * them while a detail is shown beside the menu. `isTabRoot` comes from the
  * last-known screen's `type === 'root'`, never from matching a path.
