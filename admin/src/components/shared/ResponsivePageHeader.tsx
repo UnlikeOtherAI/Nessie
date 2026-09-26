@@ -1,6 +1,6 @@
 import { faChevronDown, faEllipsis } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { Popover } from '../overlays/Popover'
 import { PageHeaderMenu } from './PageHeaderMenu'
 import { SectionLabel } from '../primitives/SectionLabel'
@@ -122,6 +122,9 @@ const toggleClassName = (action: PageHeaderToggleAction): string => [
   action.disabled ? 'cursor-not-allowed opacity-50' : '',
 ].join(' ')
 
+const actionStyle = (action: PageHeaderAction): CSSProperties | undefined =>
+  action.fixedWidth ? { width: action.fixedWidth, flexShrink: 0 } : undefined
+
 // A shared header for dense admin surfaces. It measures the actual controls at
 // runtime, so the same action declarations remain usable in a wide team,
 // a narrow project tab, and a tablet WebView without brittle viewport rules.
@@ -172,6 +175,7 @@ export const ResponsivePageHeader = ({
           data-page-header-action={action.id}
           href={action.href}
           rel={action.rel}
+          style={actionStyle(action)}
           target={action.target}
           title={action.title ?? action.label}
         >
@@ -182,14 +186,14 @@ export const ResponsivePageHeader = ({
     }
     if (action.kind === 'custom') {
       return (
-        <span className="inline-flex items-center" data-page-header-action={action.id}>
+        <span className="inline-flex items-center" data-page-header-action={action.id} style={actionStyle(action)}>
           {action.render(measuring)}
         </span>
       )
     }
     if (action.kind === 'toggle') {
       return (
-        <span className={toggleClassName(action)} title={action.title ?? action.label}>
+        <span className={toggleClassName(action)} style={actionStyle(action)} title={action.title ?? action.label}>
           <span>{action.label}</span>
           {/* The switch's name stays the label whichever way it is thrown —
               `aria-checked` is what says on or off, so a name that flipped
@@ -233,6 +237,7 @@ export const ResponsivePageHeader = ({
         ref={(element) => {
           if (!measuring) triggerRefs.current[action.id] = element
         }}
+        style={actionStyle(action)}
         title={action.title ?? action.label}
         type={buttonAction?.submit ? 'submit' : 'button'}
       >

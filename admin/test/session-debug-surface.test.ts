@@ -52,6 +52,7 @@ test('the export is an Advanced page and the sign-in import keeps the one sessio
   // The page reads the one dump builder rather than assembling the JSON itself.
   assert.match(page, /buildSessionDebugDump\(me\)/)
   assert.doesNotMatch(page, /loadStoredToken|document\.cookie/)
+  assert.match(page, /fixedWidth: '10rem'/)
   assert.match(page, /eyebrow="Advanced"/)
   assert.match(page, /aria-label="Session debug JSON"/)
   assert.match(importButton, /SessionDebugDialog, SessionDebugIcon/)
