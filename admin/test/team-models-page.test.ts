@@ -3,43 +3,28 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
 
-const navSource = readFileSync(
-  join(process.cwd(), 'src', 'layouts', 'admin-shell', 'admin-nav-items.tsx'),
-  'utf8',
-)
-const teamPageSource = readFileSync(
-  join(process.cwd(), 'src', 'pages', 'admin', 'TeamPage.tsx'),
-  'utf8',
-)
-const modelsPageSource = readFileSync(
-  join(process.cwd(), 'src', 'pages', 'admin', 'ModelsPage.tsx'),
-  'utf8',
-)
-const hooksSource = readFileSync(
-  join(process.cwd(), 'src', 'facades', 'inference-models', 'hooks.ts'),
-  'utf8',
-)
-const agentQueriesSource = readFileSync(
-  join(process.cwd(), 'src', 'facades', 'agents', 'queries.ts'),
-  'utf8',
-)
-const designerSource = readFileSync(
-  join(process.cwd(), 'src', 'pages', 'AgentDesignerPage.tsx'),
-  'utf8',
-)
+const read = (...path: string[]) => readFileSync(join(process.cwd(), 'src', ...path), 'utf8')
 
-test('AI models is an Admin page, and a team narrows the same surface from its own page', () => {
+const navSource = read('layouts', 'admin-shell', 'admin-nav-items.tsx')
+const modelsPageSource = read('pages', 'admin', 'ModelsPage.tsx')
+const hooksSource = read('facades', 'inference-models', 'hooks.ts')
+const agentQueriesSource = read('facades', 'agents', 'queries.ts')
+const designerSource = read('pages', 'AgentDesignerPage.tsx')
+
+test('AI models is one Admin page whose scope switch reaches every team', () => {
   assert.match(navSource, /path: '\/admin\/models', label: 'AI models'[\s\S]*?icon: modelsIcon/)
-  assert.match(modelsPageSource, /<ModelAvailabilitySettings \/>/)
-  // The team's tab is the one shared surface, scoped by the team the address
-  // names rather than the one the session is working in.
-  assert.match(teamPageSource, /models: 'AI models'/)
-  assert.match(teamPageSource, /<ModelAvailabilitySettings host=\{host\} teamId=\{team\.id\} \/>/)
+  // The one catalogue surface, at the scope the address names.
+  assert.match(modelsPageSource, /useAdminScope\(/)
+  assert.match(modelsPageSource, /<ModelAvailabilitySettings/)
+  assert.match(modelsPageSource, /teamId: scope\.teamId/)
 })
 
 test('team availability calls team-scoped catalogue endpoints', () => {
   assert.match(hooksSource, /\/api\/teams\/\$\{encodeURIComponent\(teamId\)\}\/inference\/model-catalog/)
   assert.match(hooksSource, /inferenceModelKeys\.teamCatalog\(teamId\)/)
+  // The page's own `?scope=` names the team; a pagination scope written into
+  // the same unprefixed param would overwrite it on the first Next.
+  assert.doesNotMatch(hooksSource, /scope: teamId/)
 })
 
 test('editing an agent asks for that agent team model policy explicitly', () => {

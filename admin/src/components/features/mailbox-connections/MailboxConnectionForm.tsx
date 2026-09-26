@@ -34,6 +34,8 @@ import { MailboxServerStep } from './MailboxServerStep'
 
 type MailboxConnectionFormProps = {
   scope: MailboxConnectionScope
+  /** A page that names one team shares the mailbox with it: the only choice, chosen. */
+  teamId?: string
   onConnected?: () => void
 }
 
@@ -75,7 +77,7 @@ type DiscoveryInFlight = {
   promise: Promise<MailboxDiscoveryResult | null>
 }
 
-const createFormValues = (): FormValues => ({
+const createFormValues = (teamId = ''): FormValues => ({
   address: '',
   imapHost: '',
   imapPort: '',
@@ -86,7 +88,7 @@ const createFormValues = (): FormValues => ({
   smtpHost: '',
   smtpPort: '',
   smtpSecurity: '',
-  teamId: '',
+  teamId,
   username: '',
 })
 
@@ -120,14 +122,15 @@ const discoveryKey = (input: {
  * decides where credentials may go; this component never promotes an inferred
  * host to a password form on its own.
  */
-export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionFormProps) => {
+export const MailboxConnectionForm = ({ scope, teamId: namedTeamId, onConnected }: MailboxConnectionFormProps) => {
   const connect = useConnectMailbox()
   const { mutateAsync: discoverMailbox } = useDiscoverMailbox()
   const startComms = useStartCommsConnection()
   const commsProviders = useCommsProviders()
   const teams = useTeams()
+  const teamChoices = (teams.data ?? []).filter((team) => !namedTeamId || team.id === namedTeamId)
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState<FormValues>(createFormValues)
+  const [form, setForm] = useState<FormValues>(() => createFormValues(namedTeamId))
   const [screen, setScreen] = useState<MailboxOnboardingStep>('start')
   const [discovery, setDiscovery] = useState<MailboxDiscoveryResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -182,12 +185,12 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
     setErrorCode(null)
     setNotice(null)
     setDiagnosis(null)
-    setForm(createFormValues())
+    setForm(createFormValues(namedTeamId))
     setHelpOpen(false)
     setIsDiscovering(false)
     setIsSubmittingDiscovery(false)
     setScreen('start')
-  }, [])
+  }, [namedTeamId])
 
   const close = useCallback(() => {
     setOpen(false)
@@ -566,7 +569,7 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
           scope={scope}
           screen={screen}
           teamId={form.teamId}
-          teams={teams.data ?? []}
+          teams={teamChoices}
           technicalDetails={technicalDetails}
         />
       ) : null}
@@ -589,7 +592,7 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
           scope={scope}
           server={form.server}
           teamId={form.teamId}
-          teams={teams.data ?? []}
+          teams={teamChoices}
           technicalDetails={technicalDetails}
           username={form.username}
         />
@@ -640,7 +643,7 @@ export const MailboxConnectionForm = ({ scope, onConnected }: MailboxConnectionF
           smtpPort={form.smtpPort}
           smtpSecurity={form.smtpSecurity}
           teamId={form.teamId}
-          teams={teams.data ?? []}
+          teams={teamChoices}
           username={form.username}
         />
       ) : null}

@@ -14,7 +14,7 @@ import {
 // open a record push one step further.
 export const createAdminOrganizationSurfaces = (adminRoot: string): Surface[] => [
   {
-    // One roster behind a scope switch — the organisation, or a team the
+    // One roster behind the scope switch — the organisation, or a team the
     // viewer is in — with the roster's own status strip and the automatic
     // team access rule a health alert points at.
     depth: 1,
@@ -47,11 +47,22 @@ export const createAdminOrganizationSurfaces = (adminRoot: string): Surface[] =>
   },
   {
     // Every organisation page shares one screen identity, so page A → page B
-    // swaps in place.
+    // swaps in place. These three are one page per concern behind the scope
+    // switch (`?scope=organisation|team:<id>`): AI models with its catalogue
+    // filters, and Keys with its status strip.
     depth: 1,
-    intent: { state: ['tab', 'status', 'model', 'provider'] },
+    intent: { state: ['scope', 'status', 'model', 'provider'] },
     parentOf: toAdmin,
-    pattern: /^\/admin\/(?:organisation|models|connections|keys|usage|security)$/,
+    pattern: /^\/admin\/(?:models|connections|keys)$/,
+    root: adminRoot,
+    section: 'admin',
+    type: 'detail',
+  },
+  {
+    depth: 1,
+    intent: { state: ['tab'] },
+    parentOf: toAdmin,
+    pattern: /^\/admin\/(?:organisation|usage|security)$/,
     root: adminRoot,
     section: 'admin',
     type: 'detail',

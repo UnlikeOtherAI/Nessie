@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import type { CloudBrowserConnectionRecord, CloudBrowserScope } from '../../../lib/api-client'
+import { useIsOwner } from '../../../facades/auth/hooks'
 import {
   useCloudBrowserConnections,
   useDisconnectCloudBrowser,
@@ -69,6 +70,13 @@ const SCOPE_COPY: Record<CloudBrowserScope, { title: string; blurb: string; empt
 export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelProps) => {
   const connections = useCloudBrowserConnections()
   const disconnect = useDisconnectCloudBrowser()
+  // A shared account — the company's or a team's — is the owner's to connect,
+  // replace and disconnect (the connection routes are `requireOwner`), while
+  // the lock and the home page are any owner's or admin's scoped settings. So
+  // an admin keeps those two and is told who holds the account itself, rather
+  // than being offered a key field the server will refuse.
+  const isOwner = useIsOwner()
+  const mayConnect = scope === 'user' || isOwner
   // Both browser keys in one request: they are drawn a few centimetres apart
   // at the same level, and a second query would resolve the same cascade again.
   const settings = useScopedSettings(
@@ -155,13 +163,19 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
       </div>
 
       <ScopedSettingGate setting={setting}>
-        <CloudBrowserConnectionForm
-          blurb={copy.blurb}
-          connected={connected}
-          reconnect={Boolean(connection) && !connected}
-          scope={scope}
-          teamId={teamId}
-        />
+        {mayConnect ? (
+          <CloudBrowserConnectionForm
+            blurb={copy.blurb}
+            connected={connected}
+            reconnect={Boolean(connection) && !connected}
+            scope={scope}
+            teamId={teamId}
+          />
+        ) : (
+          <p className="mt-4 text-sm text-[color:var(--tx2)]">
+            Only the organisation owner connects, replaces or disconnects this account.
+          </p>
+        )}
       </ScopedSettingGate>
 
       {setting?.canEdit && scope !== 'user' ? (
@@ -177,7 +191,7 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
 
       <BrowserHomepageField scope={scope} setting={homepageSetting} teamId={teamId} />
 
-      {connection && !disconnected ? (
+      {connection && !disconnected && mayConnect ? (
         <div className="mt-4 border-t border-[color:var(--sep)] pt-3">
           <button
             className="admin-button admin-button-danger admin-button-compact"

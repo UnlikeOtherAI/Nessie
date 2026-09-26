@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { DeploymentModelsTable, pairId } from './DeploymentModelsTable'
@@ -10,6 +10,7 @@ import { PaginationFooter } from '../../shared/PaginationFooter'
 import { SettingsPanel, type SettingsTabHostProps } from '../../shared/SettingsPanel'
 import { LocalInferenceEnablement } from '../local-inference/LocalInferenceEnablement'
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue'
+import { useCurrentOrganization } from '../../../facades/organization/hooks'
 import {
   useDeploymentModelCatalog,
   useSetDeploymentModelsEnabled,
@@ -43,16 +44,56 @@ type BulkAction = 'disable' | 'enable'
  * plan (docs/standards/personal-model-subscriptions.md).
  */
 type ModelAvailabilitySettingsProps = {
-  /** The screen hosting this surface as one of its tabs (a team's page). */
+  /** The screen hosting this surface: AI models, with its scope switch. */
   host?: SettingsTabHostProps
-  scopeControl?: ReactNode
+  /** The team whose narrowing this is; absent at the organisation. */
   teamId?: string
+  /**
+   * Why Test is not this viewer's, when it is not. A test is a real, billed
+   * call and `POST /api/inference/models/test` answers the owner only — at
+   * either scope — so a team admin sees the control and who holds it rather
+   * than a refusal after pressing it.
+   */
+  testUnavailableReason?: string
+}
+
+/**
+ * AI on people's own computers, at the scope on screen. Reading or writing it
+ * needs the organisation-administration standing the sign-in provider grants
+ * (the API's check for this administrator-authored key), which owner or admin
+ * alone is not — so the control is shown to that standing, and anybody else is
+ * told who holds it.
+ */
+const OwnComputersPolicy = ({ teamId }: { teamId?: string }) => {
+  const organization = useCurrentOrganization()
+  const status = organization.data?.administration.status
+  if (status !== 'allowed') {
+    return (
+      <section className="border-y border-[color:var(--sep)] py-4 text-sm text-[color:var(--tx2)]">
+        {status === undefined
+          ? 'Checking who may set AI on people’s own computers…'
+          : status === 'unavailable'
+            ? 'We couldn’t check whether you may set AI on people’s own computers. Try again in a moment.'
+            : 'Only an organisation administrator sets whether people may use AI models on their own computers.'}
+      </section>
+    )
+  }
+  return (
+    <>
+      <LocalInferenceEnablement scope={teamId ? 'team' : 'organization'} teamId={teamId ?? null} />
+      <section className="border-b border-[color:var(--sep)] pb-4 text-sm text-[color:var(--tx2)]">
+        Choose a person’s own policy from their{' '}
+        <Link className="underline" to="/admin/people">member details</Link>
+        {teamId ? '.' : ', or a team’s from its scope above.'}
+      </section>
+    </>
+  )
 }
 
 export const ModelAvailabilitySettings = ({
   host,
-  scopeControl,
   teamId,
+  testUnavailableReason,
 }: ModelAvailabilitySettingsProps) => {
   // A toggle or a test that failed silently would leave an owner believing the
   // deployment was in a state it is not — the one outcome this page must never
@@ -186,7 +227,7 @@ export const ModelAvailabilitySettings = ({
 
   return (
     <SettingsPanel
-      eyebrow={teamId ? 'Teams' : 'Organisation'}
+      eyebrow="Organisation"
       host={host}
       footer={
         <PaginationFooter
@@ -207,6 +248,10 @@ export const ModelAvailabilitySettings = ({
         <FormError>{catalogError}</FormError>
         <FormSuccess>{actionMessage}</FormSuccess>
 
+        {/* The policy for the scope as a whole comes first, so the toolbar
+            below sits directly on the catalogue it filters. */}
+        <OwnComputersPolicy {...(teamId ? { teamId } : {})} />
+
         <ListToolbar
           count={matchingLabel}
           search={{
@@ -225,7 +270,6 @@ export const ModelAvailabilitySettings = ({
               value={providerFilter}
             />
           </div>
-          {scopeControl}
           <div className="flex flex-wrap gap-2">
             <button
               className="admin-button admin-button-secondary admin-button-compact"
@@ -246,16 +290,8 @@ export const ModelAvailabilitySettings = ({
           </div>
         </ListToolbar>
 
-        {!teamId ? (
-          <>
-            <LocalInferenceEnablement scope="organization" />
-            <section className="border-b border-[color:var(--sep)] pb-4 text-sm text-[color:var(--tx2)]">
-              Choose a person’s policy from their{' '}
-              <Link className="underline" to="/admin/people">member details</Link>, or set the
-              inherited policy for a whole{' '}
-              <Link className="underline" to="/admin/teams">team</Link>.
-            </section>
-          </>
+        {testUnavailableReason ? (
+          <p className="text-xs text-[color:var(--tx3)]">{testUnavailableReason}</p>
         ) : null}
 
         <DeploymentModelsTable
@@ -269,6 +305,7 @@ export const ModelAvailabilitySettings = ({
           onTest={onTest}
           onToggle={onToggle}
           pendingPair={pendingPair}
+          {...(testUnavailableReason ? { testUnavailableReason } : {})}
           testingPair={testingPair}
           testResults={testResults}
           togglePending={setEnabled.isPending}

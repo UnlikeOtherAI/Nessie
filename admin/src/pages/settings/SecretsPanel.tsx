@@ -40,8 +40,9 @@ type SecretsPanelCopy = {
 
 /**
  * One page per level, each saying what its own level is rather than restating
- * the whole cascade three times. The eyebrow is where the page lives (Your
- * settings, a team's page, the organisation), so the three read as one family.
+ * the whole cascade three times. The eyebrow is where the page lives — Your
+ * settings, or the Organisation group, whose Keys page shows the organisation
+ * and each team behind its scope switch — so the levels read as one family.
  */
 const COPY: Record<SecretPageScope, SecretsPanelCopy> = {
   organization: {
@@ -62,21 +63,21 @@ const COPY: Record<SecretPageScope, SecretsPanelCopy> = {
   team: {
     cascade: 'A team secret beats the organisation\'s, and a person\'s own beats both — unless a '
       + 'key is locked, which pins it for everybody below and greys it out there.',
-    eyebrow: 'Teams',
+    eyebrow: 'Organisation',
     intro: 'What this team\'s work runs on: the team\'s own secrets, plus what the organisation set.',
     title: 'Keys',
   },
 }
 
 type SecretsPanelProps = {
-  /** The screen hosting this panel as one of its tabs (a team's page). */
+  /** The screen hosting this panel: Keys, whose scope switch owns the header's strip. */
   host?: SettingsTabHostProps
   scope: SecretPageScope
   /**
    * The team a team-scope panel reads and writes. Named explicitly by the page
-   * that shows the team, never taken from the session's current team: a
-   * team's page must show that team's keys, whichever team the person is
-   * working in.
+   * that shows the team — Keys at `?scope=team:<id>` — never taken from the
+   * session's current team: a team's keys are that team's, whichever team the
+   * person is working in.
    */
   teamId?: string
 }
@@ -139,14 +140,14 @@ export const SecretsPanel = ({ host, scope, teamId: namedTeamId }: SecretsPanelP
   const { data: projects = [] } = useProjects()
   const { me } = useAuthSession()
   const userId = me?.user.id ?? ''
-  // A team's page names its team; the personal page resolves the cascade that
-  // reaches the person, through the team they are working in.
+  // Keys names its team in the address; the personal page resolves the
+  // cascade that reaches the person, through the team they are working in.
   const teamId = (scope === 'team' ? namedTeamId : undefined) ?? me?.context.teamId ?? ''
   const projectId = me?.context.projectId ?? ''
   const createSecret = useCreateSecret()
   const revokeSecret = useRevokeSecret()
-  // `status`, not `tab`: a team's page hosts this panel as its Keys tab, and
-  // `tab` is that page's own strip.
+  // `status`, not `tab`: the strip narrows the list rather than switching a
+  // section, and a host keeps `tab` (and Keys `scope`) for its own strip.
   const [tab, setTab] = useTabParam('status', SECRETS_TABS, 'active')
   const [createOpen, setCreateOpen] = useState(false)
   const [feedback, setFeedback] = useState<SettingsFeedback | null>(null)

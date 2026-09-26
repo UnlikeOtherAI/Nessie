@@ -19,6 +19,14 @@ import { useLocation, useSearchParams } from 'react-router-dom'
 // scope ledger) passes the stored value as the fallback and writes its store
 // alongside `select`, so the URL wins when it carries a tab and the preference
 // decides when it does not.
+//
+// The third element is what the address itself names — the raw param, or
+// null when it names none. Degrading to the fallback is right for a section
+// strip and wrong for a switch whose value is the *target of a write*: the
+// Organisation pages' scope switch (`?scope=team:<id>`) must treat a team the
+// address names but the strip does not offer as an error, never quietly show
+// the organisation in its place, so it reads the named value rather than
+// re-reading the param beside this hook.
 
 type TabParamOptions = {
   /**
@@ -34,7 +42,7 @@ export const useTabParam = <T extends string>(
   tabs: readonly T[],
   fallback: T,
   { clears }: TabParamOptions = {},
-): [T, (next: T) => void] => {
+): [T, (next: T) => void, string | null] => {
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
   const raw = searchParams.get(name)
@@ -65,5 +73,5 @@ export const useTabParam = <T extends string>(
     },
     [clears, fallback, name, setSearchParams, state, tabs],
   )
-  return [active, select]
+  return [active, select, raw]
 }
