@@ -259,7 +259,8 @@ current fixture exposes; zero homes still verifies the Agents directory's
 empty state but not an individual agent home.
 For the full create-and-read contract, `test:e2e:knowledge-document-ux` seeds
 an agent home and checks Tree navigation, project-root settings, immediate
-Publish, Save as draft, its row badge, and the Attachments shortcut in Chromium.
+Publish, Save as draft, its row badge, inline attachments and comments, and
+the floating per-item action bar in Chromium.
 
 ### List view (`?view=list`)
 

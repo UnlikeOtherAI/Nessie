@@ -20,15 +20,15 @@ test('document and file details expose attachments inline with list and grid lay
   assert.match(attachments, /Delete \$\{attachment\.filename\}/)
 })
 
-test('document sections use matching headings and the Attachments tab shows its panel', () => {
+test('document sections use matching headings inline below the body', () => {
   const attachments = source('../src/components/features/knowledge/AttachmentsDrawer.tsx')
   const comments = source('../src/components/features/knowledge/comments/CommentsSection.tsx')
   const preview = source('../src/components/features/knowledge/PagePreview.tsx')
 
   assert.match(attachments, /<SectionLabel as="h2"[^>]*size="2xs">\s*Attachments/)
   assert.match(comments, /<SectionLabel as="h2"[^>]*size="2xs">Comments/)
-  assert.match(preview, /id="knowledge-document-tabpanel-attachments" role="tabpanel"/)
-  assert.match(preview, /activeTab === 'attachments'/)
+  assert.match(preview, /<AttachmentsDrawer[\s\S]*?<CommentsSection/)
+  assert.doesNotMatch(preview, /id="knowledge-document-tabpanel-attachments" role="tabpanel"/)
 })
 
 test('document terminology is consistent across creation and document actions', () => {

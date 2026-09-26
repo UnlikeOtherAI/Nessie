@@ -5266,6 +5266,46 @@ button.reaction-pill-active:focus-visible {
   --panel-soft: rgba(15, 23, 42, 0.05);
 }
 
+.knowledge-floating-action-bar {
+  position: absolute;
+  z-index: 20;
+  inset-inline: 12px;
+  bottom: 12px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.knowledge-floating-action-bar-inner {
+  display: flex;
+  position: relative;
+  width: max-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  box-sizing: border-box;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 999px;
+  pointer-events: auto;
+}
+
+.knowledge-floating-action-bar-inner > .relative {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 420px) {
+  .knowledge-floating-action-bar {
+    inset-inline: 8px;
+  }
+
+  .knowledge-floating-action-bar-inner {
+    gap: 4px;
+    padding-inline: 6px;
+  }
+}
+
 /* Inline note highlights painted over anchored passages in the reader. */
 .kb-note-highlight {
   background: var(--accent-soft);
