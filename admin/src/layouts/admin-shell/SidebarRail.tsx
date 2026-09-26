@@ -9,6 +9,8 @@ import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { UserMenuTrigger } from './UserMenuTrigger';
 import { TeamSwitcher } from './TeamSwitcher';
 import { useFocusMode } from '../../providers/FocusModeProvider';
+import { useTranslation } from 'react-i18next';
+import { useNavLabel } from '../../navigation/useNavLabel';
 
 const SIDEBAR_RAIL_ITEMS = NAV_ITEMS.filter((item) => item.id !== 'search');
 type SidebarRailProps = {
@@ -30,6 +32,8 @@ export const SidebarRail = ({
 }: SidebarRailProps) => {
   const navigation = usePhoneNavigation();
   const { focusModeEnabled, toggleFocusMode, updating } = useFocusMode();
+  const { t } = useTranslation('shell');
+  const navLabel = useNavLabel();
   const { capabilities } = useViewport();
   const focusButtonRef = useRef<HTMLButtonElement>(null);
   const [focusTooltipOpen, setFocusTooltipOpen] = useState(false);
@@ -53,10 +57,11 @@ export const SidebarRail = ({
   const showFocusTooltip = (): void => {
     setFocusTooltipOpen(true);
   };
-  const focusTooltipTitle = focusModeEnabled ? 'Turn off focus mode' : 'Turn on focus mode';
+  const focusTooltipTitle = focusModeEnabled
+    ? t('focus.turnOff') : t('focus.turnOn');
   const focusTooltipDescription = focusModeEnabled
-    ? 'Resume notifications and attention cues.'
-    : 'Pause notifications and reduce badging and bolding.';
+    ? t('focus.resumeDescription')
+    : t('focus.pauseDescription');
   return (
     <aside
       className={[
@@ -66,7 +71,7 @@ export const SidebarRail = ({
     >
       <TeamSwitcher />
 
-      <nav aria-label="Main navigation" className="w-full shrink-0">
+      <nav aria-label={t('navigation.main')} className="w-full shrink-0">
         {SIDEBAR_RAIL_ITEMS.map((item) => {
           const Icon = item.icon;
           // Return to where the reader last stood in this section rather than its
@@ -84,7 +89,7 @@ export const SidebarRail = ({
               <span className="admin-rail-btn-icon">
                 <Icon />
               </span>
-              <span className="admin-rail-btn-label">{item.label}</span>
+              <span className="admin-rail-btn-label">{navLabel(item.id)}</span>
             </Link>
           );
         })}
@@ -114,7 +119,7 @@ export const SidebarRail = ({
               <path d="M21.75 15.002A9.72 9.72 0 0 1 12 21.75C6.615 21.75 2.25 17.385 2.25 12c0-4.14 2.58-7.678 6.223-9.094a.75.75 0 0 1 .983.868 7.5 7.5 0 0 0 9.402 9.402.75.75 0 0 1 .892.826Z" />
             </svg>
           </span>
-          <span className="admin-rail-btn-label">Focus</span>
+          <span className="admin-rail-btn-label">{t('focus.label')}</span>
         </button>
 
         <RailTooltip

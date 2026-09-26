@@ -1,0 +1,34 @@
+{
+  "navigation": {
+    "channels": "Kanály",
+    "projects": "Projekty",
+    "knowledge": "Znalosti",
+    "admin": "Správa",
+    "search": "Hledat",
+    "main": "Hlavní navigace"
+  },
+  "focus": {
+    "turnOff": "Vypnout režim soustředění",
+    "turnOn": "Zapnout režim soustředění",
+    "resumeDescription": "Obnovit oznámení a upozornění.",
+    "pauseDescription": "Pozastavit oznámení a omezit zvýraznění.",
+    "label": "Soustředění"
+  },
+  "sidebar": {
+    "threads": "Vlákna",
+    "unreadMessages": "Nepřečtené zprávy"
+  },
+  "create": {
+    "title": "Vytvořit",
+    "message": "Zpráva",
+    "messageDescription": "Zahájit novou soukromou konverzaci",
+    "channel": "Kanál",
+    "channelDescription": "Zahájit skupinovou konverzaci",
+    "project": "Projekt",
+    "projectDescription": "Organizovat práci ve sdíleném prostoru",
+    "agent": "Agent",
+    "agentDescription": "Vytvořit soukromého nebo sdíleného agenta",
+    "new": "Vytvořit nový",
+    "tooltipDescription": "Vytvořit zprávu, kanál, projekt nebo agenta."
+  }
+}

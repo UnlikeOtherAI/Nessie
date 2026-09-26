@@ -1,0 +1,34 @@
+{
+  "navigation": {
+    "channels": "Channels",
+    "projects": "Projects",
+    "knowledge": "Knowledge",
+    "admin": "Admin",
+    "search": "Search",
+    "main": "Main navigation"
+  },
+  "focus": {
+    "turnOff": "Turn off focus mode",
+    "turnOn": "Turn on focus mode",
+    "resumeDescription": "Resume notifications and attention cues.",
+    "pauseDescription": "Pause notifications and reduce badging and bolding.",
+    "label": "Focus"
+  },
+  "sidebar": {
+    "threads": "Threads",
+    "unreadMessages": "Unread messages"
+  },
+  "create": {
+    "title": "Create",
+    "message": "Message",
+    "messageDescription": "Start a new direct message",
+    "channel": "Channel",
+    "channelDescription": "Start a group conversation",
+    "project": "Project",
+    "projectDescription": "Organize work in a shared space",
+    "agent": "Agent",
+    "agentDescription": "Create a private or shared agent",
+    "new": "Create new",
+    "tooltipDescription": "Start a message, channel, project, or agent."
+  }
+}

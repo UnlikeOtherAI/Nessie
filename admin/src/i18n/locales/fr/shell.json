@@ -1,0 +1,34 @@
+{
+  "navigation": {
+    "channels": "Canaux",
+    "projects": "Projets",
+    "knowledge": "Connaissances",
+    "admin": "Administration",
+    "search": "Rechercher",
+    "main": "Navigation principale"
+  },
+  "focus": {
+    "turnOff": "Désactiver le mode concentration",
+    "turnOn": "Activer le mode concentration",
+    "resumeDescription": "Réactiver les notifications et les indicateurs d'attention.",
+    "pauseDescription": "Suspendre les notifications et réduire les mises en évidence.",
+    "label": "Concentration"
+  },
+  "sidebar": {
+    "threads": "Fils de discussion",
+    "unreadMessages": "Messages non lus"
+  },
+  "create": {
+    "title": "Créer",
+    "message": "Message",
+    "messageDescription": "Commencer un nouveau message direct",
+    "channel": "Canal",
+    "channelDescription": "Commencer une conversation de groupe",
+    "project": "Projet",
+    "projectDescription": "Organiser le travail dans un espace partagé",
+    "agent": "Agent",
+    "agentDescription": "Créer un agent privé ou partagé",
+    "new": "Créer un élément",
+    "tooltipDescription": "Créer un message, un canal, un projet ou un agent."
+  }
+}

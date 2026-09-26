@@ -1,0 +1,34 @@
+{
+  "navigation": {
+    "channels": "Kanäle",
+    "projects": "Projekte",
+    "knowledge": "Wissen",
+    "admin": "Verwaltung",
+    "search": "Suchen",
+    "main": "Hauptnavigation"
+  },
+  "focus": {
+    "turnOff": "Fokusmodus ausschalten",
+    "turnOn": "Fokusmodus einschalten",
+    "resumeDescription": "Benachrichtigungen und Hinweise wieder aktivieren.",
+    "pauseDescription": "Benachrichtigungen pausieren und Hervorhebungen reduzieren.",
+    "label": "Fokus"
+  },
+  "sidebar": {
+    "threads": "Threads",
+    "unreadMessages": "Ungelesene Nachrichten"
+  },
+  "create": {
+    "title": "Erstellen",
+    "message": "Nachricht",
+    "messageDescription": "Neue Direktnachricht beginnen",
+    "channel": "Kanal",
+    "channelDescription": "Gruppengespräch beginnen",
+    "project": "Projekt",
+    "projectDescription": "Arbeit in einem gemeinsamen Bereich organisieren",
+    "agent": "Agent",
+    "agentDescription": "Privaten oder gemeinsamen Agenten erstellen",
+    "new": "Neu erstellen",
+    "tooltipDescription": "Nachricht, Kanal, Projekt oder Agenten erstellen."
+  }
+}

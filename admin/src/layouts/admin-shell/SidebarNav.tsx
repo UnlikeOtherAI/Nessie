@@ -9,6 +9,7 @@ import { SidebarStarredSection } from './SidebarStarredSection';
 import { SidebarTreePanel } from '../../components/primitives/SidebarTree';
 import { renderUnreadCount } from './SidebarRow';
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
+import { useTranslation } from 'react-i18next';
 import type {
   CreateChannelTarget,
   EditProjectTarget,
@@ -75,6 +76,7 @@ type SidebarNavProps = {
 };
 
 export const SidebarNav = (props: SidebarNavProps) => {
+  const { t } = useTranslation('shell');
   const { pathname } = useLocation();
   const {
     attentionCountByProjectId,
@@ -153,7 +155,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
           onClick={onNavigateThreads}
           type="button"
         >
-          <span>Threads</span>
+          <span>{t('sidebar.threads')}</span>
           {renderUnreadCount(threadsUnreadCount)}
         </button>
         <button
@@ -165,7 +167,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
           onClick={onNavigateUnreadMessages}
           type="button"
         >
-          <span>Unread messages</span>
+          <span>{t('sidebar.unreadMessages')}</span>
           {renderUnreadCount(unreadDirectMessageCount)}
         </button>
 

@@ -2,6 +2,7 @@ import { useLocation } from 'react-router-dom';
 import { NAV_ITEMS } from '../../navigation/nav-items';
 import { usePhoneNavigation } from './PhoneNavigationProvider';
 import { useCloseTransientMenus } from './TransientMenuContext';
+import { useNavLabel } from '../../navigation/useNavLabel';
 
 // Bottom tab bar for mobile web (browser). The native app provides its own
 // native glass tab bar instead, so this is only mounted when NOT in the native
@@ -14,6 +15,7 @@ export const MobileTabBar = () => {
   const { pathname } = useLocation();
   const navigation = usePhoneNavigation();
   const closeTransientMenus = useCloseTransientMenus();
+  const navLabel = useNavLabel();
   const tabItems = NAV_ITEMS.filter((item) => item.showInMobileTab !== false);
 
   return (
@@ -35,7 +37,7 @@ export const MobileTabBar = () => {
             <span className="mobile-tabbar-icon">
               <Icon className="h-[22px] w-[22px]" />
             </span>
-            <span className="mobile-tabbar-label">{item.label}</span>
+            <span className="mobile-tabbar-label">{navLabel(item.id)}</span>
           </button>
         );
       })}

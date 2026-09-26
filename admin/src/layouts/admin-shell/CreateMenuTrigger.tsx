@@ -10,6 +10,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Popover } from '../../components/overlays/Popover'
 import { RailTooltip } from './RailTooltip'
 import { useTransientMenu } from './TransientMenuContext'
+import { useTranslation } from 'react-i18next'
 
 type CreateMenuTriggerProps = {
   onCreateAgent: () => void
@@ -42,6 +43,7 @@ const CreateMenuPopover = ({
   onCreateProject,
   open,
 }: CreateMenuPopoverProps) => {
+  const { t } = useTranslation('shell')
   const select = (action: () => void) => {
     onClose()
     action()
@@ -52,20 +54,20 @@ const CreateMenuPopover = ({
       anchorRef={anchorRef}
       anchorOrigin
       className={panelClassName}
-      label="Create"
+      label={t('create.title')}
       onClose={onClose}
       open={open}
       placement="right"
       role="menu"
     >
-      <h2 className="px-1.5 pb-2 pt-1 text-sm font-semibold text-[color:var(--tx)]">Create</h2>
+      <h2 className="px-1.5 pb-2 pt-1 text-sm font-semibold text-[color:var(--tx)]">{t('create.title')}</h2>
       <button className={actionRowClassName} onClick={() => select(onCreateMessage)} type="button">
         <span className="create-menu-icon create-menu-icon-message" aria-hidden="true">
           <FontAwesomeIcon icon={faPenToSquare} />
         </span>
         <span className="min-w-0">
-          <span className="block text-sm font-semibold text-[color:var(--tx)]">Message</span>
-          <span className="block text-xs text-[color:var(--tx3)]">Start a new direct message</span>
+          <span className="block text-sm font-semibold text-[color:var(--tx)]">{t('create.message')}</span>
+          <span className="block text-xs text-[color:var(--tx3)]">{t('create.messageDescription')}</span>
         </span>
       </button>
       <button className={actionRowClassName} onClick={() => select(onCreateChannel)} type="button">
@@ -73,8 +75,8 @@ const CreateMenuPopover = ({
           <FontAwesomeIcon icon={faHashtag} />
         </span>
         <span className="min-w-0">
-          <span className="block text-sm font-semibold text-[color:var(--tx)]">Channel</span>
-          <span className="block text-xs text-[color:var(--tx3)]">Start a group conversation</span>
+          <span className="block text-sm font-semibold text-[color:var(--tx)]">{t('create.channel')}</span>
+          <span className="block text-xs text-[color:var(--tx3)]">{t('create.channelDescription')}</span>
         </span>
       </button>
       <button className={actionRowClassName} onClick={() => select(onCreateProject)} type="button">
@@ -82,8 +84,8 @@ const CreateMenuPopover = ({
           <FontAwesomeIcon icon={faFolderPlus} />
         </span>
         <span className="min-w-0">
-          <span className="block text-sm font-semibold text-[color:var(--tx)]">Project</span>
-          <span className="block text-xs text-[color:var(--tx3)]">Organise work in a shared space</span>
+          <span className="block text-sm font-semibold text-[color:var(--tx)]">{t('create.project')}</span>
+          <span className="block text-xs text-[color:var(--tx3)]">{t('create.projectDescription')}</span>
         </span>
       </button>
       <button className={actionRowClassName} onClick={() => select(onCreateAgent)} type="button">
@@ -91,8 +93,8 @@ const CreateMenuPopover = ({
           <FontAwesomeIcon icon={faRobot} />
         </span>
         <span className="min-w-0">
-          <span className="block text-sm font-semibold text-[color:var(--tx)]">Agent</span>
-          <span className="block text-xs text-[color:var(--tx3)]">Create a private or shared agent</span>
+          <span className="block text-sm font-semibold text-[color:var(--tx)]">{t('create.agent')}</span>
+          <span className="block text-xs text-[color:var(--tx3)]">{t('create.agentDescription')}</span>
         </span>
       </button>
     </Popover>
@@ -108,6 +110,7 @@ export const CreateMenuTrigger = ({
   onCreateMessage,
   onCreateProject,
 }: CreateMenuTriggerProps) => {
+  const { t } = useTranslation('shell')
   const buttonRef = useRef<HTMLButtonElement>(null)
   const { close, isOpen, toggle } = useTransientMenu()
   const [tooltipOpen, setTooltipOpen] = useState(false)
@@ -127,7 +130,7 @@ export const CreateMenuTrigger = ({
         aria-describedby={tooltipOpen ? 'create-menu-tooltip' : undefined}
         aria-expanded={isOpen}
         aria-haspopup="menu"
-        aria-label="Create new"
+        aria-label={t('create.new')}
         className={[
           'admin-rail-create-trigger',
           isOpen ? 'is-open' : '',
@@ -153,10 +156,10 @@ export const CreateMenuTrigger = ({
       />
       <RailTooltip
         anchorRef={buttonRef}
-        description="Start a message, channel, project, or agent."
+        description={t('create.tooltipDescription')}
         id="create-menu-tooltip"
         open={tooltipOpen}
-        title="Create new"
+        title={t('create.new')}
       />
     </>
   )
