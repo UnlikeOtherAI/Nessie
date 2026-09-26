@@ -145,7 +145,7 @@ final class ApprovedAPIOriginTests: XCTestCase {
             ApprovedAPIOrigin.consoleURL(
                 forAPIOrigin: "https://api.nessie.works", isDevelopmentBuild: false
             ).absoluteString,
-            "https://app.nessie.works/agents/executors"
+            "https://app.nessie.works/admin/computers"
         )
         // A Mac paired with DeepTest sent to nessie.works would be a remedy
         // pointing at a stranger's console.
@@ -153,20 +153,20 @@ final class ApprovedAPIOriginTests: XCTestCase {
             ApprovedAPIOrigin.consoleURL(
                 forAPIOrigin: "https://api.deeptest.live", isDevelopmentBuild: false
             ).absoluteString,
-            "https://app.deeptest.live/agents/executors"
+            "https://app.deeptest.live/admin/computers"
         )
         // A self-hosted origin nobody here can second-guess is offered as itself.
         XCTAssertEqual(
             ApprovedAPIOrigin.consoleURL(
                 forAPIOrigin: "https://nessie.example.com", isDevelopmentBuild: false
             ).absoluteString,
-            "https://nessie.example.com/agents/executors"
+            "https://nessie.example.com/admin/computers"
         )
         XCTAssertEqual(
             ApprovedAPIOrigin.consoleURL(
                 forAPIOrigin: "http://127.0.0.1:5454", isDevelopmentBuild: true
             ).absoluteString,
-            "http://localhost:5455/agents/executors"
+            "http://localhost:5455/admin/computers"
         )
     }
 

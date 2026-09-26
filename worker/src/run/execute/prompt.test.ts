@@ -112,17 +112,28 @@ test('an agent with card_post receives the compact secret-form instruction', () 
   assert.match(system, /vault_secret/)
 })
 
+// Where the setup prompt sent people before the admin moved: a personal
+// account's page, the organisation's page and the tool list.
+const RETIRED_SETUP_ADDRESSES = [
+  /\/settings\/account\?tab=agents/,
+  /\/settings\/organization\?tab=agents/,
+  /\/agents\/tools/,
+]
+
 test('every agent can describe Browserbase setup, but only card_post can collect its masked key', () => {
   const noCard = systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null, {
     hasCardTool: false,
   }))
   assert.match(noCard, /Browserbase account/)
-  assert.match(noCard, /Settings → Agents/)
-  assert.match(noCard, /Settings → Organization → Agents/)
-  assert.match(noCard, /Agents → Tools/)
-  assert.match(noCard, /\/settings\/account\?tab=agents/)
-  assert.match(noCard, /\/settings\/organization\?tab=agents/)
-  assert.match(noCard, /\/agents\/tools/)
+  assert.match(noCard, /Your settings › Connected accounts › Browsers/)
+  assert.match(noCard, /Admin › Company connections/)
+  assert.match(noCard, /Admin › Advanced › Tool registry/)
+  assert.match(noCard, /\/settings\/accounts\?tab=browsers/)
+  assert.match(noCard, /\/admin\/connections/)
+  assert.match(noCard, /\/admin\/advanced\/tools/)
+  // The retired addresses resolve to nothing, so one printed beside the
+  // current address would still send a person to a dead page.
+  for (const retired of RETIRED_SETUP_ADDRESSES) assert.doesNotMatch(noCard, retired)
   assert.match(noCard, /cannot collect a Browserbase API key in this conversation/)
   assert.doesNotMatch(noCard, /destination\.kind` `browserbase_connection/)
   assert.doesNotMatch(noCard, /You can post an interactive card/)
@@ -137,12 +148,13 @@ test('every agent can describe Browserbase setup, but only card_post can collect
   assert.match(withCard, /Only `browser_login_request` can request temporary personal browser access/)
   assert.match(withCard, /exact selected HTTPS origins for one task/)
   assert.match(withCard, /A `card_post` card or chat text cannot grant browser access/)
+  for (const retired of RETIRED_SETUP_ADDRESSES) assert.doesNotMatch(withCard, retired)
 })
 
 test('a run holding the grant verb is not told, in its main prompt, that an owner must grant', () => {
   // The Designer's catalogue (a later system message) said "you grant it with
   // agent_tool_access_set"; this block, rendered for every agent without the
-  // fact, said "an owner must explicitly grant … at Agents → Tools" — and the
+  // fact, said "an owner must explicitly grant … at the Tool registry" — and the
   // Designer quoted the refusal. Same facts, from the resolved toolset.
   const designer = systemContent(buildModelPrompt([], makeContext('Agent Designer'), 'hi', null, {
     canGrantBrowserTools: true,
@@ -154,7 +166,7 @@ test('a run holding the grant verb is not told, in its main prompt, that an owne
   assert.doesNotMatch(designer, /An owner must explicitly grant the named agent the browser tools/)
   // Its own toolset is the deployment's: nobody can enable `browser_login_request` on it.
   assert.match(designer, /not yours to request/)
-  assert.doesNotMatch(designer, /enable `browser_login_request` at Agents → Tools/)
+  assert.doesNotMatch(designer, /enable `browser_login_request` at Admin › Advanced › Tool registry/)
 })
 
 test('an adopted temporary browser grant tells the successor to continue within its exact scope', () => {

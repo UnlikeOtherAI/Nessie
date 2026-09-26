@@ -47,7 +47,7 @@ const DETAIL_TABS: ReadonlyArray<TabBarItem<Tab>> = [
   { label: 'To-dos', value: FIRST_DETAIL_TAB },
   { label: 'Activity', value: 'activity' },
   { label: 'Sub-Agents', value: 'sub-agents' },
-  { label: 'Tools', value: 'tools' },
+  { label: 'Built-in tools', value: 'tools' },
   { label: 'Messages', value: 'messages' },
   { label: 'Documents', value: 'documents' },
   { label: 'Email', value: 'email' },
@@ -90,7 +90,7 @@ const pageContextForTab: Record<Tab, DesignerPageContext> = {
   tools: {
     actions: ['enable or disable tools, then save the changes'],
     description: 'Review this agent’s available tools and change its tool access.',
-    title: 'Tools',
+    title: 'Built-in tools',
   },
   messages: {
     actions: [],

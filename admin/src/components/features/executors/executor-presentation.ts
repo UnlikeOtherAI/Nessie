@@ -40,16 +40,16 @@ export const executorScopeLabel = (executor: ExecutorRecordResponse): string =>
     ? 'Personal'
     : executor.scope.kind === 'project'
       ? 'Project'
-      : 'Organization'
+      : 'Organisation'
 
 /** Use the same ownership/sharing label in inventory and the detail header. */
 export const executorScopeSummary = (executor: ExecutorRecordResponse): string =>
-  `${executorScopeLabel(executor)} machine`
+  `${executorScopeLabel(executor)} computer`
 
 export const executorProfilesLabel = (executor: ExecutorRecordResponse): string =>
   executor.profiles.map((profile) => ({
     workspace_sandbox: 'Files and programs', coding_session: 'Coding', connected_browser: 'Connected browser',
-  })[profile]).join(', ') || 'Waiting for machine capabilities'
+  })[profile]).join(', ') || 'Waiting for computer capabilities'
 
 export const EXECUTOR_OPERATION_LABELS: Record<ImplementedExecutorOperationKey, string> = {
   'file.list': 'Browse files',
@@ -65,7 +65,7 @@ export const EXECUTOR_OPERATION_LABELS: Record<ImplementedExecutorOperationKey, 
   'coding.launch': 'Start a coding session',
   'coding.observe': 'Check coding progress',
   'workspace.review': 'Review draft changes',
-  'workspace.promote': 'Apply approved changes to the machine',
+  'workspace.promote': 'Apply approved changes to the computer',
   'sandbox.stop': 'Stop a work session',
   'mcp.tools': 'Discover local app tools',
   'mcp.call': 'Use local app tools',

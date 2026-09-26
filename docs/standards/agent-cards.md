@@ -307,15 +307,32 @@ this standard, not an exception to it.
     exactly as it re-enters a crashed batch: the assistant turn that asks for
     it is the agent's own from the post, and the call goes through the same
     authorization, approval gates, effect ledger and tool events as any
-    other (`preparedToolCalls`, `worker/src/run/agentic-loop.ts`). When
-    every call succeeds the model is never asked; the run ends marking the
-    answer ✅ (`preparedCompleted` → `markedDone`). A failure, a refusal or
-    an approval gate continues into the ordinary loop, where the model reads
-    the call as its own and its result, and explains or carries on. A
-    restarted run, a second run on the same answer, or a run answering
-    several queued messages never repeats it; only the claiming run, back
-    after a crash, re-enters it, under a call id stable per card so the
-    effect ledger answers from its record.
+    other (`preparedToolCalls`, `worker/src/run/agentic-loop.ts`). The
+    model is skipped only when every call returned and Jev is sure (0.9,
+    `judgePreparedOutcome` in `packages/runtime/src/run-decisions.ts`) that
+    each result shows its operation done, after the same cancel and budget
+    checks as any batch; the run then ends marking the answer ✅
+    (`preparedCompleted` → `markedDone`). "Returned" is not enough on its
+    own: several builtins return a refusal as ordinary output, and taking
+    that for success would put ✅ on an action that never happened. A
+    refusal, a failure, doubt, or a run with no Jev (a personal subscription
+    or a local model) continues into the ordinary loop, where the model reads
+    the call as its own and its result, and explains or carries on.
+  - **It runs once.** Its call id is stable per card and marked, so the
+    tool-effect ledger claims it whatever the tool's category — a workspace
+    tool the model calls is not claimed, but one the platform runs without the
+    model reading anything must never run twice after a crash
+    (`PREPARED_TOOL_CALL_ID_PREFIX`, `tool-effect-ledger.ts`). A restarted
+    run, a second run on the same answer, or a run answering several queued
+    messages never repeats it; the claiming run, back after a crash, re-enters
+    it and the ledger answers from its record.
+  - **An approval gate keeps it.** A prepared call whose tool needs approval
+    suspends the run like any call; that run records no outcome, so its claim
+    stays open, and the run that continues it once the person approves takes
+    the claim over (`Run.continuationOfRunId`) and runs the exact prepared
+    call. Its arguments are the approved ones, so the approval proof matches
+    and the model is not asked to rebuild them. A rejected approval ends the
+    run with no continuation, and nothing runs.
   - **Later runs see what happened.** The card's note in the transcript names
     what each prepared button runs and, once pressed, whether the call ran
     and succeeded or the agent took over (`buildAgentCardStateNote`).

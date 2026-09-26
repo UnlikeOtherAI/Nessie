@@ -19,7 +19,7 @@ import {
 } from './AutomaticMembershipRulesPanel'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { useTabParam } from '../../../navigation/useTabParam'
-import { SettingsPanel } from '../../shared/SettingsPanel'
+import { SettingsPanel, type SettingsTabHostProps } from '../../shared/SettingsPanel'
 import { MemberInvitationDialog } from './MemberInvitationDialog'
 import { MemberDetailsDialog } from './MemberDetailsDialog'
 import { MemberInvitationDetailsDialog } from './MemberInvitationDetailsDialog'
@@ -27,11 +27,14 @@ import { MemberInvitationDetailsDialog } from './MemberInvitationDetailsDialog'
 type RosterTab = 'active' | 'pending' | 'deactivated' | 'automatic'
 
 // Every value the strip can hold, regardless of whether `canSeeAutomatic`
-// currently renders that pill — `?membersTab=automatic` must keep validating
+// currently renders that pill — `?tab=automatic` must keep validating
 // while the permissions read that would confirm it is still in flight (see
 // `canSeeAutomatic` below), the same way the ladder this replaced accepted it
 // unconditionally.
 const ROSTER_TAB_VALUES: readonly RosterTab[] = ['active', 'pending', 'deactivated', 'automatic']
+
+// A tab's own list position: its cursor and page mean nothing on another tab.
+const ROSTER_TAB_OWNED_PARAMS = ['cursor', 'direction', 'page'] as const
 
 const ROSTER_TABS = [
   { compactLabel: 'Active', label: 'Active members', value: 'active' },
@@ -40,7 +43,7 @@ const ROSTER_TABS = [
 ] as const
 
 const AUTOMATIC_TAB = {
-  label: 'Automatic logins', value: 'automatic', compactLabel: 'Access',
+  label: 'Automatic team access', value: 'automatic', compactLabel: 'Access',
 } as const
 
 const dateLabel = (value: string | undefined) => {
@@ -72,17 +75,31 @@ const rosterSubtitle = (tab: Exclude<RosterTab, 'automatic'>, scope: MemberRoste
   return 'People whose access to your organisation is paused.'
 }
 
-/** The single Members page used at organisation and team scope. */
-export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
+/**
+ * The one roster, at organisation and team scope: People, behind its scope
+ * switch. The host (`PeoplePage`) owns the switch and hands it down with the
+ * screen's name, so there is still one header.
+ */
+export const MembersRosterPanel = ({
+  host,
+  scope,
+}: {
+  host?: SettingsTabHostProps
+  scope: MemberRosterScope
+}) => {
   const { me, token } = useAuthSession()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
   const [inviteOpen, setInviteOpen] = useState(false)
   const [selectedMember, setSelectedMember] = useState<TeamMemberRecord | null>(null)
   const [selectedInvitation, setSelectedInvitation] = useState<TeamInvitationRecord | null>(null)
-  const [tab] = useTabParam('membersTab', ROSTER_TAB_VALUES, 'active')
+  // A different tab is a different list, so its cursor means nothing there —
+  // cleared in the same replace rather than left to point at the wrong page.
+  const [tab, setTab] = useTabParam('tab', ROSTER_TAB_VALUES, 'active', {
+    clears: ROSTER_TAB_OWNED_PARAMS,
+  })
 
   // The roster read also carries UOA's live verdict on what this person may do,
-  // which is what decides whether the Automatic logins tab exists at all — so
+  // which is what decides whether the Automatic team access tab exists at all — so
   // it runs on that tab too, cheaply. What must NOT happen is the rules panel
   // being gated on it: `current` is null there, so no `QueryState` wraps the
   // panel and no pagination footer sits under it.
@@ -104,23 +121,6 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
     && (permissions?.addMember === true || tab === 'automatic')
   const tabs = canSeeAutomatic ? [...ROSTER_TABS, AUTOMATIC_TAB] : ROSTER_TABS
 
-  // A different tab is a different list, so its cursor means nothing here —
-  // cleared alongside the write rather than left to point at the wrong page.
-  // `useTabParam`'s own setter carries every other param over unchanged, so
-  // this stays a hand-written `setSearchParams` call (one replace, not two)
-  // rather than a second call chained after `useTabParam`'s.
-  const setTab = (next: RosterTab) => {
-    setSearchParams((currentParams) => {
-      const updated = new URLSearchParams(currentParams)
-      updated.delete('cursor')
-      updated.delete('direction')
-      updated.delete('page')
-      if (next === 'active') updated.delete('membersTab')
-      else updated.set('membersTab', next)
-      return updated
-    }, { replace: true })
-  }
-
   const members = roster.items
   const invitationsRows = invitations.items
   const tabPanelId = `members-${scope}-tabpanel-${tab}`
@@ -135,7 +135,8 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
         priority: 1,
       }] : undefined}
       eyebrow={scope === 'organization' ? 'Organisation' : 'Team'}
-      title="Members"
+      host={host}
+      title="People"
     >
       <div className="mx-auto grid w-full max-w-[1040px] gap-8 py-4">
         <TabBar
@@ -172,8 +173,8 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
             ) : null}
           </div>
           <QueryState
-            errorLabel={tab === 'pending' ? 'Invitations could not be loaded.' : 'Members could not be loaded.'}
-            loadingLabel={tab === 'pending' ? 'Loading invitations…' : 'Loading members…'}
+            errorLabel={tab === 'pending' ? 'Invitations could not be loaded.' : 'People could not be loaded.'}
+            loadingLabel={tab === 'pending' ? 'Loading invitations…' : 'Loading people…'}
             query={(current ?? roster).query}
           >
             {() => tab === 'pending' ? (
@@ -199,7 +200,7 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
             ) : (
               members.length === 0 ? (
                 <EmptyState title={tab === 'active' ? 'No active members' : 'No deactivated members'}>
-                  {tab === 'active' ? 'Invite someone to add the first member.' : 'Members you deactivate show up here.'}
+                  {tab === 'active' ? 'Invite someone to add the first member.' : 'People you deactivate show up here.'}
                 </EmptyState>
               ) : (
                 <ul aria-label={tab === 'active' ? 'Active members' : 'Deactivated members'}

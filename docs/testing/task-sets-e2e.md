@@ -1,6 +1,6 @@
 # Task Sets browser contract
 
-Task Sets lives at **Agents → Task Sets** (`/agents/task-sets`). The same
+Task Sets lives at **Admin › Automations › Batch jobs** (`/admin/automations?tab=batch-jobs`). The same
 detail address opens an agent-created workload, a task-set health alert, or
 a workload created from Documents. A supported uploaded file's **Process with
 Task Set** action pins its page, version and format in the creation form.

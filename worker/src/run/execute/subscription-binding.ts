@@ -132,5 +132,5 @@ export const subscriptionUnavailableNotice = (input: {
   ownerName?: string | null
 }): string =>
   input.isOwnerViewing
-    ? `${input.reason}. Reconnect it in Settings → Connections.`
+    ? `${input.reason}. Reconnect it in Your settings › Connected accounts › AI plans.`
     : `${input.reason}. ${input.ownerName ? `Ask ${input.ownerName}` : 'Ask its owner'} to reconnect it.`

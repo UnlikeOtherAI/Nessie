@@ -164,12 +164,12 @@ const main = async () => {
     await showReply(page, 'Your team browser account and Kimi plan are saved. Shall I ask Agent Designer to arrange access?')
     await page.screenshot({ path: resolve(screenshots, 'assistant-accounts.png'), fullPage: true })
 
-    await page.goto(`${ADMIN_URL}/settings/team?tab=agents&team=${fixture.scope.teamId}`)
+    await page.goto(`${ADMIN_URL}/admin/connections?scope=team:${fixture.scope.teamId}`)
     const panel = page.locator('#cloud-browsers-team')
     await panel.getByText('Connected', { exact: true }).waitFor()
     assert.equal(await panel.getByText('Disconnected', { exact: true }).count(), 0)
     await page.screenshot({ path: resolve(screenshots, 'team-browser-connected.png'), fullPage: true })
-    await page.getByRole('combobox', { name: 'Team', exact: true }).selectOption(fixture.otherTeam.id)
+    await page.getByRole('radio', { name: 'Other browser team', exact: true }).click()
     await panel.getByText('Disconnected', { exact: true }).waitFor()
     await page.screenshot({ path: resolve(screenshots, 'other-team-browser-disconnected.png'), fullPage: true })
     await writeFile(resolve(screenshots, 'verification.json'), JSON.stringify({

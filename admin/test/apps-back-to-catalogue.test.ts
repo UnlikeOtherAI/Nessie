@@ -11,7 +11,7 @@ import * as ReactNamespace from 'react'
  * Two faults on the same path made a reader who switched to All, opened a
  * card and pressed Back land on **Installed**:
  *
- *   - the detail page navigated to a bare `/apps`, throwing away the `?filter=`
+ *   - the detail page navigated to a bare `/admin/apps`, throwing away the `?filter=`
  *     that says which view those shelves are, and
  *   - the catalogue answered that bare address with the view it had remembered
  *     *at mount* — and the stack retains this screen beneath the detail and
@@ -26,7 +26,7 @@ import * as ReactNamespace from 'react'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   pretendToBeVisual: true,
-  url: 'http://localhost:5455/apps',
+  url: 'http://localhost:5455/admin/apps',
 })
 
 // The session provider reconciles against the API on mount. Nothing here is
@@ -259,14 +259,14 @@ const mount = async (entries: string[], element: ReactNamespace.ReactElement) =>
   }
 }
 
-test('the catalogue answers a bare /apps with the view last chosen, not the one it opened on', async () => {
+test('the catalogue answers a bare /admin/apps with the view last chosen, not the one it opened on', async () => {
   // What a refresh on Installed leaves behind: the remembered view is
   // Installed and the URL says so.
   dom.window.localStorage.setItem('nessie.apps.filter', 'installed')
-  const screen = await mount(['/apps?filter=installed'], h(
+  const screen = await mount(['/admin/apps?filter=installed'], h(
     Routes,
     null,
-    h(Route, { element: h(AppsPage), path: '/apps' }),
+    h(Route, { element: h(AppsPage), path: '/admin/apps' }),
   ))
 
   try {
@@ -278,7 +278,7 @@ test('the catalogue answers a bare /apps with the view last chosen, not the one 
     // The address Back lands on when the ledger has no entry to pop. The same
     // screen instance is re-shown — the stack retains it — so a remembered
     // view frozen at mount would flip the strip back to Installed here.
-    await screen.go('/apps')
+    await screen.go('/admin/apps')
     assert.match(screen.checkedFilter() ?? '', /^All/)
   } finally {
     await screen.unmount()
@@ -287,21 +287,21 @@ test('the catalogue answers a bare /apps with the view last chosen, not the one 
 
 test('Back from an app returns to the catalogue entry the reader left, filter and all', async () => {
   dom.window.localStorage.setItem('nessie.apps.filter', 'installed')
-  const screen = await mount(['/apps?filter=all'], h(
+  const screen = await mount(['/admin/apps?filter=all'], h(
     Routes,
     null,
-    h(Route, { element: h(AppsPage), path: '/apps' }),
-    h(Route, { element: h(AppDetailPage), path: '/apps/:slug' }),
+    h(Route, { element: h(AppsPage), path: '/admin/apps' }),
+    h(Route, { element: h(AppDetailPage), path: '/admin/apps/:slug' }),
   ))
 
   try {
-    await screen.go('/apps/app-1')
-    assert.equal(screen.location(), '/apps/app-1')
+    await screen.go('/admin/apps/app-1')
+    assert.equal(screen.location(), '/admin/apps/app-1')
 
     await screen.click(screen.backButton())
     // Popped, not replaced with the bare parent address: `?filter=all` is the
     // reader's own state, and the catalogue reads it back.
-    assert.equal(screen.location(), '/apps?filter=all')
+    assert.equal(screen.location(), '/admin/apps?filter=all')
     assert.match(screen.checkedFilter() ?? '', /^All/)
   } finally {
     await screen.unmount()

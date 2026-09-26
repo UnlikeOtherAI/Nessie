@@ -80,7 +80,7 @@ const DESIGNER_SECTIONS: ReadonlyArray<{
   { label: 'Model', value: 'model' },
   { label: 'Behavior', value: 'behavior' },
   { label: 'To-dos', value: 'todos' },
-  { label: 'Tools', value: 'tools' },
+  { label: 'Built-in tools', value: 'tools' },
 ]
 
 export const AgentDesignerForm = ({
@@ -271,7 +271,7 @@ export const AgentDesignerForm = ({
               Explicit-grant tools are protected from Agent Designer edits.{' '}
               {canManageExplicitTools ? (
                 <>
-                  Manage them in <Link className="underline" to="/agents/tools">Tools</Link>.
+                  Manage them in the <Link className="underline" to="/admin/advanced/tools">Tool registry</Link>.
                 </>
               ) : (
                 'An organization owner manages them in Tools.'
@@ -279,7 +279,7 @@ export const AgentDesignerForm = ({
             </p>
             <p className="text-xs text-[color:var(--tx3)]">
               Executor operations require a separate exact executor-agent-operation grant.{' '}
-              <Link className="underline" to="/agents/executors">Manage executors and access</Link>.
+              <Link className="underline" to="/admin/computers">Manage executors and access</Link>.
             </p>
             <ToolPicker
               groups={toolGroups}

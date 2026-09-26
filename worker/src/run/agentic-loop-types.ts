@@ -93,5 +93,11 @@ export type AgenticLoopInput = {
    * checkpoint already holds them.
    */
   preparedToolCalls?: ProviderToolCall[]
+  /**
+   * Whether the prepared calls' results show their operations done. Absent or
+   * false hands the turn to the model with the results: a tool that returned
+   * at all counts as successful, refusal included.
+   */
+  confirmPrepared?: (calls: ProviderToolCall[], results: ExecutedToolResult[]) => Promise<boolean>
   maxOutputTokens?: number
 }

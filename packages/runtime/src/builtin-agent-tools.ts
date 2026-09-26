@@ -50,7 +50,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'whenever the user refers to an existing agent ("put Hardware Watch in '
       + '#ops", "give the reporter a daily schedule") — you only already know an '
       + 'id for an agent you created in this same conversation, so never guess '
-      + 'one. Each row links the agent as [Name](/agents/<agentId>) and each '
+      + 'one. Each row links the agent as [Name](/admin/agents/<agentId>) and each '
       + 'channel it works in as [#label](/channels/<channelId>). The last path '
       + 'segment of the agent\'s link is the agentId that agent_read, agent_update, '
       + 'agent_bind_channel and agent_trigger_create take. The last path segment of '
@@ -87,7 +87,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'Any member can do this. Explicit-grant tools (browser, research, '
       + 'DeepWater, mailbox) are not toolPolicy keys: create the agent, then '
       + 'grant each one with agent_tool_access_set. The result links the new agent '
-      + 'as [Name](/agents/<agentId>): the last path segment of that link is the '
+      + 'as [Name](/admin/agents/<agentId>): the last path segment of that link is the '
       + 'agentId agent_bind_channel, agent_update, agent_tool_access_set and '
       + 'agent_trigger_create take.',
     parameters: {
@@ -367,12 +367,12 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'field by field, and a refusal names the field and what exists instead. Get the agentId '
       + 'from agent_list when the user named the agent. To schedule a one-off '
       + 'reminder for yourself instead, use schedule_task — that needs no owner rights. The '
-      + 'result links the trigger as [Name](/agents/triggers/<triggerId>), the '
-      + 'agent it fires as [Name](/agents/<agentId>) and the channel it posts '
+      + 'result links the trigger as [Name](/admin/automations/triggers/<triggerId>), the '
+      + 'agent it fires as [Name](/admin/agents/<agentId>) and the channel it posts '
       + 'into as [#label](/channels/<channelId>): the triggerId agent_trigger_update '
       + 'and agent_trigger_delete take is the last path segment of the trigger\'s '
-      + '/agents/triggers/… link, which is never an agent\'s: an agentId is only '
-      + 'ever read from an /agents/<agentId> link.',
+      + '/admin/automations/triggers/… link, which is never an agent\'s: an agentId is only '
+      + 'ever read from an /admin/agents/<agentId> link.',
     parameters: {
       type: 'object',
       properties: {

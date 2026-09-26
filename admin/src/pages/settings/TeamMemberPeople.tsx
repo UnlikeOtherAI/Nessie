@@ -169,7 +169,7 @@ export const TeamAgentBuckets = ({ tree }: { tree: PeopleAgentsTree }) => {
         <UnassignedAgents
           agents={tree.teamOwned}
           emptyLabel="None"
-          title="Team-owned agents"
+          title="Agents managed by the team"
           token={token}
         />
       ) : null}

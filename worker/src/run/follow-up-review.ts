@@ -1,5 +1,6 @@
 import {
   judgeAnswerComplete,
+  type PersonTurnPredicate,
   type InferenceResult,
   type InvocationRecord,
   type ProviderMessage,
@@ -7,12 +8,24 @@ import {
 } from '@nessie/runtime'
 import { z } from 'zod'
 
+import { providerInputAdapterOf } from './execute/provenanced-provider-input.js'
+
 const decisionSchema = z.object({
   needsFollowUp: z.boolean(),
   reason: z.string().trim().min(1).max(800),
 }).strict()
 
 export type FollowUpDecision = z.infer<typeof decisionSchema> & { invocations: InvocationRecord[] }
+
+/**
+ * The turns the person wrote: stored conversation and the run's own prompt.
+ * A tool's pictures and a loop instruction are `user` turns too, but they are
+ * not the request.
+ */
+const isPersonTurn: PersonTurnPredicate = (message) => {
+  const adapter = providerInputAdapterOf(message)
+  return adapter === 'conversation' || adapter === 'direct_prompt'
+}
 
 export const FOLLOW_UP_LIMIT_MESSAGE =
   'I could not finish the requested work after trying to continue. No further action is running.'
@@ -31,7 +44,7 @@ export const reviewFollowUp = async (
   invocationSink: InvocationRecord[],
   decide?: RunDecisionEvaluator | null,
 ): Promise<FollowUpDecision> => {
-  if (decide && await judgeAnswerComplete(decide, messages, outputText)) {
+  if (decide && await judgeAnswerComplete(decide, messages, outputText, isPersonTurn)) {
     return { needsFollowUp: false, reason: 'Jev judged the answer complete.', invocations: [] }
   }
   const result = await runUtility([

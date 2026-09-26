@@ -28,6 +28,12 @@ type MailboxConnectionsPanelProps = {
   embedded?: boolean
   scope: MailboxConnectionScope
   showConnectAction?: boolean
+  /**
+   * The one team whose shared mailboxes these are, named by the page that
+   * shows it (Company connections at that team's scope): only its mailboxes
+   * are listed, and a mailbox connected here is shared with it and no other.
+   */
+  teamId?: string
 }
 
 const SCOPE_COPY: Record<
@@ -52,8 +58,8 @@ const SCOPE_COPY: Record<
     disconnectBody:
       'Your agents will lose access to this mailbox immediately. Nothing in the mailbox '
       + 'itself is touched.',
-    empty: 'No live IMAP mailboxes are connected yet.',
-    title: 'Live IMAP mailboxes',
+    empty: 'No live mailboxes are connected yet.',
+    title: 'Live mailboxes',
   },
 }
 
@@ -167,10 +173,13 @@ export const MailboxConnectionsPanel = ({
   embedded = false,
   scope,
   showConnectAction = true,
+  teamId,
 }: MailboxConnectionsPanelProps) => {
   const connections = useMailboxConnections()
   const copy = SCOPE_COPY[scope]
-  const rows = (connections.data?.connections ?? []).filter((row) => row.scope === scope)
+  const rows = (connections.data?.connections ?? []).filter((row) =>
+    row.scope === scope && (!teamId || row.teamId === teamId))
+  const empty = teamId ? 'No shared mailboxes are connected for this team yet.' : copy.empty
 
   return (
     <section
@@ -194,7 +203,7 @@ export const MailboxConnectionsPanel = ({
         >
           {() =>
             rows.length === 0 ? (
-              <EmptyState title="No mailbox connected">{copy.empty}</EmptyState>
+              <EmptyState title="No mailbox connected">{empty}</EmptyState>
             ) : (
               <div className="grid gap-4">
                 {rows.map((connection) => (
@@ -205,7 +214,9 @@ export const MailboxConnectionsPanel = ({
         </QueryState>
       </div>
 
-      {showConnectAction ? <MailboxConnectionForm scope={scope} /> : null}
+      {showConnectAction ? (
+        <MailboxConnectionForm scope={scope} {...(teamId ? { teamId } : {})} />
+      ) : null}
     </section>
   )
 }

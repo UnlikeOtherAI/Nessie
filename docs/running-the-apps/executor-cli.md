@@ -75,7 +75,7 @@ For your own Nessie server, replace `nessie` with its HTTPS API URL.
 The desktop executor's **Add team** starts the same flow.
 
 1. Copy the eight-digit code shown on the computer.
-2. In Nessie, open **Agents → Executors → Add executor**. Paste the code,
+2. In Nessie, open **Admin › Computers › Pair a computer**. Paste the code,
    select the organisation, team and access scope, and review the fingerprint.
 3. Confirm the claimed organisation and team on the computer.
 4. Check that the executor is online, review its capabilities in Nessie and

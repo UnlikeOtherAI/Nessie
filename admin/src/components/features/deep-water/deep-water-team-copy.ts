@@ -7,7 +7,7 @@ import {
 import { readinessCopy } from './research-presentation'
 
 /**
- * What the `/apps/deep-water` hero says about DeepWater for this team, and
+ * What the `/admin/apps/deep-water` hero says about DeepWater for this team, and
  * what an owner's turn-on, turn-off or update refusal means (nessie.md §7.7
  * doorways, amendments N8.5 and N9). Pure, so every wording is tested without a
  * DOM. Plain UK English; no infrastructure names.

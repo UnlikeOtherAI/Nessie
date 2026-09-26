@@ -83,7 +83,7 @@ export const ExecutorLeasesPanel = ({ executorId }: { executorId: string }) => {
                   </button>
                 ) },
               ]}
-              empty={<p className="py-6 text-center text-sm text-[color:var(--tx3)]">Nobody is using local apps on this machine.</p>}
+              empty={<p className="py-6 text-center text-sm text-[color:var(--tx3)]">Nobody is using local apps on this computer.</p>}
               expandable={false}
               label="Local apps in use"
               rowKey={(row) => row.id}

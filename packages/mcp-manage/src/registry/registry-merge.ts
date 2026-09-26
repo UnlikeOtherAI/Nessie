@@ -25,7 +25,7 @@ import { readUpstreamSnapshot } from './registry-schema.js'
  *
  * Three columns are deliberately absent and never re-synced at all:
  * `name` (unique among public entries — a rename could collide with a row this
- * sync does not own), `slug` (the immutable identity behind `/apps/:slug`), and
+ * sync does not own), `slug` (the immutable identity behind `/admin/apps/:slug`), and
  * `moderationState` (a promotion decision, made in the importer).
  */
 

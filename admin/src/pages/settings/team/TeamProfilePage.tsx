@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 
+import { teamScopedPath } from '../../../lib/admin-scope'
 import { Card } from '../../../components/shared/Card'
 import { FormActions, FormError, FormSuccess } from '../../../components/shared/FormActions'
 import { FormField } from '../../../components/shared/FormField'
@@ -7,6 +9,7 @@ import { Input } from '../../../components/shared/FormControls'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 import { SettingsPanel, type SettingsTabHostProps } from '../../../components/shared/SettingsPanel'
 import { TeamAvatarPanel } from './TeamAvatarPanel'
+import { TeamCallProvider } from './TeamCallProvider'
 import { useRenameTeam } from '../../../facades/projects/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import type { MeResponse } from '@nessie/schemas'
@@ -47,7 +50,7 @@ const renameHelp = (externallyManaged: boolean, renamable: boolean): string | un
  * outside the product you were standing in.
  */
 
-export const TeamProfilePage = ({ tabs, team }: SettingsTabHostProps & { team?: TeamRecord }) => {
+export const TeamProfilePage = ({ host, team }: { host?: SettingsTabHostProps; team?: TeamRecord }) => {
   const rename = useRenameTeam()
   const { me, reconcileSession } = useAuthSession()
   const [name, setName] = useState('')
@@ -108,8 +111,7 @@ export const TeamProfilePage = ({ tabs, team }: SettingsTabHostProps & { team?: 
   }
 
   return (
-    <SettingsPanel eyebrow="Team" title="Profile">
-      {tabs}
+    <SettingsPanel eyebrow="Teams" host={host} title="Profile">
       <div className="grid gap-4">
         <Card as="section">
           <SectionLabel>Name</SectionLabel>
@@ -172,6 +174,23 @@ export const TeamProfilePage = ({ tabs, team }: SettingsTabHostProps & { team?: 
           only 404.
         */}
         {externallyManaged ? <TeamAvatarPanel team={team} /> : null}
+
+        {team ? <TeamCallProvider team={team} /> : null}
+
+        {team ? (
+          <Card as="section">
+            <SectionLabel>People</SectionLabel>
+            <p className="mt-2 text-sm text-[color:var(--tx2)]">
+              Who is in this team, and who has been invited.
+            </p>
+            <Link
+              className="mt-3 inline-block text-sm text-[color:var(--lnk)] hover:underline"
+              to={teamScopedPath('/admin/people', team.id)}
+            >
+              Open this team’s people
+            </Link>
+          </Card>
+        ) : null}
       </div>
     </SettingsPanel>
   )

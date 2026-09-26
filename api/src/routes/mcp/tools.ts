@@ -197,7 +197,7 @@ export const registerMcpToolsRoutes = (
     }
 
     // Builtin tools are upserted into the registry on demand; ensure they exist
-    // so the canonical /agents/tools surface always lists them (the legacy
+    // so the canonical /admin/advanced/tools surface always lists them (the legacy
     // /api/tools path is no longer guaranteed to run first).
     await Promise.all([
       ensureBuiltinToolsRegistered(prisma, actorContext.tenant.organizationId),

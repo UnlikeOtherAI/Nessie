@@ -482,7 +482,7 @@ runDatabaseTest('agent_create and agent_bind_channel hand back links, not ids', 
   const homeId = privateAgent.bindings[0]?.channelId
   assert.ok(homeId, 'a private agent is created with its home')
   const lines = privateResult.outputPreview.split('\n')
-  assert.equal(lines[0], `Created agent [Night Owl](/agents/${privateAgent.id}) (assistant) | model=deployment default`)
+  assert.equal(lines[0], `Created agent [Night Owl](/admin/agents/${privateAgent.id}) (assistant) | model=deployment default`)
   assert.equal(lines[1], `Lives in: its private home, [#Night Owl](/channels/${homeId}).`)
   // No model client on this run, so no picture — and the reason is data.
   assert.equal(lines[2], 'portrait: none (reason: "The model service is not configured.")')
@@ -497,7 +497,7 @@ runDatabaseTest('agent_create and agent_bind_channel hand back links, not ids', 
   const channelId = idFromLink(channelResult.outputPreview, 'channels')
   const teamResult = await runAgentCreateTool(context, { name: 'Night Shift' })
   assert.match(teamResult.outputPreview, /^Lives in: nowhere yet — add it to any channel\.$/m)
-  const teamAgentId = /\/agents\/([0-9a-f-]{36})\)/.exec(teamResult.outputPreview)?.[1]
+  const teamAgentId = /\/admin\/agents\/([0-9a-f-]{36})\)/.exec(teamResult.outputPreview)?.[1]
   assert.ok(teamAgentId, 'the id a later call needs is the link\'s last segment')
 
   // The default an organisation is provisioned with: owners may bind agents.
@@ -519,7 +519,7 @@ runDatabaseTest('agent_create and agent_bind_channel hand back links, not ids', 
   const { label } = await prisma.channel.findUniqueOrThrow({ where: { id: channelId }, select: { label: true } })
   assert.equal(
     bound.outputPreview,
-    `Bound [Night Shift](/agents/${teamAgentId}) to [#${label}](/channels/${channelId}). `
+    `Bound [Night Shift](/admin/agents/${teamAgentId}) to [#${label}](/channels/${channelId}). `
     + 'It now answers in that channel.',
   )
   assert.equal(await prisma.agentBinding.count({ where: { agentId: teamAgentId, channelId } }), 1)
@@ -570,9 +570,9 @@ runDatabaseTest('project_create, agent_list and agent_trigger_create hand back l
   await prisma.agentBinding.create({ data: { agentId: agent.id, channelId } })
   const listed = await runAgentListTool(context, { query: 'night watch' })
   const row = listed.outputPreview.split('\n').find((line) => line.includes('Night Watch')) ?? ''
-  assert.equal(row, `- [Night Watch](/agents/${agent.id}) | role=monitor | [#${channel.label}](/channels/${channelId})`)
+  assert.equal(row, `- [Night Watch](/admin/agents/${agent.id}) | role=monitor | [#${channel.label}](/channels/${channelId})`)
   assert.doesNotMatch(listed.outputPreview, /agentId=|channelId=/)
-  const updated = await runAgentUpdateTool(context, { agentId: idFromLink(row, 'agents'), role: 'night monitor' })
+  const updated = await runAgentUpdateTool(context, { agentId: idFromLink(row, 'admin/agents'), role: 'night monitor' })
   assert.match(updated.outputPreview, /^Updated agent "Night Watch" \(night monitor\)$/m)
   assert.equal(
     (await prisma.agent.findUniqueOrThrow({ where: { id: agent.id }, select: { role: true } })).role,
@@ -590,20 +590,20 @@ runDatabaseTest('project_create, agent_list and agent_trigger_create hand back l
   const trigger = await prisma.agentTrigger.findFirstOrThrow({ where: { agentId: agent.id }, select: { id: true } })
   assert.equal(
     armed.outputPreview,
-    `Created manual trigger [Night sweep](/agents/triggers/${trigger.id}) for [Night Watch](/agents/${agent.id})\n`
+    `Created manual trigger [Night sweep](/admin/automations/triggers/${trigger.id}) for [Night Watch](/admin/agents/${agent.id})\n`
     + `status=active | posts into [#${channel.label}](/channels/${channelId})`,
   )
   // agent_trigger_list names the same trigger by the same link.
-  const triggers = await runAgentTriggerListTool(context, { agentId: idFromLink(row, 'agents') })
+  const triggers = await runAgentTriggerListTool(context, { agentId: idFromLink(row, 'admin/agents') })
   assert.equal(
     triggers.outputPreview,
-    `- [Night sweep](/agents/triggers/${trigger.id}) | type=manual | status=active | enabled=true`,
+    `- [Night sweep](/admin/automations/triggers/${trigger.id}) | type=manual | status=active | enabled=true`,
   )
   const paused = await runAgentTriggerUpdateTool(context, {
     enabled: false,
-    triggerId: idFromLink(triggers.outputPreview, 'agents/triggers'),
+    triggerId: idFromLink(triggers.outputPreview, 'admin/automations/triggers'),
   })
-  assert.equal(paused.outputPreview, `Updated [Night sweep](/agents/triggers/${trigger.id}) | status=paused | enabled=false`)
+  assert.equal(paused.outputPreview, `Updated [Night sweep](/admin/automations/triggers/${trigger.id}) | status=paused | enabled=false`)
   assert.equal(
     (await prisma.agentTrigger.findUniqueOrThrow({ where: { id: trigger.id }, select: { enabled: true } })).enabled,
     false,

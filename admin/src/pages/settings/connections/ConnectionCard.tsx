@@ -26,7 +26,7 @@ import { AddSendAuthorization } from './AddSendAuthorization'
 
 export const PROVIDER_LABEL: Record<CommsProvider, string> = {
   slack: 'Slack',
-  google: 'Gmail',
+  google: 'Google',
   microsoft: 'Microsoft',
 }
 

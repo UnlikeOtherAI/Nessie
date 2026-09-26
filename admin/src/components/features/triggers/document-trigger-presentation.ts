@@ -6,7 +6,7 @@ import {
 } from '@nessie/schemas'
 
 /**
- * How a `document_changed` trigger reads on the Triggers page: its one-line
+ * How a `document_changed` trigger reads on the Schedules and triggers page: its one-line
  * summary in a list row, and what each delivery decided, in words
  * (docs/plans/2026-09-23-ticket-driven-agents/triggers.md → "`document_changed`").
  * A delivery carries metadata only — never the document or its title — so the

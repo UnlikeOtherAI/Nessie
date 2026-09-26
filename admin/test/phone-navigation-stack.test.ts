@@ -305,8 +305,8 @@ test('with a seed, a fresh stack carries the parent chain as render-only entries
   assert.equal(back.entries.length, 3, 'the outgoing info screen is retained for its slide')
   // A section change seeds again.
   // A section change seeds the origin the person came from beneath the route.
-  const elsewhere = advancePhoneNavigationStack(cold, '/agents/a1', 'payload:agent', 'single', seed)
-  assert.deepEqual(elsewhere.entries.map((entry) => entry.pathname), ['/channels/channel_a/info', '/agents/a1'])
+  const elsewhere = advancePhoneNavigationStack(cold, '/admin/agents/a1', 'payload:agent', 'single', seed)
+  assert.deepEqual(elsewhere.entries.map((entry) => entry.pathname), ['/channels/channel_a/info', '/admin/agents/a1'])
   // Without a seed a cold start is a single entry, as before.
   assert.equal(createPhoneNavigationStack('/channels/channel_a/info', 'p').entries.length, 1)
 })

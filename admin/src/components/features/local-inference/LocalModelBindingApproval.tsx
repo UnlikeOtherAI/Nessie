@@ -95,7 +95,7 @@ export const LocalModelBindingApproval = ({
   }
 
   const isDesktopHost = host.transport === 'desktop'
-  const executorPath = host.executorId ? `/agents/executors/${host.executorId}` : '/agents/executors'
+  const executorPath = host.executorId ? `/admin/computers/${host.executorId}` : '/admin/computers'
   return (
     <div className="grid gap-3 border-t border-[color:var(--sep)] pt-3" data-testid="local-model-approval">
       <Notice tone={prepared && ((isDesktopHost && Boolean(confirm.data)) || bindingStatus.data?.status === 'consented_pending_activation') ? 'success' : 'neutral'}>

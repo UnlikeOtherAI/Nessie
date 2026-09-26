@@ -68,7 +68,7 @@ export const ProjectToolConnections = () => {
     <section className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-semibold text-[color:var(--tx)]">Project tools</h2>
+          <h2 className="font-semibold text-[color:var(--tx)]">Tickets and code</h2>
           <p className="mt-1 text-sm text-[color:var(--tx2)]">
             Connect an account once, then bring any of its boards into a project from
             that project&rsquo;s Settings → Sources. Syncing runs as you, and sees exactly
@@ -100,7 +100,7 @@ export const ProjectToolConnections = () => {
       <FormError>{error ?? undefined}</FormError>
 
       {mine.length === 0 ? (
-        <EmptyState title="No project tools connected">
+        <EmptyState title="Nothing connected">
           Nothing is syncing yet. Connecting an account here does not change any board on
           its own — a member of a project points it at that project afterwards.
         </EmptyState>

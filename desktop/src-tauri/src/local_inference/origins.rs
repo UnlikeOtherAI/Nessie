@@ -110,13 +110,13 @@ mod tests {
     fn local_inference_controls_require_the_main_window_and_exact_origin() {
         assert!(assert_local_inference_caller(
             "main",
-            "https://app.nessie.works/agents",
+            "https://app.nessie.works/admin/agents",
             PRODUCTION_ADMIN_ORIGIN
         )
         .is_ok());
         assert!(assert_local_inference_caller(
             "document-123",
-            "https://app.nessie.works/agents",
+            "https://app.nessie.works/admin/agents",
             PRODUCTION_ADMIN_ORIGIN
         )
         .is_err());

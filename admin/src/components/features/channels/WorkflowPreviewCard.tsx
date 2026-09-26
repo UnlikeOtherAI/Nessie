@@ -40,7 +40,7 @@ export const WorkflowPreviewCard = ({
   }
   if (!template.data) return null
 
-  const designerHref = `/agents/workflow-designer/${template.data.id}`
+  const designerHref = `/admin/automations/workflows/designer/${template.data.id}`
   return (
     <>
       <section

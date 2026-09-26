@@ -178,12 +178,12 @@ Example:
 ```
 
 **Where step 8 happens.** Owner review of discovered tools lives on
-`/agents/tools`. The list can be narrowed with
+`/admin/advanced/tools`. The list can be narrowed with
 `?status=pending_review&instance=<instanceId>` when an API or the personal
 assistant needs to send an owner to one connector's unreviewed tools.
 `GET /api/mcp/instances` carries `pendingToolCount` per instance (counted only
 over instances the caller is already entitled to see).
-- On `/agents/tools`, reviewable rows carry a checkbox plus **Select all
+- On `/admin/advanced/tools`, reviewable rows carry a checkbox plus **Select all
   shown**, and a review bar offers **Approve selected** / **Disable selected**.
   The selected tool's detail column also has single **Approve** / **Disable**
   buttons.
@@ -250,7 +250,7 @@ configs. Three signed-in endpoints, backed by `@nessie/mcp-manage`
   `shareToOrg: true`) published straight into the org store.
 
 The personal assistant and the remote API use these for guided setup. In the
-browser, `/apps` owns the human path: **Add a custom app** accepts the address,
+browser, `/admin/apps` owns the human path: **Add a custom app** accepts the address,
 then its detail view completes the caller's own connection with an encrypted
 key or OAuth sign-in as required.
 
@@ -606,7 +606,7 @@ launcher run only.
   by `GET/PATCH /api/integrations/products/deep-water/agent-access`, its size
   derived from the manifest, never hard-coded. Owners can grant or revoke the
   whole bundle for the Personal Assistant or a shared agent; the individual
-  switches remain available at `/agents/tools`. The updater counts only when
+  switches remain available at `/admin/advanced/tools`. The updater counts only when
   its registry row is enabled and active, exactly matching worker exposure.
   Bundle grant/revoke takes the team transition lock, re-resolves the current
   projection generation, then takes the agent-policy lock; a contract upgrade

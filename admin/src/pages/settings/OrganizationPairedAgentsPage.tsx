@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { PairedAgentsTable } from '../../components/features/paired-agents/PairedAgentsTable'
 import { FormError } from '../../components/shared/FormActions'
 import { PaginationFooter } from '../../components/shared/PaginationFooter'
-import { SettingsPanel } from '../../components/shared/SettingsPanel'
+import { SettingsPanel, type SettingsTabHostProps } from '../../components/shared/SettingsPanel'
 import { createListPageStore } from '../../components/shared/list-page-state'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { OrganizationAdministrationGate } from './OrganizationAdministrationGate'
@@ -36,7 +36,7 @@ const orgPairedAgentsListStore = createListPageStore()
  * and it can revoke. It deliberately does not show token prefixes: an owner
  * needs to end somebody's credential, not to tell two of them apart.
  */
-const OrganizationPairedAgentsBody = () => {
+const OrganizationPairedAgentsBody = ({ host }: { host?: SettingsTabHostProps }) => {
   const navigate = useNavigate()
   // A revoke or a switch that silently failed would leave an owner believing
   // they had ended access they had not, which is the one outcome this surface
@@ -99,6 +99,7 @@ const OrganizationPairedAgentsBody = () => {
     <SettingsPanel
       actions={actions}
       eyebrow="Organisation"
+      host={host}
       footer={
         <PaginationFooter
           canNext={page < totalPages - 1}
@@ -116,25 +117,25 @@ const OrganizationPairedAgentsBody = () => {
       }
       subtitle={
         <p className="max-w-3xl text-sm text-[color:var(--tx3)]">
-          Pairing lets a member connect an outside agent — Claude Code, Codex, any MCP client —
-          to their own account, which the agent then works as for ninety days.{' '}
+          Pairing lets a member connect an outside program — Claude Code, Codex, and others —
+          to their own account, which the program then works as for ninety days.{' '}
           {allowed
-            ? 'Members may pair outside agents today.'
+            ? 'People may sign in programs today.'
             : 'Nobody can complete a new pairing. Credentials already issued keep working until '
               + 'they are revoked or expire — revoke them below if that is not what you want.'}
         </p>
       }
-      title="Paired agents"
+      title="Programs signed in as people"
     >
       <div className="grid gap-3">
         <FormError>{actionError}</FormError>
 
         <PairedAgentsTable
           credentials={pageRows}
-          emptyMessage="Nothing paired. No member of this organisation has paired an outside agent."
+          emptyMessage="Nothing paired. No member of this organisation has paired an outside program."
           isLoading={credentials.isPending}
           onOpen={(credentialId) =>
-            void navigate(`/settings/organization/paired-agents/${credentialId}`)}
+            void navigate(`/admin/security/programs/${credentialId}`)}
           onRevoke={(credentialId) => {
             setActionError(null)
             revoke.mutate(credentialId, {
@@ -154,8 +155,8 @@ const OrganizationPairedAgentsBody = () => {
   )
 }
 
-export const OrganizationPairedAgentsPage = () => (
-  <OrganizationAdministrationGate>
-    <OrganizationPairedAgentsBody />
+export const OrganizationPairedAgentsPage = ({ host }: { host?: SettingsTabHostProps }) => (
+  <OrganizationAdministrationGate host={host}>
+    <OrganizationPairedAgentsBody host={host} />
   </OrganizationAdministrationGate>
 )

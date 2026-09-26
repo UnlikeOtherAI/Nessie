@@ -1,27 +1,23 @@
 import { useCallback, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
-import {
-  DeploymentModelsTable,
-  pairId,
-} from '../../components/features/inference-models/DeploymentModelsTable'
-import { FormError, FormSuccess } from '../../components/shared/FormActions'
-import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
-import { Input } from '../../components/shared/FormControls'
-import { ListToolbar } from '../../components/shared/ListToolbar'
-import { PaginationFooter } from '../../components/shared/PaginationFooter'
-import { SettingsPanel } from '../../components/shared/SettingsPanel'
-import { LocalInferenceEnablement } from '../../components/features/local-inference/LocalInferenceEnablement'
-import { useDebouncedValue } from '../../hooks/useDebouncedValue'
-import { OrganizationAdministrationGate } from './OrganizationAdministrationGate'
-import type { SettingsTabHostProps } from '../../components/shared/SettingsPanel'
+import { DeploymentModelsTable, pairId } from './DeploymentModelsTable'
+import { FormError, FormSuccess } from '../../shared/FormActions'
+import { ConfirmDialog } from '../../shared/ConfirmDialog'
+import { Input } from '../../shared/FormControls'
+import { ListToolbar } from '../../shared/ListToolbar'
+import { PaginationFooter } from '../../shared/PaginationFooter'
+import { SettingsPanel, type SettingsTabHostProps } from '../../shared/SettingsPanel'
+import { LocalInferenceEnablement } from '../local-inference/LocalInferenceEnablement'
+import { useDebouncedValue } from '../../../hooks/useDebouncedValue'
+import { useOrganizationAdministration } from '../../../facades/organization/hooks'
 import {
   useDeploymentModelCatalog,
   useSetDeploymentModelsEnabled,
   useSetDeploymentModelEnabled,
   useTestDeploymentModel,
   type DeploymentModelRecord,
-} from '../../facades/inference-models/hooks'
+} from '../../../facades/inference-models/hooks'
 
 type TestOutcome = { latencyMs: number; message: string; ok: boolean }
 type BulkAction = 'disable' | 'enable'
@@ -43,19 +39,62 @@ type BulkAction = 'disable' | 'enable'
  * offering it and every agent write path refuses a move onto it. Agents already
  * pinned to it keep running, which is why each row states the affected count.
  *
- * Personal model subscriptions are deliberately out of scope — an organisation
+ * Your AI plans are deliberately out of scope — an organisation
  * owner has no standing to enable, disable or spend a person's own consumer
  * plan (docs/standards/personal-model-subscriptions.md).
  */
-type ModelAvailabilitySettingsProps = SettingsTabHostProps & {
-  scopeControl?: React.ReactNode
+type ModelAvailabilitySettingsProps = {
+  /** The screen hosting this surface: AI models, with its scope switch. */
+  host?: SettingsTabHostProps
+  /** The team whose narrowing this is; absent at the organisation. */
   teamId?: string
+  /**
+   * Why Test is not this viewer's, when it is not. A test is a real, billed
+   * call and `POST /api/inference/models/test` answers the owner only — at
+   * either scope — so a team admin sees the control and who holds it rather
+   * than a refusal after pressing it.
+   */
+  testUnavailableReason?: string
+}
+
+/**
+ * AI on people's own computers, at the scope on screen. Reading or writing it
+ * needs the organisation-administration standing (the API's check for this
+ * administrator-authored key): the sign-in provider's capability on a bound
+ * organisation, the local owner or admin role on an unbound install. Owner or
+ * admin alone is not it on a bound organisation — so the control is shown to
+ * that standing, read from the server's one answer, and anybody else is told
+ * who holds it.
+ */
+const OwnComputersPolicy = ({ teamId }: { teamId?: string }) => {
+  const status = useOrganizationAdministration()
+  if (status !== 'allowed') {
+    return (
+      <section className="border-y border-[color:var(--sep)] py-4 text-sm text-[color:var(--tx2)]">
+        {status === undefined
+          ? 'Checking who may set AI on people’s own computers…'
+          : status === 'unavailable'
+            ? 'We couldn’t check whether you may set AI on people’s own computers. Try again in a moment.'
+            : 'Only an organisation administrator sets whether people may use AI models on their own computers.'}
+      </section>
+    )
+  }
+  return (
+    <>
+      <LocalInferenceEnablement scope={teamId ? 'team' : 'organization'} teamId={teamId ?? null} />
+      <section className="border-b border-[color:var(--sep)] pb-4 text-sm text-[color:var(--tx2)]">
+        Choose a person’s own policy from their{' '}
+        <Link className="underline" to="/admin/people">member details</Link>
+        {teamId ? '.' : ', or a team’s from its scope above.'}
+      </section>
+    </>
+  )
 }
 
 export const ModelAvailabilitySettings = ({
-  scopeControl,
-  tabs,
+  host,
   teamId,
+  testUnavailableReason,
 }: ModelAvailabilitySettingsProps) => {
   // A toggle or a test that failed silently would leave an owner believing the
   // deployment was in a state it is not — the one outcome this page must never
@@ -69,7 +108,10 @@ export const ModelAvailabilitySettings = ({
 
   const [searchParams, setSearchParams] = useSearchParams()
   const modelFilter = searchParams.get('model') ?? ''
-  const providerFilter = searchParams.get('provider') ?? ''
+  // `modelProvider`, not `provider`: a filter is state that stays in the
+  // address, and `?provider=` is the one-shot OAuth return Connected accounts
+  // consumes. A name is one or the other, never both.
+  const providerFilter = searchParams.get('modelProvider') ?? ''
   const debouncedModelFilter = useDebouncedValue(modelFilter, 150)
   const debouncedProviderFilter = useDebouncedValue(providerFilter, 150)
   const filters = {
@@ -88,7 +130,7 @@ export const ModelAvailabilitySettings = ({
       : 'The model catalogue could not be read.'
     : null
 
-  const setFilter = useCallback((key: 'model' | 'provider', value: string) => {
+  const setFilter = useCallback((key: 'model' | 'modelProvider', value: string) => {
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
       if (value) next.set(key, value)
@@ -189,7 +231,8 @@ export const ModelAvailabilitySettings = ({
 
   return (
     <SettingsPanel
-      eyebrow={teamId ? 'Team' : 'Organisation'}
+      eyebrow="Organisation"
+      host={host}
       footer={
         <PaginationFooter
           canNext={catalog.canNext}
@@ -202,13 +245,16 @@ export const ModelAvailabilitySettings = ({
           pageSize={catalog.pageSize}
         />
       }
-      tabs={tabs}
-      title="Models"
+      title="AI models"
     >
       <div className="grid gap-3">
         <FormError>{actionError}</FormError>
         <FormError>{catalogError}</FormError>
         <FormSuccess>{actionMessage}</FormSuccess>
+
+        {/* The policy for the scope as a whole comes first, so the toolbar
+            below sits directly on the catalogue it filters. */}
+        <OwnComputersPolicy {...(teamId ? { teamId } : {})} />
 
         <ListToolbar
           count={matchingLabel}
@@ -222,13 +268,12 @@ export const ModelAvailabilitySettings = ({
           <div className="w-full max-w-xs">
             <Input
               aria-label="Filter by inference provider"
-              onChange={(event) => setFilter('provider', event.target.value)}
+              onChange={(event) => setFilter('modelProvider', event.target.value)}
               placeholder="Provider contains…"
               type="search"
               value={providerFilter}
             />
           </div>
-          {scopeControl}
           <div className="flex flex-wrap gap-2">
             <button
               className="admin-button admin-button-secondary admin-button-compact"
@@ -249,16 +294,8 @@ export const ModelAvailabilitySettings = ({
           </div>
         </ListToolbar>
 
-        {!teamId ? (
-          <>
-            <LocalInferenceEnablement scope="organization" />
-            <section className="border-b border-[color:var(--sep)] pb-4 text-sm text-[color:var(--tx2)]">
-              Choose a person’s policy from their{' '}
-              <Link className="underline" to="/settings/members">member details</Link>, or set the
-              inherited policy for a whole{' '}
-              <Link className="underline" to="/settings/team?tab=agents">team</Link>.
-            </section>
-          </>
+        {testUnavailableReason ? (
+          <p className="text-xs text-[color:var(--tx3)]">{testUnavailableReason}</p>
         ) : null}
 
         <DeploymentModelsTable
@@ -272,6 +309,7 @@ export const ModelAvailabilitySettings = ({
           onTest={onTest}
           onToggle={onToggle}
           pendingPair={pendingPair}
+          {...(testUnavailableReason ? { testUnavailableReason } : {})}
           testingPair={testingPair}
           testResults={testResults}
           togglePending={setEnabled.isPending}
@@ -295,9 +333,3 @@ export const ModelAvailabilitySettings = ({
     </SettingsPanel>
   )
 }
-
-export const OrganizationModelsPage = () => (
-  <OrganizationAdministrationGate>
-    <ModelAvailabilitySettings />
-  </OrganizationAdministrationGate>
-)

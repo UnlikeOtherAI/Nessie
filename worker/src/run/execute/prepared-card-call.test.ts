@@ -14,18 +14,31 @@ const ANSWER_ID = '0f6c1c50-4c1b-4d5e-9d40-2b7b5f7e8a05'
 const book = { arguments: { day: 'friday', time: '14:00' }, tool: 'room_book' }
 
 /** One card row, claimed the way Postgres would: only while `prepared_execution` is null. */
+const APPROVED_RUN_ID = '0f6c1c50-4c1b-4d5e-9d40-2b7b5f7e8a06'
+
 const cardStore = (overrides: Record<string, unknown> = {}) => {
   const row: Record<string, unknown> = {
     agentId: AGENT_ID, id: CARD_ID, preparedActions: { friday: book }, preparedExecution: null,
     resolvedActionKey: 'friday', responseMessageId: ANSWER_ID, status: 'resolved', ...overrides,
   }
   const prisma = {
+    // The approval continuation resumes RUN_ID; every other run starts fresh.
+    run: {
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        ({ continuationOfRunId: where.id === APPROVED_RUN_ID ? RUN_ID : null }),
+    },
     agentCard: {
       findUnique: async ({ where }: { where: { responseMessageId: string } }) =>
         where.responseMessageId === row.responseMessageId ? { ...row } : null,
       updateMany: async ({ data, where }: { data: { preparedExecution: unknown }; where: Record<string, unknown> }) => {
         if (where.id !== row.id) return { count: 0 }
-        if ('preparedExecution' in where && row.preparedExecution !== null) return { count: 0 }
+        if ('preparedExecution' in where) {
+          const expected = (where.preparedExecution as { equals: unknown }).equals
+          const matches = JSON.stringify(row.preparedExecution) === JSON.stringify(expected)
+            || (row.preparedExecution === null && typeof expected === 'object' && expected !== null
+              && !('runId' in (expected as object)))
+          if (!matches) return { count: 0 }
+        }
         row.preparedExecution = data.preparedExecution
         return { count: 1 }
       },
@@ -102,4 +115,21 @@ test('a prepared button is refused where the press could not make the decision w
   }), /too large/)
   // A valid preparation gets as far as needing the conversation.
   await assert.rejects(post({ card: card(), prepared: { friday: book } }), /current conversation/)
+})
+
+test('a call waiting on approval stays claimed, and the approved continuation runs it', async () => {
+  const { prisma, row } = cardStore()
+  const first = await claim(prisma)
+  assert.ok(first)
+
+  // The run suspended on the approval gate: its outcome is not written.
+  await recordPreparedCardOutcome(prisma, first, { pendingApproval: { approvalId: 'a-1' }, runId: RUN_ID })
+  assert.deepEqual(row.preparedExecution, { runId: RUN_ID })
+
+  // A stranger cannot take it; the run that continues the claimant can, with the same call.
+  assert.equal(await claim(prisma, OTHER_RUN_ID), null)
+  const approved = await claim(prisma, APPROVED_RUN_ID)
+  assert.deepEqual(approved?.call, first.call)
+  assert.deepEqual(row.preparedExecution, { runId: APPROVED_RUN_ID })
+  assert.equal(await claim(prisma, RUN_ID), null, 'the suspended run no longer owns it')
 })

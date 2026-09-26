@@ -91,6 +91,10 @@ dbTest('saved team Browserbase and Kimi are discoverable with tenant, member, pr
     assert.match(output, /Browserbase: scope=team; status=active/)
     assert.match(output, /Kimi for Coding: status=active/)
     assert.match(output, /provider=subscription\/kimi; models=kimi-for-coding/)
+    assert.match(output, /\/settings\/accounts\?tab=browsers/)
+    assert.match(output, /\/settings\/accounts\?tab=ai/)
+    assert.match(output, /\/admin\/connections/)
+    assert.doesNotMatch(output, /\/settings\/account\?|\/settings\/organization|\/settings\/connections/)
     assert.doesNotMatch(output, /PRIVATE-LABEL-CANARY|SECRET-CANARY|GLM/)
     assert.deepEqual(context.consumedSources?.list(), [{ scopeType: 'user', scopeId: users[0] }])
 

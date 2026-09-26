@@ -75,7 +75,7 @@ export const shots = [
     // up with no other change.
     name: 'hero-team',
     ready: 'text=Klára Benešová',
-    route: () => '/settings/members',
+    route: () => '/admin/people?scope=organisation',
     theme: THEMES.classic,
     viewport: HERO_VIEWPORT,
   },
@@ -86,7 +86,7 @@ export const shots = [
     kind: 'element',
     name: 'teammates-colleague',
     ready: 'text=Customer Support',
-    route: () => '/settings/members',
+    route: () => '/admin/people?scope=organisation',
     // The left column only: the right one is an "add member" form with a
     // password field in it, which is not what this row is about.
     inset: 18,
@@ -98,7 +98,7 @@ export const shots = [
     kind: 'element',
     name: 'teammates-inbox',
     ready: 'text=Renewal quote for Waverley',
-    route: () => `/agents/${IDS.mia}/mailbox`,
+    route: () => `/admin/agents/${IDS.mia}/mailbox`,
     // The reading pane, not the whole workspace: the workspace carries the
     // over-tall filter strip described on `hero-team`.
     selector: '[data-testid="mailbox-reading-pane"]',
@@ -110,7 +110,7 @@ export const shots = [
     claim: 'Knows only what it should — it is in the rooms it was given, and no others.',
     kind: 'element',
     name: 'teammates-scope',
-    // `/settings/agent-access` redirects to paired agents, which is the
+    // Not the programs signed in as you (`/settings/security`), which are the
     // opposite capability (publishing Nessie to other tools). The screen that
     // actually shows an agent's reach is the channel's own agent panel: Mia
     // and Leo are in this room, Ada is not.
@@ -145,7 +145,7 @@ export const shots = [
     kind: 'element',
     name: 'teamwork-always-on',
     ready: 'text=Month-end close',
-    route: () => '/agents/triggers',
+    route: () => '/admin/automations?tab=triggers',
     selector: 'ul[aria-label="Triggers"]',
     viewport: CUT_VIEWPORT,
   },
@@ -180,7 +180,7 @@ export const shots = [
     // This one is the same fact from the agents' side — every agent with the
     // person answerable for it.
     ready: 'text=Ada Lindqvist',
-    route: () => '/agents',
+    route: () => '/admin/agents',
     selector: '.admin-expandable-table',
     viewport: { height: 1100, width: 1560 },
   },
@@ -191,7 +191,7 @@ export const shots = [
     kind: 'element',
     name: 'control-host',
     ready: 'text=Northwind',
-    route: () => '/settings/organization',
+    route: () => '/admin/organisation',
     // The cards, not the page: `main section` is the full-height scroll
     // container and cuts out as a tall empty rectangle.
     selector: 'main .grid:has(> section.admin-card)',
@@ -207,7 +207,7 @@ export const shots = [
     kind: 'element',
     name: 'control-audit',
     ready: 'text=email.send',
-    route: () => '/audit',
+    route: () => '/admin/security?tab=audit',
     selector: 'ul[aria-label="Audit events"]',
     viewport: CUT_VIEWPORT,
   },

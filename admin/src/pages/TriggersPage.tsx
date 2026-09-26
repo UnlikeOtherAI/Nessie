@@ -13,8 +13,10 @@ import { ListToolbar } from '../components/shared/ListToolbar'
 import { OwnerGate } from '../components/shared/OwnerGate'
 import { PaginationFooter } from '../components/shared/PaginationFooter'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
+import type { SettingsTabHostProps } from '../components/shared/SettingsPanel'
 import { TabBar } from '../components/primitives/TabBar'
 import { useScrollMemory } from '../hooks/useScrollMemory'
+import { triggerUrl } from '../facades/alerts/trigger-url'
 
 const TYPE_OPTIONS: Array<{ label: string; value: TriggerTypeFilter }> = [
   { label: 'All types', value: 'all' },
@@ -28,18 +30,17 @@ const TYPE_OPTIONS: Array<{ label: string; value: TriggerTypeFilter }> = [
 ]
 
 /**
- * Triggers — the automation list.
+ * Schedules and triggers — the first tab of Automations.
  *
  * It was a column browser: a filtered rail on the left and the selected
  * trigger's whole detail beside it, with the selection carried in `?trigger=`.
- * It is now the section's ordinary shape — one header whose tabs are the
- * status strip, one table, one pager — and a trigger is its own screen at
- * `/agents/triggers/:triggerId`. Creating and editing were already a dialog
- * and stay one.
+ * It is now the section's ordinary shape — one header, one table, one pager —
+ * and a trigger is its own screen at `/admin/automations/triggers/:triggerId`.
+ * Creating and editing were already a dialog and stay one.
  */
 const triggersListStore = createListPageStore()
 
-export const TriggersPage = () => {
+export const TriggersPage = ({ host }: { host?: SettingsTabHostProps }) => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const state = useTriggersPageState()
@@ -48,13 +49,13 @@ export const TriggersPage = () => {
   const [pageSize, setPageSize] = useState(initialState.pageSize)
   const [requestedPage, setRequestedPage] = useState(initialState.page)
 
-  // `/agents/triggers?trigger=<id>` was this page's own selection state before
-  // a trigger had an address of its own. Anything still holding that link —
-  // a bookmark, an older notification — lands on the trigger it names.
+  // `?trigger=<id>` was this list's own selection state before a trigger had
+  // an address of its own; a link that still carries one lands on the trigger
+  // it names.
   const legacySelection = searchParams.get('trigger')
   useEffect(() => {
     if (legacySelection) {
-      void navigate(`/agents/triggers/${encodeURIComponent(legacySelection)}`, { replace: true })
+      void navigate(triggerUrl(legacySelection), { replace: true })
     }
   }, [legacySelection, navigate])
 
@@ -73,13 +74,12 @@ export const TriggersPage = () => {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* The status strip is the header's own tabs slot, as the agents list's
-          scope strip is: the section has one header rather than a hero with a
-          second bar of filters under it. The header is always rendered — a
-          refusal is a state of this screen, not a screen of its own, so Back
-          and the `h1` the settle focuses never disappear with it
-          (docs/navigation/deep-links-and-headers.md §9). Only the body below
-          is owner-gated. */}
+      {/* One header for the Automations screen: its tab strip is the host's,
+          so the status strip is the list's own filter, beside the search. The
+          header is always rendered — a refusal is a state of this screen, not
+          a screen of its own, so Back and the `h1` the settle focuses never
+          disappear with it (docs/navigation/deep-links-and-headers.md §9).
+          Only the body below is owner-gated. */}
       <ScreenHeader
         actions={[{
           icon: faPlus,
@@ -89,27 +89,15 @@ export const TriggersPage = () => {
           primary: true,
           priority: 100,
         }]}
-        eyebrow="Agents"
+        eyebrow={host?.eyebrow ?? 'Agents'}
         subtitle={
           <p className="max-w-3xl text-sm text-[color:var(--tx3)]">
             What wakes an agent or a workflow without anybody asking: a schedule, a repeating
             interval, an incoming webhook, or a system event.
           </p>
         }
-        tabs={
-          <TabBar
-            ariaLabel="Filter by status"
-            items={[
-              { count: state.statusCounts.all, label: 'All', value: 'all' },
-              { count: state.statusCounts.active, label: 'Active', value: 'active' },
-              { count: state.statusCounts.paused, label: 'Paused', value: 'paused' },
-              { count: state.statusCounts.error, label: 'Error', value: 'error' },
-            ]}
-            onChange={state.setStatusFilter}
-            value={state.statusFilter}
-          />
-        }
-        title="Triggers"
+        tabs={host?.tabs}
+        title={host?.title ?? 'Schedules and triggers'}
       />
 
       <div
@@ -130,6 +118,21 @@ export const TriggersPage = () => {
                 value: state.searchQuery,
               }}
             >
+              <TabBar
+                ariaLabel="Filter by status"
+                items={[
+                  { count: state.statusCounts.all, label: 'All', value: 'all' },
+                  { count: state.statusCounts.active, label: 'Active', value: 'active' },
+                  { count: state.statusCounts.paused, label: 'Paused', value: 'paused' },
+                  { count: state.statusCounts.error, label: 'Error', value: 'error' },
+                ]}
+                onChange={(next) => {
+                  state.setStatusFilter(next)
+                  setRequestedPage(0)
+                }}
+                role="radiogroup"
+                value={state.statusFilter}
+              />
               <Select
                 aria-label="Filter by type"
                 onChange={(event) => {
@@ -152,7 +155,7 @@ export const TriggersPage = () => {
                   : 'No triggers match the current filters.'
               }
               isLoading={state.isPending}
-              onOpen={(triggerId) => void navigate(`/agents/triggers/${triggerId}`)}
+              onOpen={(triggerId) => void navigate(triggerUrl(triggerId))}
               registry={state.registry}
               triggers={pageTriggers}
             />
@@ -186,7 +189,7 @@ export const TriggersPage = () => {
         channels={state.channels}
         defaultTarget={state.defaultCreateTarget}
         onClose={() => state.setCreateDialogOpen(false)}
-        onSaved={(trigger) => void navigate(`/agents/triggers/${trigger.id}`)}
+        onSaved={(trigger) => void navigate(triggerUrl(trigger.id))}
         open={state.isCreateDialogOpen}
         workflowInstallations={state.workflowInstallations}
         workflowTemplates={state.workflowTemplates}

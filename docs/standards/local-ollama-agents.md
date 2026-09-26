@@ -106,9 +106,11 @@ The rules below are the standing implementation contract.
 - Availability is a separate server-derived `online | offline | unknown`
   lease. It never reuses human presence or the agent activity state. A busy
   reachable model remains online; stale or unverifiable authority is unknown.
-- The owning surfaces are Agent Designer → Model and Settings → Connected
-  accounts. Contextual doorways are agent list/detail availability, scoped
-  Models/Team/Member settings and the paired Executor detail.
+- The owning surfaces are Agent Designer → Model and Your settings → Connected
+  accounts → AI plans (`/settings/accounts?tab=ai`, whether or not a computer
+  is paired; a host-health alert opens it at `#local-inference-host-<id>`).
+  Contextual doorways are agent list/detail availability, scoped
+  AI models, team and People pages and the paired computer's detail.
 - Host status and Pause/Resume/Revoke are one shared component parameterized by
   host scope. Only the owner gets a Repair doorway for an owner-host binding.
 - Every visible or executor-facing element must map to a row in

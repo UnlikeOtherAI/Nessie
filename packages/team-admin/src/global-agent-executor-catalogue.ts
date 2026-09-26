@@ -55,7 +55,7 @@ const wholeSuiteRule = (
   + (writeSurface === 'agent_tools'
     ? 'The prepare posts an Allow access card in this conversation and alerts the person with a link to it. '
       + 'Their press applies the grant and wakes you to continue; you and other agents cannot press it.'
-    : 'That confirmation happens on the Executors page or its chat card.'),
+    : 'That confirmation happens on the Computers page or its chat card.'),
 ]
 
 /**
@@ -152,7 +152,7 @@ export const executorSection = (
   if (executors.length === 0) {
     return [
       'There is no executor you can reach in this deployment. An executor is a '
-      + 'machine somebody pairs on the Executors page (/agents/executors); until '
+      + 'machine somebody pairs on the Computers page (/admin/computers); until '
       + 'one is paired there is nothing for an agent to run on, so send them '
       + 'there rather than designing around a machine that does not exist.',
     ]

@@ -123,7 +123,7 @@ test('the panel stays absent in a browser, where there is no companion to descri
 test('an available companion renders the pairing and daemon controls', async () => {
   const html = await renderPanel({ desktop: true, status: response('available', 'Ready.') })
   assert.match(html, /Nessie Desktop companion/)
-  assert.match(html, /Start executor/)
+  assert.match(html, /Start computer/)
   assert.match(html, /Folder and command permissions are controlled only in the local Nessie Executor/)
   assert.doesNotMatch(html, /Save folder permissions|Change folder|type="checkbox"/)
   assert.match(html, /Folder:.*Nessie work/)
@@ -147,7 +147,7 @@ test('a device that cannot host an executor gets one card carrying the shell’s
     const html = await renderPanel({ desktop: true, status: response(availability, reason) })
     assert.match(html, /Nessie Desktop companion/)
     assert.match(html, new RegExp(reason.replace(/[.]/g, '\\.')))
-    assert.doesNotMatch(html, /Start executor/, `${availability} offers no daemon control`)
+    assert.doesNotMatch(html, /Start computer/, `${availability} offers no daemon control`)
     assert.doesNotMatch(html, /Folder permissions/)
     assert.equal((html.match(/<section/g) ?? []).length, 1, `${availability} renders one explanation`)
   }
@@ -161,7 +161,7 @@ test('workspace_only keeps the controls and adds the explanation beside them', a
   const html = await renderPanel({ desktop: true, status: response('workspace_only', reason) })
   assert.match(html, /This computer can pair for file review and drafts/)
   assert.match(html, /add your user to the kvm group/)
-  assert.match(html, /Start executor/)
+  assert.match(html, /Start computer/)
 })
 
 test('a native command error remains visible verbatim', async () => {
@@ -200,7 +200,7 @@ test('a Mac carrying the menu bar app has a way to open it', async () => {
   assert.match(html, /Open Nessie Executor/)
   assert.match(html, /Choose folders and permitted programs in Nessie Executor/)
   // Nothing is supervising yet, so Desktop's own daemon control stays.
-  assert.match(html, /Start executor/)
+  assert.match(html, /Start computer/)
 })
 
 test('the doorway is there before anything is paired through Desktop', async () => {
@@ -212,7 +212,7 @@ test('the doorway is there before anything is paired through Desktop', async () 
   assert.match(html, /Nessie Executor on this Mac/)
   assert.match(html, /Open Nessie Executor/)
   // Desktop has no pairing of its own here, so it offers none of its controls.
-  assert.doesNotMatch(html, /Start executor/)
+  assert.doesNotMatch(html, /Start computer/)
   assert.doesNotMatch(html, /Folder permissions/)
 })
 
@@ -237,8 +237,8 @@ test('while the menu bar app has the daemon, Desktop says so instead of offering
   })
   assert.match(html, /is running this Mac/)
   assert.match(html, /Use its menu bar icon to start or stop it/)
-  assert.doesNotMatch(html, /Start executor/)
-  assert.doesNotMatch(html, /Stop executor/)
+  assert.doesNotMatch(html, /Start computer/)
+  assert.doesNotMatch(html, /Stop computer/)
   // And the way across is still on screen: deferring is not the same as a dead end.
   assert.match(html, /Open Nessie Executor/)
 })
@@ -249,7 +249,7 @@ test('Desktop keeps the stop button for a daemon it started itself', async () =>
     desktop: true,
     status: macResponse({ openable: true, supervising: false }, 'running'),
   })
-  assert.match(html, /Stop executor/)
+  assert.match(html, /Stop computer/)
 })
 
 /**
@@ -263,6 +263,6 @@ test('a shell that predates the menu bar app still renders its own controls', as
   delete (older as Partial<ExecutorCompanionStatusResponse>).menuBar
   const html = await renderPanel({ desktop: true, status: older })
   assert.match(html, /Nessie Desktop companion/)
-  assert.match(html, /Start executor/)
+  assert.match(html, /Start computer/)
   assert.doesNotMatch(html, /Open Nessie Executor/)
 })

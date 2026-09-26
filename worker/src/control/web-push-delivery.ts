@@ -69,7 +69,7 @@ export type DeliverWebPushInput = {
    * Threaded down from {@link deliverToRecipients}; see `./push-send-claim.ts`.
    */
   notificationKey: string
-  /** Deep link the service worker focuses/opens (e.g. `/channels/:id`, `/ops/usage`). */
+  /** Deep link the service worker focuses/opens (e.g. `/channels/:id`, `/admin/usage`). */
   deepLinkUrl: string
   /** Sender injection for tests (default: the real {@link WebPushClient} on the pinned transport). */
   sender?: WebPushSender

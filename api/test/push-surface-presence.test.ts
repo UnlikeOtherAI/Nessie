@@ -258,6 +258,41 @@ test('clears the Ops usage surface for a non-owner', async () => {
   assert.equal(created?.channelId, null)
 })
 
+test('records the Schedules and triggers list for an owner and clears it for anyone else', async () => {
+  const rows = new Map<string, Record<string, unknown>>()
+  const owners = new Set([userId])
+  const prisma = withSession({
+    organizationMember: {
+      findFirst: async ({ where }: { where: { role: string; userId: string } }) =>
+        where.role === 'owner' && owners.has(where.userId) ? { id: 'owner-1' } : null,
+    },
+  }, rows)
+  const triggers = PushSurfaceSchema.parse({ kind: 'triggers' })
+
+  await recordPushSurfacePresence(prisma as never, {
+    clientId: tabletClientId,
+    organizationId,
+    sequence: 1n,
+    sessionId,
+    surface: triggers,
+    userId,
+  })
+  assert.equal(rows.get(`${userId}:${tabletClientId}`)?.surfaceKind, 'triggers')
+
+  // The list answers owners only, so a member standing on it sees none of the
+  // triggers a push would be about.
+  owners.clear()
+  await recordPushSurfacePresence(prisma as never, {
+    clientId: tabletClientId,
+    organizationId,
+    sequence: 2n,
+    sessionId,
+    surface: triggers,
+    userId,
+  })
+  assert.equal(rows.get(`${userId}:${tabletClientId}`)?.surfaceKind, null)
+})
+
 test('records an agent-owned knowledge space for a viewer who can see its owning agent', async () => {
   const rows = new Map<string, Record<string, unknown>>()
   let knowledgeSpaceWhere: unknown

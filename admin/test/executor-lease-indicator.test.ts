@@ -77,11 +77,11 @@ test('the reply panel hands its own root to the indicator, and the main composer
   assert.match(launcher, /<ExecutorLeaseIndicator[^>]*rootMessageId=\{null\}/)
 })
 
-test('the indicator lives in the composer toolbar, beside Run on executor, never at rest', () => {
+test('the indicator lives in the composer toolbar, beside Run on a computer, never at rest', () => {
   const composer = readSource('../src/components/features/channels/ChannelComposer.tsx')
   const bar = composer.slice(composer.indexOf('admin-compose-bar'), composer.indexOf('admin-compose-send-slot'))
-  const run = bar.indexOf('aria-label="Run on executor"')
+  const run = bar.indexOf('aria-label="Run on a computer"')
   const indicator = bar.indexOf('{executorLeaseIndicator}')
-  assert.ok(run > 0 && indicator > run, 'rendered inside the toolbar, after Run on executor')
+  assert.ok(run > 0 && indicator > run, 'rendered inside the toolbar, after Run on a computer')
   assert.ok(indicator < bar.indexOf('<ComposerEmojiButton'), 'and before the next glyph')
 })

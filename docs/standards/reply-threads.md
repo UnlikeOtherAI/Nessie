@@ -184,8 +184,13 @@ Every choice below 0.8 falls back — to a written reply, no earlier message,
 `mention`, 👍. No judgement at all — no Ledger evaluation client, an evaluation
 that failed or took longer than four seconds, a pinned snapshot that no longer
 names the room's agent — leaves the room its structural answer: the system-DM
-or conversation rule, or the engagement model for an ordinary agent DM, placed
-in the main chat (`answerInMainChat`). Nothing is posted about a missing
+or conversation rule, or for an ordinary agent DM a written reply by its one
+agent, placed in the main chat (`answerInMainChat`). The engagement model is
+never asked in a one-on-one room: it may choose silence, and a message there
+is always the agent's to answer. A typed answer a concurrent delivery claimed
+for a card while this one was judging is still owed its card's run, whichever
+judgement won the pin (`resolveCardResponseDecisions` is asked again after
+the judgement). Nothing is posted about a missing
 judgement; a notice on every message of a private chat would be worse than the
 plain answer it replaces.
 

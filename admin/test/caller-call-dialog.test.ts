@@ -77,7 +77,8 @@ test('an owner or admin can open the team call-provider setting from the popup',
     ),
   )
 
-  assert.match(html, /via <a[^>]+href="\/settings\/organization"[^>]*>Google Meet<\/a>/)
+  // A team's call provider is set on that team's page, under Admin › Teams.
+  assert.match(html, /via <a[^>]+href="\/admin\/teams"[^>]*>Google Meet<\/a>/)
 })
 
 test('call banner names the caller and joins through an anchor', () => {

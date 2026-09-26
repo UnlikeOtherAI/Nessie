@@ -19,12 +19,30 @@ import { useLocation, useSearchParams } from 'react-router-dom'
 // scope ledger) passes the stored value as the fallback and writes its store
 // alongside `select`, so the URL wins when it carries a tab and the preference
 // decides when it does not.
+//
+// The third element is what the address itself names — the raw param, or
+// null when it names none. Degrading to the fallback is right for a section
+// strip and wrong for a switch whose value is the *target of a write*: the
+// Organisation pages' scope switch (`?scope=team:<id>`) must treat a team the
+// address names but the strip does not offer as an error, never quietly show
+// the organisation in its place, so it reads the named value rather than
+// re-reading the param beside this hook.
+
+type TabParamOptions = {
+  /**
+   * Params that belong to one tab rather than to the page — a list's search,
+   * its filters, its selection, its page. They leave in the same replace when
+   * the tab changes, so one tab's `?search=` never narrows the next tab's list.
+   */
+  clears?: readonly string[]
+}
 
 export const useTabParam = <T extends string>(
   name: string,
   tabs: readonly T[],
   fallback: T,
-): [T, (next: T) => void] => {
+  { clears }: TabParamOptions = {},
+): [T, (next: T) => void, string | null] => {
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
   const raw = searchParams.get(name)
@@ -43,6 +61,9 @@ export const useTabParam = <T extends string>(
       setSearchParams(
         (current) => {
           const params = new URLSearchParams(current)
+          const currentRaw = current.get(name)
+          const previous = tabs.some((tab) => tab === currentRaw) ? currentRaw : fallback
+          if (clears && previous !== next) for (const owned of clears) params.delete(owned)
           if (next === fallback || !tabs.some((tab) => tab === next)) params.delete(name)
           else params.set(name, next)
           return params
@@ -50,7 +71,7 @@ export const useTabParam = <T extends string>(
         { replace: true, state },
       )
     },
-    [fallback, name, setSearchParams, state, tabs],
+    [clears, fallback, name, setSearchParams, state, tabs],
   )
-  return [active, select]
+  return [active, select, raw]
 }

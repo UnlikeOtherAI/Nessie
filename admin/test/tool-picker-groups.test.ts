@@ -88,7 +88,7 @@ test('the picker renders one section per declared category, in the shared order'
 // the whole difference between the two modes — so these mount for real.
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   pretendToBeVisual: true,
-  url: 'http://localhost:5455/agents',
+  url: 'http://localhost:5455/admin/agents',
 })
 const { createRoot } = await import('react-dom/client')
 

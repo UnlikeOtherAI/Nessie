@@ -305,10 +305,10 @@ export const AgentDesignerContent = ({
   // previous entry is popped, else the list replaces the cold deep link.
   const handleBack = () => {
     if (navigation) {
-      navigation.back({ returnTo, fallback: '/agents' })
+      navigation.back({ returnTo, fallback: '/admin/agents' })
       return
     }
-    void navigate(returnTo ?? '/agents', { replace: true })
+    void navigate(returnTo ?? '/admin/agents', { replace: true })
   }
 
   const handleSave = async () => {
@@ -376,7 +376,7 @@ export const AgentDesignerContent = ({
       onDone?.()
       return
     }
-    void navigate('/agents')
+    void navigate('/admin/agents')
   }
   // A read-only view offers no save at all. A *disabled* Save would promise
   // that something here could be saved once some condition is met, and nothing

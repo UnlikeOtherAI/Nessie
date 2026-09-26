@@ -45,14 +45,14 @@ export const ToolDetailPage = () => {
     [allTools],
   )
 
-  const backToList = () => void navigate('/agents/tools')
+  const backToList = () => void navigate('/admin/advanced/tools')
 
   if (!tool) {
     // The header is rendered here too: loading, failure and not-found are
     // states of this screen, and a phone with no header has no Back at all.
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <ScreenHeader backLabel="Back to Tools" onBack={backToList} title="Tool" />
+        <ScreenHeader backLabel="Back to Tool registry" onBack={backToList} title="Tool" />
         <OwnerGate>
           <QueryState
             className="flex flex-1 items-center justify-center"
@@ -72,8 +72,8 @@ export const ToolDetailPage = () => {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ScreenHeader
-        backLabel="Back to Tools"
-        eyebrow="Tools"
+        backLabel="Back to Tool registry"
+        eyebrow="Tool registry"
         onBack={backToList}
         subtitle={
           <div className="flex flex-wrap items-center gap-2">

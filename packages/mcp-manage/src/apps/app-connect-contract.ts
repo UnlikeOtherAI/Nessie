@@ -37,7 +37,7 @@ export type AppConnectContext = {
 }
 
 export type ConnectAppInput = {
-  /** `/apps/:slug`'s identifier — a slug, or an id for a slug-less row. */
+  /** `/admin/apps/:slug`'s identifier — a slug, or an id for a slug-less row. */
   identifier: string
   scopeType: McpServerScopeType
   scopeId: string

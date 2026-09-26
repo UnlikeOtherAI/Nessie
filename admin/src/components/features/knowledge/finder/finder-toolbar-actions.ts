@@ -4,6 +4,19 @@ import {
   faGear,
   faPlus,
 } from '@fortawesome/free-solid-svg-icons'
+import {
+  ArrowDown,
+  ArrowDownAZ,
+  ArrowDownWideNarrow,
+  ArrowUp,
+  CalendarDays,
+  Clock3,
+  FolderPlus,
+  Plus,
+  Ruler,
+  Shapes,
+  type LucideIcon,
+} from 'lucide-react'
 import type {
   PageHeaderAction,
   PageHeaderButtonAction,
@@ -95,6 +108,13 @@ export type FinderToolbarInput = {
 }
 
 const SORT_KEYS: FinderSortKey[] = ['name', 'modified', 'created', 'size', 'kind']
+const SORT_OUTLINE_ICONS: Record<FinderSortKey, LucideIcon> = {
+  name: ArrowDownAZ,
+  modified: Clock3,
+  created: CalendarDays,
+  size: Ruler,
+  kind: Shapes,
+}
 
 const sortMenuItems = (
   sort: FinderSort,
@@ -107,6 +127,7 @@ const sortMenuItems = (
       checked: candidate === key,
       id: `sort-${candidate}`,
       label: FINDER_SORT_LABELS[candidate],
+      outlineIcon: SORT_OUTLINE_ICONS[candidate],
       // Re-picking the key you are on flips the direction, which is what a
       // column header does and what a person expects from a sort menu.
       onSelect: () =>
@@ -117,16 +138,22 @@ const sortMenuItems = (
         ),
     })),
     {
+      id: 'sort-direction-divider',
+      kind: 'separator',
+    },
+    {
       checked: direction === 'asc',
       id: 'sort-ascending',
       label: 'Ascending',
       onSelect: () => onSelectSort(composeFinderSort(key, 'asc')),
+      outlineIcon: ArrowUp,
     },
     {
       checked: direction === 'desc',
       id: 'sort-descending',
       label: 'Descending',
       onSelect: () => onSelectSort(composeFinderSort(key, 'desc')),
+      outlineIcon: ArrowDown,
     },
   ]
 }
@@ -142,11 +169,13 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
     ...(writable || input.isRootColumn
       ? [{
           icon: faPlus,
+          outlineIcon: Plus,
           id: 'new',
           items: [
             ...(writable || input.isRootColumn
               ? [{
                   icon: faFolderPlus,
+                  outlineIcon: FolderPlus,
                   id: 'new-folder',
                   // At the Knowledge root there is no space to create a folder
                   // in. The row being added is a space, which needs a visibility
@@ -187,10 +216,12 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
     {
       disabled: input.isVirtualColumn,
       icon: faArrowDownWideShort,
+      outlineIcon: ArrowDownWideNarrow,
       id: 'sort',
       items: sortMenuItems(input.sort, input.onSelectSort),
       kind: 'menu',
       label: `Sort: ${FINDER_SORT_LABELS[finderSortKey(input.sort)]}`,
+      menuStyle: 'sidebar',
       priority: 80,
       title: input.isVirtualColumn
         ? 'Latest and Shared with me are ordered by time'
@@ -199,10 +230,12 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
     ...(input.showViewAction
       ? [{
           icon: selectedView?.icon,
+          outlineIcon: selectedView?.outlineIcon,
           id: 'view',
           items: finderViewOptions.map((option) => ({
             checked: option.value === input.view,
             icon: option.icon,
+            outlineIcon: option.outlineIcon,
             id: option.value,
             label: option.label,
             onSelect: () => input.onSelectView(option.value),
@@ -210,6 +243,7 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
           })),
           kind: 'menu',
           label: `View: ${selectedView?.label ?? 'Columns'}`,
+          menuStyle: 'sidebar',
           priority: 70,
         } satisfies PageHeaderAction]
       : []),

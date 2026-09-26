@@ -22,24 +22,36 @@ import { WorkflowInstallationDetail } from '../components/features/workflows/Wor
 import { WorkflowRunDetail } from '../components/features/workflows/WorkflowRunDetail'
 import { WorkflowTemplateDetail } from '../components/features/workflows/WorkflowTemplateDetail'
 import { DemonstrationDraftsColumn } from '../components/features/workflows/DemonstrationDraftsColumn'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
+import type { SettingsTabHostProps } from '../components/shared/SettingsPanel'
 
 /**
- * Workflows page. One list — the workflow templates — with drill-down:
- * workflow → installation → run. Installations are subordinate to their
- * workflow instead of a parallel top-level list of UUIDs.
+ * Workflows — the third tab of Automations. One list — the workflow templates
+ * — with drill-down: workflow → installation → run. Installations are
+ * subordinate to their workflow instead of a parallel top-level list of UUIDs.
  *
  * Selection and search are URL state (`?search=&template=&installation=&run=
  * &failedRuns=1&demonstrationDrafts=1`), not `useState`/`location.state`: the
- * registry declares this route family's filters linkable
- * (`navigation/admin-surfaces.ts`'s `/agents/(?:workflows|…)` row), and a
- * selection that only lived in component state could not be bookmarked,
- * shared, or survive a refresh (docs/plans/2026-09-05-admin-architecture-review/audit/05-pages-routing.md F5).
+ * registry declares Automations' filters linkable
+ * (`navigation/admin-surfaces.ts`'s `/admin/automations` row), and a selection
+ * that only lived in component state could not be bookmarked, shared, or
+ * survive a refresh (docs/plans/2026-09-05-admin-architecture-review/audit/05-pages-routing.md F5).
  */
 
 const readParam = (searchParams: URLSearchParams, key: string): string | undefined =>
   searchParams.get(key) ?? undefined
 
-export const WorkflowsPage = () => {
+const WORKFLOW_DESIGNER_PATH = '/admin/automations/workflows/designer'
+
+// The designer's return address: Automations on this tab, with whatever the
+// list was showing.
+const workflowsPath = (params: URLSearchParams): string => {
+  const next = new URLSearchParams(params)
+  next.set('tab', 'workflows')
+  return `/admin/automations?${next.toString()}`
+}
+
+export const WorkflowsPage = ({ host }: { host?: SettingsTabHostProps }) => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { me } = useAuthSession()
@@ -187,9 +199,12 @@ export const WorkflowsPage = () => {
     if (selectedTemplate?.id) params.set('template', selectedTemplate.id)
     if (selectedInstallationId) params.set('installation', selectedInstallationId)
     if (selectedRunId) params.set('run', selectedRunId)
-    const query = params.toString()
-    return `/agents/workflows${query ? `?${query}` : ''}`
+    return workflowsPath(params)
   }, [searchQuery, selectedInstallationId, selectedRunId, selectedTemplate])
+  const openNewWorkflow = () =>
+    void navigate(WORKFLOW_DESIGNER_PATH, {
+      state: { returnTo: workflowsReturnPath },
+    })
 
   const columns: ReactNode[] = []
   const columnIndexes = new Map<string, number>()
@@ -238,15 +253,9 @@ export const WorkflowsPage = () => {
       demonstrations={demonstrations}
       failedRunsCount={failedRuns.length}
       filteredTemplates={filteredTemplates}
-      isWorkflowAdmin={isWorkflowAdmin}
       key="workflows"
       onImported={(template) =>
         updateParams({ installation: null, run: null, template: template.id })
-      }
-      onNewWorkflow={() =>
-        void navigate('/agents/workflow-designer', {
-          state: { returnTo: workflowsReturnPath },
-        })
       }
       onSelectTemplate={selectTemplate}
       onShowDemonstrationDrafts={() => setShowDemonstrationDrafts(true)}
@@ -282,8 +291,10 @@ export const WorkflowsPage = () => {
             )
           }
           onEdit={() =>
-            void navigate(`/agents/workflow-designer/${selectedTemplate.id}`, {
-              state: { returnTo: `/agents/workflows?template=${selectedTemplate.id}` },
+            void navigate(`${WORKFLOW_DESIGNER_PATH}/${selectedTemplate.id}`, {
+              state: {
+                returnTo: workflowsPath(new URLSearchParams({ template: selectedTemplate.id })),
+              },
             })
           }
           onSelectInstallation={(installationId) =>
@@ -369,9 +380,25 @@ export const WorkflowsPage = () => {
     ?? columnIndexes.get('workflows')
     ?? 0
 
+  // The screen's one header is Automations': the column browser beneath it
+  // is this tab's body, its first column the templates list.
   return (
-    <div className="h-full w-full">
-      <ColumnBrowserViewport activeColumn={activeColumn} columns={columns} />
-    </div>
+    <section className="flex h-full w-full min-h-0 flex-col">
+      <ScreenHeader
+        actions={isWorkflowAdmin ? [{
+          id: 'new-workflow',
+          label: 'New workflow',
+          onSelect: openNewWorkflow,
+          primary: true,
+          priority: 100,
+        }] : undefined}
+        eyebrow={host?.eyebrow}
+        tabs={host?.tabs}
+        title={host?.title ?? 'Workflows'}
+      />
+      <div className="min-h-0 w-full flex-1">
+        <ColumnBrowserViewport activeColumn={activeColumn} columns={columns} />
+      </div>
+    </section>
   )
 }

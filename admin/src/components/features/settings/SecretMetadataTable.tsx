@@ -52,16 +52,16 @@ const statusLabel: Record<SecretRecord['status'], string> = {
 
 const emptyCopy: Record<SecretPageScope, Record<SecretsTab, string>> = {
   organization: {
-    active: 'No organisation secrets yet. Use “New secret” to add one everybody inherits.',
-    revoked: 'No organisation secret has been revoked.',
+    active: 'No organisation keys yet. Use “Add a key” to add one everybody inherits.',
+    revoked: 'No organisation key has been revoked.',
   },
   personal: {
-    active: 'No secrets reach you yet. Use “New secret” to save one of your own.',
+    active: 'No keys reach you yet. Use “Add a key” to save one of your own.',
     revoked: 'Nothing here has been revoked.',
   },
   team: {
-    active: 'No secrets reach this team yet. Use “New secret” to add one.',
-    revoked: 'No secret in this team has been revoked.',
+    active: 'No keys reach this team yet. Use “Add a key” to add one.',
+    revoked: 'No key in this team has been revoked.',
   },
 }
 
@@ -137,7 +137,7 @@ const CopySecretMetadataButton = ({ label, value }: CopySecretMetadataButtonProp
       : `Copy ${label.toLowerCase()}`
   // The visible label is just "Copy": the column header beside it already says
   // *what* is being copied, and spelling it out twice per row pushed the
-  // Precedence and Actions columns off the side of a 1440px viewport. The full
+  // Where-it-comes-from and Actions columns off the side of a 1440px viewport. The full
   // sentence stays in the accessible name and the tooltip.
   const visibleLabel = feedback === 'copied'
     ? 'Copied'
@@ -228,14 +228,14 @@ export const SecretMetadataTable = ({
   const active = tab === 'active'
   const columns: (DataTableColumn<SecretRow> | null)[] = [
     {
-      header: 'Secret key',
+      header: 'Key',
       key: 'name',
-      render: (secret) => <MetadataCell label="Secret key" value={secret.name} />,
+      render: (secret) => <MetadataCell label="Key" value={secret.name} />,
     },
     {
       header: 'Reference',
       key: 'reference',
-      render: (secret) => <MetadataCell label="Secret reference" value={secret.reference} />,
+      render: (secret) => <MetadataCell label="Reference" value={secret.reference} />,
     },
     // The organisation page is a single level, so every row would read
     // "Organisation" — the page title already says it.
@@ -246,7 +246,7 @@ export const SecretMetadataTable = ({
       secondary: true,
     },
     active ? {
-      header: 'Precedence',
+      header: 'Where it comes from',
       key: 'precedence',
       render: (secret) => <PrecedenceCell secret={secret} />,
       secondary: true,
@@ -285,7 +285,7 @@ export const SecretMetadataTable = ({
         columns={columns.filter((column): column is DataTableColumn<SecretRow> => column !== null)}
         empty={<EmptyState>{emptyCopy[pageScope][tab]}</EmptyState>}
         expandable={false}
-        label="Secrets table"
+        label="Keys table"
         loading={isLoading}
         minWidth="46rem"
         rowClassName={(secret) => (secret.lockedBy ? 'opacity-60' : undefined)}
@@ -304,7 +304,7 @@ export const SecretMetadataTable = ({
           setPendingRevoke(null)
         }}
         open={pendingRevoke !== null}
-        title="Revoke this secret?"
+        title="Revoke this key?"
       />
     </>
   )

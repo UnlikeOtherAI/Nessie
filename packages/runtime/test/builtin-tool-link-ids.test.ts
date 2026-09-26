@@ -7,7 +7,7 @@ import { BUILTIN_TOOL_DEFINITIONS } from '../src/index.js'
  * The Designer's tools answer with markdown links, not `key=<uuid>` pairs, so
  * a later call reads its id out of a link. Each description says which link:
  * an agent's, a channel's, a project's or a trigger's — and a trigger's
- * `/agents/triggers/<id>` is never read as an agent's `/agents/<id>`.
+ * `/admin/automations/triggers/<id>` is never read as an agent's `/admin/agents/<id>`.
  */
 
 const description = (toolId: string): string => {
@@ -28,8 +28,8 @@ test('agent_list keeps the agent link and the channel link apart', () => {
 })
 
 test('a trigger link is never an agent link', () => {
-  says('agent_trigger_create', '/agents/triggers/… link, which is never an agent\'s: an agentId is only '
-    + 'ever read from an /agents/<agentId> link')
+  says('agent_trigger_create', '/admin/automations/triggers/… link, which is never an agent\'s: an agentId is only '
+    + 'ever read from an /admin/agents/<agentId> link')
 })
 
 test('channel_create and project_list say where the next id is read from', () => {

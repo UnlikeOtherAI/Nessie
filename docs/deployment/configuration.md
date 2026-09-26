@@ -166,7 +166,7 @@ embedder keeps its own signal handling.
 Each deployment registers its **own** Google Cloud OAuth client, so the
 verification burden is yours, not Nessie's. Which scopes a connection may ask
 for is declared in `packages/schemas/src/google-capabilities.ts`; the
-Permissions section of `/settings/connections` renders that catalog and lets a
+Permissions section of `/settings/accounts` renders that catalog and lets a
 person grant one capability at a time without reconnecting.
 
 Google sorts the relevant scopes into tiers, and the tier decides the review:

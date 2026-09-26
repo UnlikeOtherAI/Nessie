@@ -54,9 +54,9 @@ export const runAccountConnectionsListTool = async (
       'Saved accounts do not grant an agent browser tools or choose its model. '
         + 'A personal model plan can run only an ordinary agent this person owns, '
         + 'after they choose it; Nessie-managed agents cannot be moved onto it.',
-      'Browserbase setup: [personal account](/settings/account?tab=agents), '
-        + '[organisation account](/settings/organization?tab=agents). '
-        + 'Model plans: [Connected accounts](/settings/connections). '
+      'Browserbase setup: [personal account](/settings/accounts?tab=browsers), '
+        + '[company and team accounts](/admin/connections). '
+        + 'Model plans: [Connected accounts](/settings/accounts?tab=ai). '
         + 'A key saved only in Secrets is not a Browserbase connection.',
     ].join('\n'),
     toolName: 'account_connections_list',

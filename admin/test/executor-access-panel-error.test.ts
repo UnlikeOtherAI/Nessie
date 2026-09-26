@@ -119,7 +119,7 @@ const render = (accessQuery: unknown): Promise<string> => withDom(async () => {
         { client },
         h(
           MemoryRouter,
-          { initialEntries: ['/agents/executors?tab=permissions'] },
+          { initialEntries: ['/admin/computers?tab=permissions'] },
           h(ExecutorDetailPanels, {
             accessQuery: accessQuery as never,
             executor,
@@ -162,7 +162,7 @@ test('a payload this build cannot read is said out loud, not rendered as a lack 
   assert.doesNotMatch(text, /private=unknown/)
   // The tabs still work: a failed fetch must not throw away the place the
   // person had navigated to. Naming the executor is the screen header's job on
-  // `/agents/executors/:executorId`, not this panel's — it used to repeat the
+  // `/admin/computers/:executorId`, not this panel's — it used to repeat the
   // label and status inside its own card, one heading below the screen's.
   assert.match(text, /Permissions/)
 })
@@ -182,7 +182,7 @@ test('when the access view reads, the grant controls are on screen', async () =>
     isLoading: false,
     refetch: () => {},
   })
-  assert.match(text, /Everyone in this team can use this executor/)
+  assert.match(text, /Everyone in this team can use this computer/)
   assert.match(text, /Can useAdmin/)
   assert.match(text, /Projects/)
   assert.doesNotMatch(text, /Review changes|Review activation/)

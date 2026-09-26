@@ -20,11 +20,11 @@ export const TaskSetCreatePage = () => {
   }
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <ScreenHeader title="New task set" />
+      <ScreenHeader title="New batch job" />
       <PageBody>
         <TaskSetForm identity={`new:${pageId ?? 'manual'}:${versionId ?? ''}`} initial={initial}
           onSave={create.mutateAsync} onSaved={(set) => navigate(taskSetPath(set.id), { replace: true })}
-          submitLabel="Create task set" />
+          submitLabel="Create batch job" />
       </PageBody>
     </section>
   )

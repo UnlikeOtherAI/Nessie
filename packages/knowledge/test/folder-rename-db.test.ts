@@ -119,6 +119,30 @@ dbTest('renaming a folder changes its name and nothing else', async (t) => {
   })
   assert.equal(renamedDocument?.status, 'draft')
   assert.equal(await prisma.knowledgePageVersion.count({ where: { pageId: document.id } }), 2)
+
+  const published = await provider.publishPage({
+    actorUserId: user.id, organizationId: organization.id, pageId: document.id,
+  })
+  const editedPublished = await provider.updatePage(document.id, {
+    authorId: user.id,
+    authorType: 'user',
+    body: 'revised plan',
+    organizationId: organization.id,
+    publishOnSave: true,
+  })
+  assert.equal(editedPublished?.status, 'published')
+  assert.equal(editedPublished?.publishedVersionId, editedPublished?.latestVersion?.id)
+  assert.notEqual(editedPublished?.publishedVersionId, published?.publishedVersionId)
+
+  const agentEdit = await provider.updatePage(document.id, {
+    authorId: user.id,
+    authorType: 'agent',
+    body: 'agent proposal',
+    organizationId: organization.id,
+    publishOnSave: true,
+  })
+  assert.equal(agentEdit?.status, 'draft')
+  assert.equal(agentEdit?.publishedVersionId, editedPublished?.publishedVersionId)
 })
 
 dbTest('a folder still refuses content on the update path, as it does on create', async (t) => {
