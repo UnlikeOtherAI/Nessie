@@ -98,7 +98,7 @@ const seed = async (prisma: PrismaClient) => {
   })
   const homeOf = async (userId: string): Promise<{ agentId: string; home: Home }> => {
     const bootstrap = await ensureGlobalAgentBootstrap(prisma, {
-      blueprint: AGENT_DESIGNER_BLUEPRINT, organizationId, teamId: team.id, userId,
+      blueprint: AGENT_DESIGNER_BLUEPRINT, organizationId, userId,
     })
     const home = await prisma.channel.findUniqueOrThrow({
       where: { id: bootstrap.channelId },

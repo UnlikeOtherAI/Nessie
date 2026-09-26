@@ -32,8 +32,7 @@ import {
   updateOrganizationMemberRole,
 } from '../services/users.js'
 import { attemptPersonalAssistantAvatar } from '../services/personal-assistant-avatar.js'
-import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
-import { attemptGlobalAgentsBootstrap } from '../services/global-agents.js'
+import { ensureSystemAgentsForMember } from '../services/system-agents-bootstrap.js'
 import { sendMemberManagementError } from './member-management-errors.js'
 import type { RouteDeps } from './types.js'
 
@@ -190,14 +189,9 @@ export const registerUserRoutes = (
         teamId,
       })
 
-      await ensurePersonalAssistantBootstrap(prisma, {
-        organizationId: actorContext.tenant.organizationId,
-        teamId,
-        userId: user.id,
-      })
-      await attemptGlobalAgentsBootstrap(
+      await ensureSystemAgentsForMember(
         prisma,
-        { organizationId: actorContext.tenant.organizationId, teamId, userId: user.id },
+        { organizationId: actorContext.tenant.organizationId, userId: user.id },
         (error) => request.log.error({ err: error }, 'global_agent_bootstrap_failed'),
       )
       await attemptPersonalAssistantAvatar({

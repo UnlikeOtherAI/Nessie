@@ -213,6 +213,13 @@ jobs:
           cargo test --manifest-path executor/windows-provenance/Cargo.toml
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Test shared Windows executor runtime
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          cargo test --manifest-path executor/windows-common/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Test executor service crate
         if: steps.scope.outputs.windows_native == '1'
         shell: pwsh

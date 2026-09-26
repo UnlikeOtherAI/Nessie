@@ -68,12 +68,14 @@ try {
   const text = await page.locator('body').innerText()
   for (const expected of [
     'Executor: running · Folder: Nessie',
-    'Change folder',
-    'Save permissions',
+    'Folder and command permissions are controlled only in the local Nessie Executor app or CLI.',
     'Forget pairing on this computer',
     'permanently deletes local draft copies',
   ]) {
     if (!text.includes(expected)) throw new Error(`Executor companion visual is missing: ${expected}`)
+  }
+  if (await page.getByRole('button', { name: /Change folder|Save permissions/ }).count()) {
+    throw new Error('Nessie must not expose machine resource permission controls.')
   }
   if (text.includes('C:\\') || text.includes('/Users/')) {
     throw new Error('Executor companion visual disclosed a full local path.')

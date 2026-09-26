@@ -40,8 +40,12 @@ claims, machine permissions and the explicit mailbox provenance discriminator.
   uses its channel scope alone: a destination's own channel basis must never
   reopen organisation or agent broadcast lanes. Containment
   (`constrainScopesToDestination`) is a floor under all of
-  this, but it constrains **memory recall only** — never treat it as "nothing
-  crosses". Details: `CLAUDE.md` → "Disclosure boundaries"; spec and build status:
+  this, but it constrains **recall only** — memory and history — never treat it
+  as "nothing crosses". And context the platform assembles on a run's behalf —
+  recall, and the room history of a run no person is live in — never restricts
+  that run's reply in its own room; only what the run chose to read, or was
+  explicitly handed, does (see "Assembled context never restricts a reply").
+  Details: `CLAUDE.md` → "Disclosure boundaries"; spec and build status:
   `docs/plans/2026-08-11-disclosure-boundaries-build.md`.
 
 ## Detail
@@ -53,7 +57,8 @@ Provenance, not redaction: every read that enters a run's context feeds the
 `ConsumedSourceSink` in the same change. The rule and its corollaries (empty
 basis fails open, shared `scopeForVisibility`, channel scopes only for
 non-public channels, search fails closed, every read path asks one predicate,
-live lanes cut by `runReplyIsRestricted`, containment = memory recall only): stated above.
+live lanes cut by `runReplyIsRestricted`, containment = recall only, assembled
+context never restricts a reply): stated above.
 Facts not restated there:
 
 - Thread reach is the channel's read audience: only public standard non-system
@@ -96,7 +101,10 @@ Facts not restated there:
   therefore still restricted even when the agent is visibly in the channel.
   The shareable placeholder describes that exact fact — its sources are not
   available to everyone who can read the channel — rather than claiming that
-  the agent or the readers are missing from the channel roster.
+  the agent or the readers are missing from the channel roster. Such a reply
+  comes only from a read the run made or a lineage it was handed: recall and
+  an unattended run's room history never produce one on their own (see
+  "Assembled context never restricts a reply").
 - Sink writers today: the transcript window (transitive), memory recall, every
   knowledge-base read, the conversation searches, attachment reads, every
   executor `mcp.*` result, an admitted checkpoint — and a checkpoint on resume
@@ -217,11 +225,14 @@ Facts not restated there:
   private-conversation source is simply not recalled for that run
   (`requiresProjectWriteRecallContainment`, `execute/memory.ts`). That
   judgement runs after the search, so such a run's search goes
-  `PROJECT_WRITE_RECALL_DEPTH` (3) times deeper — 15 thoughts instead of 5, 36
+  `CONTAINED_RECALL_DEPTH` (3) times deeper — 15 thoughts instead of 5, 36
   history candidates instead of 12 — and keeps what survives, in rank order, up
-  to the normal count; only those enter the basis. Searching at the normal
-  depth, a requester whose best matches had all been fed by a private DM got
-  nothing back while project knowledge sat just below the cut
+  to the normal count; only those enter the basis. Every other contained run
+  judges and searches the same way against its own room instead of the
+  project (`recallLineageGate`; see "Assembled context never restricts a
+  reply"). Searching at the normal depth, a requester whose best matches had
+  all been fed by a private DM got nothing back while project knowledge sat
+  just below the cut
   (`worker/test/db/project-write-recall-depth.test.ts`). Only the thoughts it
   keeps are marked accessed and logged as recalled
   (`searchAndLogThoughtsInScopes`'s `retain`, `packages/memory/src/search.ts`):
@@ -231,14 +242,67 @@ Facts not restated there:
   project-write one. A history candidate costs no passage read unless its seed
   is one the run may take and still fits the budget, so the hits the deeper
   history search passes over cost it no neighbour reads
-  (`retrieveRelevantHistory`, `execute/history-recall.ts`). The gate and every
-  other run are unchanged: a run without write tools recalls exactly as before,
-  at the same depth, and a delegate in its own home is not contained at all. The
+  (`retrieveRelevantHistory`, `execute/history-recall.ts`). The gate is
+  unchanged, and a delegate in its own home is not contained at all. The
   trade-off, accepted: such a run does not remember what the requester said in
   a private DM, nor its own room's channel memories, even where its reply
   alone could have carried them. The alternative — letting the gate accept a
   source when every member of it can read the project — compares sets of
   people, which this machinery deliberately never does.
+- **Assembled context never restricts a reply.** Some of what enters a run is
+  put there by the platform rather than chosen by the run: recall, and the
+  room's own history. Provenance cannot tell whether the model used such
+  context, so admitting it stamps the reply either way — and in a shared room
+  a stamp withholds the reply from everyone who cannot reach the source. Seen
+  live: a "Morning Joke" agent's daily post in a public room, run as its
+  schedule's owner (`disclosure-viewer.ts`), recalled that owner's DM with the
+  agent. Every joke was withheld from the rest of the room, and deleting the DM
+  would not have helped: each joke then inherited the stamp from the one before
+  it through the room's history, for as long as the room kept a stamped post in
+  its window. So, for a contained run (`requiresMemoryDestinationContainment`):
+  - **Recall** — thoughts and history passages alike — takes an item only when
+    its whole lineage adds nothing to the reply basis the run already holds
+    (`recallLineageGate` → `addedReplyRestriction`, `execute/agent-message.ts`,
+    the reply stamp's own subtraction). Material the room may read is still
+    recalled from any conversation — another public room, the room's own
+    history, the destination's team or project — and so is more of a private
+    conversation whose lineage the run already carries. A private conversation
+    elsewhere is not recalled into a shared room; reaching it is a deliberate
+    read — a conversation search such as `team_search` — which stamps as ever,
+    for the agents whose tool policy offers one. A run lent project
+    writes keeps the narrower project-write floor above. Both search
+    `CONTAINED_RECALL_DEPTH` times deeper, as that paragraph describes.
+  - **A run no person is live in reads its room as the room does**
+    (`readsRoomHistoryAsRoom`): a schedule, an event trigger, a channel policy
+    acting on its saved authorizer. It still reads *as* that person — the
+    viewer decides what it may read — but what it writes is a contribution to
+    the room, so a transcript turn whose lineage would add to its reply basis
+    is withheld from it like an unreadable one (`loadConversation`'s
+    `addedRestriction`). A turn whose lineage the run already carries — a
+    DeepWater wake's research card, whose kickoff hands the run that same
+    basis — is admitted as before.
+  - **A live requester keeps their history.** A person's own interactive turn
+    in the room still reads the restricted posts they may read and inherits
+    their stamp: continuing a restricted answer with the one person entitled to
+    it is what the shareable placeholder exists for. The trade-off, accepted:
+    that person's own follow-ups in the room stay restricted while such a post
+    is in the window.
+  - **A checkpoint goes only to the run it was claimed for, or to a person's
+    reply** (`loadRunCheckpointForRun`). Its note quotes the stopped run's
+    sources verbatim, so admitting it stamps the reply. A reply in the
+    conversation it stopped in — same agent, principal, thread and reply root
+    — takes one only if its person may read it, asked before the one-shot
+    claim, so a member who may not read it leaves it for one who may; no other
+    run takes one by conversation at all. A schedule used to take a person's
+    "keep going" and post from their notes with their stamp
+    ([tech-and-run-budgets.md](tech-and-run-budgets.md) → "Who resumes one").
+  A delegate in its own home is not contained and is unaffected. Deliberate
+  reads — knowledge pages, conversation searches, attachments, executor
+  output — and a trigger's own handed lineage stamp exactly as before. Pinned
+  end to end, through the real trigger fire and run executor, by
+  `worker/test/db/scheduled-post-disclosure.test.ts` and
+  `checkpoint-resume-scope.test.ts`; the recall depth and lineage cases by
+  `project-write-recall.test.ts` and `project-write-recall-depth.test.ts`.
 - **Document versions retain their source boundary.** A `KnowledgePageVersion`
   stores its own basis scopes and private-conversation source authors. A reader
   first passes the document home's ordinary entitlement, then must satisfy the

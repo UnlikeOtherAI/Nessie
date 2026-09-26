@@ -21,6 +21,8 @@ import {
 import type { ExecutionDependencies, RunContext, RunPlanContext } from './types.js'
 import { resolveRollingWatch } from './watch-status-gate.js'
 import { isContentlessAfterReacting } from './working-marker.js'
+import { isMarkedDone } from './one-on-one-plan.js'
+import { concludesQuietly } from './channel-policy-admission.js'
 
 export type RunLoopOutcome = 'cancelled' | 'completed' | 'failed' | null
 
@@ -189,6 +191,8 @@ export const handleRunLoopOutcome = async (
     runUtility: input.inference.runUtility,
   })
   const reactionWasTheAnswer = isContentlessAfterReacting(input.reacted, responseText)
+  const markedDone = isMarkedDone(context.oneOnOnePlan, input.reacted, responseText)
+  const concludedQuietly = !reactionWasTheAnswer && concludesQuietly(payload, responseText)
 
   await completeRunExecution(deps, payload, context, input.planContext, {
     invocations: input.loopResult.invocations,
@@ -198,6 +202,8 @@ export const handleRunLoopOutcome = async (
     responseText,
     ...(rollingWatch ? { rollingWatch } : {}),
     ...(reactionWasTheAnswer ? { reactionWasTheAnswer: true } : {}),
+    ...(markedDone ? { markedDone: true } : {}),
+    ...(concludedQuietly ? { concludedQuietly: true } : {}),
     toolCallsUsed: input.loopResult.toolCallsUsed,
   })
   return 'completed'

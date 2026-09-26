@@ -7,7 +7,7 @@ one-line summary and points here; **this file is the rule.**
 
 ## Reply threads (#233)
 
-`Thread` is a conversation *container* (channel → named threads); Slack-style *reply threads* live one level deep on messages: `Message.rootMessageId` (nullable self-FK; replies to replies attach to the same root), with materialized per-root `replyCount`/`lastReplyAt`/`replyParticipantIds` updated atomically via `@nessie/runtime` `applyReplyBookkeeping` in the message-create transaction, and `MessageThreadFollow` per (user, root) with auto-follow on participate (author the root, reply, or be mentioned in a reply) plus explicit unfollow. Reply visibility inherits the container; deleted roots tombstone and keep their replies; "Also send to #channel" posts an inline top-level copy carrying `metadata.replyBroadcast.rootMessageId`. Message-create accepts `rootMessageId` (validated same-container top-level root); list defaults to top-level posts and takes `?rootMessageId=` for paginated replies; realtime adds `message.reply` + `message.reply.meta`. A run triggered by a message replies **into that message's reply thread** by default (root = `triggerMessage.rootMessageId ?? triggerMessage.id`), and thread-following scopes to that reply thread; the legacy DeepWater launcher handoff and external-agent paths stay top-level and byte-identical. **A DeepWater research lives under its research card:** its results, notices and hidden wake kickoffs are posted at `card.rootMessageId ?? card.id` (`deepWaterReplyRoot`), so a woken agent's run answers in that reply thread, because placement follows its kickoff's root. The one exception is a notice about a person's brief that was never launched: the room was never shown it, so it goes top-level to the requester's own Personal Assistant conversation ([deepwater.md](deepwater.md) → "Delivery"). **Where a run replies and what it reads are separate questions** (`resolveReplyRootMessageId` vs `resolveConversationRootMessageId`): the conversation window narrows to a reply thread only when the trigger message is *itself* a reply. A run answering a top-level message is starting a reply thread, not sitting in one, so it reads the channel thread — scoping it to its own trigger would leave it a one-message window with no history. Admin: reply-summary bar under roots and a deep-linkable right-hand thread panel (`/channels/:id/threads/:threadId/replies/:rootId`); how it presents per layout, and how it closes, is the navigation framework's call ([docs/navigation/overview.md](../navigation/overview.md) §7, "The reply thread panel on `split`"). Reply-unread counters (#212) and the Threads inbox (#213) build on `MessageThreadFollow`.
+`Thread` is a conversation *container* (channel → named threads); Slack-style *reply threads* live one level deep on messages: `Message.rootMessageId` (nullable self-FK; replies to replies attach to the same root), with materialized per-root `replyCount`/`lastReplyAt`/`replyParticipantIds` updated atomically via `@nessie/runtime` `applyReplyBookkeeping` in the message-create transaction, and `MessageThreadFollow` per (user, root) with auto-follow on participate (author the root, reply, or be mentioned in a reply) plus explicit unfollow. Reply visibility inherits the container; deleted roots tombstone and keep their replies; "Also send to #channel" posts an inline top-level copy carrying `metadata.replyBroadcast.rootMessageId`. Message-create accepts `rootMessageId` (validated same-container top-level root); list defaults to top-level posts and takes `?rootMessageId=` for paginated replies; realtime adds `message.reply` + `message.reply.meta`. In a room with other people in it, a run triggered by a message replies **into that message's reply thread** by default (root = `triggerMessage.rootMessageId ?? triggerMessage.id`) — a room whose only person is the one talking answers in its main chat instead (see "One-on-one rooms" below) — and thread-following scopes to that reply thread; the legacy DeepWater launcher handoff and external-agent paths stay top-level and byte-identical. **A DeepWater research lives under its research card:** its results, notices and hidden wake kickoffs are posted at `card.rootMessageId ?? card.id` (`deepWaterReplyRoot`), so a woken agent's run answers in that reply thread, because placement follows its kickoff's root. The one exception is a notice about a person's brief that was never launched: the room was never shown it, so it goes top-level to the requester's own Personal Assistant conversation ([deepwater.md](deepwater.md) → "Delivery"). **Where a run replies and what it reads are separate questions** (`resolveReplyRootMessageId` vs `resolveConversationRootMessageId`): the conversation window narrows to a reply thread only when the trigger message is *itself* a reply. A run answering a top-level message is starting a reply thread, not sitting in one, so it reads the channel thread — scoping it to its own trigger would leave it a one-message window with no history. Admin: reply-summary bar under roots and a deep-linkable right-hand thread panel (`/channels/:id/threads/:threadId/replies/:rootId`); how it presents per layout, and how it closes, is the navigation framework's call ([docs/navigation/overview.md](../navigation/overview.md) §7, "The reply thread panel on `split`"). Reply-unread counters (#212) and the Threads inbox (#213) build on `MessageThreadFollow`.
 
 Server-authored rows (`packages/team-admin/src/system-authored-message.ts`) are their
 own door beside `createThreadMessage`, because none of a person's send
@@ -86,7 +86,8 @@ exists.
 
 **The structural-address rule.** A top-level `user` message in a conversation
 engages that thread's agent the way a message in its DM does — placement
-`thread`, no engagement judgement, no model call — decided in
+`thread` in a shared room and the main chat in a one-on-one one, no
+engagement judgement, no model call — decided in
 `resolveConversationDecisions` (`worker/src/run/orchestrate.ts`) beside the
 existing system-DM branch. That is what lets a conversation be started empty
 and still be answered by its first message. It is keyed on structure only:
@@ -133,9 +134,70 @@ phone header action and info action are hidden; Browser remains available when
 the agent has that grant. An agent DM's General thread remains in the list, so
 its older messages stay reachable.
 
+## One-on-one rooms
+
+Reply threads keep an exchange from interrupting the other people in a room. A
+**single-person room** — a DM whose only member is the person talking
+(`isSinglePersonRoom` in `worker/src/run/orchestrate-one-on-one.ts`:
+`channel.type === 'dm'` and one `channel_members` row), which covers the
+Personal Assistant's DM, a global agent's home, a private agent's home, a
+shared agent's per-person DM and every conversation inside them — has nobody to
+interrupt, so its answers go to the **main chat**. Standard channels, DMs
+between people, group DMs and conversations in shared rooms keep the default
+above. A turn written inside a reply thread still continues there in every
+room: `resolveReplyRootMessageId`'s in-thread rule outranks any placement.
+
+When the room also has exactly one agent (`isOneOnOneAgentRoom`; an
+external-agent DM is excluded because every turn is proxied to its own
+product), each message is structurally addressed to that agent, so **Jev**
+decides *how* it answers, in one evaluation before the run — the bubble
+anchors where the reply will land from its first thinking token
+(`judgeOneOnOneTurn` in `packages/runtime/src/one-on-one-decisions.ts`, called
+from `decideOneOnOneTurn`):
+
+- **response** — `reply`, a written answer; `act`, do what was asked with the
+  agent's tools, where the run is told no written reply is owed and to answer
+  with a bare ✅ when done — not silence, which the loop reads as a failed
+  provider and asks again — and the platform turns an answer with nothing worth
+  reading into a ✅ on the person's message, in the run's own commit
+  (`isMarkedDone`); or `acknowledge`, a reaction only — 👍, 🎉 or ❤️ — and no
+  run.
+- **earlier** — whether the message goes back to one of the recent top-level
+  messages above the immediate exchange (the two newest are skipped, because
+  that is where a reply already sits; at most twelve are offered), and which.
+  Never asked for a message inside a reply thread.
+- **reference** — how the answer points there: `mention`, in the main chat and
+  in words; `link`, in the main chat with `metadata.messageRef` drawn as a chip
+  that jumps to the earlier message (`MessageRefChip`, resolved from the
+  reader's own feed, never a copy kept on the reply); or `thread`, posted in the
+  earlier message's reply thread (the rule after the in-thread one in
+  `resolveReplyRootMessageId`).
+
+Every choice below 0.8 falls back — to a written reply, no earlier message,
+`mention`, 👍. No judgement at all — no Ledger evaluation client, an evaluation
+that failed or took longer than four seconds, a pinned snapshot that no longer
+names the room's agent — leaves the room its structural answer: the system-DM
+or conversation rule, or the engagement model for an ordinary agent DM, placed
+in the main chat (`answerInMainChat`). Nothing is posted about a missing
+judgement; a notice on every message of a private chat would be worse than the
+plain answer it replaces.
+
+The judgement is pinned once on the trigger's `Message.channelDecision`: a
+`ChannelDecisionSnapshotSchema` with `policyFingerprint: 'one-on-one'`, no
+authorizer, and the lineage of every turn Jev read exactly as the transcript
+would admit them (`conversationTurnLineage`) — so a redelivered decide job reads
+it back instead of judging again, and the run admits what its plan was derived
+from (`admitTriggerMessageLineage`). The run reads its plan from that snapshot
+(`readOneOnOnePlan`, `worker/src/run/execute/one-on-one-plan.ts`) and is told
+what the message goes back to — quoted only from its own admitted transcript —
+and whether no written reply is owed (`buildOneOnOnePlanBlock`, behind the
+clock). The Personal Assistant's `agent_conversation_start` places the target's
+answer by the same rule: the main chat when the destination is the requester's
+own room.
+
 ## Reply placement + thinking bubbles
 
-([docs/plans/2026-08-05-agent-thinking-bubbles-and-reply-routing.md](../plans/2026-08-05-agent-thinking-bubbles-and-reply-routing.md)): where a run's reply lands is decided **before** the run starts — engagement decisions carry a model-judged `replyPlacement` (`thread` = answer owed to the asker's exchange; `channel` = standalone message to the room; @mentions and PA DMs stamp `thread` structurally, never by content heuristics) persisted on `Run.replyPlacement`; `resolveReplyRootMessageId` (`worker/src/run/execute/reply-placement.ts`) applies it after the DeepWater-handoff/external-agent/PA-delegation carve-outs and persists the resolved anchor on `Run.replyRootMessageId`. While a run thinks, a per-run `ThinkingRecorder` coalesces visible reasoning deltas (2 KiB/250 ms) plus tool-activity lines into durable `run_thinking_chunks` rows, each also published on the thread SSE stream with its chunk id (`stream.reasoning` / `stream.thinking.tool`; `stream.start` now carries the reply anchor, and `stream.done` is always published last). A tool line can be rewritten in place — the same row, republished under the same chunk id — so a call that watches something for minutes (a coding-session wait) keeps one current line rather than one per look, and still names the ToolCall its call became (`ThinkingRecorder.replaceToolLine`); the admin replaces that entry where it stands (`appendThinkingEntry`). The admin renders a dashed, full-width **thinking bubble** with a 1–2-line live thought ticker wherever the reply will land — bottom of the channel feed for top-level replies; compact under the root row plus full bubble in the thread panel for threaded ones (reply text streams only where the reply will land) — and clicking it opens a centered thought-process dialog that streams live and merges the durable log (`GET /api/threads/:id/thinking` bootstrap for mid-run joiners, `GET /api/threads/:id/runs/:runId/thinking` full log, both thread-visibility-gated; `stream.*` stays excluded from SSE backlog replay). The dialog always reads the full log, and again each time another tool line is known to have returned, because only the full log carries a tool line's screenshots: the recorder names the `ToolCall` a line became once its call ends (`run_thinking_chunks.tool_call_id`), and a line whose call returned a local program's images carries their refs, drawn as thumbnails under it ([executor-local-mcp.md](executor-local-mcp.md) → "People see a call's screenshots where they read the call").
+([docs/plans/2026-08-05-agent-thinking-bubbles-and-reply-routing.md](../plans/2026-08-05-agent-thinking-bubbles-and-reply-routing.md)): where a run's reply lands is decided **before** the run starts — engagement decisions carry a model-judged `replyPlacement` (`thread` = answer owed to the asker's exchange; `channel` = standalone message to the room; @mentions stamp `thread` and system DMs `channel` structurally, and a one-on-one room takes Jev's placement or the main chat — never content heuristics) persisted on `Run.replyPlacement`; `resolveReplyRootMessageId` (`worker/src/run/execute/reply-placement.ts`) applies it after the DeepWater-handoff/external-agent/PA-delegation carve-outs and persists the resolved anchor on `Run.replyRootMessageId`. While a run thinks, a per-run `ThinkingRecorder` coalesces visible reasoning deltas (2 KiB/250 ms) plus tool-activity lines into durable `run_thinking_chunks` rows, each also published on the thread SSE stream with its chunk id (`stream.reasoning` / `stream.thinking.tool`; `stream.start` now carries the reply anchor, and `stream.done` is always published last). A tool line can be rewritten in place — the same row, republished under the same chunk id — so a call that watches something for minutes (a coding-session wait) keeps one current line rather than one per look, and still names the ToolCall its call became (`ThinkingRecorder.replaceToolLine`); the admin replaces that entry where it stands (`appendThinkingEntry`). The admin renders a dashed, full-width **thinking bubble** with a 1–2-line live thought ticker wherever the reply will land — bottom of the channel feed for top-level replies; compact under the root row plus full bubble in the thread panel for threaded ones (reply text streams only where the reply will land) — and clicking it opens a centered thought-process dialog that streams live and merges the durable log (`GET /api/threads/:id/thinking` bootstrap for mid-run joiners, `GET /api/threads/:id/runs/:runId/thinking` full log, both thread-visibility-gated; `stream.*` stays excluded from SSE backlog replay). The dialog always reads the full log, and again each time another tool line is known to have returned, because only the full log carries a tool line's screenshots: the recorder names the `ToolCall` a line became once its call ends (`run_thinking_chunks.tool_call_id`), and a line whose call returned a local program's images carries their refs, drawn as thumbnails under it ([executor-local-mcp.md](executor-local-mcp.md) → "People see a call's screenshots where they read the call").
 
 ## Liveness (client only, no server events)
 

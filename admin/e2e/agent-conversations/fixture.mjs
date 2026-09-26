@@ -189,7 +189,6 @@ export const seedFixture = async (pipeline, seedScope, ensurePersonalAssistantBo
   // `agent_conversation_start`, which the card case needs in the toolset.
   const assistant = await ensurePersonalAssistantBootstrap(prisma, {
     organizationId: scope.organizationId,
-    teamId: scope.teamId,
     userId: owner.id,
   })
 

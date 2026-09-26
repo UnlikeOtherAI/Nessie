@@ -9,7 +9,7 @@ import {
   buildSpeakingStyleBlock,
   redactDetectedSecrets,
 } from '@nessie/schemas'
-import type { ConsumedSourceSink } from './disclosure-basis.js'
+import type { BasisScope, ConsumedSourceSink } from './disclosure-basis.js'
 import {
   describeAttachments,
   loadInlineImages,
@@ -41,7 +41,7 @@ import {
 import { buildAgentTodoFactsBlock } from './agent-todo-facts.js'
 import { buildExecutorReachBlock, type ExecutorReachFacts } from './executor-reach-facts.js'
 import type { AgentTodoPromptFacts } from '@nessie/team-admin'
-import { originalHumanAuthorId } from './private-conversation-lineage.js'
+import { conversationTurnLineage } from './private-conversation-lineage.js'
 import type { RunContext, StoredConversationMessage } from './types.js'
 import {
   coverProviderInputComponent,
@@ -161,10 +161,27 @@ export const buildModelPrompt = (
     /** True when `browser_login_request` is in this run's resolved builtin toolset. */
     hasBrowserLoginRequestTool?: boolean
     /**
+     * True when `agent_tool_access_set` is in this run's resolved toolset:
+     * this run grants another agent the browser tools itself, so the
+     * Browserbase block must not send an owner to the Tools tab for it.
+     * The Designer's catalogue said "you grant it" while this block, rendered
+     * for every agent without the fact, said "an owner must" — and it quoted
+     * the refusal.
+     */
+    canGrantBrowserTools?: boolean
+    /** One of Nessie's own agents, whose toolset the deployment fixes. */
+    ownToolsetFixed?: boolean
+    /**
      * What the model can reach on a person's machine this turn, from the
      * run's bindings and its conversation lease (`loadExecutorReachFacts`).
      */
     executorReach?: ExecutorReachFacts | null
+    /**
+     * What a one-on-one reply is told about Jev's plan for it
+     * (`buildOneOnOnePlanBlock`). Decided per message, so it rides behind the
+     * clock with the other volatile facts.
+     */
+    replyPlan?: string | null
     /** The exact active temporary browser handoff for this resumed run. */
     temporaryBrowserAccess?: {
       expiresAt: Date
@@ -187,8 +204,10 @@ export const buildModelPrompt = (
     buildAgentTodoFactsBlock(options.todoFacts ?? null) ?? '',
     options.documents ? buildAgentDocumentsBlock(options.documents) ?? '' : '',
     buildAgentCardsBlock({
+      canGrantBrowserTools: options.canGrantBrowserTools ?? false,
       hasBrowserLoginRequestTool: options.hasBrowserLoginRequestTool ?? false,
       hasCardTool: options.hasCardTool ?? false,
+      ownToolsetFixed: options.ownToolsetFixed ?? false,
     }) ?? '',
     options.temporaryBrowserAccess
       ? [
@@ -264,6 +283,12 @@ export const buildModelPrompt = (
       + executorReach
     messages.push(coverProviderInputComponent({ content, role: 'system' }, 'prompt_system'))
   }
+  if (options.replyPlan) {
+    messages.push(coverProviderInputComponent(
+      { content: options.replyPlan, role: 'system' },
+      'prompt_system',
+    ))
+  }
 
   if (conversation.length > 0) {
     messages.push(
@@ -334,6 +359,14 @@ export const loadConversation = async (
      * reply derived from the transcript inherits their restriction.
      */
     consumedSources: ConsumedSourceSink
+    /**
+     * Set for a run that reads its room as the room does (`readsRoomHistoryAsRoom`):
+     * what admitting a turn's lineage would add to the run's reply basis
+     * (`addedReplyRestriction`). A turn that would add anything is withheld
+     * like one the viewer cannot read, so the room's own history is never what
+     * restricts such a run's post.
+     */
+    addedRestriction?: (scopes: readonly BasisScope[]) => readonly BasisScope[]
   },
 ): Promise<StoredConversationMessage[]> => {
   const messages = await prisma.message.findMany({
@@ -373,8 +406,21 @@ export const loadConversation = async (
   // Disclosure predicate. A turn the viewer cannot satisfy becomes a fixed
   // server-authored placeholder rather than vanishing: a silent gap makes the
   // model invent continuity across a hole it cannot see.
-  const { visible: readable, withheld } = partitionByDisclosure(ordered, input.viewer)
-  const withheldIds = new Set(withheld.map((message) => message.id))
+  const partitioned = partitionByDisclosure(ordered, input.viewer)
+  // A run reading its room as the room does also withholds what it may read
+  // but the room may not. Every turn here is in the run's own channel, which
+  // its destination implies; a private source elsewhere is what would add.
+  const addsRestriction = (message: (typeof ordered)[number]): boolean =>
+    input.addedRestriction !== undefined && input.addedRestriction([
+      ...message.basisScopes,
+      ...message.disclosureSources.map((source) => ({ scopeId: source.sourceChannelId, scopeType: 'channel' })),
+    ]).length > 0
+  const restricting = new Set(partitioned.visible.filter(addsRestriction).map((message) => message.id))
+  const readable = partitioned.visible.filter((message) => !restricting.has(message.id))
+  const withheldIds = new Set([
+    ...partitioned.withheld.map((message) => message.id),
+    ...restricting,
+  ])
 
   // Transitive inheritance. A reply built from the transcript rather than from
   // retrieval would otherwise compute an empty basis, so "summarise that" would
@@ -382,29 +428,10 @@ export const loadConversation = async (
   // admitted turn's basis therefore joins the run's sink, and anything this run
   // writes inherits it.
   for (const message of readable) {
-    input.consumedSources.addAll(message.basisScopes)
-    for (const source of message.disclosureSources) {
+    const lineage = conversationTurnLineage(message, message.thread.channel)
+    input.consumedSources.addAll(lineage.basisScopes)
+    for (const source of lineage.disclosureSources) {
       input.consumedSources.addPrivateConversationSource(source)
-    }
-    // Human text in a non-public room has no MessageBasisScope — it is the
-    // source, rather than a derived reply. Record its channel and author here
-    // so a later post into another audience cannot erase that provenance.
-    if (message.thread.channel.visibility !== 'public') {
-      const authorUserId = originalHumanAuthorId(message)
-      if (authorUserId) {
-        input.consumedSources.addPrivateConversationSource({
-          sourceAuthorUserId: authorUserId,
-          sourceChannelId: message.thread.channel.id,
-        })
-      } else if (message.disclosureSources.length === 0) {
-        // A legacy private agent/tool row can carry another person's words but
-        // predates source lineage. Preserve that uncertainty through every
-        // later reply; a known author from another turn cannot cover it.
-        input.consumedSources.addPrivateConversationSource({
-          sourceAuthorUserId: null,
-          sourceChannelId: message.thread.channel.id,
-        })
-      }
     }
   }
 
@@ -431,6 +458,7 @@ export const loadConversation = async (
     const inlined = images.get(message.id)
     return {
       content: message.content,
+      id: message.id,
       role: message.role,
       authorAgentId: message.agentId,
       authorAgentName: message.agent?.name ?? null,

@@ -34,6 +34,8 @@ it, and the release notes name the version, commit and workflow run.
   (`desktop/src-tauri/tauri.conf.json`, `executor/package.json`) with `main`'s
   first-parent commit count as the build number, so every build installs over
   the previous one. Change `MAJOR.MINOR` in the manifest; never the build.
+- **Signing** happens in the `windows-signing` environment, which deploys only
+  from `main` and needs no approval, so no merge waits on a person.
 - **Edge builds do not self-update** (they carry no direct updater): install the
   next one over the last. Runs never overlap and are never cancelled; a newer
   push waits for the running build, and only the newest waiting run is kept.
@@ -103,28 +105,15 @@ needs:
 | `TAURI_SIGNING_PRIVATE_KEY` | repository secret | Persistent key for signing direct desktop update artifacts |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | repository secret | Password protecting the Tauri updater private key |
 
-Windows releases are always signed, and a Windows job that cannot sign fails
-rather than publish. Signing is Azure Artifact Signing and keyless: the
-Windows build job runs in the `windows-signing` environment, whose GitHub OIDC
-token the `nessie-github-signing` managed identity trusts, and that identity
-holds only the Certificate Profile Signer role on `UOAartifactAccount`. No
-signing credential is stored in GitHub. Who signs — endpoint, account,
-certificate profile, subject and the profile EKU the apps pin — is committed in
-`executor/packaging/windows/signing/publisher.json`; the setup, the local
-recipe and the pinning rule are in
-[Windows Desktop](running-the-apps/windows-desktop.md#releases-and-how-they-are-signed).
-
-| Name | Where | Purpose |
-| --- | --- | --- |
-| `windows-signing` | environment | Deploys only from `main` and `v*` tags, with no reviewer: every main build is signed automatically |
-| `AZURE_CLIENT_ID` | `windows-signing` variable | Client ID of the `nessie-github-signing` managed identity |
-| `AZURE_TENANT_ID` | `windows-signing` variable | The tenant that holds the signing account |
-
-The identity's federated credential names the environment in GitHub's
-immutable-ID subject form,
-`repo:UnlikeOtherAI@253458965/Nessie@1202770373:environment:windows-signing`,
-because this repository issues its OIDC tokens with `use_immutable_subject`.
-Renaming the environment or the repository means updating that credential.
+Windows releases fail closed unless Azure Artifact Signing succeeds. The
+`nessie-github-signing` managed identity has only the Artifact Signing signer
+role, uses no client secret, and trusts exactly two immutable OIDC subjects of
+this repository: the `direct-download-release` environment, where a release tag
+signs behind a release owner's approval, and the `windows-signing` environment,
+which deploys only from `main` and signs the edge builds below without one. The
+repository variables named in [Windows Desktop](running-the-apps/windows-desktop.md)
+select the Azure account/profile and pin its durable profile EKU and subject;
+the release workflow requires signed output.
 
 The Tauri updater key is independent of both Developer ID and Authenticode
 credentials. Its public key is checked into

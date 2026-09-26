@@ -319,7 +319,6 @@ export const ChannelConversationSurface = ({
           onChangeQuery={search.setSearchQuery}
           onClose={search.closeSearch}
           onSelectResult={(messageId) => {
-            feedScroll.releasePin()
             search.jumpToMessage(messageId)
             search.closeSearch()
           }}
@@ -392,6 +391,7 @@ export const ChannelConversationSurface = ({
               onChangeEditingContent={changeEditingContent}
               onConfirmDelete={confirmDelete}
               onOpenThread={replyThread.openThread}
+              onJumpToMessage={search.jumpToMessage}
               onSelectAgent={
                 isPersonalAssistantConversation ? undefined : onSelectMessageAgent
               }

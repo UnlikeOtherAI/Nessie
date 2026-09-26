@@ -139,6 +139,24 @@ test('every agent can describe Browserbase setup, but only card_post can collect
   assert.match(withCard, /A `card_post` card or chat text cannot grant browser access/)
 })
 
+test('a run holding the grant verb is not told, in its main prompt, that an owner must grant', () => {
+  // The Designer's catalogue (a later system message) said "you grant it with
+  // agent_tool_access_set"; this block, rendered for every agent without the
+  // fact, said "an owner must explicitly grant … at Agents → Tools" — and the
+  // Designer quoted the refusal. Same facts, from the resolved toolset.
+  const designer = systemContent(buildModelPrompt([], makeContext('Agent Designer'), 'hi', null, {
+    canGrantBrowserTools: true,
+    hasCardTool: true,
+    ownToolsetFixed: true,
+  }))
+  assert.match(designer, /you grant to the named agent with `agent_tool_access_set`/)
+  assert.match(designer, /The grant does not wait for the account/)
+  assert.doesNotMatch(designer, /An owner must explicitly grant the named agent the browser tools/)
+  // Its own toolset is the deployment's: nobody can enable `browser_login_request` on it.
+  assert.match(designer, /not yours to request/)
+  assert.doesNotMatch(designer, /enable `browser_login_request` at Agents → Tools/)
+})
+
 test('an adopted temporary browser grant tells the successor to continue within its exact scope', () => {
   const system = systemContent(buildModelPrompt([], makeContext('Aria'), 'continue', null, {
     temporaryBrowserAccess: {

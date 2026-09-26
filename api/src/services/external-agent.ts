@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
 import {
   ensureDefaultThread,
+  ensureSystemTeam,
   externalAgentDmKey,
   loadTeamProjectScope,
 } from '@nessie/team-admin'
@@ -44,7 +45,6 @@ export const getExternalAgentProduct = (slug: string): ExternalAgentProduct | nu
 export type ExternalAgentBootstrapInput = {
   organizationId: string
   product: ExternalAgentProduct
-  teamId: string
   userId: string
   externalTeamId: string
 }
@@ -54,54 +54,6 @@ export type ExternalAgentBootstrapResult = {
   channelId: string
   threadId: string
 }
-
-const ensureExternalAgentSystemTeam = async (
-  prisma: PrismaClient,
-  input: { organizationId: string; teamId: string },
-): Promise<string> =>
-  prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`
-      SELECT pg_advisory_xact_lock(
-        hashtext(${input.organizationId}),
-        hashtext('external_agent_system_team')
-      )
-    `
-
-    const existing = await tx.team.findFirst({
-      where: {
-        name: EXTERNAL_AGENT_SYSTEM_TEAM_NAME,
-        project: { organizationId: input.organizationId },
-        systemManaged: true,
-      },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    })
-    if (existing) {
-      return existing.id
-    }
-
-    const seedTeam = await tx.team.findFirst({
-      where: {
-        id: input.teamId,
-        project: { organizationId: input.organizationId },
-      },
-      select: { projectId: true },
-    })
-    if (!seedTeam) {
-      throw new Error('EXTERNAL_AGENT_SYSTEM_TEAM_CONTEXT_NOT_FOUND')
-    }
-
-    const team = await tx.team.create({
-      data: {
-        name: EXTERNAL_AGENT_SYSTEM_TEAM_NAME,
-        projectId: seedTeam.projectId,
-        systemManaged: true,
-      },
-      select: { id: true },
-    })
-
-    return team.id
-  })
 
 const createExternalAgentData = (organizationId: string, product: ExternalAgentProduct) => ({
   agentKind: EXTERNAL_AGENT_AGENT_KIND,
@@ -207,6 +159,10 @@ export const ensureExternalAgentChannel = async (
   }
 
   const channelData = {
+    // Nothing legitimate deletes a system DM (deactivation only archives, and
+    // that stamp is deliberately left alone here), so a deletion stamp is
+    // collateral from a project deletion and the bootstrap repairs it.
+    deletedAt: null,
     label: input.product.name,
     type: 'dm' as const,
     organizationId: input.organizationId,
@@ -261,9 +217,10 @@ export const ensureExternalAgentBootstrap = async (
   prisma: PrismaClient,
   input: ExternalAgentBootstrapInput,
 ): Promise<ExternalAgentBootstrapResult> => {
-  const systemTeamId = await ensureExternalAgentSystemTeam(prisma, {
+  const systemTeamId = await ensureSystemTeam(prisma, {
+    lockKey: 'external_agent_system_team',
+    name: EXTERNAL_AGENT_SYSTEM_TEAM_NAME,
     organizationId: input.organizationId,
-    teamId: input.teamId,
   })
   const agentId = await ensureExternalAgent(prisma, input.organizationId, input.product)
   const channelId = await ensureExternalAgentChannel(prisma, {

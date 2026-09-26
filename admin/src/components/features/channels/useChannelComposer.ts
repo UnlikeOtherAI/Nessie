@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import {
-  CHAT_MESSAGE_MAX_CHARS,
-  detectSecrets,
-  extractDetectedSecretValue,
-  redactDetectedSecrets,
-  type DetectedSecret,
-} from '@nessie/schemas'
+import { CHAT_MESSAGE_MAX_CHARS, detectSecrets } from '@nessie/schemas'
 import type { AgentMention, MentionInputHandle } from '../../shared/MentionInput'
 import {
   useSendMessage,
@@ -28,6 +22,7 @@ import {
 import { useComposerAttachments, type ComposerAttachments } from './useComposerAttachments'
 import type { SecretRecord } from '../../../facades/secrets/hooks'
 import { useMentionInviteGate, type MentionInviteController } from './useMentionInviteGate'
+import { useSecretCapture, type SecretCapture } from './useSecretCapture'
 
 interface UseChannelComposerParams {
   activeChannel: ChannelRecord | null
@@ -82,16 +77,6 @@ const newClientMessageId = (): string =>
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random()}`
 
-export type SecretCapture = {
-  agentMentions: AgentMention[]
-  detected: DetectedSecret
-  replacementContent: string
-  replacementMode: 'file' | 'message'
-  scopeId?: string
-  scopeType: 'personal' | 'project'
-  value: string
-}
-
 export const useChannelComposer = ({
   activeChannel,
   activeThreadId,
@@ -122,7 +107,12 @@ export const useChannelComposer = ({
   const [invitingAgentId, setInvitingAgentId] = useState<string | null>(null)
   const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({})
   const [sendError, setSendError] = useState<string | null>(null)
-  const [secretCapture, setSecretCapture] = useState<SecretCapture | null>(null)
+  const {
+    capture: secretCapture,
+    dismiss: dismissSecretCapture,
+    intercept: interceptSecret,
+    release: releaseSecret,
+  } = useSecretCapture({ projectId: activeChannel?.projectId ?? null })
   const mentionRef = useRef<MentionInputHandle>(null)
   // One idempotency key per unsent draft. It is minted at the first attempt and
   // retained while that attempt is unresolved, so a double-submit or a client
@@ -188,13 +178,13 @@ export const useChannelComposer = ({
     setPendingInviteMessageIds({})
     setInviteErrors({})
     setSendError(null)
-    setSecretCapture(null)
+    dismissSecretCapture()
     // A different conversation is a different post: never carry one thread's
     // idempotency key into the next. A second conversation with the same agent
     // in the same room is a different thread, not a different channel, so the
     // thread is part of this identity too.
     clientMessageIdRef.current = null
-  }, [activeChannel?.id, activeThreadId])
+  }, [activeChannel?.id, activeThreadId, dismissSecretCapture])
 
   const deliverText = useCallback(
     async (rawText: string, agentMentions: AgentMention[] = []) => {
@@ -213,21 +203,7 @@ export const useChannelComposer = ({
         return
       }
 
-      const detected = detectSecrets(text)[0]
-      if (detected) {
-        // Stop before a request, optimistic row, browser notification, or
-        // message-memory path can receive the material. The value stays only
-        // in this protected capture state until the vault POST succeeds.
-        setSecretCapture({
-          agentMentions,
-          detected,
-          replacementContent: redactDetectedSecrets(text),
-          replacementMode: 'message',
-          ...(activeChannel.projectId
-            ? { scopeId: activeChannel.projectId, scopeType: 'project' as const }
-            : { scopeType: 'personal' as const }),
-          value: extractDetectedSecretValue(text, detected),
-        })
+      if (interceptSecret(text, { agentMentions, replacementMode: 'message' })) {
         // Cancel the debounced local write and synchronously remove any draft
         // written while the credential was still incomplete.
         clearDraft()
@@ -295,7 +271,7 @@ export const useChannelComposer = ({
         )
       }
     },
-    [activeChannel, attachments, clearDraft, sendMessage, getSendExtras, setMessage],
+    [activeChannel, attachments, clearDraft, interceptSecret, sendMessage, getSendExtras, setMessage],
   )
 
   // A held draft goes back into the editor, so Cancel leaves it where it was.
@@ -408,18 +384,7 @@ export const useChannelComposer = ({
       if (!activeChannel) {
         return
       }
-      const detected = detectSecrets(rawText)[0]
-      if (detected) {
-        setSecretCapture({
-          agentMentions: [],
-          detected,
-          replacementContent: redactDetectedSecrets(rawText),
-          replacementMode: 'file',
-          ...(activeChannel.projectId
-            ? { scopeId: activeChannel.projectId, scopeType: 'project' as const }
-            : { scopeType: 'personal' as const }),
-          value: extractDetectedSecretValue(rawText, detected),
-        })
+      if (interceptSecret(rawText, { agentMentions: [], replacementMode: 'file' })) {
         setOversizePaste(null)
         return
       }
@@ -444,30 +409,20 @@ export const useChannelComposer = ({
         )
       }
     },
-    [activeChannel, clearDraft, uploadAttachment, sendMessage, getSendExtras],
+    [activeChannel, clearDraft, interceptSecret, uploadAttachment, sendMessage, getSendExtras],
   )
 
   const confirmSecretCapture = useCallback(
     async (secret: SecretRecord) => {
-      const capture = secretCapture
-      if (!capture) return
-
-      // Drop the only React state holding the raw value before doing any chat
-      // work. The follow-up contains only the scanner-produced replacement and
-      // the non-secret key the person approved.
-      setSecretCapture(null)
-      const replacement = [
-        capture.replacementContent,
-        `[Secret protected and saved as ${secret.name}; the value was replaced.]`,
-      ].filter(Boolean).join('\n\n')
-
-      if (capture.replacementMode === 'file') {
-        await sendAsFile(replacement)
+      const turn = releaseSecret(secret)
+      if (!turn) return
+      if (turn.replacementMode === 'file') {
+        await sendAsFile(turn.content)
         return
       }
-      await sendText(replacement, capture.agentMentions)
+      await sendText(turn.content, turn.agentMentions)
     },
-    [secretCapture, sendAsFile, sendText],
+    [releaseSecret, sendAsFile, sendText],
   )
 
   return {
@@ -491,7 +446,7 @@ export const useChannelComposer = ({
     dismissPendingAgent,
     secretCapture,
     confirmSecretCapture,
-    dismissSecretCapture: () => setSecretCapture(null),
+    dismissSecretCapture,
     mentionInvite: mentionGate.controller,
   }
 }

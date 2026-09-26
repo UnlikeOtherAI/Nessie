@@ -26,7 +26,9 @@ Assistant's `channel_list` / `channel_update` tools. Read
 [its browser evaluation](docs/testing/channel-decisions.md) before changing them.
 
 Executor pairing, independent account/server connections on each platform, and live account-menu presence follow [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md), including their browser verification.
-Direct machine access from private agent chat follows [executor sharing](docs/standards/executor-sharing.md); named internal links and `nessie_link` follow [agent voice](docs/standards/agent-voice.md).
+
+The shared macOS/Windows console and machine-only, per-team resource permissions follow [local executor controls](docs/executor-local-controls.md).
+Direct machine access from private agent chat and its self-reminders follows [executor sharing](docs/standards/executor-sharing.md); named internal links and `nessie_link` follow [agent voice](docs/standards/agent-voice.md).
 Authorized executor access has no additional private-conversation write veto; output disclosure still follows [the disclosure standard](docs/standards/disclosure-boundaries.md).
 
 Sequential Task Sets, their native agent tools and the configured
@@ -104,9 +106,12 @@ sentence changes only if the invariant itself did.
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:agent-conversations`.
   Run it locally on fixed ports. It brings up its own scripted inference endpoint
   (`admin/e2e/agent-conversations/mock-server.mjs`) because the isolation proof
-  reads that server's request log. It covers the DM rail, two isolated
+  reads that server's request log; it must also answer the worker's completion
+  check (`[nessie.follow_up_review.v1]`), or every run it scripts fails. It
+  covers an agent DM's sidebar sessions and session home, two isolated
   conversations named by their first message, the one-empty-at-a-time rule
-  behind the "New conversation" button, the rename doorway, an ordinary
+  behind both "New conversation" doorways (a DM's sidebar, and a room's
+  column, which also says why nothing opened), the rename doorway, an ordinary
   room's own doorway and a two-agent room's agent strip, and a ticket's work
   threads folded under Tickets at every width with their wake rows, the row a
   cancelled reminder leaves, and the read-only line for a room member who
@@ -150,11 +155,14 @@ sentence changes only if the invariant itself did.
   Worker-only tests also build the real executor bridge fixture dependency.
   The Linux desktop workflow generates Prisma, builds `@nessie/executor` with
   its workspace dependencies, and prepares the packaged runtime before Tauri
-  builds, matching Windows. A merge to `main` that changes what the desktop or
-  the executor is built from is signed (keyless Azure Artifact Signing) and
-  republished to that component's rolling `desktop-edge` / `executor-edge`
-  pre-release by `windows-edge.yml`; unchanged components are left alone —
-  [build and release](docs/standards/build-and-release.md).
+  builds, matching Windows. Windows releases authenticate to Azure Artifact
+  Signing through the approved release environment's immutable GitHub OIDC
+  subject and pin the certificate profile's durable EKU, never a rotating leaf
+  thumbprint. A merge to `main` that changes what the desktop or the executor
+  is built from is signed in the `windows-signing` environment, with no
+  approval, and republished to that component's rolling `desktop-edge` /
+  `executor-edge` pre-release by `windows-edge.yml`; unchanged components are
+  left alone. See [build and release](docs/standards/build-and-release.md).
 - **Preview fixtures stay out of production bundles.** Register the fixture
   in `admin/vite.config.ts` behind its `NESSIE_<NAME>_E2E_FIXTURE` flag, set
   that flag for a manual preview build, and list it in `@nessie/admin#build`

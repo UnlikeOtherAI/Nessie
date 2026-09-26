@@ -97,14 +97,14 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, view: &ServiceView) -> tauri::Resul
     menu.append(&MenuItem::with_id(app, SETTINGS_ID, "Settings…", true, None::<&str>)?)?;
     menu.append(&MenuItem::with_id(app, REACH_ID, "Where it can reach…", true, None::<&str>)?)?;
     menu.append(&MenuItem::with_id(app, TOOLS_ID, "Tools it can run…", true, None::<&str>)?)?;
-    menu.append(&MenuItem::with_id(app, PAIR_ID, "Pair with Nessie", true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, PAIR_ID, "Add team", true, None::<&str>)?)?;
     menu.append(&MenuItem::with_id(app, OPEN_NESSIE_ID, "Open Nessie", true, None::<&str>)?)?;
     menu.append(&MenuItem::with_id(app, OPEN_LOGS_ID, "Open logs folder", true, None::<&str>)?)?;
     menu.append(&PredefinedMenuItem::separator(app)?)?;
     menu.append(&MenuItem::with_id(
         app,
         QUIT_ID,
-        "Quit tray (the executor service keeps running)",
+        "Quit (stops this app’s connections)",
         true,
         None::<&str>,
     )?)?;

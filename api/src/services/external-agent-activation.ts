@@ -313,7 +313,6 @@ export const activateExternalAgentProduct = async (
   const bootstrap = await ensureExternalAgentBootstrap(prisma, {
     organizationId: ctx.organizationId,
     product,
-    teamId,
     userId: ctx.userId,
     externalTeamId: ssoIdentity.externalTeamId,
   })

@@ -3,7 +3,6 @@ import { isAdminActor } from '@nessie/schemas'
 
 import { DeletePersonalAssistantPresenceBodySchema } from '../contracts/team.js'
 import { PersonalAssistantBootstrapResponseSchema } from '../contracts/agents.js'
-import { DEFAULT_BOOTSTRAP_RECORD_IDS } from '../db/bootstrap.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { ensurePersonalAssistantAvatar } from '../services/personal-assistant-avatar.js'
@@ -40,10 +39,6 @@ export const registerPersonalAssistantRoutes = (
     try {
       bootstrap = await ensurePersonalAssistantBootstrap(prisma, {
         organizationId: actorContext.tenant.organizationId,
-        teamId:
-          actorContext.tenant.teamId
-          ?? actorContext.actionContext.teamId
-          ?? DEFAULT_BOOTSTRAP_RECORD_IDS.teamId,
         userId: actorContext.actor.actorId,
       })
       await ensurePersonalAssistantAvatar({
@@ -106,16 +101,12 @@ export const registerPersonalAssistantRoutes = (
       return reply
     }
     if (channel.systemChannelType !== null) {
-      sendApiError(reply, 403, 'CHANNEL_SYSTEM_MANAGED', 'Personal Assistant presences require a shared channel')
+      sendApiError(reply, 403, 'CHANNEL_SYSTEM_MANAGED', 'Personal Assistants cannot be added to system-managed conversations')
       return reply
     }
 
     await ensurePersonalAssistantBootstrap(prisma, {
       organizationId: actorContext.tenant.organizationId,
-      teamId:
-        actorContext.tenant.teamId
-        ?? actorContext.actionContext.teamId
-        ?? DEFAULT_BOOTSTRAP_RECORD_IDS.teamId,
       userId: actorContext.actor.actorId,
     })
     const result = await addPersonalAssistantPresence(prisma, {

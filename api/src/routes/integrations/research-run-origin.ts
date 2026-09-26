@@ -42,7 +42,7 @@ export const resolveBriefOrigin = async (
   const userId = actorContext.actor.actorId
 
   if (origin.kind === 'personal') {
-    await ensurePersonalAssistantBootstrap(prisma, { organizationId, teamId, userId })
+    await ensurePersonalAssistantBootstrap(prisma, { organizationId, userId })
     const assistant = await deps.loadPersonalAssistantState(actorContext)
     if (!assistant?.channel || !assistant.thread) throw threadNotFound()
     return { channelId: assistant.channel.id, threadId: assistant.thread.id, rootMessageId: null }

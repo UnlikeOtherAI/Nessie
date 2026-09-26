@@ -8,6 +8,7 @@ import {
 } from './uoa-billing-client.js'
 import { resolveExternalTeamSelection } from './identity-display.js'
 import { syncUoaProductAccountLinks } from './integrations.js'
+import { attemptSystemAgentsBootstrap } from './system-agents-bootstrap.js'
 import {
   UoaSessionRefreshError,
   type UoaSessionExchange,
@@ -83,12 +84,20 @@ export const confirmUoaTeamSwitchAccess = async (
  * exactly as a switch does. This deliberately runs after UOA returns so role
  * mapping uses the authoritative claims rather than fabricated source data.
  */
+export type MaterializeUoaTeamInput = {
+  identity: UoaSessionExchange['identity']
+  /**
+   * Where a failed system-agent bootstrap is reported. It is never thrown from
+   * here: the upstream credential is already consumed, so the switch must
+   * land, and the next interactive login retries the idempotent ensure.
+   */
+  onSystemAgentsBootstrapError: (error: unknown) => void
+  userId: string
+}
+
 export const materializeUoaTeam = async (
   prisma: PrismaClient,
-  input: {
-    identity: UoaSessionExchange['identity']
-    userId: string
-  },
+  input: MaterializeUoaTeamInput,
 ): Promise<void> => {
   // The rebind covers only the exact person UOA re-authenticated: compare the
   // stable UOA subject, never the email (UOA may change or reassign an
@@ -170,6 +179,18 @@ export const materializeUoaTeam = async (
       false,
     )
   }
+  // Nessie's own agents — the Personal Assistant and the global tier — are
+  // ensured per person at login, and this can be a person's first entry into
+  // an organisation with no login coming: a switch into a team or
+  // organisation they just created, an accepted invitation, an adopted drift.
+  // The organisation they land in must have its assistant and its Agent
+  // Designer at once, not after their next sign-in. Best-effort, reported —
+  // see `attemptSystemAgentsBootstrap`.
+  await attemptSystemAgentsBootstrap(
+    prisma,
+    { organizationId: context.organizationId, userId: input.userId },
+    input.onSystemAgentsBootstrapError,
+  )
 }
 
 /**
@@ -178,11 +199,7 @@ export const materializeUoaTeam = async (
  */
 export const materializeUoaTeamSwitch = async (
   prisma: PrismaClient,
-  input: {
-    identity: UoaSessionExchange['identity']
-    target: UoaTeamSwitchTarget
-    userId: string
-  },
+  input: MaterializeUoaTeamInput & { target: UoaTeamSwitchTarget },
 ): Promise<void> => {
   const selected = resolveExternalTeamSelection(input.identity.team)
   if (
@@ -195,6 +212,7 @@ export const materializeUoaTeamSwitch = async (
   }
   await materializeUoaTeam(prisma, {
     identity: input.identity,
+    onSystemAgentsBootstrapError: input.onSystemAgentsBootstrapError,
     userId: input.userId,
   })
 }

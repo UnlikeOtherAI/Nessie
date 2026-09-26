@@ -74,7 +74,20 @@ This is the part that trips everyone, so read it once and it will stop biting:
 **The exceptions**, which are Team and Project rows that are not user
 teams or user projects, and which fact 3's absolute does not cover: the
 `channelRoot` Project that holds organisation-wide channels, and
-`systemManaged` Teams (the Personal Assistant and external-agent surfaces).
+`systemManaged` Teams (the root's own, the Personal Assistant's, the global
+agents', and the external-agent surfaces'). **Every system team hangs from the
+channel-root project** (`ensureSystemTeam`,
+[packages/team-admin/src/system-teams.ts](../../packages/team-admin/src/system-teams.ts)),
+the one project no person can delete. They used to hang from the project of
+whichever user team happened to seed them first, and deleting that project
+soft-deleted every member's Personal Assistant and Agent Designer DM with it —
+and nothing healed them. The root's own team is resolved **by name**
+(`STANDALONE_CHANNEL_TEAM_NAME`) for exactly this reason: "any system team
+under the root" would hand standalone channels to the Personal Assistant's
+team. Migration `20260926170000_system_teams_under_channel_root` moved the
+existing rows and restored the DMs a deletion had taken; the ensure paths move
+a straggler and clear a deletion stamp on the next bootstrap
+(`api/test/system-teams-db.test.ts`).
 
 ## Vocabulary
 
@@ -282,7 +295,8 @@ of a project either: any member may remove any member, themselves included.
   (`PROJECT_HAS_KNOWLEDGE`, `PROJECT_HAS_EXECUTORS`,
   `PROJECT_HAS_EXTERNAL_TEAMS`), because their data is reachable from surfaces
   that do not pass through the project's own entitlement. Channels no longer
-  block.
+  block. A system DM is never among the channels stamped: the system teams
+  hang from the channel-root project, which this route refuses outright.
 - `DELETE /api/channels/:channelId` (`deleteChannel`, gated by
   `canModifyChannel`) stamps `Channel.deletedAt` together with `archivedAt`, so
   every archived-channel filter already hides it and its name is released.
@@ -467,6 +481,11 @@ rather than by redirecting a person into its chooser for a second interactive
 login; the local rows are still born only in `materializeUoaTeam`, from what
 the silent switch grant proved
 ([docs/plans/2026-09-02-in-app-organisation-creation.md](../plans/2026-09-02-in-app-organisation-creation.md)).
+The same materialization provisions Nessie's own agents for the person who
+entered — the Personal Assistant and every global agent, one row per
+organisation and a home DM each — so a team or organisation somebody just
+created is never without them until their next login
+([global agents](global-agents.md) → the bootstrap paragraph).
 The org name is UOA's mirror, so a **rename is a relayed
 `PUT /org/organisations/:orgId` write**. An install with no IdP keeps one
 unbound organisation (`externalOrgId` null). Budgets, policies, audit, the

@@ -3,16 +3,16 @@
 //! `WinVerifyTrust` answers "is this file's Authenticode signature valid and
 //! trusted", never "who signed it" — an attacker with any code-signing
 //! certificate produces a file that passes it. The signer certificate has to be
-//! read out of the verification state and compared to the publisher compiled
-//! into the release, which is what [`super::decide_release_signature`] does with
-//! the facts this module collects.
+//! read out of the verification state and its durable profile EKU compared to
+//! the publisher identity compiled into the release, which is what
+//! [`super::decide_release_signature`] does with the facts this module collects.
 
 use std::ffi::CStr;
 use std::os::windows::ffi::OsStrExt;
 
 use windows_sys::Win32::Foundation::TRUE;
 use windows_sys::Win32::Security::Cryptography::{
-    CertGetEnhancedKeyUsage, CERT_CONTEXT, CERT_FIND_EXT_ONLY_ENHKEY_USAGE_FLAG, CTL_USAGE,
+    CertGetEnhancedKeyUsage, CERT_CONTEXT, CTL_USAGE,
 };
 use windows_sys::Win32::Security::WinTrust::{
     WinVerifyTrust, WTHelperGetProvCertFromChain, WTHelperGetProvSignerFromChain,
@@ -27,71 +27,66 @@ fn wide(path: &std::path::Path) -> Vec<u16> {
     path.as_os_str().encode_wide().chain(std::iter::once(0)).collect()
 }
 
-/// The leaf certificate's own EKU extension, as dotted OIDs.
-/// `CERT_FIND_EXT_ONLY_ENHKEY_USAGE_FLAG` reads the extension the issuer wrote
-/// and nothing a local certificate store may have added as a property. A
-/// certificate with no EKU extension at all is valid for every usage, which
-/// names no profile, so it reads as no usages rather than as a wildcard.
-unsafe fn enhanced_key_usages(context: *const CERT_CONTEXT) -> Option<Vec<String>> {
-    let mut size = 0_u32;
-    if CertGetEnhancedKeyUsage(
-        context,
-        CERT_FIND_EXT_ONLY_ENHKEY_USAGE_FLAG,
-        std::ptr::null_mut(),
-        &mut size,
-    ) != TRUE
-    {
-        return None;
-    }
-    // `CTL_USAGE` points into the same buffer, so the buffer is allocated with
-    // the structure's alignment rather than as bytes.
-    let words = (size as usize).div_ceil(std::mem::size_of::<usize>());
-    let mut buffer = vec![0_usize; words.max(1)];
-    let usage = buffer.as_mut_ptr().cast::<CTL_USAGE>();
-    if CertGetEnhancedKeyUsage(context, CERT_FIND_EXT_ONLY_ENHKEY_USAGE_FLAG, usage, &mut size)
-        != TRUE
-    {
-        return None;
-    }
-    let count = (*usage).cUsageIdentifier as usize;
-    let identifiers = (*usage).rgpszUsageIdentifier;
-    if count > 0 && identifiers.is_null() {
-        return None;
-    }
-    let mut usages = Vec::with_capacity(count);
-    for index in 0..count {
-        let identifier = *identifiers.add(index);
-        if identifier.is_null() {
-            return None;
-        }
-        usages.push(CStr::from_ptr(identifier.cast()).to_str().ok()?.to_owned());
-    }
-    Some(usages)
-}
-
-/// The signer's enhanced key usages, read from the state `WinVerifyTrust` left
-/// behind. Read only after a successful verification: on failure the chain may
-/// be absent or incomplete, and a usage from an untrusted chain would be exactly
-/// the value an attacker controls.
-unsafe fn signer_usages(state: *mut std::ffi::c_void) -> Option<Vec<String>> {
+/// The signer's leaf certificate from the state `WinVerifyTrust` left behind.
+/// Read only after a successful verification: on failure the chain may be
+/// absent or incomplete, and certificate fields would be attacker-controlled.
+unsafe fn signer_certificate(state: *mut std::ffi::c_void) -> *const CERT_CONTEXT {
     let provider = WTHelperProvDataFromStateData(state);
     if provider.is_null() {
-        return None;
+        return std::ptr::null();
     }
     // Signer 0, chain 0: the first signature's leaf certificate — the publisher.
     let signer = WTHelperGetProvSignerFromChain(provider, 0, 0, 0);
     if signer.is_null() {
-        return None;
+        return std::ptr::null();
     }
     let certificate = WTHelperGetProvCertFromChain(signer, 0);
     if certificate.is_null() {
-        return None;
+        return std::ptr::null();
     }
-    let context = (*certificate).pCert;
+    (*certificate).pCert
+}
+
+/// All EKUs in the trusted leaf certificate. Artifact Signing renews its leaf
+/// certificate daily but keeps the profile-specific `1.3.6.1.4.1.311.97.*`
+/// EKU stable for the lifetime of the certificate profile.
+unsafe fn signer_enhanced_key_usages(state: *mut std::ffi::c_void) -> Option<Vec<String>> {
+    let context = signer_certificate(state);
     if context.is_null() {
         return None;
     }
-    enhanced_key_usages(context)
+
+    let mut size = 0_u32;
+    if CertGetEnhancedKeyUsage(context, 0, std::ptr::null_mut(), &mut size) != TRUE
+        || size < std::mem::size_of::<CTL_USAGE>() as u32
+    {
+        return None;
+    }
+    // `Vec<usize>` supplies alignment suitable for CTL_USAGE (the Win32
+    // `CERT_ENHKEY_USAGE` typedef) while
+    // still giving the Win32 API the requested byte count.
+    let words = (size as usize).div_ceil(std::mem::size_of::<usize>());
+    let mut buffer = vec![0_usize; words];
+    let usage = buffer.as_mut_ptr().cast::<CTL_USAGE>();
+    if CertGetEnhancedKeyUsage(context, 0, usage, &mut size) != TRUE {
+        return None;
+    }
+    if (*usage).cUsageIdentifier == 0 || (*usage).rgpszUsageIdentifier.is_null() {
+        return Some(Vec::new());
+    }
+    let identifiers = std::slice::from_raw_parts(
+        (*usage).rgpszUsageIdentifier,
+        (*usage).cUsageIdentifier as usize,
+    );
+    identifiers
+        .iter()
+        .map(|identifier| {
+            if (*identifier).is_null() {
+                return None;
+            }
+            CStr::from_ptr((*identifier).cast()).to_str().ok().map(str::to_owned)
+        })
+        .collect()
 }
 
 /// Verifies the file's Authenticode signature with no UI and no network:
@@ -120,8 +115,8 @@ pub fn collect_signature_facts(path: &std::path::Path) -> Option<WindowsSignatur
         WinVerifyTrust(std::ptr::null_mut(), &mut action, (&mut data as *mut WINTRUST_DATA).cast())
     };
     let facts = WindowsSignatureFacts {
-        signer_usages: if verified == 0 {
-            unsafe { signer_usages(data.hWVTStateData) }
+        signer_enhanced_key_usages: if verified == 0 {
+            unsafe { signer_enhanced_key_usages(data.hWVTStateData) }
         } else {
             None
         },
@@ -140,7 +135,7 @@ mod tests {
     use crate::{decide_release_signature, WRONG_PUBLISHER_REASON};
 
     const NESSIE_PROFILE: &str = "1.3.6.1.4.1.311.97.178939473.798312218.613811551.894157712";
-    const ARTIFACT_SIGNING_PUBLIC_TRUST: &str = "1.3.6.1.4.1.311.97.1.0";
+    const PUBLIC_TRUST_MARKER: &str = "1.3.6.1.4.1.311.97.1.0";
     const CODE_SIGNING: &str = "1.3.6.1.5.5.7.3.3";
 
     fn node_on_path() -> Option<std::path::PathBuf> {
@@ -162,14 +157,17 @@ mod tests {
         };
         let facts = collect_signature_facts(&node).expect("verification must run");
         assert!(facts.trusted, "{} must carry a trusted signature", node.display());
-        let usages = facts.signer_usages.clone().expect("a trusted signer has readable usages");
+        let usages = facts
+            .signer_enhanced_key_usages
+            .clone()
+            .expect("a trusted signer has readable usages");
         assert!(usages.iter().any(|usage| usage == CODE_SIGNING), "{usages:?}");
         assert_eq!(
             decide_release_signature(Some(NESSIE_PROFILE), Some(facts)),
             Err(WRONG_PUBLISHER_REASON.to_owned()),
         );
 
-        if usages.iter().any(|usage| usage == ARTIFACT_SIGNING_PUBLIC_TRUST) {
+        if usages.iter().any(|usage| usage == PUBLIC_TRUST_MARKER) {
             let profile = usages
                 .iter()
                 .find(|usage| {
@@ -194,6 +192,6 @@ mod tests {
         let this = std::env::current_exe().expect("the test binary has a path");
         let facts = collect_signature_facts(&this).expect("verification must run");
         assert!(!facts.trusted);
-        assert!(facts.signer_usages.is_none());
+        assert!(facts.signer_enhanced_key_usages.is_none());
     }
 }

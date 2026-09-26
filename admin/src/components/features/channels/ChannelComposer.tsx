@@ -16,7 +16,7 @@ import { ComposerAttachments } from './ComposerAttachments'
 import { ComposerEmojiButton } from './ComposerEmojiButton'
 import { MentionInviteDialog } from './MentionInviteDialog'
 import { SecretCaptureDialog } from './SecretCaptureDialog'
-import type { SecretCapture } from './useChannelComposer'
+import type { SecretCapture } from './useSecretCapture'
 import type { MentionInviteController } from './useMentionInviteGate'
 import type { ComposerAttachments as ComposerAttachmentsState } from './useComposerAttachments'
 import { VoiceDictationControl } from './VoiceDictationControl'
@@ -193,14 +193,20 @@ export const ChannelComposer = ({
           onSubmitForm(event)
         }}
       >
+        {/* A pasted screenshot is staged exactly like a picked file. Enter
+            then sends it with no text, as Send does — but never while an
+            upload is in flight, which would post without that file and drop
+            it from the strip. */}
         <MentionInput
           ref={mentionRef}
+          canSubmitEmpty={attachments.attachmentIds.length > 0}
           entities={mentionEntities}
           maxLength={CHAT_MESSAGE_MAX_CHARS}
           onChange={onChangeMessage}
           onOversizePaste={onOversizePaste}
+          onPasteFiles={attachments.addFiles}
           onSubmit={onSubmitText}
-          submitDisabled={voiceDictationBlocksSubmit(voiceState)}
+          submitDisabled={voiceDictationBlocksSubmit(voiceState) || attachments.isUploading}
           placeholder={placeholder}
         />
         <ComposerAttachments attachments={attachments} />

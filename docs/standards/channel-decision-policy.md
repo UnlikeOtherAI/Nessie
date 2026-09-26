@@ -16,11 +16,22 @@ The classifier's fixed engagement, reply-depth, and placement questions are
 separate from these custom questions.
 
 When enabled, a human message is evaluated once through Ledger's
-`POST /v1/vercel-evaluate/evaluate` with model `typesafe-ai/jev`. The worker
+`POST /v1/vercel/evaluate` with model `typesafe-ai/jev`. That is Ledger's
+unified `vercel` connector, so the installation's token grant must name its
+`evaluate` endpoint and the model; the separate `vercel-evaluate` service this
+once called was never enabled, and Ledger has removed it. The worker
 reuses the installation's Ledger URL, credential, signed identity and usage
 sink. Installations using a direct provider endpoint must configure Ledger
 before enabling the policy. The classifier remains separate from the agent's
 generative model and the utility model used by other subsystems.
+
+Jev also judges every human turn in a one-on-one room — one person and one
+agent — with no policy at all: whether the agent writes a reply, does the work
+and marks the message done, or only reacts, and whether the message goes back
+to an earlier one and how the answer points there. That use has its own fixed
+questions, threshold and snapshot fingerprint, and falls back silently to a
+written answer in the main chat; it is specified in
+[reply-threads.md](reply-threads.md) → "One-on-one rooms".
 
 The engagement enum is `reply`, `acknowledge`, `leave_to_human`, or
 `no_action`. Separate choices select the agent, an optional configured emoji,
@@ -29,8 +40,17 @@ placement. Custom questions are independent: a message can receive a reaction
 and also start documentation work. Custom work for the same agent is combined
 into one background run, separate from any conversational reply. The reply
 uses the posting person's authority; the configured task uses policy authority
-and remains subject to automation budgets. A background-only run
-is prompted to conclude silently unless it has a useful result or needs help.
+and remains subject to automation budgets. A background-only run that has
+nothing to report ends quietly: it is told to answer with just ✅
+(`POLICY_WORK_QUIET_MARK`), and a run acting under the policy's authority
+(`actionContext.purpose === 'channel.policy'`) whose answer has no letter or
+digit in it posts nothing (`concludesQuietly`,
+`worker/src/run/execute/channel-policy-admission.ts`). A result someone needs,
+a failure or a required action is written in words and posted as usual. It is
+a mark rather than silence because an empty answer is what a failed provider
+looks like — the agent loop asks again — and rather than a tool because the
+old `conclude_silently` tool made providers return empty completions and was
+removed ([rolling-watch-status.md](rolling-watch-status.md)).
 Instructions never grant a tool or bypass its existing approval rules.
 
 Each choice must meet the policy's minimum selected-option probability.
@@ -39,7 +59,8 @@ structurally addressed conversations remain answerable. Model errors do not
 fall back to a generative classifier. A notice explains missing evaluation
 access, exhausted credits, or oversized inputs. Agent-authored messages never
 trigger another policy evaluation. Disabled or absent policies retain normal
-engagement behavior, and system DMs keep their structural response rules.
+engagement behavior, and system DMs keep their structural addressing (a
+one-on-one room's reply shape and place are Jev's, as above).
 The saved snapshot retains each selected option, probability and threshold
 result, distinguishing deliberate no-action choices from uncertain abstentions
 without adding notices to chat. Reply routing also abstains when the agent

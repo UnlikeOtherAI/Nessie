@@ -18,6 +18,7 @@ import {
   revokeUserRefreshFamilies,
   revokeUserSession,
 } from '../services/refresh-session-management.js'
+import { attemptSystemAgentsBootstrap } from '../services/system-agents-bootstrap.js'
 import {
   AUTH_LOCK_TRANSACTION_OPTIONS,
   lockUserSessions,
@@ -233,6 +234,14 @@ export const registerAuthSecurityRoutes = (
     }
 
     const { session, user } = switched
+    // A local-mode switch can be this person's first entry into an
+    // organisation they were added to after their login — the login that
+    // provisions Nessie's own agents for them there is not coming.
+    await attemptSystemAgentsBootstrap(
+      prisma,
+      { organizationId: session.claims.org, userId: user.id },
+      (error) => request.log.error({ err: error }, 'system_agents_bootstrap_failed'),
+    )
     if (session.claims.providerType !== 'uoa') {
       await issueRefreshCookie(request, reply, {
         userId: user.id,

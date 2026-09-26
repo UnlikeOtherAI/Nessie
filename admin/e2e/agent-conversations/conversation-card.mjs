@@ -34,7 +34,10 @@ export const exerciseConversationCard = async ({
 }) => {
   const desktop = gallery.pages.desktop
   const assistantRoom = `/channels/${fixture.assistant.channelId}`
-  await goto(desktop, assistantRoom)
+  // The DM's General thread, where the ask is written: the bare DM is the
+  // assistant's session home, which has no composer of its own.
+  const assistantGeneral = `${assistantRoom}/threads/${fixture.assistant.threadId}`
+  await goto(desktop, assistantGeneral)
 
   const ask = `Please ${START_PHRASE} ${fixture.agent.name} about the pricing page copy`
   await sendMessage(desktop, ask)
@@ -89,22 +92,16 @@ export const exerciseConversationCard = async ({
     )
   }
 
-  // Where the card actually is.
-  //
-  // Not the room's own feed: an assistant run answers under the message that
-  // triggered it (`replyPlacement: 'thread'` →
-  // `worker/src/run/execute/reply-placement.ts` attaches to the trigger), and
-  // the doorway is written through the same door as the answer. So the card
-  // sits inside the reply thread under the person's request, behind a
-  // "2 replies" summary — which is not what
-  // docs/plans/2026-09-08-agent-conversations.md § "The conversation card"
-  // describes ("a live card in its own chat … without being told to go and
-  // look"). The suite opens that reply thread rather than pretending the card
-  // is one screen closer than it is.
-  const cardSurface = doorway.rootMessageId
-    ? `${assistantRoom}/threads/${fixture.assistant.threadId}`
-      + `/replies/${doorway.rootMessageId}`
-    : assistantRoom
+  // Where the card actually is: in the assistant chat itself. The doorway is
+  // written through the same door as the answer, and the assistant's DM is a
+  // one-on-one room, which answers in its main chat
+  // (docs/standards/reply-threads.md → "One-on-one rooms") — so the card is
+  // where docs/plans/2026-09-08-agent-conversations.md § "The conversation
+  // card" put it ("a live card in its own chat … without being told to go and
+  // look"), not behind a reply-thread summary under the person's request.
+  assert.equal(doorway.rootMessageId, null,
+    'a one-on-one chat carries the card in its main chat, not in a reply thread')
+  const cardSurface = assistantGeneral
 
   // Running — while the target's answer is still delayed by the mock.
   await gallery.capture('card-running', async (page, viewport) => {

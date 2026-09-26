@@ -35,8 +35,7 @@ import {
 import { canAccessAttachment, isRelinkableAttachment } from '../services/attachments.js'
 import { buildExternalAuthAuthorizeUrl } from '../services/external-auth.js'
 import { attemptPersonalAssistantAvatar } from '../services/personal-assistant-avatar.js'
-import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
-import { attemptGlobalAgentsBootstrap } from '../services/global-agents.js'
+import { ensureSystemAgentsForMember } from '../services/system-agents-bootstrap.js'
 import {
   buildConfigJwt,
   buildPublicJwks,
@@ -297,18 +296,9 @@ export const registerAuthCoreRoutes = (
       { userAgent: request.headers['user-agent'] ?? null },
     )
     const actorContext = createActorContextFromClaims(session.claims)
-    await ensurePersonalAssistantBootstrap(prisma, {
-      organizationId: actorContext.tenant.organizationId,
-      teamId: actorContext.tenant.teamId!,
-      userId: result.user.id,
-    })
-    await attemptGlobalAgentsBootstrap(
+    await ensureSystemAgentsForMember(
       prisma,
-      {
-        organizationId: actorContext.tenant.organizationId,
-        teamId: actorContext.tenant.teamId!,
-        userId: result.user.id,
-      },
+      { organizationId: actorContext.tenant.organizationId, userId: result.user.id },
       (error) => request.log.error({ err: error }, 'global_agent_bootstrap_failed'),
     )
     await attemptPersonalAssistantAvatar({

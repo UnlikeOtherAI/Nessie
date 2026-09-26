@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { viewerSatisfiesBasis, type DisclosureViewer } from '@nessie/runtime'
 import { loadCheckpointHostOutputScopes } from '../executor-host-output.js'
 import { CRASH_CHECKPOINT_REASON } from './crash-checkpoint.js'
 import { persistRunBasis } from './agent-message.js'
@@ -66,66 +67,108 @@ const parseSources = (raw: Prisma.JsonValue | null): CheckpointSource[] => {
   })
 }
 
+const CHECKPOINT_ROW = {
+  createdAt: true,
+  generation: true,
+  id: true,
+  note: true,
+  reason: true,
+  runId: true,
+  sources: true,
+} satisfies Prisma.RunCheckpointSelect
+
+type CheckpointRow = Prisma.RunCheckpointGetPayload<{ select: typeof CHECKPOINT_ROW }>
+
+// A crash checkpoint shares the row but is not one a run resumes from: it
+// carries machine state and an empty note, and it belongs to a run that is
+// still executing. Loading one would inject nothing useful into this run AND
+// consume the other run's resume state. (A row a budget stop or a suspension
+// has since written its note into no longer reads 'crash'.)
+const RESUMABLE = { reason: { not: CRASH_CHECKPOINT_REASON } } satisfies Prisma.RunCheckpointWhereInput
+
+// How many of one conversation's unconsumed checkpoints a reply looks through
+// for the newest its person may read. A conversation rarely holds two.
+const REPLY_RESUME_CANDIDATES = 5
+
+// `RunBasisScope` is already the per-run provenance ledger and a checkpoint
+// belongs to exactly one run, so the writing run's own rows are the
+// checkpoint's basis — no second table, and no way for the two to disagree.
+const loadCheckpointBasis = (prisma: PrismaClient, runId: string): Promise<BasisScope[]> =>
+  prisma.runBasisScope.findMany({
+    where: { runId },
+    select: { scopeId: true, scopeType: true },
+  })
+
 /**
- * Load the newest checkpoint this run may resume from and claim it.
+ * Load the checkpoint this run resumes, claiming it when it is not already
+ * this run's. There are exactly two ways in.
  *
- * Eligible: the newest checkpoint for (threadId, rootMessageId) that is either
- * unconsumed or already consumed by THIS run (the API's `/continue` endpoint
- * pre-claims it, and a re-driven job must see the same state). The claim is a
- * single conditional UPDATE; losing the race is silent — the run simply
- * proceeds without the notes rather than duplicating another run's work.
+ * - **Claimed for this run.** The Continue press, an approval or card resume,
+ *   and the worker's auto-continuation each claim the stopped run's checkpoint
+ *   for the continuation they create (set-once `consumedByRunId`), after their
+ *   own entitlement gate; a re-driven job must see the same state.
+ * - **A person's reply in the conversation it stopped in** — what makes a plain
+ *   "keep going" work. Only a person's own live turn (`resumer`), for the same
+ *   agent and Personal Assistant principal, in the same thread and reply root.
+ *   A run no person is live in — a schedule, an event trigger, a channel
+ *   policy, a wake — is a contribution to the room, not a reply to it, so it
+ *   resumes only what was claimed for it. Of the conversation's checkpoints,
+ *   the newest the person may read is claimed, asked before the one-shot claim
+ *   with the same predicate run setup admits it by: one they may not read stays
+ *   for someone who may. Losing the claim race is silent — the run proceeds
+ *   without the notes rather than duplicating another run's work.
  */
 export const loadRunCheckpointForRun = async (
   prisma: PrismaClient,
-  input: { rootMessageId: string | null; runId: string; threadId: string },
+  input: {
+    agentId: string
+    principalUserId: string | null
+    /** The person whose own live turn this run is, as the viewer reading for them; null for any other run. */
+    resumer: DisclosureViewer | null
+    rootMessageId: string | null
+    runId: string
+    threadId: string
+  },
 ): Promise<LoadedRunCheckpoint | null> => {
-  const row = await prisma.runCheckpoint.findFirst({
+  const claimed = await prisma.runCheckpoint.findFirst({
+    where: { ...RESUMABLE, consumedByRunId: input.runId, threadId: input.threadId },
+    orderBy: { createdAt: 'desc' },
+    select: CHECKPOINT_ROW,
+  })
+  if (claimed) return completeCheckpoint(prisma, claimed, await loadCheckpointBasis(prisma, claimed.runId))
+  if (!input.resumer) return null
+
+  const candidates = await prisma.runCheckpoint.findMany({
     where: {
+      ...RESUMABLE,
+      agentId: input.agentId,
+      consumedByRunId: null,
+      rootMessageId: input.rootMessageId,
+      run: { principalUserId: input.principalUserId },
       threadId: input.threadId,
-      // A crash checkpoint shares this row but is not one of these: it carries
-      // machine state and an empty note, and it belongs to a run that is still
-      // executing. Loading one would inject nothing useful into this run AND
-      // consume the other run's resume state. (A row a budget stop or a
-      // suspension has since written its note into no longer reads 'crash'.)
-      reason: { not: CRASH_CHECKPOINT_REASON },
-      OR: [
-        // Already assigned to this run — the API's /continue endpoint claims
-        // the checkpoint up front, and a re-driven job must see the same state.
-        // Unambiguous by run id, so no reply-thread filter applies.
-        { consumedByRunId: input.runId },
-        { consumedByRunId: null, rootMessageId: input.rootMessageId },
-      ],
     },
     orderBy: { createdAt: 'desc' },
-    select: {
-      consumedByRunId: true,
-      createdAt: true,
-      generation: true,
-      id: true,
-      note: true,
-      reason: true,
-      runId: true,
-      sources: true,
-    },
+    select: CHECKPOINT_ROW,
+    take: REPLY_RESUME_CANDIDATES,
   })
-  if (!row) return null
-
-  if (row.consumedByRunId !== input.runId) {
+  for (const candidate of candidates) {
+    const basisScopes = await loadCheckpointBasis(prisma, candidate.runId)
+    if (!viewerSatisfiesBasis(basisScopes, input.resumer)) continue
     const { count } = await prisma.runCheckpoint.updateMany({
-      where: { id: row.id, consumedByRunId: null },
+      where: { id: candidate.id, consumedByRunId: null },
       data: { consumedAt: new Date(), consumedByRunId: input.runId },
     })
-    if (count !== 1) return null
+    return count === 1 ? completeCheckpoint(prisma, candidate, basisScopes) : null
   }
+  return null
+}
 
-  // `RunBasisScope` is already the per-run provenance ledger and a checkpoint
-  // belongs to exactly one run, so the writing run's own rows are the
-  // checkpoint's basis — no second table, and no way for the two to disagree.
-  const [basisScopes, disclosureSources, hostOutputScopes] = await Promise.all([
-    prisma.runBasisScope.findMany({
-      where: { runId: row.runId },
-      select: { scopeId: true, scopeType: true },
-    }),
+const completeCheckpoint = async (
+  prisma: PrismaClient,
+  row: CheckpointRow,
+  basisScopes: BasisScope[],
+): Promise<LoadedRunCheckpoint> => {
+  const [disclosureSources, hostOutputScopes] = await Promise.all([
     prisma.runCheckpointDisclosureSource.findMany({
       where: { checkpointId: row.id },
       select: { sourceAuthorUserId: true, sourceChannelId: true },

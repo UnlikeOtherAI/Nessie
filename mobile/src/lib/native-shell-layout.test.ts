@@ -181,8 +181,8 @@ test('the iOS phone band is one constant height, whatever screen the admin repor
   assert.equal(insetFor(true), insetFor(false))
   assert.equal(insetFor(false), 123)
 
-  // Android keeps exactly the answer it had: the band only where the team and
-  // account controls are. Turning it on there is a separate decision.
+  // Android keeps account access when a tab root opens a detail, including a
+  // tablet conversation alongside the pinned channel list.
   const androidInput = (isTabRoot: boolean) => ({
     isIpad: false,
     isTabRoot,
@@ -190,12 +190,13 @@ test('the iOS phone band is one constant height, whatever screen the admin repor
     pastAuthGate: true,
     platform: 'android',
     // Android never receives a descriptor — the bridge posts it only on the
-    // iOS shell — so its lanes must keep reading the screen type.
+    // iOS shell — so its global controls must not depend on one arriving.
     screenBar: null,
     showBar: true,
   })
   assert.equal(shouldShowNativePhoneNavBar(androidInput(true)), true)
-  assert.equal(shouldShowNativePhoneNavBar(androidInput(false)), false)
+  assert.equal(shouldShowNativePhoneNavBar(androidInput(false)), true)
+  assert.equal(shouldShowNativePhoneRootLanes(androidInput(false)), true)
   assert.equal(
     shouldShowNativePhoneNavBar(androidInput(false)),
     shouldShowNativePhoneRootLanes(androidInput(false)),
@@ -232,6 +233,33 @@ test('the iOS phone band is one constant height, whatever screen the admin repor
     platform: 'android',
     showBar: false,
   }), false)
+})
+
+test('Android retains account access and the same frame from roots to chats and Back', () => {
+  for (const isTabRoot of [true, false, true]) {
+    const input = {
+      isIpad: false,
+      isTabRoot,
+      largePhoneLandscape: false,
+      pastAuthGate: true,
+      platform: 'android',
+      screenBar: null,
+      showBar: true,
+    }
+    assert.equal(shouldShowNativePhoneRootLanes(input), true)
+    assert.deepEqual(getNativeWebviewFrameInsets({
+      ipadChromeTop: 0,
+      isIpad: false,
+      nativePhoneHeaderHeight: getNativePhoneHeaderHeight(false),
+      platform: 'android',
+      safeArea: { top: 0, bottom: 0 },
+      showNativePhoneNavBar: shouldShowNativePhoneNavBar(input),
+      showTabBar: true,
+    }), { top: 64, bottom: 0 })
+    // Login and full-screen compose deliberately hide global chrome.
+    assert.equal(shouldShowNativePhoneRootLanes({ ...input, showBar: false }), false)
+    assert.equal(shouldShowNativePhoneNavBar({ ...input, showBar: false }), false)
+  }
 })
 
 test('the iOS lanes follow the published descriptor, never the screen type', () => {

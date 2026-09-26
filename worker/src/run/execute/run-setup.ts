@@ -31,7 +31,13 @@ import {
   loadRunCheckpointForRun,
   type LoadedRunCheckpoint,
 } from './checkpoint.js'
-import { buildMemoryContext, retrieveRelevantMemories } from './memory.js'
+import {
+  buildMemoryContext,
+  readsRoomHistoryAsRoom,
+  retrieveRelevantMemories,
+  runDelegationFacts,
+} from './memory.js'
+import { addedReplyRestriction } from './agent-message.js'
 import {
   RETRIEVED_CONTEXT_TOKEN_BUDGET,
   retrieveRelevantHistory,
@@ -39,6 +45,7 @@ import {
 import { estimateTokens } from '../context-management.js'
 import { buildModelPrompt, loadConversation } from './prompt.js'
 import { loadExecutorReachFacts } from './executor-reach-facts.js'
+import { buildOneOnOnePlanBlock } from './one-on-one-plan.js'
 import { prepareRunExecutorToolset } from './run-setup-executor.js'
 import { viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveLiveEntitlements } from '@nessie/runtime'
@@ -444,6 +451,9 @@ export const prepareRunExecution = async (
     rootMessageId: context.conversationRootMessageId,
     threadId: context.run.threadId,
     ...(ticketWorkRun ? { ticketWorkAgentId: context.agent.id } : {}),
+    ...(readsRoomHistoryAsRoom(runDelegationFacts(context), liveRequester)
+      ? { addedRestriction: (scopes) => addedReplyRestriction(context, scopes) }
+      : {}),
     viewer,
   })
   // Every kickoff is built from the ticket: the run has read its project, so
@@ -498,13 +508,17 @@ export const prepareRunExecution = async (
     await markRecallsInjected(injectedRecallIds, deps.searchConfig.pool)
   }
 
-  // Checkpoint auto-load (§5): ANY follow-up run in this thread picks up the
-  // saved work state, which is what makes a plain "keep going" reply resume
-  // properly. DeepWater handoff runs are excluded — their launch prompt is
-  // server-authored and must stay byte-identical.
+  // Checkpoint resume (§5): a continuation claimed for this run, or — what
+  // makes a plain "keep going" reply work — a person's own reply in the
+  // conversation the work stopped in, for a checkpoint they may read
+  // (`loadRunCheckpointForRun`). DeepWater handoff runs are excluded — their
+  // launch prompt is server-authored and must stay byte-identical.
   const loadedCheckpoint = input.isHandoffTurn
     ? null
     : await loadRunCheckpointForRun(deps.prisma, {
+      agentId: context.agent.id,
+      principalUserId: context.run.principalUserId ?? null,
+      resumer: liveRequester ? viewer : null,
       rootMessageId: context.replyRootMessageId ?? null,
       runId: context.run.id,
       threadId: context.run.threadId,
@@ -570,6 +584,11 @@ export const prepareRunExecution = async (
       emailConversation: emailContext?.block ?? null,
       checkpointNotes: checkpoint ? buildCheckpointInjection(checkpoint) : null,
       executorReach,
+      replyPlan: buildOneOnOnePlanBlock(
+        context.oneOnOnePlan,
+        conversation.find((turn) => turn.id === context.oneOnOnePlan?.earlier?.messageId)?.content
+          ?? null,
+      ),
       routing: {
         hasDelegate: resolvedToolIds.has('delegate'),
         researchTools: mcpToolset.managedResearchToolNames,
@@ -594,6 +613,12 @@ export const prepareRunExecution = async (
       },
       hasCardTool: hasCardPromptTools(resolvedToolIds),
       hasBrowserLoginRequestTool: browserLoginRequestPromptTools(resolvedToolIds),
+      // Structural, from the resolved toolset and the agent row: the grant
+      // verb is either in this run's schema or it is not, and a Nessie-managed
+      // agent's toolset is the deployment's — nobody can enable a tool on it.
+      canGrantBrowserTools: resolvedToolIds.has('agent_tool_access_set'),
+      ownToolsetFixed: context.agent.agentKind === 'personal_assistant'
+        || Boolean(context.agent.systemSlug),
       temporaryBrowserAccess,
       todoFacts,
       documents: documentsHome

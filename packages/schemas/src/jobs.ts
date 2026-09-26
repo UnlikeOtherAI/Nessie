@@ -76,6 +76,12 @@ const RunCompletionDeliverySchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('reaction'),
     sourceMessageId: z.string().uuid(),
+    /**
+     * Set when the platform itself marked the message — a one-on-one request
+     * done without a written reply — so the follow-up announces it. A
+     * reaction the agent added through `react` was announced when it was made.
+     */
+    emoji: z.string().min(1).optional(),
   }),
   /**
    * The run finished with nothing to say. Everything it had to deliver is
@@ -109,6 +115,32 @@ export type RunCompletionFollowupJobPayload = z.infer<
   typeof RunCompletionFollowupJobPayloadSchema
 >
 
+/**
+ * A non-interactive run's auto-continuation, waiting for its (agent, thread)
+ * slot. A continuation that finds the slot taken waits for it rather than
+ * leaving the stopped work to whichever run holds it
+ * (docs/standards/tech-and-run-budgets.md → "Three kinds of checkpoint").
+ */
+export const RUN_AUTO_CONTINUATION_TOPIC = 'run.auto_continuation'
+
+export const RunAutoContinuationJobPayloadSchema = z.object({
+  /** How many times this continuation has tried to start, this one included. */
+  attempt: z.number().int().positive(),
+  checkpointId: z.string().uuid(),
+  /** The stopped run's own job, which its continuation replays. */
+  source: RunExecuteJobPayloadSchema,
+  stoppedRun: z.object({
+    agentId: z.string().uuid(),
+    channelId: z.string().uuid(),
+    id: z.string().uuid(),
+    organizationId: z.string().uuid(),
+    principalUserId: z.string().uuid().nullable(),
+    replyPlacement: z.enum(['channel', 'thread']).nullable(),
+    threadId: z.string().uuid(),
+  }),
+})
+export type RunAutoContinuationJobPayload = z.infer<typeof RunAutoContinuationJobPayloadSchema>
+
 export const OrchestrateDecideJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
   /**
@@ -131,7 +163,11 @@ export const OrchestrateDecideJobPayloadSchema = z.object({
   // keyed by agent id; a PA presence also carries its owner id.
   agentMentions: AgentMentionSchema.array().optional(),
   channelId: ChannelIdSchema,
-  content: z.string().min(1),
+  // Empty for an attachment-only post, a pasted screenshot sent on its own:
+  // its files are the message, and the decision reads their inventory line in
+  // its place (`worker/src/run/orchestrate-context.ts`). Requiring text here
+  // dead-lettered every such job, so nobody ever answered one.
+  content: z.string(),
   messageId: z.string().uuid(),
   role: z.string().min(1),
   threadId: ThreadIdSchema,

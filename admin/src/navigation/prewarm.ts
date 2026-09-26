@@ -33,7 +33,8 @@ import { projectKeys } from '../facades/projects/keys'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { fetchAgentDocuments, fetchAgentStatus } from '../facades/agents/queries'
 import { fetchApp } from '../facades/apps/hooks'
-import { fetchProjectBoards } from '../facades/boards/hooks'
+import { fetchBoardTasks, fetchProjectBoards } from '../facades/boards/hooks'
+import { taskKeys } from '../facades/tasks/keys'
 import { fetchDashboard } from '../facades/dashboards/hooks'
 import { fetchExecutorAccess } from '../facades/executors/hooks'
 import {
@@ -59,7 +60,7 @@ type PrewarmContext = {
 type PrewarmEntry = {
   /** Which destinations this entry answers for; the capture is the entity id. */
   pattern: RegExp
-  run: (id: string, context: PrewarmContext) => void
+  run: (id: string, context: PrewarmContext, destination?: string) => void
 }
 
 const prefetch = (
@@ -124,9 +125,24 @@ export const PREWARM_REGISTRY: PrewarmEntry[] = [
     pattern: new RegExp(
       '^/projects/([^/]+)(?:/(?:board|backlog|insights|docs|executors|settings|boards(?:/[^/]+/settings)?))?$',
     ),
-    run: (projectId, context) => {
-      prefetch(context, projectKeys.boards(projectId), () =>
-        fetchProjectBoards(context.apiClient, projectId))
+    run: (projectId, context, destination = `/projects/${projectId}/board`) => {
+      const url = new URL(destination, 'https://navigation.invalid')
+      const onBoard = url.pathname.endsWith('/board')
+      const selectedBoardId = url.searchParams.get('board')
+      const warmTasks = (boardId: string) => prefetch(context, taskKeys.forBoard(projectId, boardId), () =>
+        fetchBoardTasks(context.apiClient, projectId, boardId))
+      if (onBoard && selectedBoardId) warmTasks(selectedBoardId)
+      // Start the second half of the board waterfall during intent, before
+      // mounting the destination. An explicit board can start in parallel.
+      void context.queryClient.fetchQuery({
+        queryKey: projectKeys.boards(projectId),
+        queryFn: () => fetchProjectBoards(context.apiClient, projectId),
+        staleTime: PREWARM_TTL_MS,
+      }).then((boards) => {
+        if (!onBoard || selectedBoardId) return
+        const board = boards.find((item) => item.isDefault) ?? boards[0]
+        if (board) warmTasks(board.id)
+      }).catch(() => undefined)
     },
   },
   {
@@ -215,7 +231,7 @@ export const usePrewarm = (): ((to: string) => void) => {
     }
     recent.current.set(to, now)
 
-    matched.entry.run(matched.id, { apiClient, queryClient })
+    matched.entry.run(matched.id, { apiClient, queryClient }, to)
   }, [apiClient, queryClient])
 }
 

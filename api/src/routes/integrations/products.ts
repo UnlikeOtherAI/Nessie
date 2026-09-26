@@ -161,7 +161,6 @@ export const registerIntegrationProductRoutes = (
       if (!agentId && body.enabled) {
         const bootstrap = await ensurePersonalAssistantBootstrap(prisma, {
           organizationId: actorContext.tenant.organizationId,
-          teamId,
           userId: actorContext.actor.actorId,
         })
         agentId = bootstrap.agentId

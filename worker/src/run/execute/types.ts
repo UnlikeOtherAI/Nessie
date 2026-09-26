@@ -7,6 +7,7 @@ import type { SubscriptionSecretStore } from '@nessie/model-subscriptions'
 import type { SearchExecutionConfig, SearchResult } from '@nessie/memory'
 import type { ConsumedSourceSink } from './disclosure-basis.js'
 import type { DocumentStreamRecorder } from './document-stream.js'
+import type { OneOnOneReplyPlan } from './one-on-one-plan.js'
 import type {
   DeepSignalMcpIdentityService,
   EncryptionKeyRingInput,
@@ -209,6 +210,13 @@ export type RunContext = {
    */
   replyRootMessageId?: string
   /**
+   * Jev's plan for a one-on-one reply (docs/standards/reply-threads.md →
+   * "One-on-one rooms"): the earlier message it goes back to and how it
+   * points there, and whether doing the work is the whole answer. Read from
+   * the trigger's pinned snapshot in `executeRunJob`; absent everywhere else.
+   */
+  oneOnOnePlan?: OneOnOneReplyPlan
+  /**
    * The reply thread this run *reads*, which is not always the one it writes
    * into: set only when the trigger message is itself a reply, so a run
    * starting a new reply thread under a top-level message still sees the
@@ -233,6 +241,13 @@ export type ReplyPlacement = {
 export type StoredConversationMessage = {
   content: string
   role: 'assistant' | 'system' | 'user'
+  /**
+   * The stored message this turn is, when it was admitted. Never given to the
+   * model; it lets the run name one admitted turn — the earlier message a
+   * one-on-one reply goes back to — without reading it again. Absent on a
+   * withheld turn, whose placeholder is not that message's text.
+   */
+  id?: string
   /**
    * One rendered line naming the files attached to this message, appended to
    * its text when the prompt is built. Kept beside `content` rather than inside

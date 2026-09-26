@@ -1,13 +1,17 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { BlurView } from 'expo-blur'
+import type { RefObject } from 'react'
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { androidDockGeometry } from '../lib/android-tablet-dock'
+import { withOpacity } from '../lib/ipad-native-chrome'
 import type { NativeAttentionBadges } from '../lib/native-shell-layout'
 import { TABS } from '../lib/tabs'
 
 type AndroidTabletTabBarProps = {
   activeIndex: number
   badgeCounts: NativeAttentionBadges
+  blurTarget: RefObject<View | null>
   activeIndicatorColor: string
   activeTintColor: string
   bottom: number
@@ -17,83 +21,124 @@ type AndroidTabletTabBarProps = {
   // than under it. Its height comes from `androidDockGeometry`, the same
   // answer the page's bottom clearance is spent from, so the two cannot drift.
   landscape: boolean
+  onAccentColor: string
   onIndexChange: (index: number) => void
   rippleColor: string
+  surfaceColor: string
 }
 
 export const AndroidTabletTabBar = ({
   activeIndex,
   badgeCounts,
+  blurTarget,
   activeIndicatorColor,
   activeTintColor,
   bottom,
   dark,
   inactiveTintColor,
   landscape,
+  onAccentColor,
   onIndexChange,
   rippleColor,
+  surfaceColor,
 }: AndroidTabletTabBarProps): React.JSX.Element => (
   <View pointerEvents="box-none" style={[styles.layer, { bottom }]}>
     <View
       style={[
         styles.bar,
-        dark ? styles.barDark : styles.barLight,
         landscape ? styles.barLandscape : null,
-        { height: androidDockGeometry(landscape).height },
+        {
+          backgroundColor: withOpacity(surfaceColor, 0.18),
+          height: androidDockGeometry(landscape).height,
+        },
       ]}
     >
-      {TABS.map((tab, index) => {
-        const active = index === activeIndex
-        const color = active ? activeTintColor : inactiveTintColor
-        const badge = badgeCounts[tab.key] ?? 0
+      <View style={[
+        styles.glass,
+        landscape ? styles.glassLandscape : null,
+        {
+          borderColor: withOpacity(inactiveTintColor, dark ? 0.32 : 0.24),
+          borderTopColor: withOpacity('#ffffff', dark ? 0.38 : 0.86),
+        },
+      ]}>
+        <BlurView
+          blurMethod="dimezisBlurViewSdk31Plus"
+          blurTarget={blurTarget}
+          intensity={70}
+          pointerEvents="none"
+          style={StyleSheet.absoluteFill}
+          tint={dark ? 'dark' : 'light'}
+        />
+        {/* Older Android versions keep an opaque-enough tint for legibility;
+            current devices sample the live WebView through the blur target. */}
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: withOpacity(surfaceColor, Number(Platform.Version) < 31 ? 0.92 : 0.5) },
+          ]}
+        />
+        {TABS.map((tab, index) => {
+          const active = index === activeIndex
+          const color = active ? activeTintColor : inactiveTintColor
+          const badge = badgeCounts[tab.key] ?? 0
 
-        return (
-          <Pressable
-            accessible
-            accessibilityLabel={tab.title}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: active }}
-            android_ripple={{ borderless: false, color: rippleColor }}
-            hitSlop={2}
-            key={tab.key}
-            onAccessibilityTap={() => onIndexChange(index)}
-            onPress={() => onIndexChange(index)}
-            style={({ pressed }) => [
-              styles.tab,
-              landscape ? styles.tabLandscape : null,
-              active ? { backgroundColor: activeIndicatorColor } : null,
-              pressed ? styles.tabPressed : null,
-            ]}
-            testID={`android-tab-${tab.key}`}
-          >
-            <MaterialIcons
-              color={color}
-              name={tab.materialIcon}
-              size={landscape ? 20 : 24}
-            />
-            <Text
-              numberOfLines={1}
-              style={[styles.label, landscape ? styles.labelLandscape : null, { color }]}
+          return (
+            <Pressable
+              accessible
+              accessibilityLabel={tab.title}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              android_ripple={{ borderless: false, color: rippleColor }}
+              hitSlop={2}
+              key={tab.key}
+              onAccessibilityTap={() => onIndexChange(index)}
+              onPress={() => onIndexChange(index)}
+              style={({ pressed }) => [
+                styles.tab,
+                landscape ? styles.tabLandscape : null,
+                active ? {
+                  backgroundColor: activeIndicatorColor,
+                  borderColor: withOpacity(activeTintColor, 0.24),
+                } : null,
+                pressed ? styles.tabPressed : null,
+              ]}
+              testID={`android-tab-${tab.key}`}
             >
-              {tab.title}
-            </Text>
-            {badge > 0 ? <Text style={styles.badge}>{badge > 99 ? '99+' : badge}</Text> : null}
-          </Pressable>
-        )
-      })}
+              <MaterialIcons
+                color={color}
+                name={tab.materialIcon}
+                size={landscape ? 20 : 24}
+              />
+              <Text
+                numberOfLines={1}
+                style={[styles.label, landscape ? styles.labelLandscape : null, { color }]}
+              >
+                {tab.title}
+              </Text>
+              {badge > 0 ? (
+                <Text style={[styles.badge, { backgroundColor: activeTintColor, color: onAccentColor }]}>
+                  {badge > 99 ? '99+' : badge}
+                </Text>
+              ) : null}
+            </Pressable>
+          )
+        })}
+      </View>
     </View>
   </View>
 )
 
 const styles = StyleSheet.create({
   badge: {
+    position: 'absolute',
+    top: 2,
+    right: 4,
     minWidth: 16,
     height: 16,
     paddingHorizontal: 4,
     borderRadius: 8,
     overflow: 'hidden',
-    color: '#fff',
-    backgroundColor: '#7c3aed',
     fontSize: 10,
     fontWeight: '700',
     lineHeight: 16,
@@ -102,28 +147,26 @@ const styles = StyleSheet.create({
   bar: {
     width: '88%',
     maxWidth: 700,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 6,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 30,
+    borderRadius: 35,
     elevation: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.14,
     shadowRadius: 18,
   },
-  barDark: {
-    backgroundColor: '#211b17',
-    borderColor: 'rgba(255, 255, 255, 0.16)',
+  barLandscape: { borderRadius: 25 },
+  glass: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 6,
+    borderWidth: 1,
+    borderRadius: 35,
+    overflow: 'hidden',
   },
-  barLandscape: {
+  glassLandscape: {
     padding: 4,
     borderRadius: 25,
-  },
-  barLight: {
-    backgroundColor: '#fffaf2',
-    borderColor: 'rgba(72, 48, 24, 0.12)',
   },
   label: {
     marginTop: 2,
@@ -143,17 +186,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tab: {
-    height: 58,
+    alignSelf: 'stretch',
     minWidth: 48,
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   // Icon and label side by side: the row is what buys back the height, and it
   // keeps every tab's target the full width of its lane.
   tabLandscape: {
-    height: 42,
     flexDirection: 'row',
     borderRadius: 21,
   },

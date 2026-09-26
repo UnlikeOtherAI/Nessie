@@ -23,7 +23,13 @@ type User = {
   displayName: string
   avatarUrl: string | null
 }
-type Project = { id: string; name: string; organizationId: string; createdAt: number }
+type Project = {
+  id: string
+  name: string
+  organizationId: string
+  channelRoot: boolean
+  createdAt: number
+}
 type Team = {
   id: string
   name: string
@@ -228,15 +234,27 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
       count: async () => users.length,
     },
     project: {
-      create: async ({ data }: { data: { name: string; organizationId: string } }) => {
+      create: async ({ data }: {
+        data: { channelRoot?: boolean; name: string; organizationId: string }
+      }) => {
         const row: Project = {
           id: randomUUID(),
           name: data.name,
           organizationId: data.organizationId,
+          channelRoot: data.channelRoot ?? false,
           createdAt: tick(),
         }
         projects.push(row)
         return { id: row.id }
+      },
+      // The shared-channel root is resolved project first, oldest root wins.
+      findFirst: async ({ where }: {
+        where: { channelRoot?: boolean; organizationId?: string }
+      }) => {
+        const found = byCreatedAsc(projects.filter((p) =>
+          (where.channelRoot === undefined || p.channelRoot === where.channelRoot)
+          && (where.organizationId === undefined || p.organizationId === where.organizationId)))[0]
+        return found ? { id: found.id } : null
       },
     },
     board: {
@@ -265,13 +283,20 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
         }
       },
       findFirst: async ({ where }: {
-        where?: { project?: { organizationId?: string }; systemManaged?: boolean }
+        where?: {
+          name?: string
+          project?: { organizationId?: string }
+          projectId?: string
+          systemManaged?: boolean
+        }
       } = {}) => {
         const scoped = teams.filter((t) => {
           if (
             where?.systemManaged !== undefined
             && systemManagedTeamIds.has(t.id) !== where.systemManaged
           ) return false
+          if (where?.name !== undefined && t.name !== where.name) return false
+          if (where?.projectId !== undefined && t.projectId !== where.projectId) return false
           if (where?.project?.organizationId === undefined) return true
           const project = projects.find((p) => p.id === t.projectId)
           return project?.organizationId === where.project.organizationId
@@ -734,6 +759,10 @@ test('team switch materialization uses the authoritative target role and is idem
       uoaTokenVersion: 4,
       team: team(target.teamId, 'admin'),
     },
+    // The system-agent bootstrap that follows a materialization reaches
+    // Prisma models this fake does not carry; it is best-effort by contract
+    // and its real-row proof is `uoa-team-switch-system-agents-db.test.ts`.
+    onSystemAgentsBootstrapError: () => {},
     target,
     userId: source!.userId,
   })
@@ -775,6 +804,7 @@ test('a cross-org team switch materializes the TARGET organization and its links
       uoaTokenVersion: 4,
       team: targetTeamClaim,
     },
+    onSystemAgentsBootstrapError: () => {},
     target,
     userId: source!.userId,
   })

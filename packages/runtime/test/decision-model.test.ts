@@ -41,7 +41,8 @@ test('Ledger evaluation preserves enum options, signed attribution, and input/ou
       return { 'X-Test-Provenance': 'signed' }
     },
     transport: transport(async (url, init) => {
-      assert.equal(url.toString(), 'https://ledger.unlikeotherai.com/v1/vercel-evaluate/evaluate')
+      // Ledger's unified Vercel connector; the old `vercel-evaluate` service is gone.
+      assert.equal(url.toString(), 'https://ledger.unlikeotherai.com/v1/vercel/evaluate')
       assert.equal(new Headers(init?.headers).get('X-Test-Provenance'), 'signed')
       const body = JSON.parse(init?.body as string)
       assert.deepEqual(body.questions, request.questions)
@@ -51,7 +52,7 @@ test('Ledger evaluation preserves enum options, signed attribution, and input/ou
       return Response.json(response())
     }),
     recordUsage: async (invocations, attribution) => {
-      assert.equal(invocations[0]?.provider, 'vercel-evaluate')
+      assert.equal(invocations[0]?.provider, 'vercel')
       assert.deepEqual(invocations[0]?.usage, { inputTokens: 300, outputTokens: 32 })
       assert.equal(attribution.actorId, 'user')
       metered = true
@@ -59,6 +60,25 @@ test('Ledger evaluation preserves enum options, signed attribution, and input/ou
   })
   assert.equal((await client.evaluate(request)).decision?.choice, 'proposed')
   assert.equal(metered, true)
+})
+
+test('a caller that will not wait long gives up on a stalled evaluation', async () => {
+  const client = createLedgerDecisionClient({
+    ...base,
+    transport: transport((_url, init) => new Promise<Response>((_resolve, reject) => {
+      // `AbortSignal.timeout` does not hold the event loop open, and a stalled
+      // fake request holds nothing either: without this the test runner sees
+      // an empty loop and cancels the test before the caller's timeout fires.
+      const keepAlive = setTimeout(() => undefined, 10_000)
+      init?.signal?.addEventListener('abort', () => {
+        clearTimeout(keepAlive)
+        reject(init.signal?.reason)
+      })
+    })),
+  })
+  const startedAt = Date.now()
+  await assert.rejects(client.evaluate({ ...request, timeoutMs: 20 }))
+  assert.ok(Date.now() - startedAt < 5_000, 'the caller’s own timeout applies, not the default')
 })
 
 test('Ledger credit exhaustion remains a typed refusal', async () => {

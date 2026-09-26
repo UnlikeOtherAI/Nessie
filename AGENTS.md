@@ -72,7 +72,7 @@ It is the only way, and adding a second one is the defect Rule zero names.
 - `pnpm --filter @nessie/admin build` is for production/CI bundles only, not the dev loop.
 - **Member-management browser fixture builds:** manual fixture builds explicitly enable its preview entry; ordinary bundles omit it. Read [`docs/testing/member-management-e2e.md`](docs/testing/member-management-e2e.md) before changing that evaluation or its build cache inputs.
 - **Durable local state — the dev database, uploaded bytes — lives outside the checkout, never inside a worktree, and is shared by all of them:** read [docs/standards/local-state.md](docs/standards/local-state.md) before changing `infrastructure/compose/docker-compose.yml`, the storage paths in `packages/config` or `packages/runtime`, or anything else that writes state a person would mind losing.
-- **Desktop bundles, macOS signing (never ad-hoc unless Ondrej explicitly asks), the Developer ID signed and notarized executor menu bar DMG, keyless Windows Artifact Signing pinned by profile EKU, per-component edge releases, lint-gated root builds, Prisma generation ordering, and migration immutability:** read [docs/standards/build-and-release.md](docs/standards/build-and-release.md) before building a desktop app or an installer, changing a build pipeline or Dockerfile, or touching `api/prisma/migrations/`.
+- **Desktop bundles, macOS signing (never ad-hoc unless Ondrej explicitly asks), keyless OIDC Windows signing, per-component Windows edge releases, the Developer ID signed and notarized executor menu bar DMG, lint-gated root builds, Prisma generation ordering, and migration immutability:** read [docs/standards/build-and-release.md](docs/standards/build-and-release.md) before building a desktop app or an installer, changing a build pipeline or Dockerfile, or touching `api/prisma/migrations/`.
 - After every server start/restart, verify it is actually running: check the process is up, hit a health endpoint, or confirm the expected log output appears.
 - Package manager: **pnpm**.
 - Real-provider local CTO verification and temporary subscription credentials: see [docs/testing/local-cto.md](docs/testing/local-cto.md).
@@ -200,7 +200,8 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 - Use Playwright (`mcp__plugin_playwright`, or a local Playwright script) to load `http://localhost:<admin port>/<path>` — 5455 unless this worktree set `NESSIE_ADMIN_PORT` — screenshot the affected page, and confirm the feature renders correctly.
 - Always run Playwright headless unless the user explicitly requests otherwise.
 - Executor pairing, independent account/server connections on each platform, live account-menu presence, and their browser verification are documented in [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md).
-- Direct machine access from private agent chat follows [executor sharing](docs/standards/executor-sharing.md); named internal links and the `nessie_link` tool follow [agent voice](docs/standards/agent-voice.md).
+  The shared macOS/Windows console and machine-only, per-team resource permissions follow [local executor controls](docs/executor-local-controls.md).
+- Direct machine access from private agent chat and its self-reminders follows [executor sharing](docs/standards/executor-sharing.md); named internal links and the `nessie_link` tool follow [agent voice](docs/standards/agent-voice.md).
 - This applies to all frontend work: new components, layout changes, styling fixes, and interaction flows.
 
 ## Architecture
@@ -334,7 +335,8 @@ when one changes, the same turn updates it, not this section.
 - **Disclosure boundaries — what an agent read decides who may read its answer.**
   Every read that enters a run's context feeds the `ConsumedSourceSink` in the
   same change; an empty basis means unrestricted, so a forgotten read fails
-  open.
+  open. Context the platform assembles itself — recall, and the room history of
+  a run no person is live in — never restricts a reply in its own room.
   Authorized executor access has no additional private-conversation write veto.
   Read [`docs/standards/disclosure-boundaries.md`](docs/standards/disclosure-boundaries.md)
   before writing code here.
@@ -612,7 +614,9 @@ before writing code here.
 
 Slack-style reply threads live one level deep on `Message.rootMessageId`;
 where a run's reply lands is decided before the run starts, and **where a run
-replies and what it reads are separate questions**. Thinking bubbles and the
+replies and what it reads are separate questions**. A room whose only person is
+the one talking answers in its main chat, and with one agent in it Jev decides
+each reply's shape and whether it goes back to an earlier message. Thinking bubbles and the
 client-only liveness hint are part of the same standard. A container `Thread`
 with an `agent_id` is a **conversation with that agent** — one agent, many
 isolated contexts in the same room — and a top-level `user` turn inside one

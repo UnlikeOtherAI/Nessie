@@ -9,16 +9,21 @@ import { shot } from './viewports.mjs'
  *
  * There is no rail below `md`: the doorway is a header action, the column is a
  * full screen at its own URL, and Back is the framework's, resolving to the
- * surface's declared parent. That parent is the *room*, not the list — a
- * conversation is a second thread in the channel, and the channel is what it
- * came from — so this asserts one Back, not two.
+ * surface's declared parent. That parent is the conversation's *room*, not the
+ * list — a conversation is a second thread in the channel it lives in — so
+ * this asserts one Back, not two.
+ *
+ * The header action belongs to a room the agent works in: an agent DM has none
+ * (docs/standards/reply-threads.md), its sessions being the sidebar's. So the
+ * path starts in the private room the agent is bound to, and the conversation
+ * it opens lives in the DM, where Back lands.
  *
  * The header renders a hidden measuring copy of every action and of Back, and
  * the room's layer is retained beneath a pushed conversation, so every control
  * here is taken from the visible set and the topmost layer (`.last()`).
  */
 export const exercisePhoneColumn = async ({ fixture, goto, page, screenshots }) => {
-  const room = `/channels/${fixture.dmRoom.id}`
+  const room = `/channels/${fixture.privateRoom.id}`
   await goto(page, room)
   await page.locator('form.admin-compose:visible [contenteditable="true"]').last()
     .waitFor({ timeout: 60_000 })
@@ -29,7 +34,7 @@ export const exercisePhoneColumn = async ({ fixture, goto, page, screenshots }) 
   const doorway = page.locator('[data-page-header-action="chat-tool-conversations"]:visible').last()
   await doorway.waitFor()
   await doorway.click()
-  await page.waitForURL(new RegExp(`/channels/${fixture.dmRoom.id}/tools/conversations$`, 'u'))
+  await page.waitForURL(new RegExp(`/channels/${fixture.privateRoom.id}/tools/conversations$`, 'u'))
   const column = page.locator(`[aria-label="Conversations with ${fixture.agent.name}"]`)
   await column.waitFor()
   const rows = page.locator('[data-testid="agent-conversation-row"]')

@@ -32,6 +32,8 @@ import {
 import { createApiClient, getBaseUrl } from '../lib/api-client'
 import { removeBrowserPushEnrollmentsOnLogout, setActiveWebPushUser } from '../lib/web-push'
 import { clearBlobCache } from '../lib/blob-cache'
+import { readCacheScope } from './read-cache-policy'
+import { useSessionReadCache } from './useSessionReadCache'
 import { getSessionClientType } from '../lib/session-client'
 import {
   clearSessionIfCurrent,
@@ -102,6 +104,7 @@ const authApi = createAuthSessionApi(getBaseUrl(), { sessionClient: getSessionCl
 
 export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   const queryClient = useQueryClient()
+  const readCache = useSessionReadCache()
   const [sessionState, setSessionState] = useState<AuthSessionState>('loading')
   const [token, setToken] = useState<string | null>(() => loadStoredToken())
   // Session restoration is one lifecycle, not a side effect of token changes:
@@ -122,16 +125,19 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   const [bootstrapState, setBootstrapState] = useState<BootstrapModeResponse | null>(null)
 
   const resetTenantQueries = useCallback(async (): Promise<void> => {
+    // Fence pending disk writes before awaiting cancellation of the old session.
+    readCache.clear()
     await queryClient.cancelQueries().catch(() => undefined)
     queryClient.clear()
     // Authed image bytes were fetched with the session that is ending; the
     // blob cache outlives React state, so it is cleared with the query cache
     // rather than left for the next person signing in on this tab.
     clearBlobCache()
-  }, [queryClient])
+  }, [queryClient, readCache])
 
   const sessionQueryBoundary = useMemo(
     () => createSessionQueryBoundary({
+      cacheScope: (session) => readCacheScope(getBaseUrl(), session),
       readCurrentMe: () => meRef.current,
       resetTenantQueries,
     }),
@@ -139,6 +145,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   )
 
   const applySession = useCallback((payload: { me: MeResponse; token: string }): void => {
+    readCache.activate(readCacheScope(getBaseUrl(), payload.me))
     const imported = importedApplyTracker.has(payload.token)
     storeToken(payload.token, imported ? 'imported' : 'renewable')
     tokenRef.current = payload.token
@@ -149,7 +156,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     setMe(payload.me)
     setBootstrapState(null)
     setSessionState('authenticated')
-  }, [importedApplyTracker])
+  }, [importedApplyTracker, readCache])
 
   // Synchronously remove every local bearer/auth reference; safe to call
   // before returning control to a remote finalizer.
@@ -329,11 +336,14 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       return
     }
 
+    await sessionQueryBoundary.beforeApply(snapshot)
+    if (!isCurrent()) return
+    readCache.activate(readCacheScope(getBaseUrl(), snapshot.me))
     setBootstrapState(null)
     meRef.current = snapshot.me
     setMe(snapshot.me)
     setSessionState('authenticated')
-  }, [ambientRefreshGate, refreshAccessToken, sessionQueryBoundary])
+  }, [ambientRefreshGate, readCache, refreshAccessToken, sessionQueryBoundary])
 
   const refreshSession = useCallback(
     (): Promise<void> => refreshSessionFor(readSessionCredential()),

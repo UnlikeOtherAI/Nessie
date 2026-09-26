@@ -19,6 +19,7 @@ import {
   type DelegatedRunFacts,
 } from '../delegated-identity.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
+import { addedReplyRestriction } from './agent-message.js'
 import { markUnknownPrivateConversationScopes } from './private-conversation-lineage.js'
 import type { ConsumedSourceSink } from './disclosure-basis.js'
 import type { PrismaClient } from '@prisma/client'
@@ -27,17 +28,17 @@ const MAX_MEMORY_RESULTS = 5
 const MAX_MEMORY_CONTEXT_LENGTH = 220
 
 /**
- * How many times its normal depth a project-write recall searches.
+ * How many times its normal depth a contained recall searches.
  *
- * Project-write containment judges each recalled item's whole lineage after
- * the search, so a search that asked for only the normal count came back
- * short — or empty — whenever the requester's best matches had been fed by a
- * private DM, while project knowledge sat just below the cut. Such a run
- * searches this many times deeper and keeps at most the normal count of what
- * survives. A fixed multiple, so the search stays bounded; every other run
- * searches exactly as deep as before.
+ * A contained run judges each recalled item's whole lineage after the search
+ * (`recallLineageGate`), so a search that asked for only the normal count came
+ * back short — or empty — whenever the requester's best matches had been fed
+ * by a private DM, while material the room may read sat just below the cut.
+ * Such a run searches this many times deeper and keeps at most the normal
+ * count of what survives. A fixed multiple, so the search stays bounded; a
+ * delegate in its own home judges nothing and searches at the normal depth.
  */
-export const PROJECT_WRITE_RECALL_DEPTH = 3
+export const CONTAINED_RECALL_DEPTH = 3
 
 const CONTAINMENT_DISABLED = new Set(['0', 'false', 'off', 'no'])
 
@@ -52,6 +53,21 @@ export const isContainmentEnabled = (
   !CONTAINMENT_DISABLED.has(
     (env['NESSIE_DISCLOSURE_CONTAINMENT'] ?? '').trim().toLowerCase(),
   )
+
+/**
+ * The structural facts delegation and containment are decided on, as a run
+ * carries them. One reading for recall, history and the transcript alike.
+ */
+export const runDelegationFacts = (context: {
+  agent: Pick<RunContext['agent'], 'agentKind' | 'systemSlug'>
+  channel: Pick<RunContext['channel'], 'dmKey' | 'organizationId' | 'systemChannelType'>
+}): DelegatedRunFacts => ({
+  agentKind: context.agent.agentKind,
+  dmKey: context.channel.dmKey,
+  organizationId: context.channel.organizationId,
+  systemChannelType: context.channel.systemChannelType,
+  systemSlug: context.agent.systemSlug,
+})
 
 /**
  * Delegate identity decides whose accessible scopes are considered; the
@@ -155,6 +171,54 @@ export const requiresProjectWriteRecallContainment = (
   holdsProjectWriteTools && requiresMemoryDestinationContainment(facts, containmentEnabled)
 
 /**
+ * Which recalled items — thoughts and history passages alike — a run may take,
+ * judged on each item's whole lineage; null when it takes all it can reach.
+ *
+ * Recall is context the platform assembles, not a read the run chose, so in a
+ * contained run it may never be what restricts the reply: an item is taken only
+ * when its lineage adds nothing to the reply basis the run already holds
+ * (`addedReplyRestriction`). A shared agent posting into a public room used to
+ * recall its requester's private DM with it — for a schedule, the schedule's
+ * owner — and the post was withheld from everyone else in the room. Material
+ * the room may read, from any conversation, is still recalled. A run lent
+ * project writes takes the narrower floor of what every project reader has,
+ * because the write gate refuses even the room's own team and channel. A
+ * delegate in its own home is not contained and takes everything it reaches.
+ */
+export const recallLineageGate = (
+  facts: DelegatedRunFacts,
+  context: Parameters<typeof addedReplyRestriction>[0],
+  holdsProjectWriteTools: boolean,
+  containmentEnabled = isContainmentEnabled(),
+): ((scopes: readonly ScopeRef[]) => boolean) | null => {
+  if (!requiresMemoryDestinationContainment(facts, containmentEnabled)) return null
+  if (holdsProjectWriteTools) {
+    return (scopes) => isWithinProjectWriteScopes(scopes, context.channel)
+  }
+  return (scopes) => addedReplyRestriction(context, scopes).length === 0
+}
+
+/**
+ * Whether a run reads its own room's history as the room does.
+ *
+ * A run no person is live in — a schedule, an event trigger, a channel policy
+ * acting on its saved authorizer — reads as the person behind it, but what it
+ * writes is a contribution to the room rather than an answer to them. So a
+ * turn whose lineage would add to its reply basis is withheld from it, like a
+ * turn its viewer cannot read (`loadConversation`'s `addedRestriction`).
+ * Otherwise one restricted post kept every later one restricted: each inherited
+ * the stamp from the post before it. A live requester's own turn keeps its
+ * history — continuing a restricted answer with the person who may read it is
+ * the point — and so does a delegate in its own home.
+ */
+export const readsRoomHistoryAsRoom = (
+  facts: DelegatedRunFacts,
+  liveRequester: boolean,
+  containmentEnabled = isContainmentEnabled(),
+): boolean =>
+  !liveRequester && requiresMemoryDestinationContainment(facts, containmentEnabled)
+
+/**
  * A thought that vanished after search has no durable provenance to admit.
  * Exclude it before it reaches model context rather than treating the missing
  * row as an unrestricted memory.
@@ -186,13 +250,7 @@ export const retrieveRelevantMemories = async (
       ? payload.actorContext.actor.actorId
       : undefined)
 
-  const delegationFacts: DelegatedRunFacts = {
-    agentKind: context.agent.agentKind,
-    dmKey: context.channel.dmKey,
-    organizationId: context.channel.organizationId,
-    systemChannelType: context.channel.systemChannelType,
-    systemSlug: context.agent.systemSlug,
-  }
+  const delegationFacts = runDelegationFacts(context)
 
   // Scope resolution follows delegate identity everywhere it acts — the PA, or
   // a DM-homed global agent. The containment exemption below is narrower: only
@@ -251,6 +309,11 @@ export const retrieveRelevantMemories = async (
       delegationFacts,
       options.holdsProjectWriteTools === true,
     )
+    const lineageGate = recallLineageGate(
+      delegationFacts,
+      context,
+      options.holdsProjectWriteTools === true,
+    )
     const scopes = projectWrite
       ? constrainScopesToProjectWrite(reachableScopes, destination)
       : requiresMemoryDestinationContainment(delegationFacts)
@@ -263,19 +326,18 @@ export const retrieveRelevantMemories = async (
 
     // The thoughts this run takes, in rank order, and the lineage each brings.
     // The search already narrowed the audience; a thought captured from a
-    // private conversation still carries that conversation, so a
-    // project-write run judges the whole lineage before admitting it.
+    // private conversation still carries that conversation, so a contained
+    // run judges the whole lineage before admitting it.
     let takenLineages: ThoughtDisclosureLineage[] = []
     const take: RetainSearchResults = async (found, db) => {
       const retained = found.filter((result) => !isSuppressedMemory(result.metadata))
       if (retained.length === 0) return retained
       const loaded = await loadThoughtDisclosureLineage(db, retained.map((result) => result.id))
-      const lineages = projectWrite
-        ? loaded.filter((lineage) =>
-          isWithinProjectWriteScopes(thoughtLineageScopes(lineage), destination))
+      const lineages = lineageGate
+        ? loaded.filter((lineage) => lineageGate(thoughtLineageScopes(lineage)))
         : loaded
-      // In rank order, so a deeper project-write search still hands the model
-      // no more than the normal count, and only those enter the basis.
+      // In rank order, so a deeper contained search still hands the model no
+      // more than the normal count, and only those enter the basis.
       const taken = retainThoughtsWithLineage(retained, lineages).slice(0, MAX_MEMORY_RESULTS)
       const takenIds = new Set(taken.map((result) => result.id))
       takenLineages = lineages.filter((lineage) => takenIds.has(lineage.thoughtId))
@@ -288,7 +350,7 @@ export const retrieveRelevantMemories = async (
         audienceTypes: scopes.audienceTypes,
         channelId: context.channel.id,
         includeReasoning: false,
-        limit: projectWrite ? MAX_MEMORY_RESULTS * PROJECT_WRITE_RECALL_DEPTH : MAX_MEMORY_RESULTS,
+        limit: lineageGate ? MAX_MEMORY_RESULTS * CONTAINED_RECALL_DEPTH : MAX_MEMORY_RESULTS,
         organizationId: context.channel.organizationId,
         projectId: payload.actorContext.tenant.projectId ?? null,
         query: prompt,
@@ -311,14 +373,14 @@ export const retrieveRelevantMemories = async (
         userId: effectiveUserId ?? null,
       },
       deps.searchConfig,
-      // A project-write search goes deeper than it keeps, so only what it
-      // keeps is marked accessed and logged as recalled. Access feeds the
-      // recency term of every later ranking: bumping the DM-fed thoughts it
-      // refused would keep lifting exactly those above the project knowledge
-      // it came for. Every other run's bookkeeping is unchanged.
-      projectWrite ? take : undefined,
+      // A contained search goes deeper than it keeps, so only what it keeps
+      // is marked accessed and logged as recalled. Access feeds the recency
+      // term of every later ranking: bumping the DM-fed thoughts it refused
+      // would keep lifting exactly those above the material it came for. A
+      // delegate in its own home keeps what it finds, as before.
+      lineageGate ? take : undefined,
     )
-    const memories = projectWrite ? results : await take(results, deps.searchConfig.pool)
+    const memories = lineageGate ? results : await take(results, deps.searchConfig.pool)
 
     // Record what this run actually consumed. The basis of anything the run
     // later materialises is computed from this sink, so a memory that reached

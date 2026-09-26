@@ -66,7 +66,7 @@ packages' tests; the whole repository's `pnpm lint` (29 tasks) and
 
 | Piece | Where |
 | --- | --- |
-| Authenticode pinning shared by desktop and service (`WinVerifyTrust` + the Artifact Signing certificate-profile EKU compiled in via `NESSIE_WINDOWS_PUBLISHER_EKU`; a leaf thumbprint until 2026-09-26, retired because the certificate renews daily) | `executor/windows-provenance/`, consumed by `desktop/src-tauri` and `executor/service-windows` |
+| Authenticode pinning shared by desktop and service (`WinVerifyTrust` + durable Artifact Signing profile EKU compiled in via `NESSIE_DESKTOP_WINDOWS_SIGNER_EKU`) | `executor/windows-provenance/`, consumed by `desktop/src-tauri` and `executor/service-windows` |
 | Owner-only state as a DACL via the native helper (`secure-directory`, `verify-owner-only`) | `executor/src/state-security.ts`, `executor/native/` |
 | Pipe-close graceful stop, process-handle liveness, stale-lease fix | `desktop/src-tauri/src/executor_companion/runtime.rs` (Windows arms) |
 | `node.exe` runtime layout, manifest `nodeExecutable`, pinned helper | `executor/scripts/prepare-runtime.mjs` |
@@ -140,8 +140,7 @@ API suites (no pgvector locally).
 8. Tamper: replace `node.exe` in Program Files as Administrator; the service
    stays Running, starts no daemon, the tray turns red, the desktop card says
    `unsigned_release`.
-9. Signing: done 2026-09-26 through Azure Artifact Signing and the
-   `windows-signing` environment (see section 6); confirm
+9. Signing: set the four `WINDOWS_SIGN*` secrets (section 6) and confirm
    `Get-AuthenticodeSignature` reports `Valid` with the expected subject on
    every `.exe` and `.msi`, and that `WinVerifyTrust` in the desktop and the
    service accepts the signed build and refuses a differently-signed one.
@@ -209,7 +208,7 @@ NESSIE_GUEST_KERNEL=<path to bzImage> node executor/packaging/windows/build-msi.
 
 # Release-provenance pins compiled into the binaries
 NESSIE_DESKTOP_SIGNING_TEAM_ID              # macOS Developer ID team
-NESSIE_WINDOWS_PUBLISHER_EKU                # Windows Artifact Signing profile EKU (desktop and service)
+NESSIE_DESKTOP_WINDOWS_SIGNER_EKU           # durable Artifact Signing profile EKU (desktop and service)
 NESSIE_EXECUTOR_VERSION                     # overrides the package version in both build scripts
 ```
 
@@ -230,12 +229,11 @@ cargo check --release --target x86_64-pc-windows-msvc --all-targets
 | --- | --- | --- | --- |
 | `ci.yml` | every branch push | `Windows Native` (windows-latest: all Windows Rust crates and WiX installer-authoring tests when `desktop/`, `executor/`, or `assets/` changes; explicit reported skip otherwise) | no signing secrets or release artifacts; failures block the affected pull request |
 | `desktop-linux.yml` | `workflow_dispatch`, tags `desktop-v*` | `build` (ubuntu-24.04: cargo test, shell deb + AppImage, executor deb, checksums, install smoke under xvfb), `firecracker-conformance` | a self-hosted runner labelled `[self-hosted, linux, kvm]`; apt repository signing is a commented placeholder |
-| `desktop-windows.yml` | `workflow_dispatch`, tags `desktop-v*` | `guest-kernel` (Linux, builds `bzImage`), `build` (windows-latest: cargo test, tauri build, executor MSI, signing, checksums, silent-install smokes), `hyperv-conformance` | the `windows-signing` environment (keyless Azure Artifact Signing through GitHub OIDC; `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` variables, no secret — see `docs/releasing.md`); a runner labelled `[self-hosted, windows, hyperv]` |
+| `desktop-windows.yml` | reusable call, `workflow_dispatch` | `guest-kernel` (Linux, builds `bzImage`), `build` (windows-latest: cargo test, tauri build, executor MSI, keyless Artifact Signing, checksums, silent-install smokes), `hyperv-conformance` | repository variables select the Artifact Signing account/profile, legal subject and durable EKU; the `direct-download-release` environment's immutable GitHub OIDC subject authenticates `nessie-github-signing` without a client secret; a runner labelled `[self-hosted, windows, hyperv]` |
 
-A build of anything but `main` itself or an exact release tag labels itself
-an unsigned development build and never claims a release. Both conformance jobs fail, not
-skip, on a runner without virtualization, and queue until a labelled runner
-exists.
+The Windows release boundary fails closed unless keyless Artifact Signing is
+configured and succeeds. Both conformance jobs fail, not skip, on a runner
+without virtualization, and queue until a labelled runner exists.
 
 ## 7. Open items
 

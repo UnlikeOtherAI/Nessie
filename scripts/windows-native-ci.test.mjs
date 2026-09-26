@@ -54,6 +54,7 @@ const nativeCargoTests = [
   ["Test desktop Rust crate", "desktop/src-tauri/Cargo.toml"],
   ["Test executor native helper crate", "executor/native/Cargo.toml"],
   ["Test Windows provenance crate", "executor/windows-provenance/Cargo.toml"],
+  ["Test shared Windows executor runtime", "executor/windows-common/Cargo.toml"],
   ["Test executor service crate", "executor/service-windows/Cargo.toml"],
   ["Test Hyper-V bridge crate", "executor/hyperv-bridge/Cargo.toml"],
   ["Test executor tray crate", "executor/tray-windows/src-tauri/Cargo.toml"],
@@ -184,6 +185,18 @@ test("Windows Native builds and smoke-tests unsigned installers without signing"
   );
 });
 
+test("the release gives Tauri an argument-safe Artifact Signing command", () => {
+  const desktopBuild = stepBlock(releaseWorkflow, "Build the desktop bundles");
+  assert.match(desktopBuild, /\$signCommand = @\{/);
+  assert.match(desktopBuild, /cmd = 'pwsh\.exe'/);
+  assert.match(desktopBuild, /'-File', \$signScript/);
+  assert.match(desktopBuild, /'-FilePath', '%1'/);
+  assert.doesNotMatch(
+    desktopBuild,
+    /signCommand = \$env:WINDOWS_SIGN_COMMAND/,
+  );
+});
+
 test(
   "the executor MSI fixture is deterministic and carries the required marker",
   { skip: process.platform !== "win32" },
@@ -216,51 +229,44 @@ test(
   },
 );
 
-// The signing identity trusts the windows-signing environment alone, so the
-// expression that decides who joins it is the whole signing boundary.
-test("only a build of main itself or its exact release tag can reach the signing identity", () => {
+// The managed identity trusts exactly two environments, so the expression that
+// decides which one a build joins is the whole signing boundary: a release tag
+// behind a release owner's approval, main itself without one, nothing else.
+test("only a release tag or main itself can reach the signing identity", () => {
   const build = jobBlock(releaseWorkflow, "build");
   const environment = /\n    environment: >-\n((?: {6}.+\n)+)/.exec(`\n${build}`);
-  assert.ok(environment, "the build job joins an environment");
-  const expression = environment[1].replace(/\s+/g, " ").trim();
+  assert.ok(environment, "the build job chooses its environment");
   assert.equal(
-    expression,
-    "${{ ((github.ref == 'refs/heads/main' && inputs.source_ref == '') || "
-      + "(startsWith(github.ref, 'refs/tags/v') && inputs.source_ref == github.ref)) && "
-      + "'windows-signing' || '' }}",
+    environment[1].replace(/\s+/g, " ").trim(),
+    "${{ (startsWith(github.ref, 'refs/tags/v') && inputs.source_ref == github.ref && "
+      + "'direct-download-release') || "
+      + "(github.ref == 'refs/heads/main' && inputs.source_ref == '' && 'windows-signing') || '' }}",
   );
-  assert.match(build, /\n {6}id-token: write\n/);
-  // A branch cannot supply a source to sign: the ref reaches PowerShell as
-  // data, never spliced into the script.
-  const resolveSigning = stepBlock(build, "Resolve signing");
+  assert.match(releaseWorkflow, /\npermissions:\n {2}contents: read\n {2}id-token: write\n/);
+  // The source ref reaches PowerShell as data, never spliced into the script.
+  const resolveSigning = stepBlock(build, "Resolve signing configuration");
   assert.match(resolveSigning, /NESSIE_SOURCE_REF: \$\{\{ inputs\.source_ref \}\}/);
   assert.doesNotMatch(resolveSigning.split("run: |")[1], /\$\{\{ inputs\./);
-});
-
-test("Windows signing stores no credential and goes through the committed signer", () => {
-  assert.doesNotMatch(releaseWorkflow, /secrets\.(WINDOWS_SIGN|AZURE_)/);
-  assert.doesNotMatch(releaseWorkflow, /AZURE_CLIENT_SECRET|THUMBPRINT/);
-  const build = jobBlock(releaseWorkflow, "build");
-  assert.match(
-    stepBlock(build, "Prepare Artifact Signing"),
-    /& executor\/packaging\/windows\/signing\/sign\.ps1 -Prepare/,
-  );
-  assert.match(
-    stepBlock(build, "Sign the executor package"),
-    /& executor\/packaging\/windows\/signing\/sign\.ps1 \$_\.FullName/,
-  );
-  assert.match(stepBlock(build, "Verify signatures"), /\$publisher\.profileEku/);
+  assert.doesNotMatch(releaseWorkflow, /secrets\.(WINDOWS_SIGN|AZURE_)|AZURE_CLIENT_SECRET/);
 });
 
 test("main's edge builds and release tags must be signed", () => {
   const edgeBuild = jobBlock(edgeWorkflow, "build");
+  assert.match(edgeBuild, /uses: \.\/\.github\/workflows\/desktop-windows\.yml/);
   assert.match(edgeBuild, /require_signed_release: true/);
   assert.match(edgeBuild, /id-token: write/);
   // A cancelling group would restart a forty-minute build on every merge.
   assert.match(edgeWorkflow, /\nconcurrency:\n {2}group: windows-edge\n {2}cancel-in-progress: false\n/);
-  const releaseWindows = jobBlock(directDownloadWorkflow, "windows");
-  assert.match(releaseWindows, /require_signed_release: true/);
-  assert.match(releaseWindows, /id-token: write/);
+  assert.match(jobBlock(directDownloadWorkflow, "windows"), /require_signed_release: true/);
+});
+
+test("a published Windows build names its commit and versions", () => {
+  const build = jobBlock(releaseWorkflow, "build");
+  assert.match(stepBlock(build, "Resolve build versions"), /release-components\.mjs version executor/);
+  assert.match(stepBlock(build, "Build the desktop bundles"), /version = \$env:NESSIE_DESKTOP_VERSION/);
+  assert.match(stepBlock(build, "Collect artifacts"), /artifacts\/build-info\.json/);
+  // The checkout is the commit the run was started for, not the branch tip.
+  assert.doesNotMatch(releaseWorkflow, /inputs\.source_ref \|\| github\.ref \}\}/);
 });
 
 test("shared installer smoke scripts propagate install and uninstall failures", () => {

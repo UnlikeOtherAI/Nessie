@@ -467,6 +467,9 @@ person who can put their PA in a room, which is what makes "others may task
 it" acceptable downstream. `bindAgentToChannel` keeps refusing the PA
 entirely; this route is the *only* writer of principal bindings, mirroring
 how the PA DM binding is the only writer of the singleton's DM bindings.
+The membership lookup preserves the database's `null` system-channel value;
+the route uses it to admit ordinary channels, including standalone shared
+channels, while refusing system-managed conversations.
 
 ### Identity on every message and run
 

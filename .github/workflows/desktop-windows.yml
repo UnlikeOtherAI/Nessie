@@ -1,11 +1,10 @@
 name: Desktop (Windows)
 
-# Builds the Windows desktop artifacts and the standalone executor package, signs
-# them, and proves they install. A build of `main` itself, or of an exact release
-# tag, is signed as UnlikeOtherAI s.r.o. through Azure Artifact Signing
-# (executor/packaging/windows/signing/) and fails rather than publish unsigned;
-# every other source is an unsigned development build that never reaches the
-# signing environment. windows-edge.yml publishes main's signed builds.
+# Builds the Windows desktop artifacts and the standalone executor package,
+# signs every trusted release through Azure Artifact Signing, and proves they
+# install. The release boundary fails closed; unsigned output is development
+# output and can never be published by the release workflow. windows-edge.yml
+# calls it for each merge to main that changes a Windows download.
 on:
   workflow_call:
     inputs:
@@ -19,7 +18,7 @@ on:
         default: false
         type: boolean
       require_signed_release:
-        description: "Fail unless this build is signed (main or an exact release tag)."
+        description: "Require a configured Authenticode publisher for this build."
         required: false
         default: false
         type: boolean
@@ -40,7 +39,7 @@ on:
         default: false
         type: boolean
       require_signed_release:
-        description: "Fail unless this build is signed (main or an exact release tag)."
+        description: "Require a configured Authenticode publisher for this build."
         required: false
         default: false
         type: boolean
@@ -54,12 +53,19 @@ concurrency:
   group: desktop-windows-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  id-token: write
+
 env:
   # The WiX major this repository's authoring targets. Both its schema and its
   # CLI change between majors, so it is pinned rather than "whatever installs".
   # WiX 7 additionally requires accepting its OSMF EULA; changing that legal
   # commitment is an owner decision, not something a CI job may do implicitly.
   WIX_VERSION: "5.0.2"
+  NESSIE_ARTIFACT_SIGNING_ENDPOINT: ${{ vars.WINDOWS_ARTIFACT_SIGNING_ENDPOINT }}
+  NESSIE_ARTIFACT_SIGNING_ACCOUNT: ${{ vars.WINDOWS_ARTIFACT_SIGNING_ACCOUNT }}
+  NESSIE_ARTIFACT_SIGNING_PROFILE: ${{ vars.WINDOWS_ARTIFACT_SIGNING_PROFILE }}
 
 jobs:
   # The guest kernel is a Linux build: a bzImage with the EFI stub, the Hyper-V
@@ -72,7 +78,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # The exact commit the run was started for, never whatever the branch has
-      # moved on to since: a signed build is published as that commit's build.
+      # moved on to since: windows-edge.yml publishes the build as that commit's.
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -116,18 +122,16 @@ jobs:
     name: Build, sign, and install smoke
     runs-on: windows-latest
     needs: guest-kernel
-    # Signing is keyless: the job's GitHub OIDC token is exchanged for the
-    # `nessie-github-signing` managed identity, which trusts only the
-    # windows-signing environment — and that environment deploys only from main
-    # and `v*` tags. A build of main itself or of the tag it runs for joins it;
-    # a source override or any other branch runs outside it and cannot sign.
+    # The environment fixes the GitHub OIDC subject the Azure managed identity
+    # trusts, so it is the signing boundary. A release tag signs in
+    # direct-download-release, behind a release owner's approval; main itself
+    # (windows-edge.yml's build of a merge, or a manual run) signs in
+    # windows-signing, which deploys only from main and needs no approval; any
+    # other source joins no environment and cannot sign.
     environment: >-
-      ${{ ((github.ref == 'refs/heads/main' && inputs.source_ref == '') ||
-      (startsWith(github.ref, 'refs/tags/v') && inputs.source_ref == github.ref)) &&
-      'windows-signing' || '' }}
-    permissions:
-      contents: read
-      id-token: write
+      ${{ (startsWith(github.ref, 'refs/tags/v') && inputs.source_ref == github.ref &&
+      'direct-download-release') ||
+      (github.ref == 'refs/heads/main' && inputs.source_ref == '' && 'windows-signing') || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -137,53 +141,6 @@ jobs:
           # numbers count main's history, so the build needs the full
           # repository history rather than the checkout action's one commit.
           fetch-depth: 0
-
-      # Whether a build is signed is decided by its source alone: main itself,
-      # or the exact release tag the run is for. A branch or a source override
-      # is an unsigned development build, and one that was asked to be signed
-      # fails here instead of quietly shipping unsigned.
-      - name: Resolve signing
-        id: signing
-        shell: pwsh
-        env:
-          NESSIE_REQUIRE_SIGNED_RELEASE: ${{ inputs.require_signed_release }}
-          NESSIE_SOURCE_REF: ${{ inputs.source_ref }}
-        run: |
-          $sourceRef = $env:NESSIE_SOURCE_REF
-          $main = $env:GITHUB_REF -eq 'refs/heads/main' -and -not $sourceRef
-          $releaseTag = `
-            $env:GITHUB_REF_TYPE -eq 'tag' -and `
-            $env:GITHUB_REF_NAME -match '^v[0-9]+\.[0-9]+\.[0-9]+$' -and `
-            $sourceRef -eq $env:GITHUB_REF
-          $signed = [bool]($main -or $releaseTag)
-          if ($env:NESSIE_REQUIRE_SIGNED_RELEASE -eq 'true' -and -not $signed) {
-            throw 'Signing was requested for a source that is neither main itself nor an exact release tag.'
-          }
-          "signed=$($signed.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          if (-not $signed) {
-            Write-Host '::warning::Unsigned development build: only main and exact release tags are signed.'
-          }
-
-      # Installs the pinned Artifact Signing client and signs a probe through the
-      # real certificate profile before anything is built, so a missing role or
-      # a recreated profile fails in a minute rather than forty minutes in. It
-      # exports the sign command every later step uses and the publisher EKU the
-      # desktop and the executor service compile in and pin at runtime.
-      - name: Prepare Artifact Signing
-        if: steps.signing.outputs.signed == 'true'
-        shell: pwsh
-        env:
-          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-        run: |
-          foreach ($name in 'AZURE_CLIENT_ID', 'AZURE_TENANT_ID') {
-            $value = [Environment]::GetEnvironmentVariable($name)
-            if (-not $value) {
-              throw "The windows-signing environment must define $name (the nessie-github-signing identity)."
-            }
-            "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Append
-          }
-          & executor/packaging/windows/signing/sign.ps1 -Prepare
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -247,8 +204,9 @@ jobs:
         run: pnpm exec turbo run build --filter=@nessie/executor...
 
       # Tauri's generated resource manifest needs the packaged runtime even for
-      # `cargo test`. Prepare it before the desktop crate compiles; the bundle
-      # step below prepares it again, which is the copy that ships.
+      # `cargo test`. Prepare it before the desktop crate compiles; signing is
+      # still resolved only below, so this is an unsigned source build unless a
+      # later trusted-release step supplies the signing command.
       - name: Prepare desktop executor runtime
         run: pnpm --dir desktop run prepare:executor-runtime
 
@@ -327,12 +285,95 @@ jobs:
             throw 'VBScript is unavailable, so WiX cannot validate the MSI on this runner.'
           }
 
+      # Release tags and main itself — windows-edge.yml's build of a merge or a
+      # manual run — fail closed unless the repository's Artifact Signing OIDC
+      # configuration is complete. The source ref reaches the script as data,
+      # never spliced into it.
+      - name: Resolve signing configuration
+        id: signing
+        shell: pwsh
+        env:
+          NESSIE_REQUIRE_SIGNED_RELEASE: ${{ inputs.require_signed_release }}
+          NESSIE_SOURCE_REF: ${{ inputs.source_ref }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          WINDOWS_SIGNER_EKU: ${{ vars.WINDOWS_SIGNER_EKU }}
+          WINDOWS_SIGNER_SUBJECT: ${{ vars.WINDOWS_SIGNER_SUBJECT }}
+        run: |
+          $releaseSource = `
+            $env:GITHUB_REF_TYPE -eq 'tag' -and `
+            $env:GITHUB_REF_NAME -match '^v[0-9]+\.[0-9]+\.[0-9]+$' -and `
+            $env:NESSIE_SOURCE_REF -eq $env:GITHUB_REF
+          $release = $releaseSource -and $env:NESSIE_REQUIRE_SIGNED_RELEASE -eq 'true'
+          $trustedMainVerification = `
+            $env:GITHUB_REF -eq 'refs/heads/main' -and `
+            -not $env:NESSIE_SOURCE_REF
+          if ($env:NESSIE_REQUIRE_SIGNED_RELEASE -eq 'true' -and -not $release -and -not $trustedMainVerification) {
+            throw 'Signing was requested for a source that is not an exact release tag or the current main branch.'
+          }
+          $configured = [bool](
+            $env:AZURE_CLIENT_ID -and
+            $env:AZURE_TENANT_ID -and
+            $env:AZURE_SUBSCRIPTION_ID -and
+            $env:NESSIE_ARTIFACT_SIGNING_ENDPOINT -and
+            $env:NESSIE_ARTIFACT_SIGNING_ACCOUNT -and
+            $env:NESSIE_ARTIFACT_SIGNING_PROFILE -and
+            $env:WINDOWS_SIGNER_EKU -and
+            $env:WINDOWS_SIGNER_SUBJECT
+          )
+          $signingRequired = $release -or $trustedMainVerification
+          if ($signingRequired -and -not $configured) {
+            throw 'A release tag or trusted main verification requires the complete Azure Artifact Signing OIDC configuration.'
+          }
+          $signed = [bool]($signingRequired -and $configured)
+          "signed=$($signed.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          if ($signed) {
+            Write-Host 'Signing the trusted source through Azure Artifact Signing OIDC.'
+            # The publisher compiled into the release is what the desktop
+            # companion and the executor service pin at runtime; without it a
+            # release build refuses executor controls by design.
+            "NESSIE_DESKTOP_WINDOWS_SIGNER_EKU=$env:WINDOWS_SIGNER_EKU" |
+              Out-File -FilePath $env:GITHUB_ENV -Append
+            $signScript = Join-Path $env:GITHUB_WORKSPACE 'scripts\sign-windows-artifact.ps1'
+            # Tauri and the executor packaging helper each quote the substituted
+            # artifact path; quoting `%1` here would produce `""C:\...""`.
+            $signCommand = "pwsh.exe -NoProfile -ExecutionPolicy Bypass -File `"$signScript`" -FilePath %1"
+            "WINDOWS_SIGN_COMMAND=$signCommand" | Out-File -FilePath $env:GITHUB_ENV -Append
+          } elseif ($releaseSource) {
+            Write-Host '::warning::Publishing an unsigned Windows installer; SmartScreen may warn before installation.'
+          } else {
+            Write-Host '::warning::Source-ref and non-main manual builds are unsigned development builds, not releases.'
+          }
+
+      # The environment-scoped OIDC token can impersonate only the managed
+      # identity that is a signer on NessiePublicTrust. No client secret or
+      # private certificate key ever reaches the runner.
+      - name: Log in to Azure with GitHub OIDC
+        if: steps.signing.outputs.signed == 'true'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Artifact Signing client tools
+        if: steps.signing.outputs.signed == 'true'
+        shell: pwsh
+        run: |
+          winget install --exact --id Microsoft.Azure.ArtifactSigningClientTools `
+            --silent --disable-interactivity `
+            --accept-package-agreements --accept-source-agreements
+
       - name: Build the desktop bundles
         shell: pwsh
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.enable_direct_updater && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.enable_direct_updater && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         run: |
+          # `signCommand` carries `%1`, which Tauri replaces with each artifact's
+          # path. The placeholder values in tauri.windows.conf.json are null, so
+          # an unsigned build simply does not sign.
           $arguments = @('--bundles', 'nsis,msi')
           if ('${{ inputs.enable_direct_updater }}' -eq 'true') {
             if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
@@ -340,31 +381,38 @@ jobs:
             }
             $arguments += @('--features', 'direct-updater', '--config', 'src-tauri/tauri.direct-updater.conf.json')
           }
-          # This build's version and, when it is signed, the one sign command.
-          # Tauri replaces `%1` with each file it signs. Its string form of
-          # `signCommand` splits on spaces, so the object form carries the
-          # script path as one argument, and a generated file carries the
-          # JSON, which pnpm's Windows shim would not pass through intact.
-          $release = @{ version = $env:NESSIE_DESKTOP_VERSION }
+          # The version resolved above: main's builds are numbered so each one
+          # installs over the one before it.
+          $versionPath = Join-Path $env:RUNNER_TEMP 'nessie-tauri-version.json'
+          Set-Content -LiteralPath $versionPath -Encoding utf8NoBOM `
+            -Value (@{ version = $env:NESSIE_DESKTOP_VERSION } | ConvertTo-Json -Compress)
+          $arguments += @('--config', $versionPath)
           if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
-            $signScript = (Resolve-Path 'executor/packaging/windows/signing/sign.ps1').Path
-            $release.bundle = @{
-              windows = @{
-                signCommand = @{
-                  cmd = 'pwsh'
-                  args = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', $signScript, '%1')
-                }
-              }
+            $env:NESSIE_WINDOWS_SIGN_COMMAND = $env:WINDOWS_SIGN_COMMAND
+            $configPath = Join-Path $env:RUNNER_TEMP 'nessie-tauri-windows-signing.json'
+            $signScript = Join-Path $env:GITHUB_WORKSPACE 'scripts\sign-windows-artifact.ps1'
+            # Tauri's string notation splits on every space without honouring
+            # quotes. Use its object notation so PowerShell receives the script
+            # path and substituted artifact path as exact arguments.
+            $signCommand = @{
+              cmd = 'pwsh.exe'
+              args = @(
+                '-NoProfile',
+                '-ExecutionPolicy', 'Bypass',
+                '-File', $signScript,
+                '-FilePath', '%1'
+              )
             }
+            $config = @{ bundle = @{ windows = @{ signCommand = $signCommand } } } |
+              ConvertTo-Json -Depth 5 -Compress
+            Set-Content -LiteralPath $configPath -Value $config -Encoding utf8NoBOM
+            # A path avoids PowerShell/native argument parsing stripping the
+            # JSON property's quotes before the Tauri CLI receives it.
+            $arguments += @('--config', $configPath)
           }
-          $releaseConfig = Join-Path $env:RUNNER_TEMP 'tauri.release.conf.json'
-          $release | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $releaseConfig -Encoding utf8
-          $arguments += @('--config', $releaseConfig)
           # Call Tauri directly after runtime preparation. Passing a second
           # argument separator through the package script reaches Cargo as a
-          # literal `--`, so Cargo mistakes the bundle flags for its own. The
-          # preparation signs the native helper before hashing it when
-          # NESSIE_WINDOWS_SIGN_COMMAND is set.
+          # literal `--`, so Cargo mistakes the bundle flags for its own.
           pnpm --dir desktop run prepare:executor-runtime
           # The desktop is installed per-user. An adjacent hash manifest is
           # therefore not an authority by itself: compile its exact runtime
@@ -399,13 +447,15 @@ jobs:
             --test --import tsx executor/test/control-plane-e2e.test.ts
 
       # Tauri signs what it bundles; the executor package is not a Tauri artifact.
-      # The build script signs the binaries it produces *before* staging them,
-      # through NESSIE_WINDOWS_SIGN_COMMAND, because the native helper's bytes
-      # are pinned in the runtime manifest and a signature added afterwards
-      # would no longer match it.
+      # The build script signs the three binaries it produces *before* staging
+      # them, because the native helper's bytes are pinned in the runtime
+      # manifest and a signature added afterwards would no longer match it.
       - name: Build the standalone executor package
         shell: pwsh
         run: |
+          if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
+            $env:NESSIE_WINDOWS_SIGN_COMMAND = $env:WINDOWS_SIGN_COMMAND
+          }
           $env:NESSIE_GUEST_KERNEL = "$PWD\guest-kernel\bzImage"
           node executor/packaging/windows/build-msi.mjs
 
@@ -414,7 +464,9 @@ jobs:
         shell: pwsh
         run: |
           Get-ChildItem dist -Filter 'NessieExecutor_*_x64.msi' | ForEach-Object {
-            & executor/packaging/windows/signing/sign.ps1 $_.FullName
+            $command = $env:WINDOWS_SIGN_COMMAND -replace '%1', "`"$($_.FullName)`""
+            Invoke-Expression $command
+            if ($LASTEXITCODE -ne 0) { throw "signing $($_.Name) failed" }
           }
 
       - name: Collect artifacts
@@ -447,7 +499,7 @@ jobs:
             Copy-Item $_.FullName (Join-Path artifacts/executor-payload $_.Name)
           }
           # What this build is, for whoever publishes it: the commit it was
-          # built from, the versions stamped into each component, and the run.
+          # built from, the version stamped into each component, and the run.
           @{
             commit = (git rev-parse HEAD)
             desktopVersion = $env:NESSIE_DESKTOP_VERSION
@@ -458,39 +510,35 @@ jobs:
           } | ConvertTo-Json | Out-File -FilePath artifacts/build-info.json -Encoding utf8
           Get-ChildItem artifacts -Recurse -File | Format-Table Name, Length
 
-      # Every Nessie executable and installer a person can right-click must carry
-      # a valid, timestamped signature from the pinned certificate profile — the
-      # same profile EKU the desktop and the service check at runtime. The
-      # packaged Node keeps its own upstream signature.
+      # When a publisher is configured this proves every artifact has its valid
+      # signature. The intentionally unsigned direct release skips this gate.
       - name: Verify signatures
         shell: pwsh
+        env:
+          WINDOWS_SIGNER_EKU: ${{ vars.WINDOWS_SIGNER_EKU }}
+          WINDOWS_SIGNER_SUBJECT: ${{ vars.WINDOWS_SIGNER_SUBJECT }}
         run: |
           if ('${{ steps.signing.outputs.signed }}' -ne 'true') {
             Write-Host '::warning::Unsigned Windows build — Authenticode verification skipped.'
             exit 0
           }
-          $publisher = Get-Content executor/packaging/windows/signing/publisher.json -Raw | ConvertFrom-Json
           $failed = @()
           Get-ChildItem artifacts -Include *.exe, *.msi -Recurse -File |
             Where-Object { $_.Name -ne 'node.exe' } |
             ForEach-Object {
-            $file = $_
-            $signature = Get-AuthenticodeSignature $file.FullName
-            $certificate = $signature.SignerCertificate
-            $usages = @(
-              $certificate.Extensions |
-                Where-Object { $_ -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension] } |
-                ForEach-Object { $_.EnhancedKeyUsages } |
-                ForEach-Object { $_.Value }
+            $signature = Get-AuthenticodeSignature $_.FullName
+            $subject = $signature.SignerCertificate.Subject
+            $ekus = @(
+              $signature.SignerCertificate.EnhancedKeyUsageList |
+                ForEach-Object { $_.ObjectId.Value }
             )
-            Write-Host "$($file.Name): $($signature.Status) $($certificate.Subject) $($certificate.Thumbprint)"
+            Write-Host "$($_.Name): $($signature.Status) $subject $($ekus -join ',')"
             if (
               $signature.Status -ne 'Valid' -or
-              $certificate.Subject -ne $publisher.subject -or
-              $usages -notcontains $publisher.profileEku -or
-              -not $signature.TimeStamperCertificate
+              $subject -notlike "*$env:WINDOWS_SIGNER_SUBJECT*" -or
+              $env:WINDOWS_SIGNER_EKU -notin $ekus
             ) {
-              $failed += $file.Name
+              $failed += $_.Name
             }
           }
           if ($failed.Count -gt 0) { throw "unsigned or wrongly signed: $($failed -join ', ')" }

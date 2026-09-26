@@ -269,7 +269,9 @@ export const FinderRow = ({
 }: FinderRowProps) => {
   const transferring = Boolean(transfer)
   const opensOn = openGesture ?? finderRowOpenGesture(kind, isDesktopApp())
-  const draftBadge = status === 'draft' ? (
+  // `KnowledgePageRecord.status` also defaults to draft for uploaded files.
+  // Only pages with a publish workflow can truthfully say “Draft”.
+  const draftBadge = status === 'draft' && (kind === 'document' || kind === 'spreadsheet') ? (
     <Pill radius="chip" size="sm" title="Draft — not published" tone="warning" uppercase={false}>
       Draft
     </Pill>

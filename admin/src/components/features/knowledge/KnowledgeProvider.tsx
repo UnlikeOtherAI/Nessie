@@ -151,7 +151,9 @@ export const useDisplayedKnowledgeSpace = (
 ): KnowledgeSpaceRecord | null => {
   const listedSpace = spaces.find((space) => space.id === selectedSpaceId)
   const detailQuery = useKnowledgeSpace(listedSpace ? undefined : selectedSpaceId)
-  return listedSpace ?? detailQuery.data ?? null
+  // keepPreviousData may still be serving the last space while this one's
+  // detail is in flight. Its permissions and title must never flash here.
+  return listedSpace ?? (detailQuery.data && detailQuery.data.id === selectedSpaceId ? detailQuery.data : null)
 }
 
 // The provider is the team parameterisation seam: it wires the knowledge
@@ -199,7 +201,12 @@ export const KnowledgeProvider = ({
   const selectedSpace = useDisplayedKnowledgeSpace(spaces, selectedSpaceId)
 
   const pagesQuery = useKnowledgePages(selectedSpaceId)
-  const pages = useMemo(() => pagesQuery.data ?? [], [pagesQuery.data])
+  // A previous space's pages are useful to the query cache, but cannot be
+  // rendered beneath the newly selected folder or used to resolve its path.
+  const pages = useMemo(
+    () => pagesQuery.isPlaceholderData ? [] : pagesQuery.data ?? [],
+    [pagesQuery.data, pagesQuery.isPlaceholderData],
+  )
 
   useEffect(() => {
     if (spaceId) {
@@ -355,7 +362,7 @@ export const KnowledgeProvider = ({
     updateSpace: mutations.updateSpace,
     updateSpacePending: mutations.updateSpacePending,
     pages,
-    pagesLoading: pagesQuery.isLoading,
+    pagesLoading: pagesQuery.isLoading || pagesQuery.isPlaceholderData,
     pagesLoadFailed: pagesQuery.isError,
     refetchPages,
     rootPages,
@@ -399,6 +406,7 @@ export const KnowledgeProvider = ({
     pages,
     pagesQuery.isError,
     pagesQuery.isLoading,
+    pagesQuery.isPlaceholderData,
     projectId,
     refetchPages,
     refetchSpaces,

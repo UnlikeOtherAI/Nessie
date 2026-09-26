@@ -423,7 +423,7 @@ export const PhoneNavigationViewport = ({
     // action. Re-resolving through performBack after the settle could let a
     // newly mounted owner consume the swipe and leave the suppression marker
     // attached to the wrong future navigation.
-    const action = navigation.resolveBackAction(pathname)
+    const action = backAction
     if (!action) return
     if (action.kind === 'owner') {
       suppressNextStageAnimation.current = action.id.slice('stage:'.length)
@@ -434,24 +434,25 @@ export const PhoneNavigationViewport = ({
     // to change. A cancelled swipe and a tapped Back give none.
     haptic('light')
     navigation.performBackAction(action)
-  }, [finishTransition, navigate, navigation, pathname])
+  }, [backAction, finishTransition, navigate, navigation, pathname])
 
-  const gesture = usePhoneBackSwipeGesture({
+  usePhoneBackSwipeGesture({
+    layerKey: topEntry.layerKey,
     enabled: layout === 'single' && stack.currentIndex > 0 && transition === null && gestureArmed,
     onCommit: performGestureBack,
     // The gesture's own settle, which `startTransition` never sees: the
     // viewport suppresses the route animation because this already ran it.
     // A cancel settles back to the layer it started from.
     onSettleStart: (outcome, durationMs) => {
-      if (layout !== 'single') return
+      if (layout !== 'single' || outcome === 'cancel') return
       const top = stack.entries[stack.currentIndex]
       const beneath = stack.entries[stack.currentIndex - 1]
       if (!top || !beneath) return
       publishScreenTransition({
-        direction: outcome === 'commit' ? 'back' : 'forward',
+        direction: 'back',
         durationMs,
-        from: outcome === 'commit' ? top.layerKey : beneath.layerKey,
-        to: outcome === 'commit' ? beneath.layerKey : top.layerKey,
+        from: top.layerKey,
+        to: beneath.layerKey,
       })
     },
     reducedMotion,
@@ -476,7 +477,8 @@ export const PhoneNavigationViewport = ({
       <div
         className="phone-navigation-viewport"
         data-phone-navigation-direction={transition?.direction}
-        data-phone-navigation-gesture={gesture.settle ? 'settling' : 'idle'}
+        data-phone-navigation-gesture="idle"
+        data-phone-navigation-layout={layout}
         data-phone-navigation-phase={transition?.phase}
         data-phone-navigation-viewport
         ref={viewportRef}
@@ -484,8 +486,6 @@ export const PhoneNavigationViewport = ({
         {stack.entries.map((entry, index) => (
           <PhoneNavigationLayer
             entry={entry}
-            gestureProgress={gesture.progress}
-            hasUnderlay={stack.currentIndex > 0}
             key={entry.layerKey}
             role={roleOf(index)}
             transition={transition}

@@ -12,6 +12,7 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   preflight:
@@ -357,15 +358,10 @@ jobs:
           path: release/
           if-no-files-found: error
 
-  # Signed through the windows-signing environment, which admits `v*` tags;
-  # the OIDC token the signing step exchanges needs `id-token: write` here.
   windows:
     name: Windows
     needs: [preflight, direct-distribution-credentials]
     uses: ./.github/workflows/desktop-windows.yml
-    permissions:
-      contents: read
-      id-token: write
     with:
       source_ref: ${{ github.ref }}
       enable_direct_updater: true

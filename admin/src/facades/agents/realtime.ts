@@ -235,6 +235,8 @@ export const useAgentRealtime = (input: {
     }
 
     if (message.event === 'board.updated') {
+      // Column/name changes must refresh the board shell as well as its cards.
+      void queryClient.invalidateQueries({ queryKey: projectKeys.boards(message.data.projectId) })
       // Content-free by design: a project id and nothing else, on the
       // organisation scope. The refetch is the entitlement check, so a
       // project id reaching somebody who is not a member reveals nothing

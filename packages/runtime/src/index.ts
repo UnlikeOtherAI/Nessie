@@ -21,6 +21,7 @@ export {
 export * from './db.js'
 export * from './decision-model.js'
 export * from './channel-decisions.js'
+export * from './one-on-one-decisions.js'
 export * from './deepsignal-mcp-identity.js'
 export * from './deepwater-handoff-runs.js'
 export * from './deepwater-brief-actions.js'

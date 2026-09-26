@@ -10,7 +10,7 @@ import { CommentThread } from './CommentThread'
 import { useAnnotationActions } from './useAnnotationActions'
 import { useAnnotationAuthors } from './useAnnotationAuthors'
 
-// The page-level discussion shown below the document body: a composer plus the
+// The page-level discussion in a node's detail section: a composer plus the
 // list of comments, newest first. Notes (text-anchored) are rendered inline in
 // the reader, not here.
 export const CommentsSection = ({
@@ -32,7 +32,7 @@ export const CommentsSection = ({
   const authorLabel = useAnnotationAuthors()
 
   return (
-    <section aria-labelledby="knowledge-comments-title" className="mt-10 border-t border-[color:var(--sep)] pt-6">
+    <section aria-labelledby="knowledge-comments-title">
       <SectionLabel as="h2" id="knowledge-comments-title" size="2xs">Comments</SectionLabel>
       <div className="mt-3">
         <CommentComposer
