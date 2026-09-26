@@ -96,5 +96,24 @@
     "adding": "Wird hinzugefügt…",
     "add": "Hinzufügen",
     "noMatches": "Keine Mitglieder entsprechen deiner Suche."
+  },
+  "messageActions": {
+    "copied": "Nachricht kopiert",
+    "copy": "Nachricht kopieren",
+    "copiedShort": "Kopiert",
+    "addReaction": "Emoji-Reaktion hinzufügen",
+    "reply": "Im Thread antworten",
+    "edit": "Nachricht bearbeiten",
+    "delete": "Nachricht löschen"
+  },
+  "messageFeed": {
+    "deleted": "Nachricht wurde gelöscht",
+    "loadingEarlier": "Ältere Nachrichten werden geladen…",
+    "earlierError": "Ältere Nachrichten konnten nicht geladen werden.",
+    "retry": "Erneut versuchen",
+    "error": "Nachrichten konnten nicht geladen werden.",
+    "loading": "Nachrichten werden geladen…",
+    "empty": "Noch keine Nachrichten. Sende die erste Nachricht, um diesen Thread zu starten.",
+    "waiting": "Warten auf eine Antwort"
   }
 }

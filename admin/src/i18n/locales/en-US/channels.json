@@ -96,5 +96,24 @@
     "adding": "Adding…",
     "add": "Add",
     "noMatches": "No members match your search."
+  },
+  "messageActions": {
+    "copied": "Message copied",
+    "copy": "Copy message",
+    "copiedShort": "Copied",
+    "addReaction": "Add emoji reaction",
+    "reply": "Reply in thread",
+    "edit": "Edit message",
+    "delete": "Delete message"
+  },
+  "messageFeed": {
+    "deleted": "Message has been deleted",
+    "loadingEarlier": "Loading earlier messages…",
+    "earlierError": "Earlier messages could not be loaded.",
+    "retry": "Retry",
+    "error": "Could not load messages.",
+    "loading": "Loading messages…",
+    "empty": "No messages yet. Send the first message to start this thread.",
+    "waiting": "Waiting for a reply"
   }
 }

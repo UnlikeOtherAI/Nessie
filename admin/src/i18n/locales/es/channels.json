@@ -96,5 +96,24 @@
     "adding": "Añadiendo…",
     "add": "Añadir",
     "noMatches": "Ningún miembro coincide con tu búsqueda."
+  },
+  "messageActions": {
+    "copied": "Mensaje copiado",
+    "copy": "Copiar mensaje",
+    "copiedShort": "Copiado",
+    "addReaction": "Añadir reacción con emoji",
+    "reply": "Responder en el hilo",
+    "edit": "Editar mensaje",
+    "delete": "Eliminar mensaje"
+  },
+  "messageFeed": {
+    "deleted": "El mensaje se ha eliminado",
+    "loadingEarlier": "Cargando mensajes anteriores…",
+    "earlierError": "No se pudieron cargar los mensajes anteriores.",
+    "retry": "Reintentar",
+    "error": "No se pudieron cargar los mensajes.",
+    "loading": "Cargando mensajes…",
+    "empty": "Aún no hay mensajes. Envía el primero para iniciar este hilo.",
+    "waiting": "Esperando una respuesta"
   }
 }

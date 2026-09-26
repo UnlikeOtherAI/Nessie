@@ -96,5 +96,24 @@
     "adding": "Přidávání…",
     "add": "Přidat",
     "noMatches": "Hledání neodpovídá žádným členům."
+  },
+  "messageActions": {
+    "copied": "Zpráva zkopírována",
+    "copy": "Kopírovat zprávu",
+    "copiedShort": "Zkopírováno",
+    "addReaction": "Přidat reakci emoji",
+    "reply": "Odpovědět ve vlákně",
+    "edit": "Upravit zprávu",
+    "delete": "Odstranit zprávu"
+  },
+  "messageFeed": {
+    "deleted": "Zpráva byla odstraněna",
+    "loadingEarlier": "Načítání starších zpráv…",
+    "earlierError": "Starší zprávy se nepodařilo načíst.",
+    "retry": "Zkusit znovu",
+    "error": "Zprávy se nepodařilo načíst.",
+    "loading": "Načítání zpráv…",
+    "empty": "Zatím tu nejsou žádné zprávy. Odešlete první zprávu a začněte vlákno.",
+    "waiting": "Čekání na odpověď"
   }
 }

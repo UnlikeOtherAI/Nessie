@@ -96,5 +96,24 @@
     "adding": "Aggiunta…",
     "add": "Aggiungi",
     "noMatches": "Nessun membro corrisponde alla ricerca."
+  },
+  "messageActions": {
+    "copied": "Messaggio copiato",
+    "copy": "Copia messaggio",
+    "copiedShort": "Copiato",
+    "addReaction": "Aggiungi una reazione emoji",
+    "reply": "Rispondi nel thread",
+    "edit": "Modifica messaggio",
+    "delete": "Elimina messaggio"
+  },
+  "messageFeed": {
+    "deleted": "Il messaggio è stato eliminato",
+    "loadingEarlier": "Caricamento dei messaggi precedenti…",
+    "earlierError": "Impossibile caricare i messaggi precedenti.",
+    "retry": "Riprova",
+    "error": "Impossibile caricare i messaggi.",
+    "loading": "Caricamento dei messaggi…",
+    "empty": "Ancora nessun messaggio. Invia il primo messaggio per avviare questo thread.",
+    "waiting": "In attesa di una risposta"
   }
 }
