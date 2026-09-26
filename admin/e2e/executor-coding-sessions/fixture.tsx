@@ -11,7 +11,7 @@ import '../../src/styles.css'
 
 /**
  * The coding sessions open on a machine, drawn by the real executor page on
- * its Permissions tab — the Local apps section, the coding bridge's status
+ * its Sessions tab — the Local apps section, the coding bridge's status
  * and its session list with Close — over the real facade hooks and API
  * client. Every API answer is the runner's
  * (docs/executor-protocol/host-coding-sessions.md → "The executor page"), so
