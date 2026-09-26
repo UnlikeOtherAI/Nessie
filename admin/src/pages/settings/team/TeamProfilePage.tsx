@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 
+import { teamScopedPath } from '../../../lib/admin-scope'
 import { Card } from '../../../components/shared/Card'
 import { FormActions, FormError, FormSuccess } from '../../../components/shared/FormActions'
 import { FormField } from '../../../components/shared/FormField'
@@ -184,7 +185,7 @@ export const TeamProfilePage = ({ host, team }: { host?: SettingsTabHostProps; t
             </p>
             <Link
               className="mt-3 inline-block text-sm text-[color:var(--lnk)] hover:underline"
-              to={`/admin/people?scope=team:${encodeURIComponent(team.id)}`}
+              to={teamScopedPath('/admin/people', team.id)}
             >
               Open this team’s people
             </Link>

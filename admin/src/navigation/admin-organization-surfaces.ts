@@ -14,7 +14,7 @@ import {
 // open a record push one step further.
 export const createAdminOrganizationSurfaces = (adminRoot: string): Surface[] => [
   {
-    // One roster behind a scope switch — the organisation, or a team the
+    // One roster behind the scope switch — the organisation, or a team the
     // viewer is in — with the roster's own status strip and the automatic
     // team access rule a health alert points at.
     depth: 1,
@@ -34,10 +34,12 @@ export const createAdminOrganizationSurfaces = (adminRoot: string): Surface[] =>
     type: 'detail',
   },
   {
-    // One team, pushed from the Teams list. Its sections are a tab strip.
+    // One team, pushed from the Teams list. Its two sections, General and
+    // Overrides, are a tab strip; what the team overrides is changed on the
+    // Organisation pages at its scope, which its rows open.
     depth: 2,
     identityOf: (match) => `team:${match[1]}`,
-    intent: { state: ['tab', 'status', 'model', 'provider'] },
+    intent: { state: ['tab'] },
     keyScope: () => 'team',
     parentOf: toTeams,
     pattern: /^\/admin\/teams\/([^/]+)$/,
@@ -47,11 +49,23 @@ export const createAdminOrganizationSurfaces = (adminRoot: string): Surface[] =>
   },
   {
     // Every organisation page shares one screen identity, so page A → page B
-    // swaps in place.
+    // swaps in place. These three are one page per concern behind the scope
+    // switch (`?scope=organisation|team:<id>`): AI models with its catalogue
+    // filters (`modelProvider`, never the `provider` Connected accounts
+    // consumes), and Keys with its status strip.
     depth: 1,
-    intent: { state: ['tab', 'status', 'model', 'provider'] },
+    intent: { state: ['scope', 'status', 'model', 'modelProvider'] },
     parentOf: toAdmin,
-    pattern: /^\/admin\/(?:organisation|models|connections|keys|usage|security)$/,
+    pattern: /^\/admin\/(?:models|connections|keys)$/,
+    root: adminRoot,
+    section: 'admin',
+    type: 'detail',
+  },
+  {
+    depth: 1,
+    intent: { state: ['tab'] },
+    parentOf: toAdmin,
+    pattern: /^\/admin\/(?:organisation|usage|security)$/,
     root: adminRoot,
     section: 'admin',
     type: 'detail',

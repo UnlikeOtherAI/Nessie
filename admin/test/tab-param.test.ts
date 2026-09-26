@@ -366,7 +366,8 @@ test('every tab host resolves its tab through the one hook', () => {
     ['../src/pages/admin/AutomationsPage.tsx', 'tab'],
     ['../src/pages/admin/OrganizationPage.tsx', 'tab'],
     ['../src/pages/admin/OrganizationSecurityPage.tsx', 'tab'],
-    ['../src/pages/admin/PeoplePage.tsx', 'scope'],
+    // People, AI models, Company connections and Keys share the one switch.
+    ['../src/components/features/settings/useAdminScope.tsx', 'scope'],
     ['../src/pages/admin/TeamPage.tsx', 'tab'],
     ['../src/pages/ExecutorsPage.tsx', 'filter'],
     ['../src/pages/settings/ConnectionsPage.tsx', 'tab'],

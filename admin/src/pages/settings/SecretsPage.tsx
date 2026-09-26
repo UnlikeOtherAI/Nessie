@@ -2,7 +2,7 @@ import { SecretsPanel } from './SecretsPanel'
 
 /**
  * Saved keys: a person's own keys, and everything above them that reaches
- * their work. The organisation's are Admin › Keys and a team's are its page's
- * Keys tab; all three are one component.
+ * their work. The organisation's and each team's are Admin › Keys at that
+ * scope; every level is one component.
  */
 export const SecretsPage = () => <SecretsPanel scope="personal" />

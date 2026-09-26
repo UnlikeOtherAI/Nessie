@@ -76,16 +76,16 @@ const lockCopy: Partial<Record<SecretScopeType, string>> = {
 }
 
 /**
- * The settings entry point for a new vault secret, used by all three Secrets
- * pages. The mutation remains owned by the secrets facade at the page boundary;
- * this dialog owns only the temporary form state, including the secret value
- * until it is submitted.
+ * The settings entry point for a new vault secret, used at every level of the
+ * secrets panel. The mutation remains owned by the secrets facade at the page
+ * boundary; this dialog owns only the temporary form state, including the
+ * secret value until it is submitted.
  *
- * A page never offers a scope above its own: the organisation page writes
- * organisation secrets, the team page its team's, and the personal page a
- * person's own (or a project's). That is why there is no scope picker on the
- * two upper pages — the page *is* the scope, which is also why their tables
- * dropped the Scope column.
+ * A level never offers a scope above its own: Keys at the organisation's scope
+ * writes organisation secrets, at a team's scope that team's, and Saved keys a
+ * person's own (or a project's). That is why there is no scope picker on Keys
+ * — the scope switch *is* the scope, which is also why the organisation's
+ * table dropped the Scope column.
  */
 export const CreateSecretDialog = ({
   onClose,
@@ -152,7 +152,7 @@ export const CreateSecretDialog = ({
 
   return (
     <Dialog
-      description="Secret values go directly to Infisical and are never stored in Nessie, chat, or agent context."
+      description="Secret values go straight to the vault and are never stored in Nessie, chat, or agent context."
       dismissDisabled={pending}
       initialFocusRef={nameRef}
       onClose={handleClose}

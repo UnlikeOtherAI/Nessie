@@ -1,29 +1,20 @@
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { ModelAvailabilitySettings } from '../../components/features/inference-models/ModelAvailabilitySettings'
 import { TabBar } from '../../components/primitives/TabBar'
 import { QueryState } from '../../components/shared/QueryState'
 import { SettingsPanel, type SettingsTabHostProps } from '../../components/shared/SettingsPanel'
-import { useIsOwner } from '../../facades/auth/hooks'
+import { useIsOrganizationAdmin } from '../../facades/auth/hooks'
 import { useTeams } from '../../facades/projects/hooks'
 import { useTabParam } from '../../navigation/useTabParam'
-import { useAuthSession } from '../../providers/AuthSessionProvider'
-import { SecretsPanel } from '../settings/SecretsPanel'
 import { TeamOverridesPage } from '../settings/team/TeamOverridesPage'
 import { TeamProfilePage } from '../settings/team/TeamProfilePage'
 
-type TeamTab = 'general' | 'overrides' | 'models' | 'keys'
+type TeamTab = 'general' | 'overrides'
 
-// Keys are the owner's: writing a team key is owner-gated, so its tab is too.
-// A member of either list is a valid address for everybody, so an admin who
-// follows an owner's `?tab=keys` link lands on General rather than nothing.
-const OWNER_TABS: readonly TeamTab[] = ['general', 'overrides', 'models', 'keys']
-const ADMIN_TABS: readonly TeamTab[] = ['general', 'overrides', 'models']
+const TEAM_TABS: readonly TeamTab[] = ['general', 'overrides']
 
 const TAB_LABEL: Record<TeamTab, string> = {
   general: 'General',
-  keys: 'Keys',
-  models: 'AI models',
   overrides: 'Overrides',
 }
 
@@ -31,17 +22,17 @@ const TAB_LABEL: Record<TeamTab, string> = {
  * One team's page, reached from Admin › Teams. The team is the one the address
  * names — never the team the person happens to be working in — so every team
  * is edited from its own page. General is who the team is and where its calls
- * go; Overrides, AI models and Keys are what it sets over the organisation.
+ * go; Overrides is what it sets over the organisation, each linking to the
+ * page that owns the setting with this team already chosen. The team page
+ * never re-implements a setting: AI models, Company connections and Keys are
+ * those pages at this team's scope.
  */
 export const TeamPage = () => {
   const { teamId } = useParams<{ teamId: string }>()
   const navigate = useNavigate()
-  const { me } = useAuthSession()
-  const isOwner = useIsOwner()
-  const canManage = isOwner || (me?.user.roleIds.includes('admin') ?? false)
+  const canManage = useIsOrganizationAdmin()
   const teams = useTeams()
-  const tabs = isOwner ? OWNER_TABS : ADMIN_TABS
-  const [tab, setTab] = useTabParam('tab', tabs, 'general')
+  const [tab, setTab] = useTabParam('tab', TEAM_TABS, 'general')
   const team = teams.data?.find((row) => row.id === teamId)
 
   const host: SettingsTabHostProps = {
@@ -51,7 +42,7 @@ export const TeamPage = () => {
     tabs: team && canManage ? (
       <TabBar
         ariaLabel="Team sections"
-        items={tabs.map((value) => ({ label: TAB_LABEL[value], value }))}
+        items={TEAM_TABS.map((value) => ({ label: TAB_LABEL[value], value }))}
         onChange={setTab}
         value={tab}
       />
@@ -89,7 +80,5 @@ export const TeamPage = () => {
   }
 
   if (tab === 'overrides') return <TeamOverridesPage host={host} team={team} />
-  if (tab === 'models') return <ModelAvailabilitySettings host={host} teamId={team.id} />
-  if (tab === 'keys') return <SecretsPanel host={host} scope="team" teamId={team.id} />
   return <TeamProfilePage host={host} team={team} />
 }

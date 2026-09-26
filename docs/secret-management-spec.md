@@ -199,23 +199,26 @@ personal secret silently stopped applying had nothing on screen to explain why.
 This exposes no value, ciphertext or vault path: a `Secret` row holds none (see
 "Authority split"), and using a secret still runs through `SecretGrant`.
 
-### The three screens
+### The screens
 
-One page per level, all three the same component
-(`admin/src/pages/settings/SecretsPanel.tsx`):
+One component at every level (`admin/src/pages/settings/SecretsPanel.tsx`),
+on two pages — a person's own, and the organisation's with a scope switch
+between the organisation and each team:
 
 | Page | Route | Shows | "New secret" writes |
 | --- | --- | --- | --- |
-| Your settings › Saved keys | `/settings/keys` | organisation + team + project + own | personal, or a project |
-| Admin › Teams › a team › Keys | `/admin/teams/:teamId?tab=keys` | organisation + this team | this team |
-| Admin › Keys | `/admin/keys` | organisation | the organisation |
+| Your settings → Saved keys | `/settings/keys` | organisation + team + project + own | personal, or a project |
+| Admin → Keys, a team's scope | `/admin/keys?scope=team:<id>` | organisation + that team | that team |
+| Admin → Keys, the organisation's scope | `/admin/keys` | organisation | the organisation |
 
-Each page splits Active from Revoked with a `TabBar` in a `?tab=` param, and
-the organisation page drops the Scope column — every row there is the
-organisation's. The two upper pages are owner-only doorways, matching
-`canManageSecretScope`; a member reaches what their team and organisation set
-through their own page, where it is the part of the cascade that applies to
-them.
+Each level splits Active from Revoked with a `TabBar` in a `?status=` param,
+and the organisation's scope drops the Scope column — every row there is the
+organisation's. Keys is the owner's, matching `canManageSecretScope`: nobody
+else is offered a scope there, and they are pointed at Saved keys, where what
+their team and organisation set is the part of the cascade that applies to
+them. A team's scope is named in the address and never taken from the team the
+owner happens to be working in; a team's page links to it from its Overrides
+tab.
 
 ## Capture and ingestion
 
