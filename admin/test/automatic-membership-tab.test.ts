@@ -1,8 +1,8 @@
 /**
- * Source-level guarantees for the Automatic logins tab.
+ * Source-level guarantees for the Automatic team access tab.
  *
- * `MembersRosterPanel` is the one component behind both Organization → Members
- * and Team → Members, so the tab is added there rather than forked. These cases
+ * `MembersRosterPanel` is the one component behind People at both organisation
+ * and team scope, so the tab is added there rather than forked. These cases
  * pin the four wiring details that adding a fourth tab to an existing strip is
  * easy to get wrong, and which would each be a live defect:
  *
@@ -35,7 +35,7 @@ const reconcileStatus = read(
 
 test('the tab lives in the one shared roster panel, not a second component', () => {
   assert.match(rosterPanel, /'automatic'/)
-  assert.match(rosterPanel, /label: 'Automatic logins', value: 'automatic'/)
+  assert.match(rosterPanel, /label: 'Automatic team access', value: 'automatic'/)
   assert.match(rosterPanel, /<AutomaticMembershipRulesPanel/)
   assert.match(rosterPanel, /highlightedRuleId=\{searchParams\.get\('automaticMembershipRule'\)\}/)
 })
@@ -62,7 +62,7 @@ test('the tab is hidden unless the flag is on and the caller may administer', ()
   assert.match(rosterPanel, /const tabs = canSeeAutomatic \? \[\.\.\.ROSTER_TABS, AUTOMATIC_TAB\] : ROSTER_TABS/)
 })
 
-test('Send invitation does not render on the Automatic logins tab', () => {
+test('Send invitation does not render on the Automatic team access tab', () => {
   assert.match(
     rosterPanel,
     /const canInvite = permissions\?\.addMember === true && tab !== 'automatic'/,
@@ -108,7 +108,7 @@ test('the copy never suggests a domain authenticates anybody', () => {
 })
 
 test('the tab label is the agreed wording', () => {
-  assert.match(rosterPanel, /Automatic logins/)
+  assert.match(rosterPanel, /Automatic team access/)
   assert.match(rulesPanel, /Automatic team access after sign-in/)
 })
 
