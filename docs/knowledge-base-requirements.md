@@ -465,6 +465,9 @@ that column):
     as the parent. **New document** is available at the space root and inside
     folders, never on an open document. Creation offers **Publish** as its
     primary action and **Save as draft** as the secondary choice. The document
+    owner saving an edit to an already published document publishes that new
+    version in the same transaction; the page stays published. An agent or a
+    recipient with edit access saves a draft for the owner to publish.
     title is visually distinct from body copy through a
     larger serif treatment; formatting controls use the same restrained icon
     language as the channel composer. Page previews show clickable

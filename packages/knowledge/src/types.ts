@@ -394,6 +394,8 @@ export type UpdatePageInput = KnowledgePageVersionDisclosureInput & Partial<{
   organizationId: string
   // The revision the caller edited, from `If-Match`. Undefined = no opinion.
   expectedRevision?: number
+  // Authorized human edits to an already published document publish the new version atomically.
+  publishOnSave?: boolean
 }
 
 export type MovePageInput = {
