@@ -5,6 +5,8 @@ import { ConfirmDialog } from './ConfirmDialog'
 
 type AvatarUploadPanelProps = {
   busy: boolean
+  confirmationBody?: string
+  confirmationTitle?: string
   cropperDescription: string
   cropperTitle: string
   error: string | null
@@ -25,6 +27,8 @@ export const AvatarUploadPanel = ({
   busy,
   cropperDescription,
   cropperTitle,
+  confirmationBody,
+  confirmationTitle,
   error,
   hasCustom,
   helperText = 'PNG or JPG. Square images work best.',
@@ -110,7 +114,7 @@ export const AvatarUploadPanel = ({
       ) : null}
 
       <ConfirmDialog
-        body={`This removes your ${title.toLowerCase()}.`}
+        body={confirmationBody ?? `This removes your ${title.toLowerCase()}.`}
         confirmLabel={removeLabel}
         destructive
         onCancel={() => setConfirmingRemove(false)}
@@ -120,7 +124,7 @@ export const AvatarUploadPanel = ({
         }}
         open={confirmingRemove}
         pending={busy}
-        title={`${removeLabel} photo?`}
+        title={confirmationTitle ?? `${removeLabel} photo?`}
       />
     </section>
   )
