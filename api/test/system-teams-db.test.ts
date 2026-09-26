@@ -257,7 +257,10 @@ dbTest('the migration moves the legacy rows and restores the DMs a deletion took
     )
 
     // The migration's own statements, applied to these rows exactly as
-    // `prisma migrate deploy` applies them to a deployment's.
+    // `prisma migrate deploy` applies them to a deployment's — minus its
+    // `LOCK TABLE`, which is the deployment's blue-green fence: held here it
+    // stalls every other suite writing projects, teams or channels in the
+    // shared test database until this transaction ends, and deadlocks some.
     const sql = await readFile(
       new URL('../prisma/migrations/20260926170000_system_teams_under_channel_root/migration.sql', import.meta.url),
       'utf8',
@@ -268,7 +271,7 @@ dbTest('the migration moves the legacy rows and restores the DMs a deletion took
       .join('\n')
       .split(';')
       .map((statement) => statement.trim())
-      .filter((statement) => statement.length > 0)
+      .filter((statement) => statement.length > 0 && !/^LOCK TABLE/i.test(statement))
     await value.prisma.$transaction(async (tx) => {
       for (const statement of statements) {
         await tx.$executeRaw(Prisma.raw(statement))
