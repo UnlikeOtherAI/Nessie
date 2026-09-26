@@ -18,7 +18,7 @@ change-workspace commands.
 The console's home is **Paired teams**, reachable from the menu bar/tray.
 **Add team** requests an eight-digit code from the unauthenticated pairing
 start endpoint. The code appears in large black text with **Copy**. Paste it
-into Nessie's **Agents → Executors → Add executor** popup, which explains both
+into Nessie's **Admin › Computers › Pair a computer** popup, which explains both
 the app and CLI entry points. Review the fingerprint in Nessie, then confirm
 the claimed organisation and team on the computer. Expiry, single use and
 confirmation bound to the displayed claim remain enforced by the runtime.
