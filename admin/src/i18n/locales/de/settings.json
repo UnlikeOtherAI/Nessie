@@ -729,7 +729,8 @@
     "roles": {
       "admin": "Admin",
       "member": "Mitglied",
-      "owner": "Eigentümer"
+      "owner": "Eigentümer",
+      "viewer": "Betrachter"
     },
     "feedback": {
       "yourTeam": "Ihr Team",
@@ -741,6 +742,32 @@
       "invitationCancelled": "Einladung storniert",
       "memberAddedBody": "{{name}} ist jetzt in {{team}}.",
       "memberAdded": "Mitglied hinzugefügt"
+    },
+    "deactivated": "Deaktiviert",
+    "teamPeople": {
+      "roleFor": "Teamrolle für {{name}}",
+      "roleUpdateFailed": "Rolle konnte nicht aktualisiert werden",
+      "memberUpdateFailed": "Mitglied konnte nicht aktualisiert werden",
+      "memberRemoveFailed": "Mitglied konnte nicht entfernt werden",
+      "none": "Keine",
+      "teamOwnedAgents": "Vom Team verwaltete Agenten",
+      "ownedOutsideTeam": "Außerhalb dieses Teams verwaltet",
+      "signInNotConfigured": "Die Anmeldung über UnlikeOtherAI ist in dieser Nessie-Instanz nicht eingerichtet."
+    },
+    "local": {
+      "roleChangeFailed": "Die Rolle konnte nicht geändert werden. Versuchen Sie es erneut.",
+      "memberUpdateFailed": "Das Mitglied konnte nicht aktualisiert werden. Versuchen Sie es erneut.",
+      "you": "Sie",
+      "roleFor": "Rolle für {{name}}",
+      "noMembers": "Noch keine Mitglieder.",
+      "people": "Personen",
+      "addMember": "Mitglied hinzufügen",
+      "displayName": "Anzeigename",
+      "passwordHelp": "Mindestens 8 Zeichen.",
+      "password": "Passwort",
+      "memberAdded": "Mitglied hinzugefügt.",
+      "adding": "Wird hinzugefügt…",
+      "addFailed": "Das Mitglied konnte nicht hinzugefügt werden. Versuchen Sie es erneut."
     }
   },
   "automaticMembership": {

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { TeamMemberRecord } from '@nessie/schemas'
 
 import { UserAvatar } from '../../components/shared/UserAvatar'
@@ -42,6 +43,7 @@ export const TeamMemberRow = ({
   member: TeamMemberRecord
   ownedAgents: AgentRecord[]
 }) => {
+  const { t } = useTranslation('settings')
   const { token } = useAuthSession()
   const updateRole = useUpdateTeamMemberRole()
   const removeMember = useRemoveTeamMember()
@@ -87,12 +89,12 @@ export const TeamMemberRow = ({
         </div>
         {deactivated ? (
           <Pill className="shrink-0" radius="chip" size="sm" tone="warning" uppercase={false}>
-            Deactivated
+            {t('members.deactivated')}
           </Pill>
         ) : null}
         {member.teamRole === 'owner' ? (
           <Pill className="shrink-0" radius="chip" size="sm" tone="outline" uppercase={false}>
-            Owner
+            {t('members.roles.owner')}
           </Pill>
         ) : null}
       </div>
@@ -107,19 +109,19 @@ export const TeamMemberRow = ({
       {canManage && member.teamRole !== 'owner' ? (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Select
-            aria-label={`Team role for ${label}`}
+            aria-label={t('members.teamPeople.roleFor', { name: label })}
             disabled={busy}
             onChange={(event) =>
               void act(
                 () => updateRole.mutateAsync({ role: event.target.value, uoaSub: member.uoaSub }),
-                'Failed to update role',
+                t('members.teamPeople.roleUpdateFailed'),
               )}
             size="compact"
             value={member.teamRole ?? 'member'}
           >
             {TEAM_TEAM_ROLE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {t(`members.roles.${option.value}`)}
               </option>
             ))}
           </Select>
@@ -130,11 +132,11 @@ export const TeamMemberRow = ({
               void act(
                 () =>
                   setActivation.mutateAsync({ deactivated: !deactivated, uoaSub: member.uoaSub }),
-                'Failed to update member',
+                t('members.teamPeople.memberUpdateFailed'),
               )}
             type="button"
           >
-            {deactivated ? 'Reactivate' : 'Deactivate'}
+            {t(deactivated ? 'members.details.reactivate' : 'members.details.deactivate')}
           </button>
           <button
             className="admin-button admin-button-secondary admin-button-compact"
@@ -142,11 +144,11 @@ export const TeamMemberRow = ({
             onClick={() =>
               void act(
                 () => removeMember.mutateAsync({ uoaSub: member.uoaSub }),
-                'Failed to remove member',
+                t('members.teamPeople.memberRemoveFailed'),
               )}
             type="button"
           >
-            Remove from team
+            {t('members.details.removeFromTeam')}
           </button>
         </div>
       ) : null}
@@ -158,6 +160,7 @@ export const TeamMemberRow = ({
 
 /** Agents that cannot be nested below a roster row in the current team. */
 export const TeamAgentBuckets = ({ tree }: { tree: PeopleAgentsTree }) => {
+  const { t } = useTranslation('settings')
   const { token } = useAuthSession()
   return (
     <div
@@ -168,16 +171,16 @@ export const TeamAgentBuckets = ({ tree }: { tree: PeopleAgentsTree }) => {
       {tree.teamOwned.length > 0 ? (
         <UnassignedAgents
           agents={tree.teamOwned}
-          emptyLabel="None"
-          title="Team-owned agents"
+          emptyLabel={t('members.teamPeople.none')}
+          title={t('members.teamPeople.teamOwnedAgents')}
           token={token}
         />
       ) : null}
       {tree.ownedOutsideTeam.length > 0 ? (
         <UnassignedAgents
           agents={tree.ownedOutsideTeam}
-          emptyLabel="None"
-          title="Owned outside this team"
+          emptyLabel={t('members.teamPeople.none')}
+          title={t('members.teamPeople.ownedOutsideTeam')}
           token={token}
         />
       ) : null}

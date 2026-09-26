@@ -729,7 +729,8 @@
     "roles": {
       "admin": "Admin",
       "member": "Member",
-      "owner": "Owner"
+      "owner": "Owner",
+      "viewer": "Viewer"
     },
     "feedback": {
       "yourTeam": "your team",
@@ -741,6 +742,32 @@
       "invitationCancelled": "Invitation canceled",
       "memberAddedBody": "{{name}} is now on {{team}}.",
       "memberAdded": "Member added"
+    },
+    "deactivated": "Deactivated",
+    "teamPeople": {
+      "roleFor": "Team role for {{name}}",
+      "roleUpdateFailed": "Failed to update role",
+      "memberUpdateFailed": "Failed to update member",
+      "memberRemoveFailed": "Failed to remove member",
+      "none": "None",
+      "teamOwnedAgents": "Team-owned agents",
+      "ownedOutsideTeam": "Owned outside this team",
+      "signInNotConfigured": "Sign-in with UnlikeOtherAI isn’t set up on this Nessie."
+    },
+    "local": {
+      "roleChangeFailed": "Couldn’t change their role. Try again.",
+      "memberUpdateFailed": "Couldn’t update this member. Try again.",
+      "you": "You",
+      "roleFor": "Role for {{name}}",
+      "noMembers": "No members yet.",
+      "people": "People",
+      "addMember": "Add member",
+      "displayName": "Display name",
+      "passwordHelp": "At least 8 characters.",
+      "password": "Password",
+      "memberAdded": "Member added.",
+      "adding": "Adding…",
+      "addFailed": "Couldn’t add this member. Try again."
     }
   },
   "automaticMembership": {

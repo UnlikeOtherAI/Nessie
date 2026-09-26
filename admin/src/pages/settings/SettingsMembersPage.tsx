@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Navigate } from 'react-router-dom'
 import type { UserRecord } from '../../lib/api-client'
 import { UserAvatar } from '../../components/shared/UserAvatar'
@@ -33,10 +34,10 @@ import { Section } from '../../components/shared/PageBody'
 import { QueryState } from '../../components/shared/QueryState'
 
 const ROLE_OPTIONS = [
-  { value: 'owner', label: 'Owner' },
-  { value: 'admin', label: 'Admin' },
-  { value: 'member', label: 'Member' },
-  { value: 'viewer', label: 'Viewer' },
+  { value: 'owner', label: 'members.roles.owner' },
+  { value: 'admin', label: 'members.roles.admin' },
+  { value: 'member', label: 'members.roles.member' },
+  { value: 'viewer', label: 'members.roles.viewer' },
 ] as const
 
 const MemberRow = ({
@@ -48,6 +49,7 @@ const MemberRow = ({
   ownedAgents: AgentRecord[]
   user: UserRecord
 }) => {
+  const { t } = useTranslation('settings')
   const { token } = useAuthSession()
   const updateRole = useUpdateUserRole()
   const setDeactivated = useSetUserDeactivated()
@@ -60,7 +62,7 @@ const MemberRow = ({
     try {
       await updateRole.mutateAsync({ userId: user.id, role })
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Couldn’t change their role. Try again.')
+      setError(caught instanceof Error ? caught.message : t('members.local.roleChangeFailed'))
     }
   }
 
@@ -69,7 +71,7 @@ const MemberRow = ({
     try {
       await setDeactivated.mutateAsync({ userId: user.id, deactivated: !deactivated })
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Couldn’t update this member. Try again.')
+      setError(caught instanceof Error ? caught.message : t('members.local.memberUpdateFailed'))
     }
   }
 
@@ -89,7 +91,7 @@ const MemberRow = ({
           <div className="min-w-0">
             <div className="truncate font-semibold text-[color:var(--tx)]">
               {user.displayName}
-              {isSelf ? <span className="ml-1 text-[color:var(--tx3)]">(You)</span> : null}
+              {isSelf ? <span className="ml-1 text-[color:var(--tx3)]">({t('members.local.you')})</span> : null}
             </div>
             <div className="mt-1 truncate text-sm text-[color:var(--tx2)]">{user.email}</div>
           </div>
@@ -106,7 +108,7 @@ const MemberRow = ({
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Select
-          aria-label={`Role for ${user.displayName}`}
+          aria-label={t('members.local.roleFor', { name: user.displayName })}
           disabled={busy}
           onChange={(event) => void changeRole(event.target.value)}
           size="compact"
@@ -114,7 +116,7 @@ const MemberRow = ({
         >
           {ROLE_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
-              {option.label}
+              {t(option.label)}
             </option>
           ))}
         </Select>
@@ -125,7 +127,7 @@ const MemberRow = ({
             onClick={() => void toggleDeactivated()}
             type="button"
           >
-            {deactivated ? 'Reactivate' : 'Deactivate'}
+            {t(deactivated ? 'members.details.reactivate' : 'members.details.deactivate')}
           </button>
         )}
       </div>
@@ -136,6 +138,7 @@ const MemberRow = ({
 }
 
 export const SettingsMembersPage = () => {
+  const { t } = useTranslation('settings')
   const { me, token } = useAuthSession()
   const isOwner = useIsOwner()
   // On an UnlikeOtherAI session the roster and its invitations are UOA API
@@ -216,7 +219,7 @@ export const SettingsMembersPage = () => {
     } catch (error) {
       const { fieldErrors, formError } = toFormErrors(error)
       setAddFieldErrors(fieldErrors)
-      setAddFormError(formError ?? (Object.keys(fieldErrors).length === 0 ? 'Couldn’t add this member. Try again.' : undefined))
+      setAddFormError(formError ?? (Object.keys(fieldErrors).length === 0 ? t('members.local.addFailed') : undefined))
     }
   }
 
@@ -224,12 +227,12 @@ export const SettingsMembersPage = () => {
     !createUser.isPending && userEmail.trim().length > 0 && userPassword.length >= 8
 
   return (
-    <SettingsPanel eyebrow="Organisation" title="Members">
+    <SettingsPanel eyebrow={t('organization.organisation')} title={t('members.title')}>
       <div className="grid gap-4 xl:grid-cols-2">
-        <Section title="People">
+        <Section title={t('members.local.people')}>
           <QueryState
-            errorLabel="Members could not be loaded."
-            loadingLabel="Loading members…"
+            errorLabel={t('members.loadFailed')}
+            loadingLabel={t('members.loadingMembers')}
             query={usersQuery}
           >
             {() => (
@@ -245,7 +248,7 @@ export const SettingsMembersPage = () => {
                   ))}
                 </div>
               ) : (
-                <EmptyState>No members yet.</EmptyState>
+                <EmptyState>{t('members.local.noMembers')}</EmptyState>
               )
             )}
           </QueryState>
@@ -258,8 +261,8 @@ export const SettingsMembersPage = () => {
               {localTree.tree.teamOwned.length > 0 ? (
                 <UnassignedAgents
                   agents={localTree.tree.teamOwned}
-                  emptyLabel="None"
-                  title="Team-owned agents"
+                  emptyLabel={t('members.teamPeople.none')}
+                  title={t('members.teamPeople.teamOwnedAgents')}
                   token={token}
                 />
               ) : null}
@@ -268,16 +271,16 @@ export const SettingsMembersPage = () => {
         </Section>
 
         <Card as="section">
-          <SectionLabel>Add member</SectionLabel>
+          <SectionLabel>{t('members.local.addMember')}</SectionLabel>
           <form className="mt-4 grid gap-3" onSubmit={createUserSubmit}>
-            <FormField error={addFieldErrors.displayName} label="Display name">
+            <FormField error={addFieldErrors.displayName} label={t('members.local.displayName')}>
               <Input
                 onChange={(event) => setUserDisplayName(event.target.value)}
-                placeholder="Display name"
+                placeholder={t('members.local.displayName')}
                 value={userDisplayName}
               />
             </FormField>
-            <FormField error={addFieldErrors.email} label="Email">
+            <FormField error={addFieldErrors.email} label={t('members.invite.email')}>
               <Input
                 onChange={(event) => setUserEmail(event.target.value)}
                 placeholder="name@example.com"
@@ -285,7 +288,7 @@ export const SettingsMembersPage = () => {
                 value={userEmail}
               />
             </FormField>
-            <FormField error={addFieldErrors.password} help="At least 8 characters." label="Password">
+            <FormField error={addFieldErrors.password} help={t('members.local.passwordHelp')} label={t('members.local.password')}>
               <Input
                 autoComplete="new-password"
                 onChange={(event) => setUserPassword(event.target.value)}
@@ -293,27 +296,27 @@ export const SettingsMembersPage = () => {
                 value={userPassword}
               />
             </FormField>
-            <FormField label="Role">
+            <FormField label={t('members.details.role')}>
               <Select
                 onChange={(event) => setUserRole(event.target.value)}
                 value={userRole}
               >
                 {ROLE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
-                    {option.label}
+                    {t(option.label)}
                   </option>
                 ))}
               </Select>
             </FormField>
             <FormError>{addFormError}</FormError>
-            <FormSuccess>{addSuccess ? 'Member added.' : undefined}</FormSuccess>
+            <FormSuccess>{addSuccess ? t('members.local.memberAdded') : undefined}</FormSuccess>
             <FormActions>
               <button
                 className="admin-button admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={!canAddMember}
                 type="submit"
               >
-                {createUser.isPending ? 'Adding…' : 'Add member'}
+                {createUser.isPending ? t('members.local.adding') : t('members.local.addMember')}
               </button>
             </FormActions>
           </form>

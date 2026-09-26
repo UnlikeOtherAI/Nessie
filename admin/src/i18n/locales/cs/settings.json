@@ -729,7 +729,8 @@
     "roles": {
       "admin": "Správce",
       "member": "Člen",
-      "owner": "Vlastník"
+      "owner": "Vlastník",
+      "viewer": "Čtenář"
     },
     "feedback": {
       "yourTeam": "váš tým",
@@ -741,6 +742,32 @@
       "invitationCancelled": "Pozvání zrušeno",
       "memberAddedBody": "{{name}} je nyní v týmu {{team}}.",
       "memberAdded": "Člen přidán"
+    },
+    "deactivated": "Deaktivovaný",
+    "teamPeople": {
+      "roleFor": "Role v týmu pro {{name}}",
+      "roleUpdateFailed": "Nepodařilo se změnit roli",
+      "memberUpdateFailed": "Nepodařilo se aktualizovat člena",
+      "memberRemoveFailed": "Nepodařilo se odebrat člena",
+      "none": "Žádní",
+      "teamOwnedAgents": "Agenti vlastnění týmem",
+      "ownedOutsideTeam": "Vlastněno mimo tento tým",
+      "signInNotConfigured": "Přihlášení přes UnlikeOtherAI není v této instalaci Nessie nastaveno."
+    },
+    "local": {
+      "roleChangeFailed": "Nepodařilo se změnit roli. Zkuste to znovu.",
+      "memberUpdateFailed": "Nepodařilo se aktualizovat člena. Zkuste to znovu.",
+      "you": "Vy",
+      "roleFor": "Role uživatele {{name}}",
+      "noMembers": "Zatím tu nejsou žádní členové.",
+      "people": "Lidé",
+      "addMember": "Přidat člena",
+      "displayName": "Zobrazované jméno",
+      "passwordHelp": "Alespoň 8 znaků.",
+      "password": "Heslo",
+      "memberAdded": "Člen přidán.",
+      "adding": "Přidávání…",
+      "addFailed": "Člena se nepodařilo přidat. Zkuste to znovu."
     }
   },
   "automaticMembership": {

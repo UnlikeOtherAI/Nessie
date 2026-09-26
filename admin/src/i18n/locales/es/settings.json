@@ -729,7 +729,8 @@
     "roles": {
       "admin": "Administrador",
       "member": "Miembro",
-      "owner": "Propietario"
+      "owner": "Propietario",
+      "viewer": "Lector"
     },
     "feedback": {
       "yourTeam": "tu equipo",
@@ -741,6 +742,32 @@
       "invitationCancelled": "Invitación cancelada",
       "memberAddedBody": "{{name}} ahora forma parte de {{team}}.",
       "memberAdded": "Miembro añadido"
+    },
+    "deactivated": "Desactivado",
+    "teamPeople": {
+      "roleFor": "Rol de {{name}} en el equipo",
+      "roleUpdateFailed": "No se pudo actualizar el rol",
+      "memberUpdateFailed": "No se pudo actualizar al miembro",
+      "memberRemoveFailed": "No se pudo quitar al miembro",
+      "none": "Ninguno",
+      "teamOwnedAgents": "Agentes propiedad del equipo",
+      "ownedOutsideTeam": "Propiedad fuera de este equipo",
+      "signInNotConfigured": "El inicio de sesión con UnlikeOtherAI no está configurado en esta instancia de Nessie."
+    },
+    "local": {
+      "roleChangeFailed": "No se pudo cambiar su rol. Inténtalo de nuevo.",
+      "memberUpdateFailed": "No se pudo actualizar a este miembro. Inténtalo de nuevo.",
+      "you": "Tú",
+      "roleFor": "Rol de {{name}}",
+      "noMembers": "Aún no hay miembros.",
+      "people": "Personas",
+      "addMember": "Añadir miembro",
+      "displayName": "Nombre visible",
+      "passwordHelp": "Al menos 8 caracteres.",
+      "password": "Contraseña",
+      "memberAdded": "Miembro añadido.",
+      "adding": "Añadiendo…",
+      "addFailed": "No se pudo añadir al miembro. Inténtalo de nuevo."
     }
   },
   "automaticMembership": {

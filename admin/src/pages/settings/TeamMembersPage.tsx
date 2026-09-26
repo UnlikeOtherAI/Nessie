@@ -1,4 +1,5 @@
 import { TeamMembersSection } from './TeamMembersSection'
+import { useTranslation } from 'react-i18next'
 import { SettingsPanel } from '../../components/shared/SettingsPanel'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useIsOwner } from '../../facades/auth/hooks'
@@ -21,6 +22,7 @@ import { MembersRosterPanel } from '../../components/features/settings/MembersRo
  * workspace switcher).
  */
 export const TeamMembersPage = () => {
+  const { t } = useTranslation('settings')
   const { me } = useAuthSession()
   const isOwner = useIsOwner()
   const canManage = isOwner || (me?.user.roleIds.includes('admin') ?? false)
@@ -33,12 +35,12 @@ export const TeamMembersPage = () => {
   }
 
   return (
-    <SettingsPanel eyebrow="Team" title="Members">
+    <SettingsPanel eyebrow={t('team.team')} title={t('members.title')}>
       <TeamMembersSection
         canManage={canManage}
         onReconnect={async () => {
           const providerId = me.auth.providerId
-          if (!providerId) throw new Error('Sign-in with UnlikeOtherAI isn’t set up on this Nessie.')
+          if (!providerId) throw new Error(t('members.teamPeople.signInNotConfigured'))
           await startExternalSignIn(providerId, signInTheme, {
             returnPath: window.location.pathname + window.location.search,
           })
