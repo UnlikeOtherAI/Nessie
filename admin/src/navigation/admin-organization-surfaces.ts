@@ -116,7 +116,7 @@ export const createAdminOrganizationSurfaces = (adminRoot: string): Surface[] =>
   {
     depth: 1,
     parentOf: toAdmin,
-    pattern: /^\/admin\/advanced\/(?:access-rules|health|push|debug)$/,
+    pattern: /^\/admin\/advanced\/(?:access-rules|announcements|health|push|debug)$/,
     root: adminRoot,
     section: 'admin',
     type: 'detail',

@@ -121,6 +121,13 @@ export const rulesIcon = icon(
   </>,
 )
 
+export const announcementsIcon = icon(
+  <>
+    <path d="M3 10v4h4l10 4V6L7 10H3z" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M7 14l1 5h3l-1-4M20 9a4 4 0 010 6" strokeLinecap="round" />
+  </>,
+)
+
 export const healthIcon = icon(
   <path d="M3 12h4l2 6 4-12 2 6h6" strokeLinecap="round" strokeLinejoin="round" />,
 )

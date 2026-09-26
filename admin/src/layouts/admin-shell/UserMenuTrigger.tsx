@@ -1,5 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { UserAvatar, useResolvedAvatarUrl } from '../../components/shared/UserAvatar'
+import { Dialog } from '../../components/shared/Dialog'
+import { NewsContent } from '../../components/features/announcements/NewsContent'
+import { useNews } from '../../facades/announcements/hooks'
+import { useNavigationLayout } from '../../navigation/mobile-shell'
 import { useDataUrl } from '../../lib/native-shell-avatar'
 import { useMyAvatarRevision } from '../../facades/auth/hooks'
 import { isReactNativeWebView } from '../../lib/native-shell'
@@ -33,6 +38,10 @@ export const UserMenuTrigger = ({
   ringColor = 'var(--rail)',
 }: UserMenuTriggerProps) => {
   const { me, token } = useAuthSession()
+  const navigate = useNavigate()
+  const layout = useNavigationLayout()
+  const news = useNews()
+  const [newsOpen, setNewsOpen] = useState(false)
   const { focusModeEnabled, toggleFocusMode, updating: focusModeUpdating } = useFocusMode()
   // Follows a profile-photo change made on the settings page: the relay URL is
   // fixed, so without this the account button keeps the browser-cached image.
@@ -56,6 +65,11 @@ export const UserMenuTrigger = ({
   )
   const avatarButtonRef = useRef<HTMLButtonElement>(null)
   const { close, isOpen: menuOpen, toggle } = useTransientMenu()
+
+  const openNews = () => {
+    if (layout === 'single') navigate('/news')
+    else setNewsOpen(true)
+  }
 
   useEffect(() => {
     if (!nativeShellBridge || !isReactNativeWebView()) return undefined
@@ -100,7 +114,7 @@ export const UserMenuTrigger = ({
         aria-haspopup="menu"
         aria-label="Account menu"
         className={[
-          'rounded-md transition-shadow',
+          'relative rounded-md transition-shadow',
           className ?? '',
           nativeShellBridge ? 'pointer-events-none fixed right-3 top-0 z-[69] h-px w-px opacity-0' : '',
           menuOpen
@@ -125,16 +139,26 @@ export const UserMenuTrigger = ({
           token={token}
           userId={me.user.id}
         />
+        {news.data && news.data.unreadCount > 0 && !news.data.notificationsMuted ? (
+          <span aria-hidden="true" className="news-account-dot" />
+        ) : null}
       </button>
       <UserMenuPopover
         anchorRef={avatarButtonRef}
         onClose={close}
         onLogout={onLogout}
+        onNews={openNews}
+        newsUnreadCount={news.data?.unreadCount ?? 0}
         open={menuOpen}
         placement={placement}
         token={token}
         user={me.user}
       />
+      {newsOpen ? (
+        <Dialog onClose={() => setNewsOpen(false)} open size="lg" title="News">
+          <NewsContent />
+        </Dialog>
+      ) : null}
     </>
   )
 }

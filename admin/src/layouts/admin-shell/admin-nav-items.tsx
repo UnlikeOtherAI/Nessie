@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import {
+  announcementsIcon,
   appsIcon,
   automationsIcon,
   computerIcon,
@@ -149,6 +150,12 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { path: '/admin/advanced/tools', label: 'Tool registry', ownerOnly: true, icon: toolIcon },
       { path: '/admin/advanced/access-rules', label: 'Access rules', ownerOnly: true, icon: rulesIcon },
+      {
+        path: '/admin/advanced/announcements',
+        label: 'Announcements',
+        visibleTo: (viewer) => viewer.isSuperAdmin,
+        icon: announcementsIcon,
+      },
       {
         // Deployment-wide infrastructure (worker heartbeat, queue, dead jobs).
         // `GET /api/ops/health` requires `User.superAdmin`.

@@ -59,6 +59,8 @@ import { useRealtimeGapRecovery } from '../facades/realtime/realtime-gap';
 import { useDeepWaterRunEvents } from '../facades/deep-water/events';
 import { useUnreadDirectMessages } from '../facades/threads/unread-direct-messages';
 import { useFocusMode } from '../providers/FocusModeProvider';
+import { AnnouncementStrip } from '../components/features/announcements/AnnouncementStrip';
+import { NewsNotificationBridge } from '../components/features/announcements/NewsNotificationBridge';
 
 import { ShellStateProvider, type ShellState } from './admin-shell/ShellStateContext';
 export type { ShellActions } from './admin-shell/types';
@@ -408,12 +410,14 @@ const AuthenticatedAdminShellLayout = () => {
       <AttentionDisplayManager />
       <PushSurfacePresenceHeartbeat />
       <ToastProvider>
+        <NewsNotificationBridge />
         <MessageNotificationBridge>
           <TransientMenuProvider>
             <ShellStateProvider value={shellState}>
                 <SkipToContentLink />
                 <div className={frameClassName} data-navigation={navigationLayout}>
                   {nativeShell || desktopApp ? <NativeChromeThemeBridge /> : null}
+                  <AnnouncementStrip />
                   {showMobileWebHomeHeader ? <MobileWebHomeHeader onLogout={shell.logoutAndRedirect} /> : null}
                   {hideTopBar ? null : (
                     <TopBar

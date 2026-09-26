@@ -46,6 +46,13 @@ test('System health and Mobile push setup are visible to the instance super-admi
   }
 })
 
+test('Announcements is visible to the instance super-admin only', () => {
+  const announcements = navItem('/admin/advanced/announcements')
+  assert.equal(isAdminNavItemVisible(announcements, viewer()), false)
+  assert.equal(isAdminNavItemVisible(announcements, viewer({ isOwner: true })), false)
+  assert.equal(isAdminNavItemVisible(announcements, viewer({ isSuperAdmin: true })), true)
+})
+
 test('org-scoped operational surfaces retain their owner doorway', () => {
   // The neighbouring items read org-filtered data, so they are deliberately
   // NOT swept into the instance role along with System health.
@@ -69,6 +76,7 @@ test('Advanced holds the rarely used controls, folded, for owners and instance o
     [
       ['/admin/advanced/tools', 'Tool registry'],
       ['/admin/advanced/access-rules', 'Access rules'],
+      ['/admin/advanced/announcements', 'Announcements'],
       ['/admin/advanced/health', 'System health'],
       ['/admin/advanced/push', 'Mobile push setup'],
       ['/admin/advanced/debug', 'Session debug'],

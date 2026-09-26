@@ -1,6 +1,6 @@
 import { type RefObject } from 'react'
 import { Link } from 'react-router-dom'
-import { CircleHelp, LogOut, Settings } from 'lucide-react'
+import { CircleHelp, LogOut, Newspaper, Settings } from 'lucide-react'
 import type { MeUser } from '@nessie/schemas'
 import { Popover } from '../../components/overlays/Popover'
 import { UserAvatar } from '../../components/shared/UserAvatar'
@@ -17,6 +17,8 @@ type UserMenuPopoverProps = {
   open: boolean
   onClose: () => void
   onLogout: () => void
+  onNews: () => void
+  newsUnreadCount: number
   placement?: UserMenuPopoverPlacement
 }
 
@@ -25,7 +27,7 @@ type UserMenuPopoverProps = {
 // — beside it on the rail, beneath its right edge in the top bar — through the
 // one Popover primitive, so the flip and clamp are not its business.
 //
-// Availability · Status · Your settings · Send feedback · Sign out, and
+// Availability · Status · News · Your settings · Send feedback · Sign out, and
 // nothing else: the computers a person paired are Your settings › Your
 // computers, and the session debug is Admin › Advanced.
 export const UserMenuPopover = ({
@@ -35,6 +37,8 @@ export const UserMenuPopover = ({
   open,
   onClose,
   onLogout,
+  onNews,
+  newsUnreadCount,
   placement = 'rail',
 }: UserMenuPopoverProps) => {
   const { focusModeEnabled } = useFocusMode()
@@ -79,6 +83,15 @@ export const UserMenuPopover = ({
       <StatusSection onClose={onClose} />
 
       <div className="admin-account-menu-divider" />
+
+      <button className="admin-account-menu-row" onClick={() => { onClose(); onNews() }} type="button">
+        <Newspaper aria-hidden="true" strokeWidth={2} />
+        <span>News</span>
+        {newsUnreadCount > 0 ? (
+          <span aria-label={`${newsUnreadCount} unread news articles`}
+            className="news-unread-count ml-auto">{newsUnreadCount > 99 ? '99+' : newsUnreadCount}</span>
+        ) : null}
+      </button>
 
       <Link className="admin-account-menu-row" onClick={onClose} to="/settings">
         <Settings aria-hidden="true" strokeWidth={2} />
