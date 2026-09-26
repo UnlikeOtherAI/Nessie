@@ -33,9 +33,12 @@ const authoring = await readFile(join(packaging, 'nessie-executor.wxs'), 'utf8')
 const buildScript = await readFile(join(packaging, 'build-msi.mjs'), 'utf8')
 const workflowsDirectory = join(packaging, '..', '..', '..', '.github', 'workflows')
 const windowsWorkflow = await readFile(join(workflowsDirectory, 'desktop-windows.yml'), 'utf8')
-/** Both workflows that run `build-msi.mjs`, by the name a person would look for. */
+/**
+ * Both workflows that run `build-msi.mjs`, by the name a person would look for:
+ * Desktop CI's Windows Native check, and the release build.
+ */
 const packageBuildingWorkflows = {
-  'ci.yml': await readFile(join(workflowsDirectory, 'ci.yml'), 'utf8'),
+  'desktop-ci.yml': await readFile(join(workflowsDirectory, 'desktop-ci.yml'), 'utf8'),
   'desktop-windows.yml': windowsWorkflow,
 }
 const script = async (name) => readFile(join(packaging, 'scripts', name), 'utf8')
