@@ -4,6 +4,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 import { IpadNativeChromeSurface } from './IpadNativeChromeSurface'
 import { NativeTeamAvatar } from './NativeTeamAvatar'
 import { type IpadNativeChromeTheme } from '../lib/ipad-native-chrome'
+import { useNativeCopy } from '../i18n/native'
 
 type IpadNativeTeamSwitcherProps = {
   left: number
@@ -23,11 +24,13 @@ export const IpadNativeTeamSwitcher = ({
   onPress,
   theme,
   top,
-}: IpadNativeTeamSwitcherProps): React.JSX.Element => (
+}: IpadNativeTeamSwitcherProps): React.JSX.Element => {
+  const copy = useNativeCopy()
+  return (
   <View pointerEvents="box-none" style={[styles.layer, { left, top }]}>
     <IpadNativeChromeSurface theme={theme}>
       <Pressable
-        accessibilityLabel={`Switch team, ${name}`}
+        accessibilityLabel={`${copy.account.switchTeam}, ${name}`}
         accessibilityRole="button"
         hitSlop={4}
         onPress={onPress}
@@ -51,7 +54,8 @@ export const IpadNativeTeamSwitcher = ({
       </Pressable>
     </IpadNativeChromeSurface>
   </View>
-)
+  )
+}
 
 const styles = StyleSheet.create({
   layer: {

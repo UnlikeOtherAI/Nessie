@@ -5,6 +5,7 @@ import { NativeFocusModeButton } from './NativeFocusModeButton'
 import { NativeIdentityAvatar, NativeTeamAvatar } from './NativeTeamAvatar'
 import { type ToolbarAction, type ToolbarState } from './native-toolbar-state'
 import { withOpacity } from '../lib/ipad-native-chrome'
+import { useNativeCopy } from '../i18n/native'
 import {
   getNativePhoneHeaderHeight,
   NATIVE_PHONE_LANDSCAPE_HORIZONTAL_GUTTER,
@@ -61,10 +62,12 @@ const NativePhoneToolbarControls = ({
   headerText,
   onToolbarAction,
   toolbarState,
-}: Pick<NativePhoneHeaderProps, 'headerText' | 'onToolbarAction' | 'toolbarState'>): React.JSX.Element => (
+}: Pick<NativePhoneHeaderProps, 'headerText' | 'onToolbarAction' | 'toolbarState'>): React.JSX.Element => {
+  const copy = useNativeCopy()
+  return (
   <View style={styles.toolbarControls}>
     <Pressable
-      accessibilityLabel="Back"
+      accessibilityLabel={copy.toolbar.back}
       accessibilityRole="button"
       disabled={!toolbarState.canBack}
       hitSlop={6}
@@ -79,7 +82,7 @@ const NativePhoneToolbarControls = ({
       <MaterialIcons color={headerText} name="arrow-back-ios-new" size={16} />
     </Pressable>
     <Pressable
-      accessibilityLabel="Forward"
+      accessibilityLabel={copy.toolbar.forward}
       accessibilityRole="button"
       disabled={!toolbarState.canForward}
       hitSlop={6}
@@ -94,7 +97,7 @@ const NativePhoneToolbarControls = ({
       <MaterialIcons color={headerText} name="arrow-forward-ios" size={16} />
     </Pressable>
     <Pressable
-      accessibilityLabel="Recent channels"
+      accessibilityLabel={copy.toolbar.recentChannels}
       accessibilityRole="button"
       hitSlop={6}
       onPress={() => onToolbarAction('history')}
@@ -108,7 +111,8 @@ const NativePhoneToolbarControls = ({
       <MaterialIcons color={headerText} name="history" size={21} />
     </Pressable>
   </View>
-)
+  )
+}
 
 // Portrait reserves this bar for team identity and account access. A
 // Max-class iPhone in landscape gains the navigation controls between them,
@@ -131,6 +135,7 @@ export const NativePhoneHeader = ({
   teamAvatarUrl,
   teamName,
 }: NativePhoneHeaderProps): React.JSX.Element => {
+  const copy = useNativeCopy()
   const compact = landscape
   const accountDiameter = compact ? 36 : 42
   const avatarDiameter = compact ? 32 : 38
@@ -145,7 +150,7 @@ export const NativePhoneHeader = ({
     >
       <View style={[styles.headerContent, { paddingTop: safeTop }, compact ? styles.headerContentCompact : null]}>
         <Pressable
-          accessibilityLabel={`Switch team, ${teamName ?? 'Team'}`}
+          accessibilityLabel={`${copy.account.switchTeam}, ${teamName ?? copy.account.team}`}
           accessibilityRole="button"
           hitSlop={6}
           onPress={onTeamPress}
@@ -188,7 +193,7 @@ export const NativePhoneHeader = ({
             onPress={onToggleFocusMode}
           />
           <Pressable
-            accessibilityLabel="Account menu"
+            accessibilityLabel={copy.account.menu}
             accessibilityRole="button"
             hitSlop={6}
             onPress={onAccountPress}

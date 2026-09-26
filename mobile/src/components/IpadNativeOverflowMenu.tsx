@@ -5,6 +5,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 import { IpadNativeChromeSurface } from './IpadNativeChromeSurface'
 import { type ToolbarAction, type ToolbarState } from './IpadNativeToolbar'
 import { IPAD_NATIVE_CHROME_HEIGHT, type IpadNativeChromeTheme } from '../lib/ipad-native-chrome'
+import { useNativeCopy } from '../i18n/native'
 
 type MaterialIconName = ComponentProps<typeof MaterialIcons>['name']
 
@@ -55,6 +56,7 @@ export const IpadNativeOverflowMenu = ({
   theme,
   toolbarState,
 }: IpadNativeOverflowMenuProps): React.JSX.Element => {
+  const copy = useNativeCopy()
   const [open, setOpen] = useState(false)
   const closeThen = (action: () => void): void => {
     setOpen(false)
@@ -65,7 +67,7 @@ export const IpadNativeOverflowMenu = ({
     <View style={styles.host}>
       <IpadNativeChromeSurface style={styles.triggerSurface} theme={theme}>
         <Pressable
-          accessibilityLabel="More navigation controls"
+          accessibilityLabel={copy.toolbar.moreNavigationControls}
           accessibilityRole="button"
           accessibilityState={{ expanded: open }}
           onPress={() => setOpen((value) => !value)}
@@ -79,31 +81,31 @@ export const IpadNativeOverflowMenu = ({
       </IpadNativeChromeSurface>
       {open ? (
         <View style={[styles.menu, { backgroundColor: theme.backgroundColor, borderColor: theme.borderColor }]}>
-          <OverflowItem icon="search" label="Search" onPress={() => closeThen(onSearchPress)} theme={theme} />
+          <OverflowItem icon="search" label={copy.tabs.search} onPress={() => closeThen(onSearchPress)} theme={theme} />
           <OverflowItem
             disabled={!toolbarState.canBack}
             icon="arrow-back-ios-new"
-            label="Back"
+            label={copy.toolbar.back}
             onPress={() => closeThen(() => onToolbarAction('back'))}
             theme={theme}
           />
           <OverflowItem
             disabled={!toolbarState.canForward}
             icon="arrow-forward-ios"
-            label="Forward"
+            label={copy.toolbar.forward}
             onPress={() => closeThen(() => onToolbarAction('forward'))}
             theme={theme}
           />
           <OverflowItem
             active={toolbarState.recentOpen}
             icon="history"
-            label="Recent channels"
+            label={copy.toolbar.recentChannels}
             onPress={() => closeThen(() => onToolbarAction('history'))}
             theme={theme}
           />
           <OverflowItem
             icon="help-outline"
-            label="Help and feedback"
+            label={copy.toolbar.helpAndFeedback}
             onPress={() => closeThen(() => onToolbarAction('help'))}
             theme={theme}
           />

@@ -45,6 +45,8 @@ export type NativeShellMessage = {
   /** `nessie:app-icon`'s chosen Home Screen icon — see native-app-icon.ts. */
   icon?: string
   inactive?: string
+  /** Current admin language for native wrapper chrome. */
+  language?: string
   id?: number
   left?: number
   right?: number

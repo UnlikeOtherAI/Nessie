@@ -12,6 +12,7 @@ import {
   type NativeCreationLane,
 } from '../lib/native-creation-menu'
 import type { NativeCreationAction } from '../lib/native-shell-layout'
+import { useNativeCopy } from '../i18n/native'
 
 type NativeCreationMenuProps = {
   accentColor: string
@@ -44,6 +45,7 @@ export const NativeCreationMenu = ({
   sheetSurface,
   sheetText,
 }: NativeCreationMenuProps): React.JSX.Element => {
+  const copy = useNativeCopy()
   const [open, setOpen] = useState(false)
   const progress = useRef(new Animated.Value(0)).current
   const dismissedVersion = useRef(dismissVersion)
@@ -111,7 +113,7 @@ export const NativeCreationMenu = ({
   return (
     <>
       <AnimatedPressable
-        accessibilityLabel={open ? 'Start a direct message' : 'Open creation menu'}
+        accessibilityLabel={open ? copy.creation.startDirectMessage : copy.creation.openMenu}
         accessibilityRole="button"
         hitSlop={8}
         onPress={() => {
@@ -161,13 +163,13 @@ export const NativeCreationMenu = ({
           ]}
         >
           <MaterialIcons color={onAccentColor} name="edit" size={17} />
-          <Text style={[styles.messageActionText, { color: onAccentColor }]}>Message</Text>
+          <Text style={[styles.messageActionText, { color: onAccentColor }]}>{copy.creation.message}</Text>
         </Animated.View>
       </AnimatedPressable>
       {open ? (
         <>
           <Pressable
-            accessibilityLabel="Close create menu"
+            accessibilityLabel={copy.creation.closeMenu}
             onPress={closeMenu}
             style={styles.createBackdrop}
           />
@@ -188,9 +190,15 @@ export const NativeCreationMenu = ({
             <Animated.View style={[styles.createOptions, optionsAnimation]}>
               {NATIVE_CREATION_OPTIONS.map((option) => {
                 const colors = NATIVE_CREATION_OPTION_COLORS[option.action]
+                const title = option.action === 'project' ? copy.creation.project
+                  : option.action === 'channel' ? copy.creation.channel : copy.creation.agent
+                const accessibilityLabel = option.action === 'project' ? copy.creation.createProject
+                  : option.action === 'channel' ? copy.creation.createChannel : copy.creation.createAgent
+                const description = option.action === 'project' ? copy.creation.projectDescription
+                  : option.action === 'channel' ? copy.creation.channelDescription : copy.creation.agentDescription
                 return (
                   <Pressable
-                    accessibilityLabel={option.accessibilityLabel}
+                    accessibilityLabel={accessibilityLabel}
                     accessibilityRole="button"
                     key={option.action}
                     onPress={() => select(option.action)}
@@ -208,9 +216,9 @@ export const NativeCreationMenu = ({
                       <MaterialIcons color={colors.glyph} name={option.icon} size={18} />
                     </View>
                     <View style={styles.createCopy}>
-                      <Text style={[styles.createTitle, { color: sheetText }]}>{option.title}</Text>
+                      <Text style={[styles.createTitle, { color: sheetText }]}>{title}</Text>
                       <Text style={[styles.createDescription, { color: sheetMutedText }]}>
-                        {option.description}
+                        {description}
                       </Text>
                     </View>
                   </Pressable>

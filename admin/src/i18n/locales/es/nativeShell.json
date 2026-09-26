@@ -1,0 +1,12 @@
+{
+  "desktopUpdate": {
+    "title": "¿Actualizar Nessie?",
+    "description": "La versión {{version}} está disponible (tienes la versión {{currentVersion}}).",
+    "installPrompt": "¿Quieres instalar ahora la última actualización firmada de Nessie?",
+    "installError": "No se pudo instalar la actualización. Inténtalo de nuevo más tarde.",
+    "skip": "Omitir esta versión",
+    "remindLater": "Recordármelo mañana",
+    "updateNow": "Actualizar ahora",
+    "installing": "Instalando…"
+  }
+}

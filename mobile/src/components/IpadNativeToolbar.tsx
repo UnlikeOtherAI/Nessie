@@ -5,6 +5,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 import { IpadNativeChromeSurface } from './IpadNativeChromeSurface'
 import { type ToolbarAction, type ToolbarState } from './native-toolbar-state'
 import { type IpadNativeChromeTheme } from '../lib/ipad-native-chrome'
+import { useNativeCopy } from '../i18n/native'
 
 export { type ToolbarAction, type ToolbarState } from './native-toolbar-state'
 
@@ -54,37 +55,40 @@ export const IpadNativeToolbar = ({
   onAction,
   recentOpen,
   theme,
-}: IpadNativeToolbarProps): React.JSX.Element => (
+}: IpadNativeToolbarProps): React.JSX.Element => {
+  const copy = useNativeCopy()
+  return (
   <IpadNativeChromeSurface theme={theme}>
     <IpadToolbarButton
       disabled={!canBack}
       icon="arrow-back-ios-new"
-      label="Back"
+      label={copy.toolbar.back}
       onPress={() => onAction('back')}
       theme={theme}
     />
     <IpadToolbarButton
       disabled={!canForward}
       icon="arrow-forward-ios"
-      label="Forward"
+      label={copy.toolbar.forward}
       onPress={() => onAction('forward')}
       theme={theme}
     />
     <IpadToolbarButton
       active={recentOpen}
       icon="history"
-      label="Recent channels"
+      label={copy.toolbar.recentChannels}
       onPress={() => onAction('history')}
       theme={theme}
     />
     <IpadToolbarButton
       icon="help-outline"
-      label="Help and feedback"
+      label={copy.toolbar.helpAndFeedback}
       onPress={() => onAction('help')}
       theme={theme}
     />
   </IpadNativeChromeSurface>
-)
+  )
+}
 
 const styles = StyleSheet.create({
   button: {

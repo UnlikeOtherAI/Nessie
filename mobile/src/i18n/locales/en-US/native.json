@@ -1,0 +1,49 @@
+{
+  "tabs": {
+    "channels": "Channels",
+    "projects": "Projects",
+    "knowledge": "Knowledge",
+    "admin": "Admin",
+    "search": "Search"
+  },
+  "toolbar": {
+    "back": "Back",
+    "forward": "Forward",
+    "recentChannels": "Recent channels",
+    "helpAndFeedback": "Help and feedback",
+    "moreActions": "More actions",
+    "moreNavigationControls": "More navigation controls",
+    "cancel": "Cancel"
+  },
+  "account": {
+    "menu": "Account menu",
+    "switchTeam": "Switch team",
+    "team": "Team"
+  },
+  "focus": {
+    "turnOn": "Turn on focus mode",
+    "turnOff": "Turn off focus mode"
+  },
+  "creation": {
+    "openMenu": "Open creation menu",
+    "closeMenu": "Close create menu",
+    "startDirectMessage": "Start a direct message",
+    "message": "Message",
+    "project": "Project",
+    "projectDescription": "Organize work in a shared folder",
+    "createProject": "Create project",
+    "channel": "Channel",
+    "channelDescription": "Start a team conversation",
+    "createChannel": "Create channel",
+    "agent": "Agent",
+    "agentDescription": "Design a new agent",
+    "createAgent": "Create agent"
+  },
+  "updates": {
+    "title": "Update Nessie?",
+    "ready": "Version {version} is ready to download. Android will ask you to confirm the install.",
+    "skip": "Skip this version",
+    "remindTomorrow": "Remind me tomorrow",
+    "update": "Update"
+  }
+}
