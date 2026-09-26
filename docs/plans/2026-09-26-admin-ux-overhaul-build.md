@@ -550,7 +550,102 @@ _(the phase writes its task list and as-built notes here)_
 
 ### Phase 6: Usage and limits, Advanced, the deletions, Alerts
 
-_(the phase writes its task list and as-built notes here)_
+Plan §6.4 (Usage and limits, Advanced), §9, §10.9, §10.11, §10.12, §10.14.
+Port pair 5490 / 5491, browser database `nessie_p6`.
+
+**Routes.**
+
+| Route | Change | Screen |
+|---|---|---|
+| `/admin/usage` | changed | Usage and limits: local usage by team, agent or person (`?by=team\|agent\|person`) for this week, month or year (`?period=week\|month\|year`), in tokens and estimated cost; Budgets with New budget as the one primary action |
+| `/admin/advanced/telemetry` | new | Telemetry: the token breakdowns (`?by=model\|provider\|channel\|run`), Monthly projection, Spend by run outcome, File usage and transfers, Connector usage (`?connectorBy=`) |
+| `/admin/advanced/pricing` | new | Model pricing: your own prices, which win, and the model service's published prices, read-only |
+
+Both new routes get surface-registry rows (depth 1, parent Admin) and rows in
+the collapsed Advanced group, owner-only: Tool registry · Access rules · Model
+pricing · Telemetry · System health · Mobile push setup · Session debug.
+
+**Usage and limits (`pages/admin/UsagePage.tsx`, `components/features/usage/**`).**
+
+- Usage rows come from a new named read, never raw ids. Another person's
+  private agents are one unnamed row (an organisation owner never sees
+  another person's private agent), and usage no person or agent drove is its
+  own row. Every figure says "estimated", and tokens with no known price are
+  counted in a line that links to Model pricing.
+- Budgets: modes Inherit · Warn · Stop automations (with "Also stop people's
+  requests") · Switch to a cheaper model (a picker over the model service's
+  models) · Unlimited; period; caps in tokens and estimated US dollars; the
+  storage cap. The form is a `Dialog` opened by New budget and by a row's
+  Edit. Rows read as sentences, and the scope picker reads as the hierarchy.
+- Copy and resolver agree: a project's budget applies first, then its team's,
+  then the organisation's.
+- Removed: "Internal operations only" and the statement-architecture
+  paragraph, both written for developers. The two-page split says it.
+- Telemetry and Model pricing move out, as above. `OperationalTelemetryPage`,
+  `BudgetManager` and `PricingManager` are deleted rather than kept beside
+  their replacements.
+
+**API, with tests in the package that owns each.**
+
+- `GET /api/ledger/usage?by=&period=` (owner): named rows and unpriced
+  tokens (`api/src/services/local-usage.ts`).
+- Model-service prices: the catalogue reader in `@nessie/team-admin` keeps the
+  `pricing` its listing already publishes. `syncModelServicePricing` writes
+  them as `provider-default` profiles: token-priced US dollar models only, a
+  row replaced only when its rates change, one advisory lock per
+  organisation. It then re-prices past usage that still has no estimate. It
+  runs when an owner reads usage, prices or the token summary and the
+  organisation has no model-service prices yet or recent unpriced usage with
+  no price at all. `POST /api/ledger/tokens/pricing/sync` is the explicit
+  refresh.
+- Precedence: an owner's price, exact before `*`, beats a model-service price.
+  That is one exported selector in `@nessie/runtime`, which the worker's
+  cache-read weight also reads instead of a copy of the query. Owners can
+  neither create nor delete a `provider-default` row, and replacing their own
+  price never closes one. Re-pricing never prices personal-plan or
+  own-computer usage.
+- Budgets: the resolver is project → team → organisation (it was team first);
+  `GET /api/ledger/budgets` carries each scope's name.
+- Budget alerts as an alert kind (§10.9): enum value `budget_alert` plus
+  `user_alerts.budget_alert_id` (foreign key to `budget_alerts`, cascade),
+  one migration. The dispatch writes a durable row for each active owner
+  before any push, keyed like its enqueue
+  (`budget-alert:<scope>:<id>:<periodStart>:<kind>`), so once per budget,
+  period and kind is unchanged. The visibility arm requires a live owner, and
+  the record carries scope, kind, percentage and period. Nothing publishes it
+  realtime, so it is written in the deploy that adds it.
+- Deletions: `GET /api/triggers/upcoming` and its `dueBefore` option.
+- Access rules: deleting a seeded default that reconcile does not restore,
+  or removing its binding, is refused (409 `POLICY_RULE_PROTECTED`). A rule
+  record says whether it is such a default or one reconcile restores.
+
+**The other deletions of §9.** The seats row and its comment, and Compare
+plans, on Credits and billing; the ordinary-tool grant switch
+(`ToolAgentAccessPanel`; `ToolGrant` rows are read only for explicit-grant
+connector tools, so an ordinary tool's detail says where its access is
+decided); the Feedback eyebrow; Status's response agent, agent instructions
+and contact rules, hidden and not sent on save (the data stays, §12.7);
+Access rules' Actor ID becomes a Role picker. The Profile Session card left
+in phase 1, so nothing remains.
+
+**Alerts on every shell.** The bell stays on the desktop top bar and in the
+desktop app, which draws the same bar. It joins the mobile-web home header
+and stays visible, muted, in focus mode. The account menu, which every shell
+opens (desktop rail and top bar, mobile web, the iPhone, iPad and Android
+avatars), gains an Alerts row with the unread count. The native toolbar
+protocol gains an `alerts` action and `unreadAlerts` in
+`nessie:toolbar-state`, handled on the web now; `mobile/` gains the type and
+parser with unit tests. A native bell button waits for a native release and
+is not built here.
+
+**Order.** Plan · runtime, team-admin and API pricing, budgets, usage · the
+admin pages, registry and sidebar · the deletions · the alert kind · the
+shells · docs · merge `main`, gates, screenshots, kimix review, pull request.
+
+**Left as today, or later.** §12.6: instance-operator pages stay under
+Advanced. §12.7: Status's hidden fields keep their data. The readable
+role matrix for Access rules is left for later. So is the native bell
+button.
 
 ## Verification of a phase
 
