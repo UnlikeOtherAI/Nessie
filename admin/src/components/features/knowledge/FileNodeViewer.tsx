@@ -15,6 +15,7 @@ import { versionDownloadPath } from '../../../facades/knowledge/file-hooks'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { EmptyState } from '../../shared/EmptyState'
 import { RetryableTextFilePreview } from '../../shared/TextFilePreview'
+import { PdfPreview } from '../../shared/PdfPreview'
 import { MessageMarkdown } from '../channels/MessageMarkdown'
 import { CommentsSection } from './comments/CommentsSection'
 import {
@@ -207,17 +208,9 @@ export const FileNodeViewer = ({
               src={previewUrl}
             />
           ) : previewKind === 'pdf' && previewUrl ? (
-            <iframe
-              className="h-[70vh] w-full rounded-lg border border-[color:var(--sep)] bg-[var(--surface-inverse)]"
-              // previewUrl's blob MIME is pinned to application/pdf (above), so a
-              // file with an attacker-controlled content-type (e.g. text/html
-              // named "x.pdf") renders as a failed PDF, never executable HTML.
-              // Deliberately NOT sandboxed: any `sandbox` attribute stops
-              // Chrome's PDF viewer from loading a blob: URL at all (verified),
-              // and the MIME pin already closes the script-execution path.
-              src={previewUrl}
-              title={page.title}
-            />
+            <div className="h-[70vh] w-full overflow-hidden rounded-lg border border-[color:var(--sep)] bg-[var(--surface-inverse)]">
+              <PdfPreview title={page.title} url={previewUrl} />
+            </div>
           ) : previewKind === 'video' && previewUrl ? (
             <video
               className="mx-auto max-h-[70vh] w-full rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-strong)]"
