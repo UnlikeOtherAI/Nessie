@@ -1,10 +1,10 @@
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type {
   PageHeaderAction,
   PageHeaderButtonAction,
   PageHeaderMenuButtonItem,
   PageHeaderToggleAction,
 } from './ResponsivePageHeader'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 
 type PageHeaderMenuProps = {
   action: PageHeaderAction

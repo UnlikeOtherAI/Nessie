@@ -1,6 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { faClockRotateLeft, faFolder, faHouse, faLayerGroup, faRobot, faShareNodes } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { Bot, Folder, History, House, Layers3, Share2, type LucideIcon } from 'lucide-react'
 import type { KnowledgeRoot } from '@nessie/schemas'
 import type { KnowledgeRootSpace } from '@nessie/schemas'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
@@ -62,15 +61,17 @@ export const FinderTreeSidebar = ({
     setExpandedSpaces((current) => new Set([...current, selectedSpaceId]))
   }, [selectedSpaceId])
 
-  const rootRow = (row: FinderRootRow, title: string, icon: typeof faHouse, leading?: ReactNode) => (
+  const treeIcon = (icon: LucideIcon) => {
+    const Icon = icon
+    return <Icon aria-hidden="true" className="h-4 w-4 text-[color:var(--tx3)]" strokeWidth={1.8} />
+  }
+  const rootRow = (row: FinderRootRow, title: string, icon: ReactNode, leading?: ReactNode) => (
     <FinderRow
       columnActive={false}
-      icon={leading ? undefined : icon}
-      iconTone="--accent"
       id={row.id}
       key={row.id}
       kind={row.kind === 'space' ? 'space' : 'virtual'}
-      leading={leading}
+      leading={leading ?? <SidebarTreeLeading>{icon}</SidebarTreeLeading>}
       onOpen={() => {
         if (row.kind === 'space') {
           // Selecting a root opens it; it must not turn into a collapse toggle
@@ -85,7 +86,7 @@ export const FinderTreeSidebar = ({
       variant="root"
     />
   )
-  const spaceRow = (row: FinderRootRow, title: string, icon: typeof faHouse) => {
+  const spaceRow = (row: FinderRootRow, title: string, icon: ReactNode) => {
     if (row.kind !== 'space') return null
     const expanded = expandedSpaces.has(row.space.spaceId) && row.space.spaceId === selectedSpaceId
     return (
@@ -94,7 +95,7 @@ export const FinderTreeSidebar = ({
           <SidebarTreeLeading>
             <SidebarTreeChevron expanded={expanded} />
             {row.role === 'project' ? <ProjectAvatar size={20} token={token} />
-              : <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--accent)]" fixedWidth icon={icon} />}
+              : icon}
           </SidebarTreeLeading>
         ))}
         {expanded ? (
@@ -142,13 +143,13 @@ export const FinderTreeSidebar = ({
         {() => root ? (
           <>
             <div className="space-y-0.5">
-              {rootRow({ id: 'virtual:latest', kind: 'latest' }, 'Latest', faClockRotateLeft)}
+              {rootRow({ id: 'virtual:latest', kind: 'latest' }, 'Latest', treeIcon(History))}
               {rootRow(
                 { count: root.sharedWithMeCount, id: 'virtual:shared', kind: 'shared-with-me' },
                 'Shared with me',
-                faShareNodes,
+                treeIcon(Share2),
               )}
-              {personal ? spaceRow(personal, 'My Documents', faHouse) : null}
+              {personal ? spaceRow(personal, 'My Documents', treeIcon(House)) : null}
             </div>
             <div className="mt-2.5">
               <SidebarTreeSectionHeader
@@ -162,15 +163,15 @@ export const FinderTreeSidebar = ({
                 {projects.map(({ space }) => spaceRow(
                   { id: space.spaceId, kind: 'space', role: 'project', space },
                   space.projectName ?? space.name,
-                  faFolder,
+                  treeIcon(Folder),
                 ))}
               </SidebarTreeChildren>
             </div>
             <div className="mt-3">
-              {rootRow({ id: 'virtual:agents', kind: 'agents' }, 'Agents', faRobot, (
+              {rootRow({ id: 'virtual:agents', kind: 'agents' }, 'Agents', treeIcon(Bot), (
                 <SidebarTreeLeading>
                   <SidebarTreeChevron expanded={agentsExpanded} />
-                  <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--accent)]" fixedWidth icon={faRobot} />
+                  {treeIcon(Bot)}
                 </SidebarTreeLeading>
               ))}
               {agentsExpanded ? (
@@ -244,7 +245,7 @@ export const FinderTreeSidebar = ({
                 {spaces.map((space) => spaceRow(
                   { id: space.spaceId, kind: 'space', role: 'shared', space },
                   space.name,
-                  faLayerGroup,
+                  treeIcon(Layers3),
                 ))}
               </SidebarTreeChildren>
             </div>

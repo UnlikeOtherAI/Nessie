@@ -3,6 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject } from '
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 import { faCheck } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import type { LucideIcon } from 'lucide-react'
 import { useViewport } from '../../hooks/useViewport'
 import { useNavigationLayout } from '../../navigation/mobile-shell'
 import { shortcutLabel } from '../../lib/platform'
@@ -34,6 +35,7 @@ export type ContextMenuItem =
       id: string
       label: string
       icon?: IconDefinition
+      outlineIcon?: LucideIcon
       shortcut?: string
       disabled?: boolean
       // Why it is greyed. Offering an edit the server will refuse is the
@@ -282,6 +284,7 @@ export const ContextMenu = ({
     }
     const disabled = item.kind === 'item' && item.disabled === true
     const icon = item.kind === 'radio' ? (item.checked ? faCheck : undefined) : item.icon
+    const OutlineIcon = item.kind === 'item' ? item.outlineIcon : undefined
     return (
       <button
         aria-checked={item.kind === 'radio' ? item.checked : undefined}
@@ -302,7 +305,9 @@ export const ContextMenu = ({
         type="button"
       >
         <span className={`w-4 shrink-0 ${subtleClass(disabled)}`}>
-          {icon ? <FontAwesomeIcon className="h-4 w-4" icon={icon} /> : null}
+          {OutlineIcon
+            ? <OutlineIcon aria-hidden="true" className="h-4 w-4" strokeWidth={2} />
+            : icon ? <FontAwesomeIcon className="h-4 w-4" fixedWidth icon={icon} /> : null}
         </span>
         <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
         {item.kind === 'item' && item.shortcut && showShortcuts ? (

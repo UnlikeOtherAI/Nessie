@@ -21,6 +21,7 @@ import {
   faUserGroup,
   faUserMinus,
 } from '@fortawesome/free-solid-svg-icons'
+import { CloudUpload, FileText, FolderPlus } from 'lucide-react'
 import type {
   KnowledgeAccessSummary,
   KnowledgeIndexingState,
@@ -306,6 +307,7 @@ const pageItems = (
     ...(folder && !virtual && mayEdit
       ? [item('new-folder-inside', 'New folder inside', on.newFolderInside, {
         icon: faFolderPlus,
+        outlineIcon: FolderPlus,
       })]
       : []),
     ...(mayEdit ? [item('rename', 'Rename', on.rename, {
@@ -420,6 +422,7 @@ const backgroundItems = (
       ...(on.newSharedFolder
         ? [item('new-shared-folder', 'New space…', on.newSharedFolder, {
           icon: faFolderPlus,
+          outlineIcon: FolderPlus,
         })]
         : []),
       SEPARATOR,
@@ -437,11 +440,14 @@ const backgroundItems = (
   // a host that has not wired the registry still gets a working menu.
   const newRows: ContextMenuItem[] = on.newFileTypeContext
     ? newFileTypeItems(on.newFileTypeContext, 'in-folder').map((row) =>
-      item(row.id, row.label, row.onSelect, { icon: row.icon }))
+      item(row.id, row.label, row.onSelect, { icon: row.icon, outlineIcon: row.outlineIcon }))
     : [
-      item('new-document', 'New document', on.newDocument, { icon: faFileLines }),
+      item('new-document', 'New document', on.newDocument, { icon: faFileLines, outlineIcon: FileText }),
       ...(on.uploadFiles
-        ? [item('upload-files', 'Upload files…', on.uploadFiles, { icon: faCloudArrowUp })]
+        ? [item('upload-files', 'Upload files…', on.uploadFiles, {
+          icon: faCloudArrowUp,
+          outlineIcon: CloudUpload,
+        })]
         : []),
     ]
   return tidy([
@@ -450,6 +456,7 @@ const backgroundItems = (
         ...(on.newFolder
           ? [item('new-folder', 'New folder', on.newFolder, {
             icon: faFolderPlus,
+            outlineIcon: FolderPlus,
             shortcut: 'Mod+Shift+N',
           })]
           : []),

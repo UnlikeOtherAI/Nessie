@@ -2319,13 +2319,6 @@ html[data-desktop-platform='linux'] #root {
   stroke-width: 1.5;
 }
 
-.knowledge-tree-file-glyph {
-  width: 15px;
-  height: 15px;
-  flex-shrink: 0;
-  color: var(--tx3);
-}
-
 /* Tree selection mirrors Channels: a contextual tint, never Finder's bright
    active-column slab. The tree remains visible while the document reads in
    the adjacent pane, so the selection is context rather than the main act. */
@@ -2342,8 +2335,7 @@ html[data-desktop-platform='linux'] #root {
   .finder-row-trailing,
   .finder-row-meta,
   .finder-row-chevron,
-  .knowledge-tree-glyph,
-  .knowledge-tree-file-glyph
+  .knowledge-tree-glyph
 ),
 .finder-row[data-finder-tree-row='true'][aria-selected='true'][data-column-active='true'] :is(
   .finder-row-title,
@@ -2352,8 +2344,7 @@ html[data-desktop-platform='linux'] #root {
   .finder-row-trailing,
   .finder-row-meta,
   .finder-row-chevron,
-  .knowledge-tree-glyph,
-  .knowledge-tree-file-glyph
+  .knowledge-tree-glyph
 ) {
   color: var(--tx);
 }
