@@ -1,8 +1,7 @@
 # Existing Codex and Claude sessions
 
-Status: implementation in progress. Native host verification, Kimix review and
-release checks are recorded separately; this document does not certify an
-installation.
+Status: implemented. [Verification](verification.md) records native host tests
+and remaining provider limits. This guide does not certify an installation.
 
 ## Table of Contents
 
@@ -193,3 +192,10 @@ never replayed. Temporary inbox files are removed when their receipt is read.
 Native text uses the existing credential and host-path projection before it
 leaves the executor. Explicit Claude detail reads take at most 128 KiB from the
 native transcript and return at most four text messages.
+
+
+Focused API verification runs with `DATABASE_URL` exported through
+`pnpm exec turbo run test:executor-sessions --filter=@nessie/api`. It covers
+session reachability, sharing/close refusal, descriptor projection and the
+actual signed heartbeat response. Full package and CI suites still include
+these tests.
