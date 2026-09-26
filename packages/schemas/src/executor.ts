@@ -749,6 +749,7 @@ export type ExecutorDaemonConnectionResponse = z.infer<typeof ExecutorDaemonConn
  */
 export const ExecutorDaemonHeartbeatResponseSchema = ExecutorDaemonConnectionResponseSchema.extend({
   codingSessionClose: ExecutorCodingSessionCloseListSchema.optional(),
+  existingSessionsAllowed: z.boolean().optional(),
 }).strict()
 export type ExecutorDaemonHeartbeatResponse = z.infer<typeof ExecutorDaemonHeartbeatResponseSchema>
 

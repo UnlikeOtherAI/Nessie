@@ -133,8 +133,15 @@ dbTest('the heartbeat route answers with the machine’s open close requests', a
           { ownerKey, reason: 'person', sessionId },
         ],
         connectionEpoch: '1',
+        existingSessionsAllowed: true,
         status: 'online',
       })
+      await prisma.executor.update({ where: { id: executorId }, data: { scopeKind: 'organization' } })
+      const shared = await app.inject({
+        method: 'POST', payload: { ...signed, signature }, url: '/api/executor-daemon/heartbeat',
+      })
+      assert.equal(shared.statusCode, 200, shared.body)
+      assert.equal(shared.json().data.existingSessionsAllowed, false)
     } finally {
       await app.close()
     }

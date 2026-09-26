@@ -127,6 +127,10 @@ test('the owner-key text: three ids without a context, exactly as before it exis
 test('the heartbeat may tell the daemon whose sessions to close', () => {
   const base = { connectionEpoch: '3', status: 'online' }
   assert.equal(ExecutorDaemonHeartbeatResponseSchema.safeParse(base).success, true)
+  for (const existingSessionsAllowed of [false, true]) {
+    const answer = { ...base, existingSessionsAllowed }
+    assert.deepEqual(ExecutorDaemonHeartbeatResponseSchema.parse(answer), answer)
+  }
   assert.deepEqual(ExecutorDaemonHeartbeatResponseSchema.parse({
     ...base, codingSessionClose: [{ ownerKey, reason: 'lease_ended' }, { ownerKey, sessionId: runId, reason: 'closed_by_person' }],
   }).codingSessionClose?.length, 2)

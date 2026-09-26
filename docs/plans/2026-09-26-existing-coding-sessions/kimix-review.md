@@ -81,3 +81,10 @@ expired input and ambiguous writes without replay. Provider output is scrubbed
 through the existing secret/path projection. Admin history navigation uses the
 real navigation providers in its browser fixture. Both native console transport
 adapters are exercised by the shared headless renderer harness.
+
+
+The follow-up contract audit found that the API route's strict heartbeat
+response schema also needed the additive `existingSessionsAllowed` field.
+The shared wire schema now retains both boolean values, and the HTTP route
+regression verifies private `true` and shared `false` responses. Testing only
+the management function would not have caught the route serialization failure.
