@@ -43,6 +43,8 @@ test('the knowledge document and editor keep their nested stage ids and prioriti
 test('knowledge stages and the history dialog own Back through navigation primitives', () => {
   assert.doesNotMatch(team, /useLocalBack/)
   assert.match(team, /<Dialog[\s\S]*title="Version history"/)
+  assert.match(team, /\{historyDialog && documentOpen \? historyDialog : null\}/)
+  assert.match(team, /\{!documentOpen \? historyDialog : null\}/)
   assert.match(team, /import \{ NestedStage, useNestedStageHosted \}/)
 
   // NestedStage is what registers, and only where a stack hosts the stage.

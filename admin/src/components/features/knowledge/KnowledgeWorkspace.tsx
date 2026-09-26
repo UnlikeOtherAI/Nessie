@@ -234,6 +234,24 @@ export const KnowledgeWorkspace = ({
     </div>
   ) : null
 
+  const historyDialog = historyPage && !editorOpen ? (
+    <Dialog
+      description={historyPage.title}
+      onClose={closeHistory}
+      open
+      size={historyPage.kind === 'file' ? 'md' : 'xl'}
+      title="Version history"
+    >
+      <VersionHistory
+        canRestore={canWrite}
+        onRestore={(versionId) => restoreVersion({ pageId: historyPage.id, versionId })}
+        page={fullPage ?? historyPage}
+        pending={restorePending}
+        versions={versionsQuery.data ?? []}
+      />
+    </Dialog>
+  ) : null
+
   return (
     <>
       {activeProductView ? (
@@ -251,6 +269,9 @@ export const KnowledgeWorkspace = ({
         priority={LOCAL_BACK_PRIORITY.knowledgeDocument}
       >
         {documentPane}
+        {/* A dialog opened over a phone document belongs to that stage's
+            overlay layer, so it stays visible while the route below is inert. */}
+        {historyDialog && documentOpen ? historyDialog : null}
       </NestedStage>
       <NestedStage
         active={editorOpen}
@@ -265,23 +286,7 @@ export const KnowledgeWorkspace = ({
       >
         {editorPane}
       </NestedStage>
-      {historyPage && !editorOpen ? (
-        <Dialog
-          description={historyPage.title}
-          onClose={closeHistory}
-          open
-          size={historyPage.kind === 'file' ? 'md' : 'xl'}
-          title="Version history"
-        >
-          <VersionHistory
-            canRestore={canWrite}
-            onRestore={(versionId) => restoreVersion({ pageId: historyPage.id, versionId })}
-            page={fullPage ?? historyPage}
-            pending={restorePending}
-            versions={versionsQuery.data ?? []}
-          />
-        </Dialog>
-      ) : null}
+      {!documentOpen ? historyDialog : null}
     </>
   )
 }
