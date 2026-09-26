@@ -3,6 +3,7 @@ import type {
   KnowledgePageRecord,
   KnowledgeSpaceRecord,
 } from '../../../../facades/knowledge/hooks'
+import { finderText } from './finder-text'
 
 /**
  * The small, testable facts the menus need about what they are acting on: the
@@ -84,26 +85,24 @@ export type DeleteConfirmCopy = { title: string; body: string; confirmLabel: str
 export const deleteConfirmCopy = (pages: KnowledgePageRecord[]): DeleteConfirmCopy => {
   if (pages.length > 1) {
     return {
-      body: 'Uploaded files inside them are removed from storage straight away.',
-      confirmLabel: `Delete ${pages.length} items`,
-      title: `Delete ${pages.length} items?`,
+      body: finderText('deleteUploadsNotice', 'Uploaded files inside them are removed from storage straight away.'),
+      confirmLabel: finderText('deleteItemsConfirm', 'Delete {{count}} items', { count: pages.length }),
+      title: finderText('deleteItemsTitle', 'Delete {{count}} items?', { count: pages.length }),
     }
   }
   const page = pages[0]
-  if (!page) return { body: '', confirmLabel: 'Delete', title: 'Delete?' }
+  if (!page) return { body: '', confirmLabel: finderText('delete', 'Delete'), title: finderText('deleteQuestion', 'Delete?') }
   const shared = (page.shareCount ?? 0) > 0
-    ? ` It is shared with ${page.shareCount} ${page.shareCount === 1 ? 'person' : 'people'},`
-      + ' who will lose access.'
+    ? ` ${finderText(page.shareCount === 1 ? 'deleteShared_one' : 'deleteShared_other', page.shareCount === 1 ? 'It is shared with {{count}} person, who will lose access.' : 'It is shared with {{count}} people, who will lose access.', { count: page.shareCount })}`
     : ''
   const body = page.kind === 'folder'
-    ? 'Everything inside it will be deleted too. Uploaded files are removed from'
-      + ' storage straight away.'
+    ? finderText('deleteFolderBody', 'Everything inside it will be deleted too. Uploaded files are removed from storage straight away.')
     : page.kind === 'file'
-      ? 'Its versions are removed from storage straight away.'
-      : 'Its versions and comments are removed.'
+      ? finderText('deleteFileBody', 'Its versions are removed from storage straight away.')
+      : finderText('deleteDocumentBody', 'Its versions and comments are removed.')
   return {
     body: `${body}${shared}`,
-    confirmLabel: 'Delete',
-    title: `Delete “${page.title}”?`,
+    confirmLabel: finderText('delete', 'Delete'),
+    title: finderText('deleteItemTitle', 'Delete “{{title}}”?', { title: page.title }),
   }
 }

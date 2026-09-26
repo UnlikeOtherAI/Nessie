@@ -190,8 +190,8 @@ export const finderBarTitle = ({
   spaceName: string | undefined
   virtualKind: 'latest' | 'shared-with-me' | null
 }): string => {
-  if (virtualKind || (!deepestFolderTitle && !spaceName)) return 'Knowledge'
-  return deepestFolderTitle ?? spaceName ?? 'Knowledge'
+  if (virtualKind || (!deepestFolderTitle && !spaceName)) return finderText('knowledgeRoot', 'Knowledge')
+  return deepestFolderTitle ?? spaceName ?? finderText('knowledgeRoot', 'Knowledge')
 }
 
 // ── Column widths ───────────────────────────────────────────────────────────

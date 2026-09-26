@@ -60,10 +60,10 @@ export const buildAgentOpenAction = ({
   ownerAgentId && ownerAgentId !== scopeAgentId
     ? {
         id: 'open-agent',
-        label: 'Open',
+        label: finderText('openAgentAction', 'Open'),
         onSelect: () => onOpenAgent(ownerAgentId),
         priority: 0,
-        title: 'Open the agent these documents belong to',
+        title: finderText('openAgentTitle', 'Open the agent these documents belong to'),
       }
     : null
 
