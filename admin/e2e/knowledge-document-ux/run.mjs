@@ -190,7 +190,7 @@ try {
     'View does not repeat its trigger label inside the menu')
   assert.ok(await viewMenu.getByRole('menuitemradio', { name: 'Tree' }).locator('svg.lucide').count(),
     'View uses outlined menu row icons')
-  await page.screenshot({ path: '/private/tmp/nessie-knowledge-view-menu.png', fullPage: true })
+  await viewMenu.screenshot({ path: '/private/tmp/nessie-knowledge-view-menu.png' })
   await page.keyboard.press('Escape')
   await newAction.click()
   await page.getByRole('menuitem', { name: 'Document' }).click()
@@ -248,10 +248,12 @@ try {
   assert.ok(documentBar.bottom <= documentBar.viewport && documentBar.bottom > documentBar.viewport - 80,
     `document actions stay visible while scrolling to comments: ${JSON.stringify(documentBar)}`)
   assert.notEqual(documentBar.blur, 'none', 'document actions use a frosted backdrop')
+  await page.getByPlaceholder('Add a comment…').last()
+    .evaluate((element) => element.scrollIntoView({ block: 'center' }))
   const commentBox = await page.getByPlaceholder('Add a comment…').last().boundingBox()
   const actionBox = await documentActions.boundingBox()
   assert.ok(commentBox && actionBox && commentBox.y + commentBox.height < actionBox.y,
-    'the floating actions do not cover the comment composer')
+    `the floating actions do not cover the comment composer: ${JSON.stringify({ commentBox, actionBox })}`)
 
   await go(projectPath)
   await page.locator('[data-page-header-action="new"]:visible').last().click()
