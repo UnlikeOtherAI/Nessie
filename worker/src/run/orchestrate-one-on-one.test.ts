@@ -438,7 +438,15 @@ test('without Jev an agent DM keeps its engagement judgement but answers in the 
   assert.deepEqual(fixture.runs, [{ replyPlacement: 'channel' }])
 })
 
-test('a shared room is never judged by Jev and keeps its reply thread', async () => {
+/** What a shared room asks Jev: whether an agent engages — never the one-on-one turn. */
+const askedRoomEngagementOnly = (calls: Evaluation[]): void => {
+  assert.equal(calls.length, 1)
+  assert.ok('engagement' in calls[0]!.questions)
+  assert.ok(!('response' in calls[0]!.questions))
+}
+
+test('a shared room is never judged as a one-on-one turn and keeps its reply thread', async () => {
+  // Jev is unsure whether to engage, so the generative orchestrator decides as before.
   const judge = jev({ response: ['reply', 0.9] })
   const fixture = roomFixture({
     channel: { memberCount: 3, type: 'standard' },
@@ -447,7 +455,8 @@ test('a shared room is never judged by Jev and keeps its reply thread', async ()
   })
   await executeOrchestrateDecideJob(fixture.deps, payload('can someone check the invoice?'))
 
-  assert.deepEqual(judge.calls, [])
+  askedRoomEngagementOnly(judge.calls)
+  assert.deepEqual(fixture.modelCalls, ['chat'])
   assert.deepEqual(fixture.runs, [{ replyPlacement: 'thread' }])
 })
 
@@ -460,6 +469,20 @@ test('a DM between two people is a shared room too', async () => {
   })
   await executeOrchestrateDecideJob(fixture.deps, payload('can u check the invoice'))
 
-  assert.deepEqual(judge.calls, [])
+  askedRoomEngagementOnly(judge.calls)
+  assert.deepEqual(fixture.runs, [{ replyPlacement: 'thread' }])
+})
+
+test('a shared room Jev is sure about never reaches the engagement model', async () => {
+  const judge = jev({ engagement: ['reply', 0.93], placement: ['thread', 0.9] })
+  const fixture = roomFixture({
+    channel: { memberCount: 3, type: 'standard' },
+    decisionClient: judge.client,
+    modelAnswer: JSON.stringify({ action: 'none' }),
+  })
+  await executeOrchestrateDecideJob(fixture.deps, payload('mrkne někdo na tu fakturu?'))
+
+  askedRoomEngagementOnly(judge.calls)
+  assert.deepEqual(fixture.modelCalls, [])
   assert.deepEqual(fixture.runs, [{ replyPlacement: 'thread' }])
 })

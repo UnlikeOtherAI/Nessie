@@ -1,6 +1,7 @@
 import type { ChannelDecisionChoice, ChannelDecisionPolicy } from '@nessie/schemas'
 
-import type { DecisionAnswer, DecisionModelClient, DecisionQuestion } from './decision-model.js'
+import type { DecisionModelClient, DecisionQuestion } from './decision-model.js'
+import { choice, confidentChoice, evaluatedChoices, excerpt } from './decision-questions.js'
 import type { LedgerAttribution } from './ledger.js'
 import {
   resolveMentionedAgentDecisions,
@@ -12,18 +13,6 @@ import type { AgentMention } from '@nessie/schemas'
 const candidateId = (agent: OrchestratorAgent): string => agent.engagementId ?? agent.id
 const candidateKey = (agentId: string, principalUserId?: string): string =>
   `${agentId}:${principalUserId ?? 'ordinary'}`
-const excerpt = (value: string, limit: number): string =>
-  value.length <= limit ? value : `${value.slice(0, limit)} [excerpt]`
-
-const choice = (instructions: string, criteria: Record<string, string>): DecisionQuestion =>
-  ({ type: 'choice', instructions, criteria })
-
-const confidentChoice = (
-  answers: Record<string, DecisionAnswer>, id: string, minimum: number,
-): string | undefined => {
-  const answer = answers[id]
-  return answer && (answer.probabilities[answer.choice] ?? 0) >= minimum ? answer.choice : undefined
-}
 
 /**
  * How configured background work says it has nothing to report. Not silence:
@@ -108,11 +97,7 @@ export const decideChannelActions = async (
     questions,
     usage: input.usage,
   })
-  input.onEvaluated?.(Object.keys(questions).map((questionId) => {
-    const answer = answers[questionId]!
-    const probability = answer.probabilities[answer.choice] ?? 0
-    return { questionId, choice: answer.choice, probability, meetsThreshold: probability >= policy.minimumProbability }
-  }))
+  input.onEvaluated?.(evaluatedChoices(questions, answers, policy.minimumProbability))
   const pick = (id: string): string | undefined =>
     confidentChoice(answers, id, policy.minimumProbability)
   const decisions: OrchestratorDecision[] = [...(addressed ?? [])]

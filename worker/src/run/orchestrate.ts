@@ -335,6 +335,7 @@ export const executeOrchestrateDecideJob = async (
         agents: channelAgents.map(asEngagementCandidate),
         agentMentions,
         ...decisionContext,
+        ...(deps.decisionClient ? { decisionClient: deps.decisionClient } : {}),
         triggerIsHuman: role === 'user',
         usage: attributionFromActorContext(actorContext, {
           systemComponent: 'orchestrator',

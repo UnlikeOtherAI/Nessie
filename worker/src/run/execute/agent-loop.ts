@@ -438,7 +438,7 @@ export const runExecutionAgentLoop = async (
 
   const loopResult = await runAgenticLoop({
     reviewCompletion: (messages, outputText) =>
-      reviewFollowUp(input.inference.runUtility, messages, outputText, input.invocationSink),
+      reviewFollowUp(input.inference.runUtility, messages, outputText, input.invocationSink, input.inference.decide),
     budget: input.budget,
     cacheReadWeight: input.cacheReadWeight,
     ...(input.drainSignal ? { drainSignal: input.drainSignal } : {}),

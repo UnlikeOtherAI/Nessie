@@ -9,6 +9,7 @@ import type { ConsumedSourceSink } from './disclosure-basis.js'
 import type { DocumentStreamRecorder } from './document-stream.js'
 import type { OneOnOneReplyPlan } from './one-on-one-plan.js'
 import type {
+  DecisionModelClient,
   DeepSignalMcpIdentityService,
   EncryptionKeyRingInput,
   LedgerIdentityService,
@@ -31,6 +32,11 @@ export type ExecutionDependencies = {
    */
   cloudBrowser?: CloudBrowserDeps
   deepSignalMcpIdentity?: DeepSignalMcpIdentityService | null
+  /**
+   * Jev on this installation's Ledger route, asked before a run's generative
+   * utility judgements. Absent off Ledger; see `RunInference.decide`.
+   */
+  decisionClient?: DecisionModelClient
   /** Deployment key ring used solely to encrypt executor payloads at rest. */
   /** Per-run live document stream, created alongside the thinking recorder. */
   documentStream?: DocumentStreamRecorder
