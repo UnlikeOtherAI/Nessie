@@ -28,7 +28,7 @@ import { firstFileOnly, useFileDrop } from '../../../hooks/useFileDrop'
 import { canViewAttachment, useAttachmentViewer } from '../../shared/AttachmentViewer'
 import { SectionLabel } from '../../primitives/SectionLabel'
 
-// Attachment list for a document/file detail tab, or a sheet for callers that
+// Attachment list for a document/file detail section, or a sheet for callers that
 // need an overlay. Drag-and-drop, a button, and a native picker all upload an
 // attachment to the page.
 export const AttachmentsDrawer = ({

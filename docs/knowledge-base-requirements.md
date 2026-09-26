@@ -447,19 +447,21 @@ that column):
     or renders children. Its attachments are visible on the document itself,
     with an Add attachment action and list/grid presentation rather than being
     discoverable only through a detached drawer.
-    Document and uploaded-file detail use the same left-aligned segmented section
-    tabs below the title as conversation detail: content/preview, attachments,
-    and comments are distinct panels. The Attachments tab shows a count when
-    files are present. Editing, publishing, uploading a new
-    version, and downloading remain header actions rather than section tabs.
+    Document and uploaded-file detail keep attachments and comments inline below
+    the content or file preview, so reading and discussion form one scrollable
+    page. The top header carries only navigation and title. Per-item actions
+    (editing, history, publishing, uploading a new version, downloading, and
+    More) live in a floating, frosted bottom bar inside the detail pane, with
+    enough scroll clearance that the final comment is never covered.
   - **Editor** (`PageEditor`) and **version History** are full-width. The editor
     fills the whole main area as a borderless writing canvas: the title and body
     are edited in place with descriptive placeholders, labels and the optional
     change comment sit below the body, and there is no separate Summary field.
     On creation its Location picker chooses the space root or an existing folder
     as the parent. **New document** is available at the space root and inside
-    folders, never on an open document, and its submission action is **Create
-    document**. The document title is visually distinct from body copy through a
+    folders, never on an open document. Creation offers **Publish** as its
+    primary action and **Save as draft** as the secondary choice. The document
+    title is visually distinct from body copy through a
     larger serif treatment; formatting controls use the same restrained icon
     language as the channel composer. Page previews show clickable
     breadcrumbs from the space through every ancestor to the current page. A
@@ -539,7 +541,7 @@ Every page carries two kinds of annotation, backed by one model
 `kind` + an optional text anchor:
 
 - **Comments** (`kind: comment`, no anchor) — a page-level discussion
-  (`CommentsSection`) available in the **Comments tab of every node**: in
+  (`CommentsSection`) available inline below attachments on every node: in
   `PagePreview` and `FileNodeViewer`, so
   uploaded file nodes carry the same thread + reactions as documents (the
   annotation API is page-kind-agnostic). Newest first.
@@ -597,8 +599,8 @@ Two file concepts live in the knowledge base alongside rich-text pages:
   icon, an inline viewer (image/PDF/text/CSV) or a typed download card, and an
   **Upload new version** action (a drag-drop / tap popup).
 - **Attachments** — any node (document or file node) can carry extra files,
-  linked via `Attachment.knowledgePageId` and surfaced in the detail's
-  **Attachments tab**, with list/grid display and an Add attachment control.
+  linked via `Attachment.knowledgePageId` and surfaced below the detail content,
+  with list/grid display and an Add attachment control.
   Drag-and-drop onto the attachment panel adds an attachment; drag-and-drop
   onto the filesystem creates a file node; both show a dashed-square overlay with
   live upload progress.

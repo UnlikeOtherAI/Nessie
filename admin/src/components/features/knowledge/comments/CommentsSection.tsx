@@ -10,7 +10,7 @@ import { CommentThread } from './CommentThread'
 import { useAnnotationActions } from './useAnnotationActions'
 import { useAnnotationAuthors } from './useAnnotationAuthors'
 
-// The page-level discussion in a node's Comments tab: a composer plus the
+// The page-level discussion in a node's detail section: a composer plus the
 // list of comments, newest first. Notes (text-anchored) are rendered inline in
 // the reader, not here.
 export const CommentsSection = ({
