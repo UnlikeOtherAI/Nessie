@@ -51,12 +51,11 @@ export {
   type PinnedLocalAppsBinding,
 } from './executor-local-apps-binding.js'
 export {
-  assertExecutorCommandBindingCurrent,
   createExecutorCommand,
   pollExecutorCommand,
-  type ExecutorCommandBindingFacts,
   type ExecutorCommandCreateInput,
 } from './executor-commands.js'
+export { assertExecutorCommandBindingCurrent, type ExecutorCommandBindingFacts } from './executor-command-fence.js'
 export {
   assertExecutorMcpCallPayload,
   executorCodingSessionOwnerKey,
@@ -233,3 +232,4 @@ export * from './executor-direct-access.js'
 
 export * from './executor-project-inventory.js'
 export { bindChatExecutors } from './executor-chat-binding.js'
+export { bindChatReminderExecutors } from './executor-chat-reminder-binding.js'

@@ -30,6 +30,14 @@ The home is still the executor's Agents tab; ordinary agent chat is the doorway
 for using that assignment. This is a machine-only tool contract, with results
 delivered through the existing chat and terminal viewer surfaces.
 
+A self-reminder from a completed private-chat run can continue using the same
+machines. Setup follows the reminder's stored creating run and consumed machine
+candidates, then rechecks the original person's current access and the agent's
+assignments. It cannot add machines, inherit failed or cancelled work, or carry
+access into a changed audience. The wake still acts as the agent with no
+effective user; this continuation authorizes only its executor tools. Explicit
+launch leases and unattended ticket policies retain their separate rules.
+
 **Permissions** means sharing:
 
 - A named person gets **Can use** or **Admin**. An administrator manages agents,

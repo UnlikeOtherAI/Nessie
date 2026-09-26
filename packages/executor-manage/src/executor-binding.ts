@@ -19,13 +19,11 @@ export type ExecutorBindingInput = {
   operationKey: ImplementedExecutorOperationKey
   runId: string
   /**
-   * A `ticket.work` run bound under a standing policy
-   * (`executor-standing-policy-binding.ts`): its trigger is the platform's
-   * kickoff, which no person wrote, so the run's trigger must be exactly that
-   * kickoff instead of the actor's own message. The binder checked the policy
-   * and the record before it asked.
+   * A platform kickoff whose authority was checked by the standing-policy or
+   * chat-reminder binder. It must be this run's exact system message, instead
+   * of the actor's own message. Never populated from model or API arguments.
    */
-  standing?: { kickoffMessageId: string }
+  systemKickoff?: { messageId: string }
 }
 
 export type ExecutorBindingBundleInput = Omit<ExecutorBindingInput, 'operationKey'> & {
@@ -263,8 +261,8 @@ export const bindExecutorCandidateInTransaction = async (
   if (
     !run
     || run.agentId !== candidate.agentId
-    || !(input.standing
-      ? run.triggerMessage?.id === input.standing.kickoffMessageId
+    || !(input.systemKickoff
+      ? run.triggerMessage?.id === input.systemKickoff.messageId
         && run.triggerMessage.role === 'system' && run.triggerMessage.userId === null
       : run.triggerMessage?.userId === input.actorUserId)
     || run.thread.channel.organizationId !== candidate.executor.organizationId

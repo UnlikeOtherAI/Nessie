@@ -144,3 +144,21 @@ measured free space, closed its session and included the named machine link.
 The other two computers received no commands for that follow-up.
 An explicit link-tool request then completed with one successful `nessie_link`
 call and a named Mac link, without a schema-discovery call or visible GUID.
+
+Production verification on the same date repeated the ordinary three-machine
+request using the owner's actual personal Kimi connection. It returned a disk
+table with named machine links, closed all sessions and left no reminder pending.
+The first Linux terminal exited at its folder prompt; the CTO opened a replacement
+and completed the query. An earlier Mac startup failed transiently; both its
+single-machine retry and the final combined run succeeded without installation
+changes. The document answer also used named space/file links, and opening the
+AGENTS.md link reached the correct document.
+
+The scheduled-follow-up regression ran locally with the same real personal Kimi
+connection. The CTO set `check_back_in` and finished its first turn. Advancing
+only that disposable test reminder's due time let the normal scheduler wake it:
+the new agent-identity run retained the Windows machine, executed the requested
+`Get-Volume` query once, returned the measured volumes and closed its session.
+Both turns completed without another user message; the session file confirmed
+`closed`. Database tests additionally cover three-machine/chained reminders,
+delivery-time checks, changed audiences, revoked access and cancelled source runs.
