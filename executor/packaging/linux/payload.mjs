@@ -177,7 +177,8 @@ export const stageLinuxPayload = async (stagingDirectory, version) => {
   await prepareExecutorRuntime({
     entryPoint: join(executorDirectory, 'src/index.ts'),
     executorVersion: version,
-    nativeHelperPath: join(executorDirectory, 'native/target/release/nessie-executor-native'),
+    nativeHelperPath: process.env.NESSIE_EXECUTOR_NATIVE_HELPER_PATH
+      ?? join(executorDirectory, 'native/target/release/nessie-executor-native'),
     outputDirectory: join(stagingDirectory, INSTALL_PREFIX),
   })
   await chmod(join(stagingDirectory, INSTALL_PREFIX), 0o755)
@@ -208,4 +209,3 @@ export const stageLinuxPayload = async (stagingDirectory, version) => {
   )
   await chmod(join(stagingDirectory, 'usr/lib/systemd/user/nessie-executor@.service'), 0o644)
 }
-

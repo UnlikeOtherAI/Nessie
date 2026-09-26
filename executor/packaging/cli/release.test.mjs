@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
+import { appCask, stableAppTag, wingetManifests } from './app-manifests.mjs'
 import { candidateFiles, verifyCandidate } from './candidate.mjs'
 import { archiveName, homebrewFormula, linuxPackage, releaseVersion } from './release-plan.mjs'
 
@@ -57,4 +58,19 @@ test('build workflow cannot publish a release or silently produce an unsigned Ma
   assert.match(workflow, /contents: read/)
   assert.doesNotMatch(workflow, /contents: write|publish\.mjs|gh release create/)
   assert.match(workflow, /NESSIE_EXECUTOR_SIGNING_IDENTITY/)
+})
+
+test('app manifests refuse moving URLs and retain the actual installed app versions', () => {
+  assert.throws(() => stableAppTag('executor-edge'), /immutable/)
+  assert.throws(() => stableAppTag('latest'), /immutable/)
+  const cask = appCask({ app: 'desktop', version: '0.1.1', tag: 'v1.0.0', sha256: 'a'.repeat(64) })
+  assert.match(cask, /version "0.1.1"/)
+  assert.match(cask, /download\/v1.0.0\/Nessie-macOS-Apple-Silicon.dmg/)
+  assert.doesNotMatch(cask, /zap do|trash:/)
+  const manifests = wingetManifests({ version: '0.0.1500', tag: 'v1.0.0', sha256: 'a'.repeat(64),
+    productCode: '{12345678-1234-1234-1234-123456789012}' })
+  assert.equal(Object.keys(manifests).length, 3)
+  assert.match(manifests['UnlikeOtherAI.NessieExecutor.installer.yaml'], /PackageVersion: 0.0.1500/)
+  assert.match(manifests['UnlikeOtherAI.NessieExecutor.installer.yaml'], /Scope: machine/)
+  assert.throws(() => wingetManifests({ version: '1.0.0', tag: 'v1.0.0', sha256: 'a'.repeat(64) }), /ProductCode/)
 })

@@ -120,6 +120,9 @@ It is the only way, and adding a second one is the defect Rule zero names.
 
 ## Build (production / CI)
 
+- Executor CLI packages, Homebrew app casks and WinGet manifests follow [package distribution](docs/releasing-executor-packages.md); build candidates separately from publication.
+
+
 - `pnpm --filter @nessie/admin build` produces the static admin bundle
   (`dist/`); `pnpm --filter @nessie/admin preview` serves it. Prod/CI only —
   use `pnpm dev` for the local loop.

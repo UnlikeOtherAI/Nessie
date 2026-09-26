@@ -46,8 +46,8 @@ monorepo convention rather than one release of everything — is
 
 ## Published assets
 
-- `Nessie-macOS-Apple-Silicon.dmg` and `Nessie-macOS-Intel.dmg` — ad-hoc,
-  non-notarized macOS installers.
+- `Nessie-macOS-Apple-Silicon.dmg` and `Nessie-macOS-Intel.dmg` — Developer ID signed,
+  notarized and stapled macOS installers.
 - `Nessie-Windows-Setup.exe` and `Nessie-Windows.msi` — Windows desktop
   installers, Authenticode-signed by UnlikeOtherAI s.r.o.
 - `Nessie-Executor-Windows.msi` — the standalone Windows executor (service and
@@ -122,16 +122,13 @@ are repository secrets because the reusable Windows workflow needs them. Keep a
 recoverable owner-controlled backup of that key: losing it prevents every
 already-installed direct desktop client from accepting future releases.
 
-The current GitHub macOS download is deliberately ad-hoc signed because no
-Developer ID identity is available. It is not notarized and cannot pass
-Gatekeeper assessment. A person must open it via Finder's **Open** action (or
-remove the quarantine attribute after inspecting the download). Its Tauri
-updater artifacts remain separately signed. The release workflow applies
-`desktop/src-tauri/tauri.adhoc-macos.conf.json` after the direct-updater
-configuration so that Tauri explicitly uses `codesign -s -`. Replace this
-temporary path with Developer ID signing, hardened runtime, notarization,
-stapling, and Gatekeeper verification as soon as a suitable identity is
-available.
+Mac direct downloads use the shared Developer ID setup and inside-out signer.
+The desktop producer is `desktop/scripts/build-signed-macos.mjs`; the standalone
+executor retains its own DMG producer. Both refuse missing credentials before
+building an installable image. Homebrew casks and the WinGet executor manifest
+are generated from verified installers and attached as
+`package-manager-manifests.tar.gz`. Setup, native checks and submission steps:
+[package distribution](releasing-executor-packages.md).
 
 EAS retains the Android signing keystore for the `device` profile. Keep that
 keystore under the owning Expo account; replacing it would prevent updates from
@@ -164,3 +161,5 @@ begins.
 
 iOS is intentionally not part of this workflow: its button stays marked
 **Coming soon** until an App Store release is available.
+
+The CLI has its own `executor-v*` candidates and signed APT/RPM repositories; see [package distribution](releasing-executor-packages.md).

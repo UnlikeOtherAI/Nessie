@@ -5,16 +5,13 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { prepareExecutorRuntime } from '../../scripts/prepare-runtime.mjs'
 import { archiveName, homebrewFormula, releaseVersion, REPOSITORY } from './release-plan.mjs'
+import { assertDeveloperIdSignature, notarizeArguments, resolveBuildMode } from '../macos/dmg-plan.mjs'
 
 const run = promisify(execFile)
 const version = releaseVersion()
 if (process.platform !== 'darwin' || process.arch !== 'arm64') throw new Error('Build the CLI on an Apple Silicon Mac.')
-const identity = process.env.NESSIE_EXECUTOR_SIGNING_IDENTITY
-const team = process.env.NESSIE_DESKTOP_SIGNING_TEAM_ID
-const profile = process.env.NESSIE_EXECUTOR_NOTARY_PROFILE
-if (!identity?.startsWith('Developer ID Application:') || !team || !profile) {
-  throw new Error('A Developer ID Application identity, team id and notary keychain profile are required. Unsigned distribution is unavailable.')
-}
+const mode = resolveBuildMode(process.env, { requireSigned: true })
+const { identity, teamId: team } = mode
 const output = join(REPOSITORY, 'dist/executor-cli')
 const payload = join(output, 'macos-payload')
 await mkdir(payload, { recursive: true })
@@ -31,9 +28,7 @@ for (const [file, entitlements] of [
     ...(entitlements ? ['--entitlements', join(REPOSITORY, entitlements)] : []), file])
   await run('codesign', ['--verify', '--strict', file])
   const { stderr } = await run('codesign', ['-dvv', file])
-  if (!stderr.includes('Authority=Developer ID Application:') || !stderr.includes(`TeamIdentifier=${team}\n`)) {
-    throw new Error('The CLI runtime was signed by an unexpected identity.')
-  }
+  assertDeveloperIdSignature(stderr, team)
 }
 const digest = async (file) => createHash('sha256').update(await readFile(file)).digest('hex')
 await writeFile(runtime.manifestPath, JSON.stringify({
@@ -43,7 +38,7 @@ await writeFile(runtime.manifestPath, JSON.stringify({
 await copyFile(join(REPOSITORY, 'LICENSE'), join(payload, 'LICENSE'))
 const zip = join(output, `nessie-executor_${version}_notary.zip`)
 await run('ditto', ['-c', '-k', '--keepParent', payload, zip])
-const result = await run('xcrun', ['notarytool', 'submit', zip, '--keychain-profile', profile, '--wait', '--output-format', 'json'])
+const result = await run('xcrun', [...notarizeArguments(mode.notary, zip), '--output-format', 'json'])
 if (JSON.parse(result.stdout).status !== 'Accepted') throw new Error('Apple did not accept the CLI for notarization.')
 // CLI Mach-O tickets are retrieved online by Gatekeeper; tar archives cannot be stapled.
 await run('spctl', ['--assess', '--type', 'execute', '--verbose', runtime.nodePath])

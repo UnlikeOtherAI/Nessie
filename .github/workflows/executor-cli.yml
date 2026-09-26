@@ -30,8 +30,8 @@ jobs:
   linux:
     name: Linux DEB and RPM
     runs-on: ubuntu-24.04
-    # glibc 2.31 is our build baseline, older than every advertised target.
-    container: node:22-bullseye
+    # Node's official binary uses glibc 2.28; the Rust helper and Go tools are static.
+    container: node:22-bookworm
     environment: executor-cli-release
     steps:
       - uses: actions/checkout@v4
@@ -39,7 +39,7 @@ jobs:
         run: |
           node --input-type=module -e "import { releaseVersion } from './executor/packaging/cli/release-plan.mjs'; releaseVersion()"
           apt-get update
-          apt-get install -y ca-certificates curl build-essential pkg-config git gnupg apt-utils rpm createrepo-c xz-utils
+          apt-get install -y ca-certificates curl build-essential musl-tools pkg-config git gnupg apt-utils rpm createrepo-c xz-utils
           sh executor/packaging/linux/install-nfpm.sh "$RUNNER_TEMP/executor-tools"
           echo "$RUNNER_TEMP/executor-tools" >> "$GITHUB_PATH"
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
@@ -60,7 +60,8 @@ jobs:
           pnpm prisma:generate
           pnpm exec turbo run lint typecheck build --filter=@nessie/executor...
           cargo test --manifest-path executor/native/Cargo.toml
-          cargo build --release --manifest-path executor/native/Cargo.toml
+          rustup target add x86_64-unknown-linux-musl
+          cargo build --release --target x86_64-unknown-linux-musl --manifest-path executor/native/Cargo.toml
           node --test executor/packaging/cli/*.test.mjs
       - name: Prepare repository signing key
         env:
@@ -91,6 +92,8 @@ jobs:
           gpg --batch --armor --export "$fingerprint" > "$RUNNER_TEMP/executor-public-key.asc"
           rpmkeys --import "$RUNNER_TEMP/executor-public-key.asc"
       - name: Build packages and signed repositories
+        env:
+          NESSIE_EXECUTOR_NATIVE_HELPER_PATH: executor/native/target/x86_64-unknown-linux-musl/release/nessie-executor-native
         run: |
           node executor/packaging/linux/build-packages.mjs
           node executor/packaging/linux/build-repository.mjs
@@ -119,6 +122,34 @@ jobs:
           rm -f "$RUNNER_TEMP/executor-rpm-key.asc"
           rm -rf "$RUNNER_TEMP/executor-keyring"
 
+  install-linux:
+    name: Install on ${{ matrix.image }}
+    needs: linux
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: 'ubuntu:22.04', format: deb }
+          - { image: 'ubuntu:24.04', format: deb }
+          - { image: 'debian:12', format: deb }
+          - { image: 'rockylinux:9', format: rpm }
+          - { image: 'almalinux:9', format: rpm }
+          - { image: 'fedora:latest', format: rpm }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: executor-cli-linux-${{ inputs.version }}
+          path: candidate
+      - name: Verify repository install and removal
+        run: |
+          mkdir repository
+          tar -xzf "candidate/nessie-executor_${NESSIE_EXECUTOR_VERSION}_repository.tar.gz" -C repository
+          docker run --rm -v "$PWD/repository:/packages:ro" \
+            -v "$PWD/executor/packaging/linux/verify-install.sh:/verify-install.sh:ro" \
+            "${{ matrix.image }}" sh /verify-install.sh "${{ matrix.format }}" "$NESSIE_EXECUTOR_VERSION"
+
   macos:
     name: macOS signed CLI
     if: inputs.macos
@@ -133,35 +164,21 @@ jobs:
       - uses: ./.github/actions/install-dependencies
         with:
           deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
-      - name: Import Developer ID and configure notarization
+      - uses: ./.github/actions/setup-apple-signing
         env:
-          CERTIFICATE: ${{ secrets.NESSIE_DEVELOPER_ID_CERTIFICATE_BASE64 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.NESSIE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
-          NOTARY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
-          NOTARY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          NOTARY_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
-        run: |
-          set -euo pipefail
-          test -n "$CERTIFICATE" && test -n "$CERTIFICATE_PASSWORD"
-          test -n "$NOTARY_KEY" && test -n "$NOTARY_KEY_ID" && test -n "$NOTARY_ISSUER"
-          keychain="$RUNNER_TEMP/executor-cli.keychain-db"
-          password="$(openssl rand -hex 32)"
-          echo "::add-mask::$password"
-          security create-keychain -p "$password" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$password" "$keychain"
-          printf '%s' "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/executor-cli.p12"
-          security import "$RUNNER_TEMP/executor-cli.p12" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain"
-          security list-keychains -d user -s "$keychain"
-          printf '%s' "$NOTARY_KEY" > "$RUNNER_TEMP/executor-notary.p8"
-          xcrun notarytool store-credentials nessie-executor-cli --keychain "$keychain" \
-            --key "$RUNNER_TEMP/executor-notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER"
+          NESSIE_EXECUTOR_SIGNING_IDENTITY: ${{ vars.MACOS_DEVELOPER_ID_SIGNING_IDENTITY }}
+          NESSIE_DESKTOP_SIGNING_TEAM_ID: ${{ vars.MACOS_DEVELOPER_ID_TEAM_ID }}
+          MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
+          MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ vars.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
       - name: Build, sign and notarize
         env:
-          NESSIE_EXECUTOR_SIGNING_IDENTITY: ${{ vars.NESSIE_EXECUTOR_SIGNING_IDENTITY }}
-          NESSIE_DESKTOP_SIGNING_TEAM_ID: ${{ vars.NESSIE_DESKTOP_SIGNING_TEAM_ID }}
-          NESSIE_EXECUTOR_NOTARY_PROFILE: nessie-executor-cli
+          NESSIE_EXECUTOR_SIGNING_IDENTITY: ${{ vars.MACOS_DEVELOPER_ID_SIGNING_IDENTITY }}
+          NESSIE_DESKTOP_SIGNING_TEAM_ID: ${{ vars.MACOS_DEVELOPER_ID_TEAM_ID }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ vars.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_API_ISSUER_ID }}
           NESSIE_CLI_SIGNING: release
         run: |
           pnpm prisma:generate
@@ -183,5 +200,5 @@ jobs:
       - name: Remove signing material
         if: always()
         run: |
-          security delete-keychain "$RUNNER_TEMP/executor-cli.keychain-db" || true
-          rm -f "$RUNNER_TEMP/executor-cli.p12" "$RUNNER_TEMP/executor-notary.p8"
+          security delete-keychain "$RUNNER_TEMP/nessie-developer-id.keychain-db" || true
+          rm -f "$RUNNER_TEMP/developer-id.p12" "$APP_STORE_CONNECT_API_KEY_PATH"

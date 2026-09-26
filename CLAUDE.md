@@ -354,3 +354,5 @@ sentence changes only if the invariant itself did.
 - Executor terminal sessions use tmux on Mac/Linux and ConPTY on Windows; agent writes send exact text or a named key; read [the session guide](docs/executor-protocol/terminal-sessions.md) for setup, sharing, agent tools and native verification.
 
 Executor sharing is direct: people receive use or admin access, projects and the current team receive use access; read [executor sharing](docs/standards/executor-sharing.md) before changing it.
+
+Executor CLI packages, Homebrew app casks and WinGet manifests follow [package distribution](docs/releasing-executor-packages.md).

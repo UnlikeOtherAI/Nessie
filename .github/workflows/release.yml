@@ -113,6 +113,13 @@ jobs:
             asset: Nessie-macOS-Intel.dmg
             artifact: release-macos-intel
     env:
+      NESSIE_EXECUTOR_SIGNING_IDENTITY: ${{ vars.MACOS_DEVELOPER_ID_SIGNING_IDENTITY }}
+      NESSIE_DESKTOP_SIGNING_TEAM_ID: ${{ vars.MACOS_DEVELOPER_ID_TEAM_ID }}
+      MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
+      MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+      APP_STORE_CONNECT_API_KEY_ID: ${{ vars.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_API_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_API_ISSUER_ID }}
+      APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
@@ -128,12 +135,6 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Declare the ad-hoc, non-notarized macOS build
-        run: |
-          set -euo pipefail
-          node -e 'const config = require("./desktop/src-tauri/tauri.adhoc-macos.conf.json"); if (config.bundle?.macOS?.signingIdentity !== "-") process.exit(1)'
-          echo '::warning::The macOS DMG is ad-hoc signed and not notarized. People must use the documented Gatekeeper bypass.'
-
       - name: Install dependencies
         uses: ./.github/actions/install-dependencies
         with:
@@ -147,41 +148,20 @@ jobs:
           pnpm exec turbo run build --filter=@nessie/executor...
           pnpm --dir desktop run prepare:executor-runtime
 
-      - name: Build the ad-hoc, update-ready DMG
-        run: >-
-          pnpm --dir desktop exec tauri build --target "${{ matrix.target }}"
-          --features direct-updater --bundles dmg
-          --config src-tauri/tauri.direct-updater.conf.json
-          --config src-tauri/tauri.adhoc-macos.conf.json
+      - uses: ./.github/actions/setup-apple-signing
 
-      - name: Verify the ad-hoc bundle and updater artifact
+      - name: Build the Developer ID signed and notarized desktop
+        run: node desktop/scripts/build-signed-macos.mjs "${{ matrix.target }}"
+
+      - name: Stage verified desktop and Homebrew cask
         run: |
           set -euo pipefail
-          app="desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/Nessie.app"
-          dmg="$(find "desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg" -type f -name '*.dmg' -print -quit)"
-          updater="$(find "desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -type f -name '*.tar.gz' -print -quit)"
-          test -n "$dmg"
-          test -n "$updater"
-          test -s "$updater.sig"
-          codesign --verify --deep --strict "$app"
-          codesign -dvv "$app" 2>&1 | tee signing.txt
-          grep -F 'Signature=adhoc' signing.txt
-          if spctl --assess --type open --context context:primary-signature -vv "$dmg"; then
-            echo 'The intentionally non-notarized DMG unexpectedly passed Gatekeeper assessment.' >&2
-            exit 1
-          fi
-          mkdir archived-update
-          tar -xzf "$updater" -C archived-update
-          archived_app="$(find archived-update -type d -name 'Nessie.app' -print -quit)"
-          test -n "$archived_app"
-          codesign --verify --deep --strict "$archived_app"
-          codesign -dvv "$archived_app" 2>&1 | grep -F 'Signature=adhoc'
           mkdir release
-          cp "$dmg" "release/${{ matrix.asset }}"
-          updater_asset="${{ matrix.asset }}"
-          updater_asset="${updater_asset%.dmg}.app.tar.gz"
-          cp "$updater" "release/$updater_asset"
-          cp "$updater.sig" "release/$updater_asset.sig"
+          cp dist/desktop-macos/Nessie-* release/
+          if [ "${{ matrix.target }}" = aarch64-apple-darwin ]; then
+            node executor/packaging/cli/generate-app-manifests.mjs desktop "$GITHUB_REF_NAME" \
+              release/Nessie-macOS-Apple-Silicon.dmg release
+          fi
 
       - name: Upload the macOS download
         uses: actions/upload-artifact@v4
@@ -190,14 +170,7 @@ jobs:
           path: release/
           if-no-files-found: error
 
-  # The executor menu bar app's installer lives in this workflow rather than in
-  # one of its own because it is a direct download like every other asset here:
-  # it wants the same tag immutability, the same "this tag is main's tip"
-  # preflight, the same release environment and the same publish step. What it
-  # deliberately does NOT share is the macOS job above's stance. That DMG is
-  # ad-hoc signed on purpose and asserts that Gatekeeper rejects it; this one is
-  # the opposite case in every respect, and a person installing it must never
-  # be asked to bypass anything.
+  # The standalone executor and Desktop share Developer ID signing and notarization.
   macos-executor-menubar:
     name: macOS Executor menu bar ${{ matrix.name }}
     needs: [preflight, direct-distribution-credentials]
@@ -211,10 +184,6 @@ jobs:
             runner: macos-15
             asset: Nessie-Executor-macOS-Apple-Silicon.dmg
             artifact: release-macos-executor-menubar-apple-silicon
-          - name: Intel
-            runner: macos-15-intel
-            asset: Nessie-Executor-macOS-Intel.dmg
-            artifact: release-macos-executor-menubar-intel
     env:
       # The two names the rest of the repository already uses for these two
       # facts: executor/vm/scripts/build-signed-vm-helper.sh and
@@ -233,32 +202,6 @@ jobs:
       # Before anything is built, and naming every variable that is absent. A
       # release that cannot be notarized is a failed release, never a quietly
       # unsigned download.
-      - name: Require the Developer ID and notary credentials
-        run: |
-          set -euo pipefail
-          required=(
-            NESSIE_EXECUTOR_SIGNING_IDENTITY
-            NESSIE_DESKTOP_SIGNING_TEAM_ID
-            MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64
-            MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD
-            APP_STORE_CONNECT_API_KEY_ID
-            APP_STORE_CONNECT_API_ISSUER_ID
-            APP_STORE_CONNECT_API_KEY_P8_BASE64
-          )
-          missing=()
-          for name in "${required[@]}"; do
-            if [ -z "${!name:-}" ]; then
-              missing+=("$name")
-            fi
-          done
-          if [ "${#missing[@]}" -gt 0 ]; then
-            printf 'The Nessie Executor DMG is signed and notarized or it is not published.\n' >&2
-            printf 'Missing release configuration:' >&2
-            printf ' %s' "${missing[@]}" >&2
-            printf '\n' >&2
-            exit 1
-          fi
-
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
@@ -273,34 +216,10 @@ jobs:
         with:
           deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
-      - name: Install the Developer ID certificate and the notary key
-        run: |
-          set -euo pipefail
-          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
-          KEYCHAIN_PATH="$RUNNER_TEMP/nessie-developer-id.keychain-db"
-          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
-          printf %s "$MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+      - uses: ./.github/actions/setup-apple-signing
 
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERTIFICATE_PATH" -P "$MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
-          security default-keychain -d user -s "$KEYCHAIN_PATH"
-
-          # The identity has to be the Developer ID one, on this runner, before a
-          # twenty-minute build discovers otherwise.
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
-            | grep -F "$NESSIE_EXECUTOR_SIGNING_IDENTITY" > /dev/null
-
-          # notarytool reads the App Store Connect key from a file, so the
-          # base64 secret becomes one for the life of this job.
-          KEY_PATH="$RUNNER_TEMP/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
-          printf %s "$APP_STORE_CONNECT_API_KEY_P8_BASE64" | base64 --decode > "$KEY_PATH"
-          chmod 600 "$KEY_PATH"
-          echo "APP_STORE_CONNECT_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+      - name: Install native project generator
+        run: brew install xcodegen
 
       - name: Build the executor inputs
         run: |
@@ -350,6 +269,9 @@ jobs:
 
           mkdir release
           cp "$dmg" "release/${{ matrix.asset }}"
+
+      - name: Prepare the Homebrew executor cask
+        run: node executor/packaging/cli/generate-app-manifests.mjs executor "$GITHUB_REF_NAME" release/Nessie-Executor-macOS-Apple-Silicon.dmg release
 
       - name: Upload the executor menu bar download
         uses: actions/upload-artifact@v4
@@ -526,12 +448,6 @@ jobs:
           name: release-macos-executor-menubar-apple-silicon
           path: release-assets
 
-      - name: Download the Intel executor menu bar candidate
-        uses: actions/download-artifact@v4
-        with:
-          name: release-macos-executor-menubar-intel
-          path: release-assets
-
       - name: Download Linux candidates
         uses: actions/download-artifact@v4
         with:
@@ -572,7 +488,6 @@ jobs:
           # present, and no asset carries the unsigned-development marker its own
           # builder would have put in the file name.
           test -f release-assets/Nessie-Executor-macOS-Apple-Silicon.dmg
-          test -f release-assets/Nessie-Executor-macOS-Intel.dmg
           test -f release-assets/Nessie-Executor-Windows.msi
           if ls release-assets | grep -E 'UNSIGNED|DO-NOT-INSTALL'; then
             echo 'A development artifact reached the publish job.' >&2
@@ -583,6 +498,12 @@ jobs:
             sha256sum Nessie-* > SHA256SUMS
           )
           node scripts/release-metadata.mjs "$GITHUB_REF_NAME" > release-assets/metadata.json
+
+      - name: Stage package-manager manifests
+        run: |
+          mkdir -p release-assets/winget
+          cp -R windows-candidates/winget/. release-assets/winget/
+          tar -czf release-assets/package-manager-manifests.tar.gz -C release-assets Casks winget
 
       - name: Create the signed desktop updater manifest
         run: |
@@ -651,7 +572,7 @@ jobs:
           cat > release-notes.md <<EOF
           ## Direct downloads
 
-          - **macOS:** Apple Silicon and Intel DMGs are ad-hoc signed, not notarized, and require a Gatekeeper bypass to open.
+          - **macOS:** Apple Silicon and Intel desktop DMGs are Developer ID signed, notarized and stapled.
           - **Nessie Executor for macOS:** \`Nessie-Executor-macOS-*.dmg\` is the menu bar app. It is Developer ID signed, notarized and stapled: open it, drag it to Applications, and it runs with no bypass of any kind.
           - **Windows:** the NSIS and MSI installers are Authenticode-signed by UnlikeOtherAI s.r.o. through Azure Artifact Signing.
           - **Nessie Executor for Windows:** \`Nessie-Executor-Windows.msi\` installs the executor service and tray for a computer without the desktop app. It is signed by the same publisher.
@@ -668,10 +589,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" release-assets/Nessie-* release-assets/SHA256SUMS release-assets/latest.json --clobber
+            gh release upload "$GITHUB_REF_NAME" release-assets/Nessie-* release-assets/SHA256SUMS release-assets/latest.json release-assets/package-manager-manifests.tar.gz --clobber
             gh release edit "$GITHUB_REF_NAME" --title "Nessie $GITHUB_REF_NAME" --notes-file release-notes.md
           else
-            gh release create "$GITHUB_REF_NAME" release-assets/Nessie-* release-assets/SHA256SUMS release-assets/latest.json \
+            gh release create "$GITHUB_REF_NAME" release-assets/Nessie-* release-assets/SHA256SUMS release-assets/latest.json release-assets/package-manager-manifests.tar.gz \
               --title "Nessie $GITHUB_REF_NAME" \
               --notes-file release-notes.md
           fi
