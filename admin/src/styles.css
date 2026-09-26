@@ -408,9 +408,18 @@ textarea::placeholder {
   }
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+/* In `base`, the layer Tailwind's preflight lives in, so a link's own
+   utilities win: `underline`, `hover:underline`, `text-[color:var(--lnk)]`.
+   Unlayered, this rule beat every one of them and the admin's text links
+   rendered as plain text. Preflight resets anchors to `text-decoration:
+   inherit`; this keeps an anchor without utilities at `none`, as before.
+   Navigation rows colour themselves through their own unlayered classes
+   (`.admin-sb-item`, `.admin-rail-btn`, `.sidebar-project-link`). */
+@layer base {
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 }
 
 ::-webkit-scrollbar {
