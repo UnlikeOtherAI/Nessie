@@ -418,6 +418,44 @@
       "browsingDetail": "Právě prohlíží — sledujte, co vidí",
       "browserDetail": "Vlastní prohlížeč — sledujte jeho práci nebo pokračujte tam, kde skončil.",
       "conversationsDetail": "Všechny konverzace s tímto agentem, které můžete zobrazit — přepínejte mezi nimi nebo založte další."
+    },
+    "call": {
+      "copyUnavailable": "Kopírování není v tomto prohlížeči dostupné.",
+      "linkCopied": "Odkaz zkopírován.",
+      "copyFailed": "Odkaz se nepodařilo zkopírovat.",
+      "inChannel": "v kanálu #{{channel}}",
+      "via": "prostřednictvím",
+      "started": "Hovor byl zahájen",
+      "waitingForResponses": "Čeká se na odpovědi.",
+      "linkReady": "Tento odkaz na hovor je připraven.",
+      "copyLink": "Kopírovat odkaz",
+      "responses": "Odpovědi",
+      "noResponses": "Nikdo další nemusí odpovídat.",
+      "cancelling": "Rušení…",
+      "cancel": "Zrušit hovor",
+      "ending": "Ukončování…",
+      "end": "Ukončit hovor",
+      "invite": {
+        "accepted": "Přijato",
+        "cancelled": "Zrušeno",
+        "declined": "Odmítnuto",
+        "missed": "Zmeškáno",
+        "waiting": "Čeká na odpověď"
+      },
+      "alreadyRunningTitle": "Hovor už probíhá",
+      "startFailedTitle": "Hovor se nepodařilo zahájit",
+      "alreadyRunning": "V tomto kanálu už probíhá hovor. Můžete se připojit.",
+      "joinExisting": "Připojit se k existujícímu hovoru",
+      "connectMicrosoft": "Připojit Microsoft",
+      "connectGoogle": "Připojit Google",
+      "failure": {
+        "googleNotConnected": "Před zahájením hovoru Google Meet připojte Google.",
+        "meetScopeMissing": "Znovu připojte Google, aby mohla Nessie vytvářet odkazy Google Meet.",
+        "googleReauthRequired": "Před zahájením tohoto hovoru znovu připojte Google.",
+        "microsoftNotConnected": "Před zahájením hovoru Microsoft Teams připojte Microsoft.",
+        "alreadyRunning": "V tomto kanálu už probíhá hovor.",
+        "startFailed": "Hovor teď nelze zahájit. Zkuste to znovu."
+      }
     }
   }
 }

@@ -418,6 +418,44 @@
       "browsingDetail": "Sta navigando — guarda cosa vede",
       "browserDetail": "Il suo browser — osserva il lavoro o riprendi da dove si era fermato.",
       "conversationsDetail": "Tutte le conversazioni con questo agente che puoi vedere — passa da una all’altra o iniziane una nuova."
+    },
+    "call": {
+      "copyUnavailable": "La copia non è disponibile in questo browser.",
+      "linkCopied": "Link copiato.",
+      "copyFailed": "Impossibile copiare il link.",
+      "inChannel": "nel canale #{{channel}}",
+      "via": "tramite",
+      "started": "Chiamata avviata",
+      "waitingForResponses": "In attesa di risposte.",
+      "linkReady": "Il link della chiamata è pronto.",
+      "copyLink": "Copia link",
+      "responses": "Risposte",
+      "noResponses": "Nessun altro deve rispondere.",
+      "cancelling": "Annullamento…",
+      "cancel": "Annulla chiamata",
+      "ending": "Chiusura…",
+      "end": "Termina chiamata",
+      "invite": {
+        "accepted": "Accettata",
+        "cancelled": "Annullata",
+        "declined": "Rifiutata",
+        "missed": "Persa",
+        "waiting": "In attesa di risposta"
+      },
+      "alreadyRunningTitle": "Chiamata già in corso",
+      "startFailedTitle": "Impossibile avviare la chiamata",
+      "alreadyRunning": "È già in corso una chiamata in questo canale. Puoi partecipare.",
+      "joinExisting": "Partecipa alla chiamata esistente",
+      "connectMicrosoft": "Collega Microsoft",
+      "connectGoogle": "Collega Google",
+      "failure": {
+        "googleNotConnected": "Collega Google prima di avviare una chiamata Google Meet.",
+        "meetScopeMissing": "Ricollega Google per consentire a Nessie di creare link Google Meet.",
+        "googleReauthRequired": "Ricollega Google prima di avviare questa chiamata.",
+        "microsoftNotConnected": "Collega Microsoft prima di avviare una chiamata Microsoft Teams.",
+        "alreadyRunning": "È già in corso una chiamata in questo canale.",
+        "startFailed": "Impossibile avviare la chiamata. Riprova."
+      }
     }
   }
 }

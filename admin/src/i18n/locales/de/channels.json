@@ -418,6 +418,44 @@
       "browsingDetail": "Durchsucht gerade — sieh dir an, was der Agent sieht",
       "browserDetail": "Der eigene Browser — beobachte die Arbeit oder mach dort weiter, wo sie aufgehört hat.",
       "conversationsDetail": "Alle Unterhaltungen mit diesem Agenten, die du sehen kannst — wechsle zwischen ihnen oder starte eine neue."
+    },
+    "call": {
+      "copyUnavailable": "Kopieren ist in diesem Browser nicht verfügbar.",
+      "linkCopied": "Link kopiert.",
+      "copyFailed": "Link konnte nicht kopiert werden.",
+      "inChannel": "in #{{channel}}",
+      "via": "über",
+      "started": "Anruf gestartet",
+      "waitingForResponses": "Warten auf Antworten.",
+      "linkReady": "Dieser Anruflink kann jetzt verwendet werden.",
+      "copyLink": "Link kopieren",
+      "responses": "Antworten",
+      "noResponses": "Niemand sonst muss antworten.",
+      "cancelling": "Wird abgebrochen…",
+      "cancel": "Anruf abbrechen",
+      "ending": "Wird beendet…",
+      "end": "Anruf beenden",
+      "invite": {
+        "accepted": "Angenommen",
+        "cancelled": "Abgebrochen",
+        "declined": "Abgelehnt",
+        "missed": "Verpasst",
+        "waiting": "Wartet auf Antwort"
+      },
+      "alreadyRunningTitle": "Anruf läuft bereits",
+      "startFailedTitle": "Anruf konnte nicht gestartet werden",
+      "alreadyRunning": "In diesem Kanal läuft bereits ein Anruf. Du kannst teilnehmen.",
+      "joinExisting": "Bestehendem Anruf beitreten",
+      "connectMicrosoft": "Microsoft verbinden",
+      "connectGoogle": "Google verbinden",
+      "failure": {
+        "googleNotConnected": "Verbinde Google, bevor du einen Google-Meet-Anruf startest.",
+        "meetScopeMissing": "Verbinde Google erneut, damit Nessie Google-Meet-Links erstellen kann.",
+        "googleReauthRequired": "Verbinde Google erneut, bevor du diesen Anruf startest.",
+        "microsoftNotConnected": "Verbinde Microsoft, bevor du einen Teams-Anruf startest.",
+        "alreadyRunning": "In diesem Kanal läuft bereits ein Anruf.",
+        "startFailed": "Anruf kann gerade nicht gestartet werden. Versuche es erneut."
+      }
     }
   }
 }

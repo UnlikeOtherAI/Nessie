@@ -418,6 +418,44 @@
       "browsingDetail": "Navegando ahora — mira lo que ve",
       "browserDetail": "Su propio navegador: observa su actividad o retómala donde se quedó.",
       "conversationsDetail": "Todas las conversaciones con este agente que puedes ver: cambia entre ellas o inicia otra."
+    },
+    "call": {
+      "copyUnavailable": "La copia no está disponible en este navegador.",
+      "linkCopied": "Enlace copiado.",
+      "copyFailed": "No se pudo copiar el enlace.",
+      "inChannel": "en #{{channel}}",
+      "via": "mediante",
+      "started": "Llamada iniciada",
+      "waitingForResponses": "Esperando respuestas.",
+      "linkReady": "El enlace de la llamada está listo para unirse.",
+      "copyLink": "Copiar enlace",
+      "responses": "Respuestas",
+      "noResponses": "Nadie más tiene que responder.",
+      "cancelling": "Cancelando…",
+      "cancel": "Cancelar llamada",
+      "ending": "Finalizando…",
+      "end": "Finalizar llamada",
+      "invite": {
+        "accepted": "Aceptada",
+        "cancelled": "Cancelada",
+        "declined": "Rechazada",
+        "missed": "Perdida",
+        "waiting": "Esperando respuesta"
+      },
+      "alreadyRunningTitle": "Llamada en curso",
+      "startFailedTitle": "No se pudo iniciar la llamada",
+      "alreadyRunning": "Ya hay una llamada en este canal. Puedes unirte.",
+      "joinExisting": "Unirse a la llamada existente",
+      "connectMicrosoft": "Conectar Microsoft",
+      "connectGoogle": "Conectar Google",
+      "failure": {
+        "googleNotConnected": "Conecta Google antes de iniciar una llamada de Google Meet.",
+        "meetScopeMissing": "Vuelve a conectar Google para permitir que Nessie cree enlaces de Google Meet.",
+        "googleReauthRequired": "Vuelve a conectar Google antes de iniciar esta llamada.",
+        "microsoftNotConnected": "Conecta Microsoft antes de iniciar una llamada de Microsoft Teams.",
+        "alreadyRunning": "Ya hay una llamada en este canal.",
+        "startFailed": "No se pudo iniciar la llamada. Inténtalo de nuevo."
+      }
     }
   }
 }

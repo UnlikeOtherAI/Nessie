@@ -418,6 +418,44 @@
       "browsingDetail": "Navigation en cours — observez ce qu’il voit",
       "browserDetail": "Son propre navigateur — observez son activité ou reprenez là où il en était.",
       "conversationsDetail": "Toutes les conversations avec cet agent que vous pouvez voir — passez de l’une à l’autre ou démarrez-en une nouvelle."
+    },
+    "call": {
+      "copyUnavailable": "La copie n’est pas disponible dans ce navigateur.",
+      "linkCopied": "Lien copié.",
+      "copyFailed": "Impossible de copier le lien.",
+      "inChannel": "dans #{{channel}}",
+      "via": "via",
+      "started": "Appel lancé",
+      "waitingForResponses": "En attente des réponses.",
+      "linkReady": "Ce lien d’appel est prêt à être utilisé.",
+      "copyLink": "Copier le lien",
+      "responses": "Réponses",
+      "noResponses": "Personne d’autre n’a besoin de répondre.",
+      "cancelling": "Annulation…",
+      "cancel": "Annuler l’appel",
+      "ending": "Fin de l’appel…",
+      "end": "Terminer l’appel",
+      "invite": {
+        "accepted": "Accepté",
+        "cancelled": "Annulé",
+        "declined": "Refusé",
+        "missed": "Manqué",
+        "waiting": "En attente de réponse"
+      },
+      "alreadyRunningTitle": "Appel déjà en cours",
+      "startFailedTitle": "Impossible de lancer l’appel",
+      "alreadyRunning": "Un appel est déjà en cours dans ce canal. Vous pouvez le rejoindre.",
+      "joinExisting": "Rejoindre l’appel existant",
+      "connectMicrosoft": "Connecter Microsoft",
+      "connectGoogle": "Connecter Google",
+      "failure": {
+        "googleNotConnected": "Connectez Google avant de lancer un appel Google Meet.",
+        "meetScopeMissing": "Reconnectez Google pour permettre à Nessie de créer des liens Google Meet.",
+        "googleReauthRequired": "Reconnectez Google avant de lancer cet appel.",
+        "microsoftNotConnected": "Connectez Microsoft avant de lancer un appel Microsoft Teams.",
+        "alreadyRunning": "Un appel est déjà en cours dans ce canal.",
+        "startFailed": "Impossible de lancer l’appel pour le moment. Réessayez."
+      }
     }
   }
 }

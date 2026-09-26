@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import type { CallRecord } from '../../../lib/api-client'
 import { openExternalUrl, usesExternalUrlShell } from '../../../lib/open-external-url'
 import {
@@ -26,12 +27,12 @@ type StartCallFailureDialogProps = {
   open: boolean
 }
 
-const invitationStateLabel: Record<CallRecord['invites'][number]['state'], string> = {
-  accepted: 'Accepted',
-  cancelled: 'Cancelled',
-  declined: 'Declined',
-  missed: 'Missed',
-  ringing: 'Waiting for response',
+const invitationStateKey: Record<CallRecord['invites'][number]['state'], string> = {
+  accepted: 'child.call.invite.accepted',
+  cancelled: 'child.call.invite.cancelled',
+  declined: 'child.call.invite.declined',
+  missed: 'child.call.invite.missed',
+  ringing: 'child.call.invite.waiting',
 }
 
 const actionErrorMessage = (error: unknown): string | null =>
@@ -76,6 +77,7 @@ export const CallerCallDialog = ({
   onClose,
   onEnd,
 }: CallerCallDialogProps) => {
+  const { t } = useTranslation('channels')
   const joinLinkRef = useRef<HTMLAnchorElement>(null)
   const [copyMessage, setCopyMessage] = useState<string | null>(null)
   const canCancel = call.status === 'ringing'
@@ -88,14 +90,14 @@ export const CallerCallDialog = ({
 
   const copyLink = async () => {
     if (!call.meetingUri || !navigator.clipboard) {
-      setCopyMessage('Copy is unavailable in this browser.')
+      setCopyMessage(t('child.call.copyUnavailable'))
       return
     }
     try {
       await navigator.clipboard.writeText(call.meetingUri)
-      setCopyMessage('Link copied.')
+      setCopyMessage(t('child.call.linkCopied'))
     } catch {
-      setCopyMessage('Unable to copy the link.')
+      setCopyMessage(t('child.call.copyFailed'))
     }
   }
 
@@ -103,7 +105,7 @@ export const CallerCallDialog = ({
     <Dialog
       description={(
         <>
-          in #{channelLabel} via {canManageCallSettings ? (
+          {t('child.call.inChannel', { channel: channelLabel })} {t('child.call.via')} {canManageCallSettings ? (
             <Link className="text-[color:var(--accent)] underline-offset-2 hover:underline" to="/settings/organization">
               {providerLabel}
             </Link>
@@ -114,11 +116,11 @@ export const CallerCallDialog = ({
       initialFocusRef={joinLinkRef}
       onClose={onClose}
       open
-      title="Call started"
+      title={t('child.call.started')}
     >
       <div className="grid gap-5">
         <p className="text-sm text-[color:var(--tx2)]">
-          {call.status === 'ringing' ? 'Waiting for responses.' : 'This call link is ready to join.'}
+          {call.status === 'ringing' ? t('child.call.waitingForResponses') : t('child.call.linkReady')}
         </p>
 
         {call.meetingUri ? (
@@ -127,7 +129,7 @@ export const CallerCallDialog = ({
               className="break-all text-sm font-medium text-[color:var(--accent)] underline-offset-2 hover:underline"
               meetingUri={call.meetingUri}
             >
-              Join call
+              {t('incomingCall.join')}
             </ExternalMeetingAnchor>
             <div className="flex items-center gap-2">
               <button
@@ -135,7 +137,7 @@ export const CallerCallDialog = ({
                 onClick={() => void copyLink()}
                 type="button"
               >
-                Copy link
+                {t('child.call.copyLink')}
               </button>
               {copyMessage ? (
                 <span aria-live="polite" className="text-xs text-[color:var(--tx3)]">
@@ -147,9 +149,9 @@ export const CallerCallDialog = ({
         ) : null}
 
         <div className="grid gap-2">
-          <h3 className="text-sm font-medium text-[color:var(--tx)]">Responses</h3>
+          <h3 className="text-sm font-medium text-[color:var(--tx)]">{t('child.call.responses')}</h3>
           {call.invites.length === 0 ? (
-            <p className="text-sm text-[color:var(--tx3)]">No one else needs a response.</p>
+            <p className="text-sm text-[color:var(--tx3)]">{t('child.call.noResponses')}</p>
           ) : (
             <ul className="divide-y divide-[color:var(--sep)] rounded-md border border-[color:var(--sep)]">
               {call.invites.map((invite) => (
@@ -159,7 +161,7 @@ export const CallerCallDialog = ({
                 >
                   <span className="truncate text-[color:var(--tx)]">{invite.displayName}</span>
                   <span className="flex-shrink-0 text-[color:var(--tx3)]">
-                    {invitationStateLabel[invite.state]}
+                    {t(invitationStateKey[invite.state])}
                   </span>
                 </li>
               ))}
@@ -180,7 +182,7 @@ export const CallerCallDialog = ({
             onClick={onClose}
             type="button"
           >
-            Close
+            {t('incomingCall.close')}
           </button>
           {canCancel ? (
             <button
@@ -189,7 +191,7 @@ export const CallerCallDialog = ({
               onClick={onCancel}
               type="button"
             >
-              {actionPending ? 'Cancelling…' : 'Cancel call'}
+              {actionPending ? t('child.call.cancelling') : t('child.call.cancel')}
             </button>
           ) : null}
           {canEnd ? (
@@ -199,7 +201,7 @@ export const CallerCallDialog = ({
               onClick={onEnd}
               type="button"
             >
-              {actionPending ? 'Ending…' : 'End call'}
+              {actionPending ? t('child.call.ending') : t('child.call.end')}
             </button>
           ) : null}
         </div>
@@ -215,28 +217,35 @@ export const StartCallFailureDialog = ({
   onClose,
   open,
 }: StartCallFailureDialogProps) => {
+  const { t } = useTranslation('channels')
   const failure = presentStartCallFailure(code)
   const isExistingCall = code === 'ACTIVE_CALL_EXISTS'
-  const connectLabel = failure.connection === 'microsoft' ? 'Connect Microsoft' : 'Connect Google'
+  const connectLabel = t(failure.connection === 'microsoft' ? 'child.call.connectMicrosoft' : 'child.call.connectGoogle')
+  const failureKey = code === 'GOOGLE_NOT_CONNECTED' ? 'googleNotConnected'
+    : code === 'MEET_SCOPE_MISSING' ? 'meetScopeMissing'
+      : code === 'GOOGLE_REAUTH_REQUIRED' ? 'googleReauthRequired'
+        : code === 'MICROSOFT_NOT_CONNECTED' ? 'microsoftNotConnected'
+          : code === 'ACTIVE_CALL_EXISTS' ? 'alreadyRunning'
+            : 'startFailed'
 
   return (
     <Dialog
       onClose={onClose}
       open={open}
-      title={isExistingCall ? 'Call already in progress' : 'Couldn’t start call'}
+      title={t(isExistingCall ? 'child.call.alreadyRunningTitle' : 'child.call.startFailedTitle')}
     >
       <div className="grid gap-4">
         <p className="text-sm text-[color:var(--tx2)]">
           {isExistingCall && existingCall?.meetingUri
-            ? 'A call is already happening in this channel. You can join it.'
-            : failure.message}
+            ? t('child.call.alreadyRunning')
+            : t(`child.call.failure.${failureKey}`)}
         </p>
         {isExistingCall && existingCall?.meetingUri ? (
           <ExternalMeetingAnchor
             className="admin-button admin-button-primary justify-self-start"
             meetingUri={existingCall.meetingUri}
           >
-            Join existing call
+            {t('child.call.joinExisting')}
           </ExternalMeetingAnchor>
         ) : failure.connection ? (
           <Link className="admin-button admin-button-primary justify-self-start" to="/settings/connections">
@@ -245,7 +254,7 @@ export const StartCallFailureDialog = ({
         ) : null}
         <div className="flex justify-end">
           <button className="admin-button admin-button-secondary" onClick={onClose} type="button">
-            Close
+            {t('incomingCall.close')}
           </button>
         </div>
       </div>

@@ -418,6 +418,44 @@
       "browsingDetail": "Browsing now — watch what it sees",
       "browserDetail": "Its own browser — watch it work, or pick up where it left off.",
       "conversationsDetail": "Every conversation with this agent you can see — switch between them or start another."
+    },
+    "call": {
+      "copyUnavailable": "Copy is unavailable in this browser.",
+      "linkCopied": "Link copied.",
+      "copyFailed": "Unable to copy the link.",
+      "inChannel": "in #{{channel}}",
+      "via": "via",
+      "started": "Call started",
+      "waitingForResponses": "Waiting for responses.",
+      "linkReady": "This call link is ready to join.",
+      "copyLink": "Copy link",
+      "responses": "Responses",
+      "noResponses": "No one else needs a response.",
+      "cancelling": "Cancelling…",
+      "cancel": "Cancel call",
+      "ending": "Ending…",
+      "end": "End call",
+      "invite": {
+        "accepted": "Accepted",
+        "cancelled": "Cancelled",
+        "declined": "Declined",
+        "missed": "Missed",
+        "waiting": "Waiting for response"
+      },
+      "alreadyRunningTitle": "Call already in progress",
+      "startFailedTitle": "Couldn’t start call",
+      "alreadyRunning": "A call is already happening in this channel. You can join it.",
+      "joinExisting": "Join existing call",
+      "connectMicrosoft": "Connect Microsoft",
+      "connectGoogle": "Connect Google",
+      "failure": {
+        "googleNotConnected": "Connect Google before starting a Google Meet call.",
+        "meetScopeMissing": "Reconnect Google to allow Nessie to create Google Meet links.",
+        "googleReauthRequired": "Reconnect Google before starting this call.",
+        "microsoftNotConnected": "Connect Microsoft before starting a Microsoft Teams call.",
+        "alreadyRunning": "A call is already happening in this channel.",
+        "startFailed": "Unable to start a call right now. Try again."
+      }
     }
   }
 }
