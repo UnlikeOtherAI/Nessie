@@ -28,7 +28,12 @@ export const PdfPreview = ({ title, url }: { title: string; url: string }) => {
         const pdfjs = await import('pdfjs-dist')
         const { default: pdfWorkerUrl } = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
         if (cancelled) return
-        pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
+        // The worker was once served as octet-stream with an immutable one-year
+        // cache lifetime. Its content hash did not change when nginx's MIME type
+        // was fixed, so existing browsers can still reuse the bad response.
+        const workerUrl = new URL(pdfWorkerUrl, window.location.href)
+        workerUrl.searchParams.set('nessie-worker-mime', '2')
+        pdfjs.GlobalWorkerOptions.workerSrc = workerUrl.href
         loadingTask = pdfjs.getDocument({ data: bytes })
         document = await loadingTask.promise
         if (!cancelled) setState({ document, error: false, loading: false })

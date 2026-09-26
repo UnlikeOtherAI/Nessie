@@ -165,6 +165,10 @@ The fingerprinted PDF.js worker is an `.mjs` asset. The production admin
 nginx configuration must serve it as `text/javascript`: its default
 `application/octet-stream` response, paired with `nosniff`, prevented Safari
 from starting the worker and made every PDF show the generic preview error.
+Because that incorrect response was cached as immutable for a year, fixing the
+header alone could not repair existing browsers. The worker URL includes a
+one-time query revision so they fetch the corrected response instead of reusing
+the cached headers.
 
 Signed URLs stay out of scope. Auth is bearer-only, so `<img src>` cannot carry
 credentials and the blob/object-URL approach stands. With immutable cache headers
