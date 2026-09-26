@@ -352,7 +352,7 @@
     },
     "toolRail": {
       "agentTools": "Agent tools",
-      "conversations": "Conversations",
+      "conversations": "Chats",
       "browser": "Browser",
       "browsingNow": "Browsing now",
       "conversationRunning": "Another conversation is running"
