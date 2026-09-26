@@ -1,4 +1,5 @@
 import type { KnowledgePageShareAccess, KnowledgeRootSpace } from '@nessie/schemas'
+import { finderText } from './finder-text'
 
 /** The five values `KnowledgeVisibilitySchema` holds, named where they are read. */
 type KnowledgeVisibility = KnowledgeRootSpace['visibility']
@@ -20,9 +21,6 @@ export type ShareSubjectKind = 'folder' | 'document' | 'file' | 'spreadsheet'
 /** A headline the dialog sets in the emphatic weight, and the sentence under it. */
 export type AccessReadout = { headline: string; body: string }
 
-const plural = (count: number, one: string, many: string): string =>
-  `${count} ${count === 1 ? one : many}`
-
 /**
  * The no-approval statement and the edit boundary, on screen, every time the
  * Share dialog opens. The owner's words were "they're going to get it without
@@ -31,19 +29,16 @@ const plural = (count: number, one: string, many: string): string =>
  */
 export const shareIntroSentence = (kind: ShareSubjectKind): string => {
   const subject = kind === 'folder'
-    ? 'this folder and everything inside it, including what is added later'
+    ? finderText('shareSubjectFolder', 'this folder and everything inside it, including what is added later')
     : kind === 'file'
-      ? 'this file'
+      ? finderText('shareSubjectFile', 'this file')
       // A spreadsheet is edited live and in place, so "download" is the
       // export rather than the thing itself — and a person given editing is
       // typing in the same grid as everybody else, which is worth its own word.
       : kind === 'spreadsheet'
-        ? 'this spreadsheet, and export it'
-        : 'this document'
-  return `People you add can open, read and download ${subject}.`
-    + ' Give someone editing to let them change it — they still can’t share,'
-    + ' move, publish or delete it.'
-    + ' They get it straight away; nobody has to approve it.'
+        ? finderText('shareSubjectSpreadsheet', 'this spreadsheet, and export it')
+        : finderText('shareSubjectDocument', 'this document')
+  return finderText('shareIntro', 'People you add can open, read and download {{subject}}. Give someone editing to let them change it — they still can’t share, move, publish or delete it. They get it straight away; nobody has to approve it.', { subject })
 }
 
 /**
@@ -52,9 +47,8 @@ export const shareIntroSentence = (kind: ShareSubjectKind): string => {
  * (overview → "Deliberately left out"). Said at both levels, because "can
  * edit" sounds like "has it properly" and does not.
  */
-export const SHARED_SEARCH_SENTENCE =
-  'Shared documents open from the recipient’s Shared with me.'
-  + ' Shared pages are not included in the recipient’s search, whatever their access.'
+export const sharedSearchSentence = (): string =>
+  `${finderText('sharedOpenSentence', 'Shared documents open from the recipient’s Shared with me.')} ${finderText('sharedSearchSentence', 'Shared pages are not included in the recipient’s search, whatever their access.')}`
 
 /**
  * Project documents. **A read-out, not a grant surface.** Access follows the
@@ -63,10 +57,8 @@ export const SHARED_SEARCH_SENTENCE =
  * the whole job of this dialog.
  */
 export const projectReadout = (projectName: string): AccessReadout => ({
-  body: 'Access follows the project’s membership. To change who can see these'
-    + ' documents, add or remove people in the project — there is no separate'
-    + ' sharing for a project’s documents.',
-  headline: `Everyone in the project ${projectName} can see this.`,
+  body: finderText('projectReadoutBody', 'Access follows the project’s membership. To change who can see these documents, add or remove people in the project — there is no separate sharing for a project’s documents.'),
+  headline: finderText('projectReadoutHeadline', 'Everyone in the project {{projectName}} can see this.', { projectName }),
 })
 
 /** A shared folder (an ad-hoc space): its visibility, plus whoever was added. */
@@ -79,24 +71,24 @@ export const spaceReadout = (input: {
   const headline = (() => {
     switch (input.visibility) {
       case 'organization':
-        return 'Everyone in the organisation can see this.'
+        return finderText('visibilityOrganisation', 'Everyone in the organisation can see this.')
       case 'project':
-        return `Everyone in the project ${input.projectName ?? 'this folder belongs to'} can see this.`
+        return finderText('visibilityProject', 'Everyone in the project {{projectName}} can see this.', { projectName: input.projectName ?? 'this folder belongs to' })
       case 'team':
-        return 'Everyone on the team can see this.'
+        return finderText('visibilityTeam', 'Everyone on the team can see this.')
       case 'channel':
-        return 'Everyone in the channel can see this.'
+        return finderText('visibilityChannel', 'Everyone in the channel can see this.')
       default:
-        return `Only people added to the folder ${input.spaceName} can see this.`
+        return finderText('visibilityPrivate', 'Only people added to the folder {{spaceName}} can see this.', { spaceName: input.spaceName })
     }
   })()
   const where = input.visibility === 'team' || input.visibility === 'channel'
-    ? `Plus the people added to the folder ${input.spaceName}.`
+    ? finderText('visibilityPlusPeople', 'Plus the people added to the folder {{spaceName}}.', { spaceName: input.spaceName })
     : input.visibility === 'private'
       ? ''
-      : `It is in the shared folder ${input.spaceName}.`
+      : finderText('visibilityInFolder', 'It is in the shared folder {{spaceName}}.', { spaceName: input.spaceName })
   const restricted = input.writeRestricted
-    ? ' Editing is restricted to the people listed.'
+    ? ` ${finderText('editingRestricted', 'Editing is restricted to the people listed.')}`
     : ''
   return { body: [where, restricted.trim()].filter(Boolean).join(' '), headline }
 }
@@ -104,9 +96,9 @@ export const spaceReadout = (input: {
 /** An agent's documents home: its audience is the agent's own. */
 export const agentReadout = (agentName: string, memberUserCount: number): AccessReadout => ({
   body: memberUserCount > 0
-    ? `${plural(memberUserCount, 'person', 'people')} ${memberUserCount === 1 ? 'was' : 'were'} also added directly.`
-    : 'Nobody has been added directly.',
-  headline: `People who can see the agent ${agentName} can see its documents.`,
+    ? finderText(memberUserCount === 1 ? 'directPeople_one' : 'directPeople_other', memberUserCount === 1 ? '{{count}} person was also added directly.' : '{{count}} people were also added directly.', { count: memberUserCount })
+    : finderText('nobodyDirect', 'Nobody has been added directly.'),
+  headline: finderText('agentReadoutHeadline', 'People who can see the agent {{agentName}} can see its documents.', { agentName }),
 })
 
 /** A row in Shared with me: what the level the viewer holds actually means. */
@@ -116,25 +108,22 @@ export const sharedToMeReadout = (
 ): AccessReadout =>
   access === 'edit'
     ? {
-      body: 'Your changes are saved as new versions under your name; only'
-        + ` ${sharerName} can publish it, move it, delete it or change who has access.`,
-      headline: `${sharerName} shared this with you and you can edit it.`,
+      body: finderText('sharedEditBody', 'Your changes are saved as new versions under your name; only {{sharerName}} can publish it, move it, delete it or change who has access.', { sharerName }),
+      headline: finderText('sharedEditHeadline', '{{sharerName}} shared this with you and you can edit it.', { sharerName }),
     }
     : {
-      body: `You can read it and download it; only ${sharerName} can change who has access.`,
-      headline: `${sharerName} shared this with you.`,
+      body: finderText('sharedViewBody', 'You can read it and download it; only {{sharerName}} can change who has access.', { sharerName }),
+      headline: finderText('sharedViewHeadline', '{{sharerName}} shared this with you.', { sharerName }),
     }
 
 /** The viewer's own personal documents, seen through Get Info rather than Share. */
 export const personalReadout = (shareCount: number): AccessReadout => ({
   body: shareCount === 0
-    ? 'Only you, so far.'
-    : `Shared with ${plural(shareCount, 'person', 'people')}.`,
-  headline: 'Only you can see this, and anyone you share it with.',
+    ? finderText('personalOnly', 'Only you, so far.')
+    : finderText(shareCount === 1 ? 'personalShared_one' : 'personalShared_other', shareCount === 1 ? 'Shared with {{count}} person.' : 'Shared with {{count}} people.', { count: shareCount }),
+  headline: finderText('personalHeadline', 'Only you can see this, and anyone you share it with.'),
 })
 
 /** The level a share row reads out, in the two words the menu also uses. */
-export const shareLevelLabel: Record<KnowledgePageShareAccess, string> = {
-  edit: 'Can edit',
-  view: 'Can view',
-}
+export const shareLevelLabel = (access: KnowledgePageShareAccess): string =>
+  finderText(access === 'edit' ? 'shareCanEdit' : 'shareCanView', access === 'edit' ? 'Can edit' : 'Can view')

@@ -20,7 +20,7 @@ import {
   useRemovePageShare,
   useSetPageShareAccess,
 } from './share-hooks'
-import { shareIntroSentence, SHARED_SEARCH_SENTENCE, shareLevelLabel, type ShareSubjectKind } from './sharing-copy'
+import { shareIntroSentence, sharedSearchSentence, shareLevelLabel, type ShareSubjectKind } from './sharing-copy'
 
 /**
  * Share — the one surface in the Finder that actually grants access
@@ -86,7 +86,7 @@ const ShareRow = ({
       >
         {/* The size goes on the span: an unlayered `button { font: inherit }`
             outranks a layered `text-xs` on the control itself. */}
-        <span className="text-xs">{shareLevelLabel[share.access]}</span>
+        <span className="text-xs">{shareLevelLabel(share.access)}</span>
         <FontAwesomeIcon className="h-2.5 w-2.5" icon={faChevronDown} />
       </button>
       <Popover
@@ -247,7 +247,7 @@ export const ShareDialog = ({
         {/* The honest limit, said at both levels: a shared page opens from
             Shared with me and is not in the recipient's search. */}
         <p className="text-xs text-[color:var(--tx3)]" data-testid="share-search-note">
-          {SHARED_SEARCH_SENTENCE}
+          {sharedSearchSentence()}
         </p>
       </div>
 

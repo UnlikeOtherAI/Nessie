@@ -1,4 +1,6 @@
 import type { KnowledgeRoot, KnowledgeRootSpace } from '@nessie/schemas'
+import i18n from '../../../../i18n/i18n'
+import { finderText } from './finder-text'
 
 /**
  * Every sentence the move-or-copy surfaces say, as pure functions.
@@ -51,7 +53,7 @@ export const destinationsFromRoot = (root: KnowledgeRoot | undefined): TransferD
   ]
 }
 
-const itOrThem = (count: number): string => (count === 1 ? 'it' : 'them')
+const itOrThem = (count: number): string => finderText(count === 1 ? 'transferSubjectOne' : 'transferSubjectOther', count === 1 ? 'it' : 'them')
 
 /**
  * "Everyone in the project P will see it." — the line the person has to have
@@ -65,20 +67,20 @@ export const transferAudienceLine = (
   // An agent's home first: its `visibility` is whatever the agent's owner made
   // it, and "people who can see the agent" is the audience either way.
   if (destination.ownerAgentId) {
-    return `People who can see the agent ${destination.name} will see ${subject}.`
+    return finderText('transferAudienceAgent', 'People who can see the agent {{name}} will see {{subject}}.', { name: destination.name, subject })
   }
-  if (destination.role === 'personal') return `Only you will see ${subject}.`
+  if (destination.role === 'personal') return finderText('transferAudiencePersonal', 'Only you will see {{subject}}.', { subject })
   if (destination.role === 'project' || destination.visibility === 'project') {
     const project = destination.projectName ?? destination.name
-    return `Everyone in the project ${project} will see ${subject}.`
+    return finderText('transferAudienceProject', 'Everyone in the project {{name}} will see {{subject}}.', { name: project, subject })
   }
   if (destination.visibility === 'organization') {
-    return `Everyone in the organisation will see ${subject}.`
+    return finderText('transferAudienceOrg', 'Everyone in the organisation will see {{subject}}.', { subject })
   }
-  return `People added to ${destination.name} will see ${subject}.`
+  return finderText('transferAudienceShared', 'People added to {{name}} will see {{subject}}.', { name: destination.name, subject })
 }
 
-const items = (count: number): string => `${count} ${count === 1 ? 'item' : 'items'}`
+const items = (count: number): string => finderText(count === 1 ? 'itemCount_one' : 'itemCount_other', count === 1 ? '{{count}} item' : '{{count}} items', { count })
 
 /**
  * "Move or copy “Plan” to P?" for one row, "Move or copy 3 items to P?" for a
@@ -91,7 +93,7 @@ export const transferPromptHeading = (input: {
   title?: string
 }): string => {
   const what = input.count === 1 && input.title ? `“${input.title}”` : items(input.count)
-  return `Move or copy ${what} to ${input.destinationName}?`
+  return finderText('transferPromptHeading', 'Move or copy {{what}} to {{destination}}?', { what, destination: input.destinationName })
 }
 
 /** The dialog's title, which changes the moment a foreign root is picked. */
@@ -100,8 +102,8 @@ export const moveToDialogTitle = (input: {
   crossRoot: boolean
 }): string =>
   input.crossRoot
-    ? `Move or copy ${items(input.count)}…`
-    : `Move ${items(input.count)} to…`
+    ? finderText('transferMoveOrCopyTitle', 'Move or copy {{count}} items…', { count: input.count })
+    : finderText('transferMoveTitle', 'Move {{count}} items to…', { count: input.count })
 
 /**
  * The blunt one. A move out of a personal space deletes every share on the
@@ -109,7 +111,7 @@ export const moveToDialogTitle = (input: {
  */
 export const transferSharingLine = (shareCount: number): string | null =>
   shareCount > 0
-    ? `Sharing with ${shareCount} ${shareCount === 1 ? 'person' : 'people'} ends.`
+    ? finderText(shareCount === 1 ? 'transferSharingEnds_one' : 'transferSharingEnds_other', shareCount === 1 ? 'Sharing with {{count}} person ends.' : 'Sharing with {{count}} people ends.', { count: shareCount })
     : null
 
 /**
@@ -124,15 +126,15 @@ export const transferRefusalSentence = (
 ): string => {
   switch (code) {
     case 'STORAGE_QUOTA_EXCEEDED':
-      return 'Not copied — storage is full.'
+      return finderText('transferRefusalQuota', 'Not copied — storage is full.')
     case 'TRANSFER_NOT_ACKNOWLEDGED':
-      return 'That move was not confirmed. Try the drag again.'
+      return finderText('transferRefusalNotConfirmed', 'That move was not confirmed. Try the drag again.')
     case 'TRANSFER_MIXED_SOURCES':
-      return 'Move or copy items from one root folder at a time.'
+      return finderText('transferRefusalMixed', 'Move or copy items from one root folder at a time.')
     default:
       return message && message.trim().length > 0
         ? message
-        : 'Those items could not be moved.'
+        : finderText('transferRefusalDefault', 'Those items could not be moved.')
   }
 }
 
@@ -147,7 +149,7 @@ export type TransferProgress = {
   sourceName: string
 }
 
-const number = (value: number): string => value.toLocaleString('en-GB')
+const number = (value: number): string => value.toLocaleString(i18n.language)
 
 /**
  * What the tray says, and the one place the two operations must not be blurred.
@@ -159,24 +161,27 @@ const number = (value: number): string => value.toLocaleString('en-GB')
  * move failed" over that would be a lie about where a person's documents are.
  */
 export const transferProgressSentence = (progress: TransferProgress): string => {
-  const verb = progress.operation === 'move' ? 'Moving' : 'Copying'
+  const verb = finderText(progress.operation === 'move' ? 'transferVerbMove' : 'transferVerbCopy', progress.operation === 'move' ? 'Moving' : 'Copying')
   switch (progress.status) {
     case 'queued':
     case 'running':
       return progress.total > 0
-        ? `${verb} ${items(progress.count)}… ${number(progress.done)} of ${number(progress.total)}`
-        : `${verb} ${items(progress.count)}…`
+        ? finderText('transferProgressRunning', '{{verb}} {{count}}… {{done}} of {{total}}', {
+            verb, count: items(progress.count), done: number(progress.done), total: number(progress.total),
+          })
+        : finderText('transferProgressRunningIndeterminate', '{{verb}} {{count}}…', {
+            verb, count: items(progress.count),
+          })
     case 'done':
       return progress.operation === 'move'
-        ? `Moved ${items(progress.total || progress.count)} to ${progress.destinationName}`
-        : `Copied ${items(progress.total || progress.count)} to ${progress.destinationName}`
+        ? finderText('transferProgressDoneMove', 'Moved {{count}} items to {{destination}}', { count: items(progress.total || progress.count), destination: progress.destinationName })
+        : finderText('transferProgressDoneCopy', 'Copied {{count}} items to {{destination}}', { count: items(progress.total || progress.count), destination: progress.destinationName })
     default:
       break
   }
   const reason = progress.error ? ` — ${progress.error}` : ''
   if (progress.operation === 'copy') {
-    return `Nothing was copied${reason}. Everything stayed in ${progress.sourceName}.`
+    return finderText('transferProgressFailedCopy', 'Nothing was copied{{reason}}. Everything stayed in {{source}}.', { reason, source: progress.sourceName })
   }
-  return `Moved ${number(progress.done)} of ${number(progress.total)}${reason}.`
-    + ` The rest stayed in ${progress.sourceName}.`
+  return finderText('transferProgressFailedMove', 'Moved {{done}} of {{total}}{{reason}}. The rest stayed in {{source}}.', { done: number(progress.done), total: number(progress.total), reason, source: progress.sourceName })
 }

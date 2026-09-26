@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import { before, test } from 'node:test'
 
 import { ApiClientProvider, type ApiClient } from '@nessie/client-core'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -8,10 +8,15 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { ShareDialog } from '../src/components/features/knowledge/finder/ShareDialog.js'
+import { initializeLocalization } from '../src/i18n/i18n.js'
 import {
-  SHARED_SEARCH_SENTENCE,
+  sharedSearchSentence,
   shareIntroSentence,
 } from '../src/components/features/knowledge/finder/sharing-copy.js'
+
+before(async () => {
+  await initializeLocalization()
+})
 
 /**
  * The Share dialog
@@ -86,7 +91,7 @@ test('a folder says that what is added later goes too', () => {
 
 test('the search limit is stated, and it is stated for both levels at once', () => {
   const markup = render()
-  assert.ok(SHARED_SEARCH_SENTENCE.includes('whatever their access'))
+  assert.ok(sharedSearchSentence().includes('whatever their access'))
   assert.match(markup, /not included in the recipient’s search, whatever their access/)
   // Both levels are on screen when that sentence is, so it cannot read as a
   // property of the lower one.
