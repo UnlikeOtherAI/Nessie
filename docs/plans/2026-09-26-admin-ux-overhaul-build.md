@@ -291,7 +291,7 @@ components:
 - `/settings/computers`: the executors list component with a
   `?filter=mine|shared` strip defaulting to mine, Pair a computer.
 - `/admin/security`: `TabBar` Audit log · Programs signed in as people.
-- `/admin/automations`: `TabBar` Schedules & triggers · Batch jobs ·
+- `/admin/automations`: `TabBar` Schedules and triggers · Batch jobs ·
   Workflows, each tab rendering the existing list page's body with its own
   intents; the three list pages' own headers collapse into the one
   Automations header.
@@ -459,7 +459,7 @@ Labels, titles, eyebrows, tab names, button labels and empty-state copy in the
 pages the restructure touched, per the plan's §7: Computers, Pair a computer,
 Programs signed in as you, Saved keys / Keys, AI models, Your AI plans, AI on
 your computer, Usage and limits, Access rules, System health, Mobile push
-setup, Status, People, Batch jobs, Schedules & triggers, Organisation,
+setup, Status, People, Batch jobs, Schedules and triggers, Organisation,
 Automatic team access, Prevent overrides, Sign out this device. Raw status
 enums to sentences belongs to phase 2.
 

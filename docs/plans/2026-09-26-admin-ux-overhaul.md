@@ -378,7 +378,7 @@ delete, local models, on this computer) stays in the "Computer" menu with its
 password or code confirmation. Your settings › Your computers and a project's
 Settings › Computers are this list filtered, opening the same page.
 
-**Automations.** Tabs Schedules & triggers · Batch jobs · Workflows. The first
+**Automations.** Tabs Schedules and triggers · Batch jobs · Workflows. The first
 is the current Triggers list with agent and project filters, its editor and
 detail unchanged in function (machine access included), and the raw JSON of
 webhook and event triggers folded under "Advanced" inside the editor; each

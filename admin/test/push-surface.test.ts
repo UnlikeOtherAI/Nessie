@@ -45,7 +45,7 @@ test('maps only exact push-targetable destinations to a structured surface', () 
   assert.equal(resolvePushSurface('/settings/notifications'), null)
 })
 
-test('Automations is the triggers surface only while it shows Schedules & triggers', () => {
+test('Automations is the triggers surface only while it shows Schedules and triggers', () => {
   // The bare address opens that tab, so it is the same list a trigger-health
   // push opens (`/admin/automations?tab=triggers`).
   assert.deepEqual(resolvePushSurface('/admin/automations'), { kind: 'triggers' })

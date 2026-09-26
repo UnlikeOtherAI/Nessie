@@ -534,7 +534,7 @@ the window to have focus. Under the same per-user lock used for session
 revocation, the API also verifies the heartbeat's exact refresh session is
 still live. Before delivering, the in-house worker checks whether any of that
 user's active sessions is already displaying the exact channel feed, reply
-conversation, operational-usage page, or Automations' Schedules & triggers
+conversation, operational-usage page, or Automations' Schedules and triggers
 list the notification would open. If so, it does not send an
 APNs/FCM/browser push—the realtime stream is already updating that destination.
 A foreground **desktop or browser** client elsewhere in Nessie is not

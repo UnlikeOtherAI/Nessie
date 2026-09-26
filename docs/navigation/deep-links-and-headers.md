@@ -99,7 +99,7 @@ registry row lists what its route reads beyond the path under `intent`
   to identify a knowledge space from `?spaceId=`, which the deep link strips
   the moment it opens the page; it reads `/knowledge-base/spaces/:id` now.
   The one query value it reads is `?tab=`, a state param: `/admin/automations`
-  bare or on `?tab=triggers` is Schedules & triggers, the `triggers` surface a
+  bare or on `?tab=triggers` is Schedules and triggers, the `triggers` surface a
   trigger-health push opens, and its other tabs are no surface.
 - **Task documents keep their owning surface.** A task with a project opens
   its document through `/projects/:projectId/docs?spaceId=&pageId=`, so the
