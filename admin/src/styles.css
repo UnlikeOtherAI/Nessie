@@ -3462,7 +3462,10 @@ html[data-desktop-platform='linux'] #root {
 .kb-document-title {
   font-family: var(--font-family-document-title);
   font-size: 3rem;
+  font-weight: 700;
   letter-spacing: -0.035em;
+  line-height: 1.25;
+  color: var(--tx);
 }
 
 @media (min-width: 640px) {
