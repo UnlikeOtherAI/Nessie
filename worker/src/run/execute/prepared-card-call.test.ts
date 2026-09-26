@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { Prisma } from '@prisma/client'
+
 import { runCardPostTool } from '../pa-tools/cards.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import { claimPreparedCardCall, recordPreparedCardOutcome } from './prepared-card-call.js'
@@ -39,7 +41,7 @@ const cardStore = (overrides: Record<string, unknown> = {}) => {
               && !('runId' in (expected as object)))
           if (!matches) return { count: 0 }
         }
-        row.preparedExecution = data.preparedExecution
+        row.preparedExecution = data.preparedExecution === Prisma.DbNull ? null : data.preparedExecution
         return { count: 1 }
       },
     },
@@ -59,7 +61,7 @@ test('the answer’s run takes the pressed button’s prepared call, once', asyn
     cardId: CARD_ID,
     call: {
       arguments: book.arguments,
-      toolCallId: 'prepared_0f6c1c504c1b4d5e9d402b7b5f7e8a01',
+      toolCallId: 'prep_0f6c1c504c1b4d5e9d402b7b5f7e8a01',
       toolName: 'room_book',
     },
   })
@@ -132,4 +134,19 @@ test('a call waiting on approval stays claimed, and the approved continuation ru
   assert.deepEqual(approved?.call, first.call)
   assert.deepEqual(row.preparedExecution, { runId: APPROVED_RUN_ID })
   assert.equal(await claim(prisma, RUN_ID), null, 'the suspended run no longer owns it')
+})
+
+test('the prepared call id fits the strictest provider limit', async () => {
+  const claimed = await claim(cardStore().prisma)
+  // OpenAI refuses a tool-call id over 40 characters.
+  assert.ok(claimed!.call.toolCallId.length <= 40, claimed!.call.toolCallId)
+})
+
+test('a run that ended before dispatching gives the claim back for the next run', async () => {
+  const { prisma, row } = cardStore()
+  const first = await claim(prisma)
+  assert.ok(first)
+  await recordPreparedCardOutcome(prisma, first, { runId: RUN_ID, toolCallsUsed: 0 })
+  assert.equal(row.preparedExecution, null)
+  assert.ok(await claim(prisma, OTHER_RUN_ID), 'a restart can still run the call')
 })

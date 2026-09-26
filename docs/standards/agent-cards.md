@@ -325,7 +325,12 @@ this standard, not an exception to it.
     (`PREPARED_TOOL_CALL_ID_PREFIX`, `tool-effect-ledger.ts`). A restarted
     run, a second run on the same answer, or a run answering several queued
     messages never repeats it; the claiming run, back after a crash, re-enters
-    it and the ledger answers from its record.
+    it from its checkpoint, the ledger answers from its record, and it still
+    records how the call ended. A run that ended before dispatching anything
+    (cancelled, stopped or over budget before its first batch) gives the
+    claim back, so a restart or continuation can still run the call. The id
+    fits the strictest provider limit (OpenAI's 40 characters), because the
+    model sees it whenever it takes the call over.
   - **An approval gate keeps it.** A prepared call whose tool needs approval
     suspends the run like any call; that run records no outcome, so its claim
     stays open, and the run that continues it once the person approves takes

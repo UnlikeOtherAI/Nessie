@@ -249,3 +249,29 @@ runDatabaseTest('an approved continuation takes over the suspended run\u2019s cl
   const row = await prisma.agentCard.findUniqueOrThrow({ where: { id: posted.cardId } })
   assert.deepEqual(row.preparedExecution, { runId: continuation.id })
 })
+
+runDatabaseTest('a run that dispatched nothing gives the claim back, and a restart can run the call', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  t.after(() => cleanup(prisma, s).then(() => prisma.$disconnect()))
+
+  const posted = await postCard(prisma, s)
+  const press = await personSays(prisma, s, 'Fri 14:00', posted.messageId)
+  await prisma.agentCard.update({
+    data: { resolvedActionKey: 'friday', resolvedAt: new Date(), resolvedByUserId: s.ownerId,
+      responseMessageId: press.id, status: 'resolved' },
+    where: { id: posted.cardId },
+  })
+  const cancelled = await prisma.run.create({ data: { agentId: s.agentId, status: 'running', threadId: s.threadId } })
+  const restart = await prisma.run.create({ data: { agentId: s.agentId, status: 'running', threadId: s.threadId } })
+  const claimFor = (runId: string) =>
+    claimPreparedCardCall(prisma, { messageId: press.id }, { agent: { id: s.agentId }, run: { id: runId } })
+
+  const claimed = await claimFor(cancelled.id)
+  assert.ok(claimed)
+  assert.ok(claimed.call.toolCallId.length <= 40)
+  await recordPreparedCardOutcome(prisma, claimed, { runId: cancelled.id, toolCallsUsed: 0 })
+  const row = await prisma.agentCard.findUniqueOrThrow({ where: { id: posted.cardId } })
+  assert.equal(row.preparedExecution, null)
+  assert.equal((await claimFor(restart.id))?.call.toolName, 'room_book')
+})

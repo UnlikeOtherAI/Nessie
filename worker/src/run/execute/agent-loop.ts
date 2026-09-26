@@ -438,9 +438,9 @@ export const runExecutionAgentLoop = async (
   }, { executeTool: executeMainTool, prepareTool: prepareMainTool })
 
   // A pressed card button's prepared call runs before the model is asked anything.
-  const prepared = input.resumeState ? null : await claimPreparedCardCall(deps.prisma, payload, context)
+  const prepared = await claimPreparedCardCall(deps.prisma, payload, context) // a resumed run re-enters it
   const loopResult = await runAgenticLoop({
-    ...preparedLoopInput(prepared, input.inference.decide),
+    ...preparedLoopInput(input.resumeState ? null : prepared, input.inference.decide),
     reviewCompletion: (messages, outputText) =>
       reviewFollowUp(input.inference.runUtility, messages, outputText, input.invocationSink, input.inference.decide),
     budget: input.budget,

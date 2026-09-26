@@ -30,10 +30,12 @@ export type PreparedCardCall = { cardId: string; call: ProviderToolCall }
  * and marked, so the ledger claims it whatever the tool's category — a
  * workspace tool a model calls is not claimed, but one the platform runs
  * without the model reading anything must never run twice
- * (`tool-effect-ledger.ts`). Hyphens dropped to stay inside every provider's
- * tool-call id alphabet and length.
+ * (`tool-effect-ledger.ts`). The id reaches the provider whenever the model
+ * takes the call over, so it fits the strictest limit a provider sets: OpenAI
+ * refuses a tool-call id over 40 characters, and `prep_` plus the card id's
+ * 32 hex digits is 37.
  */
-export const PREPARED_TOOL_CALL_ID_PREFIX = 'prepared_'
+export const PREPARED_TOOL_CALL_ID_PREFIX = 'prep_'
 const preparedToolCallId = (cardId: string): string =>
   `${PREPARED_TOOL_CALL_ID_PREFIX}${cardId.replaceAll('-', '')}`
 
@@ -120,14 +122,31 @@ export const preparedLoopInput = (
  * Whether the call finished on its own, for the card's note in later runs.
  * Best-effort: the run's outcome is already decided, and a missing note only
  * reads as "started". A run that suspended (the call waits on an approval)
- * records nothing: the claim stays open for the run that continues it.
+ * records nothing: the claim stays open for the run that continues it. A run
+ * that ended before dispatching anything (stopped, cancelled, over budget
+ * before its first batch) gives the claim back, because the call never ran
+ * and a restart or continuation must still be able to run it.
  */
 export const recordPreparedCardOutcome = async (
   prisma: Pick<PrismaClient, 'agentCard'>,
   prepared: PreparedCardCall,
-  input: { pendingApproval?: unknown; pendingInput?: unknown; preparedCompleted?: boolean; runId: string },
+  input: {
+    pendingApproval?: unknown
+    pendingInput?: unknown
+    preparedCompleted?: boolean
+    runId: string
+    toolCallsUsed?: number
+  },
 ): Promise<void> => {
   if (input.pendingApproval || input.pendingInput) return
+  if (input.toolCallsUsed === 0) {
+    const released: PreparedCardExecution = { runId: input.runId }
+    await prisma.agentCard.updateMany({
+      data: { preparedExecution: Prisma.DbNull },
+      where: { id: prepared.cardId, preparedExecution: { equals: released } },
+    }).catch((error: unknown) => console.warn('[worker] prepared card claim not released', error))
+    return
+  }
   const execution: PreparedCardExecution = {
     outcome: input.preparedCompleted ? 'succeeded' : 'handed_to_model',
     runId: input.runId,
