@@ -148,6 +148,12 @@ try {
   await page.locator('[data-page-header-action="new"]:visible').last().click()
   await page.getByRole('menuitem', { name: 'Document' }).click()
   await page.getByRole('textbox', { name: 'Document title' }).fill(publishedTitle)
+  const labelField = page.getByRole('textbox', { name: 'Labels' })
+  await labelField.fill('discard, keep ')
+  await page.getByRole('button', { name: 'Remove discard' }).click()
+  assert.equal(await page.getByRole('button', { name: 'Remove keep' }).count(), 1)
+  await labelField.fill('last')
+  await page.screenshot({ path: '/private/tmp/nessie-knowledge-label-editor.png', fullPage: true })
   await page.getByRole('button', { name: 'Publish', exact: true }).click()
   await page.getByRole('heading', { name: publishedTitle, exact: true }).last().waitFor()
   assert.equal(await page.getByRole('button', { name: `Back from ${publishedTitle}` }).count(), 0,
@@ -157,6 +163,7 @@ try {
   })
   const published = publishedPages.find(({ title }) => title === publishedTitle)
   assert.equal(published?.status, 'published', 'primary creation action publishes immediately')
+  assert.deepEqual(published?.labels?.toSorted(), ['keep', 'last'], 'chips and unfinished text save as labels')
   const documentActions = page.locator('[data-testid="knowledge-detail-action-bar"]:visible').last()
   await documentActions.waitFor()
   assert.equal(await page.locator('header [data-page-header-action="history"]:visible').count(), 0,

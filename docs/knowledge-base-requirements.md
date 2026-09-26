@@ -457,6 +457,9 @@ that column):
     fills the whole main area as a borderless writing canvas: the title and body
     are edited in place with descriptive placeholders, labels and the optional
     change comment sit below the body, and there is no separate Summary field.
+    Typing a comma or space commits a label into a removable chip beside the
+    input, matching its saved appearance. An unfinished label is included when
+    the document is saved; previously saved labels containing spaces remain intact.
     On creation its Location picker chooses the space root or an existing folder
     as the parent. **New document** is available at the space root and inside
     folders, never on an open document. Creation offers **Publish** as its

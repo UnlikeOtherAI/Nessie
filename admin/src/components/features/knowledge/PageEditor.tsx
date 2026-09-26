@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
+import { faXmark } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type {
   KnowledgePageRecord,
   SavePageInput,
@@ -7,6 +9,7 @@ import { toFormErrors } from '../../../facades/forms/form-errors'
 import { draftKey, useDraft } from '../../../navigation/useDraft'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 import { FormError } from '../../shared/FormActions'
+import { Pill } from '../../primitives/Pill'
 import { KnowledgePane } from './KnowledgePane'
 import { RichTextEditor } from './RichTextEditor'
 
@@ -16,6 +19,7 @@ type PageDraft = {
   body: string
   changeComment: string
   labels: string
+  labelInput?: string
   parentPageId: string | null
   title: string
 }
@@ -99,6 +103,7 @@ export const PageEditor = ({
       body: page?.latestVersion?.body ?? '',
       changeComment: '',
       labels: page?.labels.join(', ') ?? '',
+      labelInput: '',
       parentPageId: mode === 'create' ? parentPageId ?? null : page?.parentPageId ?? null,
       title: page?.title ?? initialTitle ?? '',
     }),
@@ -120,6 +125,25 @@ export const PageEditor = ({
     [setDraft],
   )
   const setBody = useCallback((next: string) => patchDraft({ body: next }), [patchDraft])
+  const committedLabels = splitLabels(labels)
+  const labelInput = pageDraft.draft.labelInput ?? ''
+
+  const updateLabelInput = (value: string) => {
+    const parts = value.split(/[,\s]+/)
+    if (parts.length === 1) {
+      patchDraft({ labelInput: value })
+      return
+    }
+    const complete = parts.slice(0, -1).filter(Boolean)
+    patchDraft({
+      labels: [...committedLabels, ...complete].join(', '),
+      labelInput: parts.at(-1) ?? '',
+    })
+  }
+
+  const removeLabel = (index: number) => {
+    patchDraft({ labels: committedLabels.filter((_, position) => position !== index).join(', ') })
+  }
 
   useEffect(() => {
     setTitleError(undefined)
@@ -139,7 +163,7 @@ export const PageEditor = ({
     try {
       await onSubmit({
         title: title.trim(),
-        labels: splitLabels(labels),
+        labels: [...committedLabels, ...splitLabels(labelInput)],
         body,
         changeComment: changeComment.trim() || null,
         parentPageId: mode === 'create' ? draftParentPageId : undefined,
@@ -257,13 +281,29 @@ export const PageEditor = ({
             </div>
 
             <div className="mt-10 grid gap-2 border-t border-[color:var(--sep)] py-5">
-              <input
-                aria-label="Labels"
-                className="w-full border-none bg-transparent py-2 text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
-                onChange={(event) => patchDraft({ labels: event.target.value })}
-                placeholder="Add labels, separated by commas"
-                value={labels}
-              />
+              <div className="flex min-h-10 flex-wrap items-center gap-2 py-1">
+                {committedLabels.map((label, index) => (
+                  <Pill key={`${label}-${index}`} radius="chip" tone="muted" uppercase={false}>
+                    {label}
+                    <button
+                      aria-label={`Remove ${label}`}
+                      className="ml-1.5 rounded text-[color:var(--tx3)] hover:text-[color:var(--tx)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--accent)]"
+                      onClick={() => removeLabel(index)}
+                      type="button"
+                    >
+                      <FontAwesomeIcon icon={faXmark} />
+                    </button>
+                  </Pill>
+                ))}
+                <input
+                  aria-label="Labels"
+                  className="min-w-32 flex-1 border-none bg-transparent py-1 text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
+                  id={`${formId}-labels`}
+                  onChange={(event) => updateLabelInput(event.target.value)}
+                  placeholder={committedLabels.length ? 'Add another label…' : 'Add labels…'}
+                  value={labelInput}
+                />
+              </div>
               <input
                 aria-label="Change comment"
                 className="w-full border-none bg-transparent py-2 text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"

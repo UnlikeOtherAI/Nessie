@@ -22,7 +22,7 @@ test('the page editor is a borderless writing canvas with descriptive placeholde
   assert.match(styles, /@media \(min-width: 640px\)[\s\S]*?\.kb-document-title\s*\{[^}]*font-size: 4rem/)
   assert.doesNotMatch(editor, /Create page|New page|Edit page/)
   assert.match(editor, /placeholder="Start writing…"/)
-  assert.match(editor, /placeholder="Add labels, separated by commas"/)
+  assert.match(editor, /placeholder=\{committedLabels\.length \? 'Add another label…' : 'Add labels…'\}/)
   assert.doesNotMatch(editor, /label="Title"|label="Summary"|label="Body"/)
 
   const richText = read('RichTextEditor.tsx')
