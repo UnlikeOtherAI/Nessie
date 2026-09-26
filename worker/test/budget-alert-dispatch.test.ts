@@ -237,5 +237,5 @@ test('budget alerts include the Ops usage deep link in native payloads', async (
     { ...teamPayload(), scopeType: 'organization', scopeId: 'org-1', scopeLabel: 'Acme' },
   )
 
-  assert.equal(apnsPayloads[0]?.data?.url, '/ops/usage')
+  assert.equal(apnsPayloads[0]?.data?.url, '/admin/usage')
 })

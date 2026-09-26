@@ -74,7 +74,7 @@ export const handleRunExecutionFailure = async (
 
   // A run that failed on its owner's personal subscription should degrade the
   // subscription's visible health, so a repeatedly broken provider/model choice
-  // is visible on Settings → Connections instead of only in the worker log.
+  // is visible on Your settings › Connected accounts instead of only in the worker log.
   await noteSubscriptionFailure(deps, context, { error: input.error, messageText })
 
   // Every run failure is logged, not only the unattended ones.

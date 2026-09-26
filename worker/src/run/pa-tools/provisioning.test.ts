@@ -307,7 +307,7 @@ test('agent_create runs the shared avatar seam and survives it failing', async (
   assert.match(result.outputPreview, /^portrait: none \(reason: "The model service is not configured\."\)$/m)
   assert.doesNotMatch(result.outputPreview, /word for word|Tell them/)
   // A person is handed links, not the UUIDs the tool used to print.
-  assert.match(result.outputPreview, new RegExp(`\\[Researcher\\]\\(/agents/${AGENT_ID}\\)`))
+  assert.match(result.outputPreview, new RegExp(`\\[Researcher\\]\\(/admin/agents/${AGENT_ID}\\)`))
   assert.doesNotMatch(result.outputPreview, /agentId=|channelId=/)
   assert.match(result.outputPreview, /^Lives in: nowhere yet — add it to any channel\.$/m)
   // And an operator can read it without the chat transcript, exactly as
@@ -421,7 +421,7 @@ test('agent_list gives a member the agents they may see, with the ids bind and t
   assert.match(result.outputPreview, /Agents \(1\)/)
   assert.equal(
     result.outputPreview.split('\n')[1],
-    `- [Hardware Watch](/agents/${AGENT_ID}) | role=monitor | [#ops](/channels/${TARGET_CHANNEL_ID})`,
+    `- [Hardware Watch](/admin/agents/${AGENT_ID}) | role=monitor | [#ops](/channels/${TARGET_CHANNEL_ID})`,
   )
   assert.doesNotMatch(result.outputPreview, /agentId=|channelId=/)
 })
@@ -476,7 +476,7 @@ test('agent_list gives an owner unbound agents too, and narrows on a named one',
   assert.match(result.outputPreview, /Agents \(1\)/)
   assert.match(
     result.outputPreview,
-    new RegExp(`^- \\[Hardware Watch\\]\\(/agents/${AGENT_ID}\\) \\| role=monitor \\| not in any channel yet$`, 'm'),
+    new RegExp(`^- \\[Hardware Watch\\]\\(/admin/agents/${AGENT_ID}\\) \\| role=monitor \\| not in any channel yet$`, 'm'),
   )
   assert.doesNotMatch(result.outputPreview, /Release Reporter/)
 })
@@ -689,8 +689,8 @@ test('agent_trigger_create stamps launchOrigin with the creator and their UOA te
   const [headline, detail] = result.outputPreview.split('\n')
   assert.equal(
     headline,
-    'Created scheduled trigger [Daily digest](/agents/triggers/4f7d1c00-0e64-4d10-a517-0d0b69c1d010)'
-    + ` for [Hardware Watch](/agents/${AGENT_ID})`,
+    'Created scheduled trigger [Daily digest](/admin/automations/triggers/4f7d1c00-0e64-4d10-a517-0d0b69c1d010)'
+    + ` for [Hardware Watch](/admin/agents/${AGENT_ID})`,
   )
   assert.match(
     detail ?? '',
@@ -745,8 +745,8 @@ test('agent_trigger_create links a trigger without a name by its type', async ()
 
   assert.equal(
     result.outputPreview,
-    'Created [manual trigger](/agents/triggers/4f7d1c00-0e64-4d10-a517-0d0b69c1d013)'
-    + ` for [Hardware Watch](/agents/${AGENT_ID})\n`
+    'Created [manual trigger](/admin/automations/triggers/4f7d1c00-0e64-4d10-a517-0d0b69c1d013)'
+    + ` for [Hardware Watch](/admin/agents/${AGENT_ID})\n`
     + `status=active | posts into [#ops](/channels/${TARGET_CHANNEL_ID})`,
   )
 })

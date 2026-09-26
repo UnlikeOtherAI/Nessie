@@ -260,7 +260,7 @@ export const runExecutorListTool = async (
     inputSummary: '',
     outputPreview:
       formatSection(`Executors (${executors.length})`, executors.map(formatExecutor))
-      || 'No executors are available to you. Open /agents/executors to pair one.',
+      || 'No executors are available to you. Open /admin/computers to pair one.',
     toolName: 'executor_list',
   }
 }
@@ -321,7 +321,7 @@ export const runExecutorPairTool = async (
   return {
     inputSummary: '',
     outputPreview:
-      'Open /agents/executors to pair an executor. You will choose its immutable private, project, or organization scope; '
+      'Open /admin/computers to pair an executor. You will choose its immutable private, project, or organization scope; '
       + 'private pairing also requires exact human and agent assignments. The companion then completes the signed pairing.',
     toolName: 'executor_pair',
   }
