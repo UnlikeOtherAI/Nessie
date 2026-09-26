@@ -142,7 +142,10 @@ organization; their agent counts are scoped to that exact team.
 `GET /api/teams/:teamId/inference/model-catalog` and its single-pair and bulk
 `PATCH` variants use the same provider/model partial filters, cursor page
 contract, and `{ enabled, updatedCount }` bulk result as the organization
-catalogue. They use the existing Team Settings organization-admin gate. Bulk
+catalogue. They use the existing Team Settings organization-admin gate
+(`requireOrgAdmin`: owner or admin, for any team of the organisation). The
+page reads a team's pages without a pagination scope of its own: its
+`?scope=team:<id>` names the team and a scope change drops the cursor. Bulk
 writes share the organization catalogue’s bounded 60-second interactive
 transaction because a live Ledger catalogue can contain hundreds of pairs.
 
@@ -187,9 +190,23 @@ carrying the provider's own words.
 
 | Screen | Element | Goes to |
 |---|---|---|
-| Admin sidebar → Organisation | "AI models", shown to owners and admins; the organisation catalogue itself answers owners only | `/admin/models` — home |
+| Admin sidebar → Organisation | "AI models", shown to owners and admins | `/admin/models` — home |
 | Agent Designer → model picker | `ModelUnavailableNotice`, owner-only link | `/admin/models` |
-| A team's page (Admin → Teams → the team) | "AI models" tab, the same catalogue surface as the organisation's | `/admin/teams/:teamId?tab=models` — product-policy narrowing |
+| A team's page (Admin → Teams → the team) | Overrides → "Models this team may use" and "AI on people's own computers" | `/admin/models?scope=team:<id>` — product-policy narrowing |
+
+**One page, a scope switch.** `/admin/models` is the organisation's catalogue
+and every team's narrowing of it, chosen by `?scope=organisation|team:<id>`
+(the Organisation pages' switch, [scoped-settings.md](scoped-settings.md)).
+The scopes follow the routes' gates, not the session's team: the organisation
+is offered to its owner (`GET /api/inference/model-catalog` is `requireOwner`)
+and every team of the organisation to any owner or admin (the team routes are
+`requireOrgAdmin`). An admin therefore sees the organisation listed disabled,
+with the reason, and lands on a team — which is written into the address, so a
+toggle never targets a scope the address does not name. Test is the owner's at
+either scope, so a team admin sees it disabled, saying who may send one. Each
+scope carries its own "AI on people's own computers" policy
+(`LocalInferenceEnablement` at `organization` or `team`), shown only to the
+sign-in provider's organisation-administration standing its reads require.
 
 Registered in `admin/src/router-lazy-pages.ts`, `admin/src/router.tsx`,
 `admin/src/layouts/admin-shell/admin-nav-items.tsx` and

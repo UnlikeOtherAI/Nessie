@@ -49,8 +49,11 @@ Plan and as-built deltas:
   two of them must never have an ambiguous send path, which is why they are
   three families rather than one with a mode.
 - **One panel, two homes** (`components/features/mailbox-connections/`): personal
-  mailboxes on `/settings/accounts`, shared ones on `/admin/connections`,
-  scope as a parameter â€” the `CloudBrowserPanel` shape. Both carry per-agent
+  mailboxes on `/settings/accounts`, shared ones on `/admin/connections` at
+  their team's scope (`?scope=team:<id>`, which lists that team's mailboxes and
+  shares a new one with it), scope as a parameter — the `CloudBrowserPanel`
+  shape. A mail surface's "Open mailbox settings" finds a shared mailbox's team
+  when it is pressed and opens that scope. Both carry per-agent
   access rows: a connection no agent may use does nothing. Connecting resolves
   and proves both legs before it stores, and only a provider rejection
   (`auth`-kind) flips a connection to `needs_reauthorization`. The personal
