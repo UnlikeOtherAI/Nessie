@@ -32,5 +32,37 @@
     "loadError": "No se pudo cargar este hilo. Es posible que se haya eliminado.",
     "deletedReply": "No puedes responder a un mensaje eliminado.",
     "alsoSendTo": "Enviar también a {{channel}}"
+  },
+  "createChannel": {
+    "error": "No se pudo crear el canal.",
+    "title": "Crear un canal",
+    "name": "Nombre",
+    "placeholder": "p. ej., revisiones-diseño",
+    "nameHelp": "Letras minúsculas, números y guiones. Los espacios se convierten en guiones.",
+    "visibility": "Visibilidad",
+    "public": "Público",
+    "protected": "Protegido",
+    "publicHelp": "Cualquier persona de la organización puede encontrar este canal, leerlo y unirse.",
+    "protectedHelp": "Se muestra con un candado. El resto solo ve su nombre y miembros; alguien que ya esté puede añadirlos.",
+    "missingTeam": "Este proyecto no tiene un equipo asociado. No se puede crear el canal.",
+    "cancel": "Cancelar",
+    "submit": "Crear canal",
+    "inProject": "en {{name}}"
+  },
+  "incomingCall": {
+    "incoming": "Llamada entrante",
+    "open": "Llamada abierta",
+    "missed": "Llamada perdida",
+    "acceptError": "No se pudo aceptar la llamada",
+    "started": "{{name}} inició una llamada",
+    "inChannel": "en #{{channel}}",
+    "ringingDescription": "Únete cuando quieras o rechaza la invitación.",
+    "openDescription": "Esta llamada ya está abierta. Aún puedes unirte con el enlace.",
+    "missedDescription": "La llamada ya no está sonando. El enlace seguirá disponible si aún está en curso.",
+    "errorDescription": "Vuelve a intentar aceptar o únete desde el enlace.",
+    "decline": "Rechazar",
+    "accept": "Aceptar",
+    "close": "Cerrar",
+    "join": "Unirse a la llamada"
   }
 }

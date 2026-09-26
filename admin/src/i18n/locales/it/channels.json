@@ -32,5 +32,37 @@
     "loadError": "Impossibile caricare questo thread. Potrebbe essere stato rimosso.",
     "deletedReply": "Non puoi rispondere a un messaggio eliminato.",
     "alsoSendTo": "Invia anche a {{channel}}"
+  },
+  "createChannel": {
+    "error": "Impossibile creare il canale.",
+    "title": "Crea un canale",
+    "name": "Nome",
+    "placeholder": "es. revisioni-design",
+    "nameHelp": "Lettere minuscole, numeri e trattini. Gli spazi diventano trattini.",
+    "visibility": "Visibilità",
+    "public": "Pubblico",
+    "protected": "Protetto",
+    "publicHelp": "Chiunque nell’organizzazione può trovare questo canale, leggerlo e partecipare.",
+    "protectedHelp": "Indicato con un lucchetto. Gli altri vedono solo il nome e i membri; chi è già nel canale può aggiungerli.",
+    "missingTeam": "Il progetto non ha un team associato. Non è possibile creare il canale.",
+    "cancel": "Annulla",
+    "submit": "Crea canale",
+    "inProject": "in {{name}}"
+  },
+  "incomingCall": {
+    "incoming": "Chiamata in arrivo",
+    "open": "Chiamata aperta",
+    "missed": "Chiamata persa",
+    "acceptError": "Impossibile accettare la chiamata",
+    "started": "{{name}} ha avviato una chiamata",
+    "inChannel": "in #{{channel}}",
+    "ringingDescription": "Partecipa quando vuoi oppure rifiuta l’invito.",
+    "openDescription": "Questa chiamata è già aperta. Puoi comunque partecipare dal link.",
+    "missedDescription": "La chiamata non squilla più. Il link resta disponibile se è ancora in corso.",
+    "errorDescription": "Prova ad accettare di nuovo oppure partecipa dal link.",
+    "decline": "Rifiuta",
+    "accept": "Accetta",
+    "close": "Chiudi",
+    "join": "Partecipa alla chiamata"
   }
 }

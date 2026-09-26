@@ -32,5 +32,37 @@
     "loadError": "This thread could not be loaded. It may have been removed.",
     "deletedReply": "You can’t reply to a deleted message.",
     "alsoSendTo": "Also send to {{channel}}"
+  },
+  "createChannel": {
+    "error": "Unable to create channel.",
+    "title": "Create a channel",
+    "name": "Name",
+    "placeholder": "e.g. design-reviews",
+    "nameHelp": "Lowercase letters, numbers, and hyphens. Spaces become hyphens.",
+    "visibility": "Visibility",
+    "public": "Public",
+    "protected": "Protected",
+    "publicHelp": "Anyone in the organization can find this channel, read it, and join.",
+    "protectedHelp": "Shown with a lock. People outside it see only its name and who is in it, and are added by someone already here.",
+    "missingTeam": "This project has no resolved team. Channel creation is unavailable.",
+    "cancel": "Cancel",
+    "submit": "Create channel",
+    "inProject": "in {{name}}"
+  },
+  "incomingCall": {
+    "incoming": "Incoming call",
+    "open": "Call is open",
+    "missed": "Call missed",
+    "acceptError": "Couldn’t accept call",
+    "started": "{{name}} started a call",
+    "inChannel": "in #{{channel}}",
+    "ringingDescription": "Join when you’re ready, or decline this invitation.",
+    "openDescription": "This call is already open. You can still join with the link.",
+    "missedDescription": "This call is no longer ringing. The link remains available if the call is still running.",
+    "errorDescription": "Try accepting again, or join from the link.",
+    "decline": "Decline",
+    "accept": "Accept",
+    "close": "Close",
+    "join": "Join call"
   }
 }

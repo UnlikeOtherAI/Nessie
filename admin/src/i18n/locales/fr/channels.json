@@ -32,5 +32,37 @@
     "loadError": "Impossible de charger ce fil. Il a peut-être été supprimé.",
     "deletedReply": "Vous ne pouvez pas répondre à un message supprimé.",
     "alsoSendTo": "Envoyer aussi dans {{channel}}"
+  },
+  "createChannel": {
+    "error": "Impossible de créer le canal.",
+    "title": "Créer un canal",
+    "name": "Nom",
+    "placeholder": "ex. revues-design",
+    "nameHelp": "Lettres minuscules, chiffres et traits d’union. Les espaces deviennent des traits d’union.",
+    "visibility": "Visibilité",
+    "public": "Public",
+    "protected": "Protégé",
+    "publicHelp": "Toute personne de l’organisation peut trouver ce canal, le lire et le rejoindre.",
+    "protectedHelp": "Affiché avec un cadenas. Les autres ne voient que son nom et ses membres ; un membre peut les ajouter.",
+    "missingTeam": "Aucune équipe ne correspond à ce projet. La création du canal est indisponible.",
+    "cancel": "Annuler",
+    "submit": "Créer le canal",
+    "inProject": "dans {{name}}"
+  },
+  "incomingCall": {
+    "incoming": "Appel entrant",
+    "open": "Appel en cours",
+    "missed": "Appel manqué",
+    "acceptError": "Impossible d’accepter l’appel",
+    "started": "{{name}} a démarré un appel",
+    "inChannel": "dans #{{channel}}",
+    "ringingDescription": "Rejoignez l’appel quand vous êtes prêt ou refusez l’invitation.",
+    "openDescription": "Cet appel est déjà ouvert. Vous pouvez toujours le rejoindre avec le lien.",
+    "missedDescription": "Cet appel ne sonne plus. Le lien reste disponible si l’appel est toujours en cours.",
+    "errorDescription": "Réessayez d’accepter ou rejoignez l’appel avec le lien.",
+    "decline": "Refuser",
+    "accept": "Accepter",
+    "close": "Fermer",
+    "join": "Rejoindre l’appel"
   }
 }

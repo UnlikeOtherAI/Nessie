@@ -32,5 +32,37 @@
     "loadError": "Dieser Thread konnte nicht geladen werden. Möglicherweise wurde er entfernt.",
     "deletedReply": "Auf eine gelöschte Nachricht kannst du nicht antworten.",
     "alsoSendTo": "Auch an {{channel}} senden"
+  },
+  "createChannel": {
+    "error": "Kanal konnte nicht erstellt werden.",
+    "title": "Kanal erstellen",
+    "name": "Name",
+    "placeholder": "z. B. design-reviews",
+    "nameHelp": "Kleinbuchstaben, Zahlen und Bindestriche. Leerzeichen werden zu Bindestrichen.",
+    "visibility": "Sichtbarkeit",
+    "public": "Öffentlich",
+    "protected": "Geschützt",
+    "publicHelp": "Jede Person in der Organisation kann diesen Kanal finden, lesen und ihm beitreten.",
+    "protectedHelp": "Mit einem Schloss gekennzeichnet. Außenstehende sehen nur den Namen und die Mitglieder; Mitglieder können weitere Personen hinzufügen.",
+    "missingTeam": "Diesem Projekt ist kein Team zugeordnet. Der Kanal kann nicht erstellt werden.",
+    "cancel": "Abbrechen",
+    "submit": "Kanal erstellen",
+    "inProject": "in {{name}}"
+  },
+  "incomingCall": {
+    "incoming": "Eingehender Anruf",
+    "open": "Anruf läuft",
+    "missed": "Verpasster Anruf",
+    "acceptError": "Anruf konnte nicht angenommen werden",
+    "started": "{{name}} hat einen Anruf gestartet",
+    "inChannel": "in #{{channel}}",
+    "ringingDescription": "Tritt bei, wenn du bereit bist, oder lehne die Einladung ab.",
+    "openDescription": "Dieser Anruf ist bereits geöffnet. Du kannst weiterhin über den Link beitreten.",
+    "missedDescription": "Der Anruf klingelt nicht mehr. Der Link bleibt verfügbar, solange der Anruf läuft.",
+    "errorDescription": "Versuche erneut, den Anruf anzunehmen, oder nutze den Link.",
+    "decline": "Ablehnen",
+    "accept": "Annehmen",
+    "close": "Schließen",
+    "join": "Anruf beitreten"
   }
 }

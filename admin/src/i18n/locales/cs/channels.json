@@ -32,5 +32,37 @@
     "loadError": "Vlákno se nepodařilo načíst. Mohlo být odstraněno.",
     "deletedReply": "Na odstraněnou zprávu nelze odpovědět.",
     "alsoSendTo": "Poslat také do kanálu {{channel}}"
+  },
+  "createChannel": {
+    "error": "Kanál se nepodařilo vytvořit.",
+    "title": "Vytvořit kanál",
+    "name": "Název",
+    "placeholder": "např. revize-návrhů",
+    "nameHelp": "Malá písmena, číslice a pomlčky. Mezery se změní na pomlčky.",
+    "visibility": "Viditelnost",
+    "public": "Veřejný",
+    "protected": "Chráněný",
+    "publicHelp": "Kdokoli v organizaci může tento kanál najít, číst a připojit se k němu.",
+    "protectedHelp": "Zobrazuje se se zámkem. Ostatní vidí jen jeho název a členy; přidat je může někdo, kdo už v kanálu je.",
+    "missingTeam": "Projekt nemá přiřazený tým. Kanál nelze vytvořit.",
+    "cancel": "Zrušit",
+    "submit": "Vytvořit kanál",
+    "inProject": "v projektu {{name}}"
+  },
+  "incomingCall": {
+    "incoming": "Příchozí hovor",
+    "open": "Hovor probíhá",
+    "missed": "Zmeškaný hovor",
+    "acceptError": "Hovor se nepodařilo přijmout",
+    "started": "{{name}} zahájil(a) hovor",
+    "inChannel": "v kanálu #{{channel}}",
+    "ringingDescription": "Připojte se, až budete připraveni, nebo pozvánku odmítněte.",
+    "openDescription": "Tento hovor už je otevřený. Stále se můžete připojit pomocí odkazu.",
+    "missedDescription": "Hovor už nezvoní. Odkaz zůstane dostupný, pokud hovor stále probíhá.",
+    "errorDescription": "Zkuste hovor přijmout znovu nebo se připojte přes odkaz.",
+    "decline": "Odmítnout",
+    "accept": "Přijmout",
+    "close": "Zavřít",
+    "join": "Připojit se k hovoru"
   }
 }
