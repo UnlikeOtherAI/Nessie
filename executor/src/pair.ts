@@ -22,6 +22,7 @@ import {
 } from '@nessie/schemas'
 
 import { executorApi } from './api-client.js'
+import { localCommandPolicyOf, parseLocalCommandPolicy, type LocalCommandPolicy } from './command-policy.js'
 import { planCodingSessions, type CodingSessionsRequest } from './coding-sessions-policy.js'
 import { assertHostSupportsOperations, buildSignedDescriptor } from './descriptor.js'
 import { compileExecutorEgressPolicy } from './egress-policy.js'
@@ -178,6 +179,7 @@ const configuredOperationKeys = (
   host: ExecutorHost,
   commandAllowlist: readonly string[],
   mcpServerCount: number,
+  allowAllCommands = false,
 ): string[] => {
   const requested = new Set(requestedOperationKeys)
   if (requested.size === 0 || requested.size !== requestedOperationKeys.length) {
@@ -224,7 +226,7 @@ const configuredOperationKeys = (
   // An enabled operation that can never succeed is a misconfiguration, not a
   // policy: with no permitted program, every command.run would be refused at
   // dispatch while the executor advertised the capability.
-  if (requested.has(COMMAND_OPERATION_KEY) && commandAllowlist.length === 0) {
+  if (requested.has(COMMAND_OPERATION_KEY) && commandAllowlist.length === 0 && !allowAllCommands) {
     throw new Error('Name at least one permitted program before enabling command.run.')
   }
   const requestedMcpOperations = MCP_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey))
@@ -275,14 +277,19 @@ export const configureExecutorLocalPolicy = async (
   nativeHelperPath?: string,
   host: ExecutorHost = detectExecutorHost(),
   workspaceFolders: readonly ExecutorWorkspaceFolder[] = state.workspaceFolders,
-  commandAllowlist: readonly string[] = state.descriptor.commandAllowlist ?? [],
+  commandAllowlist?: readonly string[],
   // An omitted list keeps the named servers; an empty one removes them all,
   // which the operation check below then refuses while mcp.* stays enabled.
   mcpServers: readonly ExecutorLocalMcpServer[] = state.mcpServers ?? [],
   // The built-in coding-sessions bridge is never a named server: the executor
   // generates its entry from this, and its power facts join the descriptor.
   codingSessions: CodingSessionsRequest = {},
+  commandPolicy?: LocalCommandPolicy,
 ): Promise<ExecutorLocalState> => {
+  const localRules = commandPolicy !== undefined ? parseLocalCommandPolicy(commandPolicy)
+    : commandAllowlist !== undefined
+      ? parseLocalCommandPolicy({ ...localCommandPolicyOf(state), mode: 'allowlist', allowlist: [...commandAllowlist] })
+      : localCommandPolicyOf(state)
   const canonicalWorkspaceFolders = sameWorkspaceFolders(workspaceFolders, state.workspaceFolders)
     ? state.workspaceFolders
     : await configureExecutorWorkspaceFolders(workspaceFolders)
@@ -297,14 +304,15 @@ export const configureExecutorLocalPolicy = async (
     workspaceFolders: canonicalWorkspaceFolders,
   })
   const namedMcpServers = bridge.servers
-  const permittedPrograms = configuredCommandAllowlist(commandAllowlist)
+  const permittedPrograms = configuredCommandAllowlist(commandAllowlist ?? state.descriptor.commandAllowlist ?? [])
   const operationKeys = configuredOperationKeys(
     requestedOperationKeys,
     Boolean(state.browserSandbox),
     Boolean(state.codexSandbox),
     host,
-    permittedPrograms,
+    localRules.allowlist,
     namedMcpServers.length,
+    localRules.mode === 'all',
   )
   const helper = nativeHelperPath
     ? await verifyNativeHelperPath(nativeHelperPath)
@@ -315,6 +323,8 @@ export const configureExecutorLocalPolicy = async (
   await bridge.persist(operationKeys)
   const next: ExecutorLocalState = {
     ...state,
+    ...(commandPolicy !== undefined || (state.commandPolicy && commandAllowlist !== undefined)
+      ? { commandPolicy: localRules } : {}),
     // Rebuilt field by field rather than spread over the previous descriptor:
     // an emptied allowlist has to leave no key behind, because a `commandAllowlist`
     // present but undefined is not canonicalizable and would fail the next digest.
@@ -380,7 +390,8 @@ export const configureExecutorBrowserSandbox = async (
     ...currentNonBrowserOperations,
     'sandbox.stop',
     ...BROWSER_OPERATION_KEYS,
-  ])], true, Boolean(state.codexSandbox), host, state.descriptor.commandAllowlist ?? [], state.mcpServers?.length ?? 0)
+  ])], true, Boolean(state.codexSandbox), host, localCommandPolicyOf(state).allowlist,
+  state.mcpServers?.length ?? 0, localCommandPolicyOf(state).mode === 'all')
   const next: ExecutorLocalState = {
     ...state,
     browserSandbox,
@@ -431,7 +442,7 @@ export const configureExecutorCodexSandbox = async (
     'sandbox.stop',
     ...CODING_OPERATION_KEYS,
   ])], Boolean(state.browserSandbox), true, host,
-  state.descriptor.commandAllowlist ?? [], state.mcpServers?.length ?? 0)
+  localCommandPolicyOf(state).allowlist, state.mcpServers?.length ?? 0, localCommandPolicyOf(state).mode === 'all')
   const next: ExecutorLocalState = {
     ...state,
     codexSandbox,

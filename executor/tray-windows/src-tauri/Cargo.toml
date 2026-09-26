@@ -17,6 +17,7 @@ tauri-build = { version = "2.6.2", features = [] }
 # The service name, its virtual account, and the SID rendering the service
 # reads back — one statement, shared with nessie-executor-service.
 nessie-windows-common = { path = "../../windows-common" }
+nessie-windows-provenance = { path = "../../windows-provenance" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Used to parse and validate pairing origins with the same rules as the shared

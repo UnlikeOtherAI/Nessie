@@ -128,7 +128,7 @@ export const ExecutorsPage = () => {
           {
             icon: faPlus,
             id: 'pair-executor',
-            label: 'Pair executor',
+            label: 'Add executor',
             onSelect: () => setShowPair(true),
             primary: true,
             priority: 100,

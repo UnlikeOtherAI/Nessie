@@ -188,34 +188,6 @@ pub(super) fn run_pair(
     Ok(())
 }
 
-pub(super) fn run_configure_workspace(
-    app: &AppHandle, state_dir: &Path, workspace: &Path, operation_keys: &[String],
-) -> Result<(), String> {
-    let mut command = executor_command(app)?;
-    command.args(["configure", "--configuration-input-stdin", "--state-dir"]);
-    command.arg(state_dir);
-    command.stdin(Stdio::piped());
-    let mut child = command
-        .spawn()
-        .map_err(|_| "Nessie Desktop could not start its local policy update.".to_owned())?;
-    let mut standard_input = child.stdin.take()
-        .ok_or_else(|| "Nessie Desktop could not provide the local policy securely.".to_owned())?;
-    let input = serde_json::to_vec(&serde_json::json!({
-        "operationKeys": operation_keys,
-        "workspaceRoot": workspace,
-    }))
-    .map_err(|_| "Nessie Desktop could not prepare the local policy input.".to_owned())?;
-    standard_input.write_all(&input)
-        .map_err(|_| "Nessie Desktop could not provide the local policy securely.".to_owned())?;
-    drop(standard_input);
-    if !child.wait()
-        .map_err(|_| "Nessie Desktop could not wait for the local policy update.".to_owned())?
-        .success()
-    {
-        return Err("The local executor policy was rejected. No command output was retained.".to_owned());
-    }
-    Ok(())
-}
 
 pub(super) fn claim_connection(app: &AppHandle, state_dir: &Path) -> Result<(), String> {
     let mut command = executor_command(app)?;

@@ -1,4 +1,6 @@
 import type { Readable } from 'node:stream'
+import { parseLocalCommandPolicy, type LocalCommandPolicy } from './command-policy.js'
+import { parseTerminalProgramInput, type TerminalProgramInput } from './terminal-program-configuration.js'
 
 import type { ExecutorLocalMcpServer } from './mcp-servers.js'
 import { workspaceFoldersFromInput, type ExecutorWorkspaceFolder } from './workspace-folder-arguments.js'
@@ -15,6 +17,8 @@ import { workspaceFoldersFromInput, type ExecutorWorkspaceFolder } from './works
  * says; `[]` (or `null` for `codingSessions`) removes it.
  */
 export type ExecutorConfigurationInput = {
+  terminalProgram?: TerminalProgramInput
+  commandPolicy?: LocalCommandPolicy
   codingSessions?: unknown
   commandAllowlist?: string[]
   mcpServers?: ExecutorLocalMcpServer[]
@@ -42,6 +46,7 @@ export const parseConfigurationInput = (text: string): ExecutorConfigurationInpu
   const allowlist = input.commandAllowlist
   const servers = input.mcpServers
   const codingSessions = input.codingSessions
+  if (codingSessions !== undefined && input.terminalProgram !== undefined) return malformed()
   if (
     !Array.isArray(input.operationKeys)
     || !input.operationKeys.every((key) => typeof key === 'string')
@@ -71,6 +76,8 @@ export const parseConfigurationInput = (text: string): ExecutorConfigurationInpu
     return malformed()
   }
   return {
+    ...(input.terminalProgram === undefined ? {} : { terminalProgram: parseTerminalProgramInput(input.terminalProgram) }),
+    ...(input.commandPolicy === undefined ? {} : { commandPolicy: parseLocalCommandPolicy(input.commandPolicy) }),
     ...(codingSessions === undefined ? {} : { codingSessions }),
     ...(allowlist === undefined ? {} : { commandAllowlist: allowlist as string[] }),
     ...(servers === undefined ? {} : { mcpServers: servers as ExecutorLocalMcpServer[] }),

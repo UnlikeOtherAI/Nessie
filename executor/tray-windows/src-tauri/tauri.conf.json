@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "identifier": "com.unlikeotherai.nessie.executor.tray",
   "build": {
-    "frontendDist": "../ui"
+    "frontendDist": "../../../packages/executor-console"
   },
   "app": {
     "withGlobalTauri": true,
@@ -13,16 +13,16 @@
       {
         "label": "status",
         "title": "Nessie Executor",
-        "width": 520,
-        "height": 480,
-        "resizable": false,
-        "decorations": false,
+        "width": 640,
+        "height": 680,
+        "resizable": true,
+        "decorations": true,
         "shadow": true,
         "visible": false,
         "skipTaskbar": true,
-        "alwaysOnTop": true,
+        "alwaysOnTop": false,
         "center": true,
-        "backgroundColor": "#141221"
+        "backgroundColor": "#ffffff"
       }
     ],
     "security": {

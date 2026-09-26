@@ -2,6 +2,7 @@ import type { ExecutorCodingSessionsFacts } from '@nessie/schemas'
 
 import { codingSessionsPolicyOf, codingSessionsServerConfigPath } from './coding-sessions-policy.js'
 import type { ExecutorLocalState } from './state-store.js'
+import { localCommandPolicyOf, type LocalCommandPolicy } from './command-policy.js'
 
 /**
  * What this executor is allowed to reach and run, as one credential-free
@@ -17,6 +18,7 @@ import type { ExecutorLocalState } from './state-store.js'
  * machine, and the person reading it is the person whose directories these are.
  */
 export type ExecutorDescription = {
+  commandPolicy: LocalCommandPolicy
   apiBaseUrl: string
   executorId: string
   policy: {
@@ -76,6 +78,7 @@ export const describeExecutor = (state: ExecutorLocalState): ExecutorDescription
   const bridge = codingSessionsPolicyOf(state.descriptor.codingSessions, state.mcpServers)
   const bridgeConfig = bridge ? codingSessionsServerConfigPath(bridge.server) : undefined
   return {
+    commandPolicy: localCommandPolicyOf(state),
     apiBaseUrl: state.apiBaseUrl,
     executorId: state.executorId,
     policy: {

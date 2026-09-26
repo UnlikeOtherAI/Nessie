@@ -24,6 +24,7 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 
 mod commands;
+mod console_commands;
 mod description;
 mod grant;
 mod menu;
@@ -34,6 +35,8 @@ mod pipe_client;
 mod service_identity;
 mod state;
 mod workspace_folder;
+mod user_connections;
+mod user_runtime;
 
 use std::time::Duration;
 
@@ -186,6 +189,11 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            console_commands::executor_console_describe,
+            console_commands::executor_configure,
+            console_commands::executor_autostart,
+            console_commands::executor_set_autostart,
+            console_commands::executor_copy_code,
             commands::executor_add_command,
             commands::executor_add_folder,
             commands::executor_choose_folder,
@@ -207,6 +215,7 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             build_tray(&handle)?;
+            user_connections::start_paired();
             start_polling(handle);
             Ok(())
         })

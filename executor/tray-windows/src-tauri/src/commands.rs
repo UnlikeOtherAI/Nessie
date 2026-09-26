@@ -279,8 +279,8 @@ pub async fn choose_folder<R: Runtime>(app: AppHandle<R>) -> Result<Option<Strin
 }
 
 #[tauri::command]
-pub fn executor_view() -> ServiceView {
-    view()
+pub async fn executor_view() -> Result<ServiceView, String> {
+    tauri::async_runtime::spawn_blocking(view).await.map_err(|error| error.to_string())
 }
 
 #[tauri::command]

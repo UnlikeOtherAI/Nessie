@@ -3,7 +3,6 @@ import type { Readable } from 'node:stream'
 
 import {
   canonicalExecutorJson,
-  executorCommandAllowlistPermits,
   ExecutorBrowserActArgumentsSchema,
   ExecutorBrowserObserveArgumentsSchema,
   ExecutorBrowserOpenArgumentsSchema,
@@ -21,6 +20,7 @@ import {
 } from '@nessie/schemas'
 
 import { executorApi, type ExecutorApiClient } from './api-client.js'
+import { localCommandPolicyPermits } from './command-policy.js'
 import { signExecutorDaemonPayload } from './daemon-signature.js'
 import type { ExecutorBrowserSessionManager } from './browser-session-manager.js'
 import type { ExecutorConnectedBrowserSessionManager } from './connected-browser-session-manager.js'
@@ -359,8 +359,8 @@ export const executeExecutorCommand = async (
     // Refused here as well as in the session manager, against the same
     // predicate: this is the dispatch a person reads when they ask why a run
     // was refused, and it must not depend on a session backend being wired.
-    if (!executorCommandAllowlistPermits(
-      state.descriptor.commandAllowlist,
+    if (!localCommandPolicyPermits(
+      state,
       commandArguments.data.program,
       commandArguments.data.args,
     )) {
