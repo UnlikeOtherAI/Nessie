@@ -359,7 +359,20 @@ jobs:
           if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
             $env:NESSIE_WINDOWS_SIGN_COMMAND = $env:WINDOWS_SIGN_COMMAND
             $configPath = Join-Path $env:RUNNER_TEMP 'nessie-tauri-windows-signing.json'
-            $config = @{ bundle = @{ windows = @{ signCommand = $env:WINDOWS_SIGN_COMMAND } } } |
+            $signScript = Join-Path $env:GITHUB_WORKSPACE 'scripts\sign-windows-artifact.ps1'
+            # Tauri's string notation splits on every space without honouring
+            # quotes. Use its object notation so PowerShell receives the script
+            # path and substituted artifact path as exact arguments.
+            $signCommand = @{
+              cmd = 'pwsh.exe'
+              args = @(
+                '-NoProfile',
+                '-ExecutionPolicy', 'Bypass',
+                '-File', $signScript,
+                '-FilePath', '%1'
+              )
+            }
+            $config = @{ bundle = @{ windows = @{ signCommand = $signCommand } } } |
               ConvertTo-Json -Depth 5 -Compress
             Set-Content -LiteralPath $configPath -Value $config -Encoding utf8NoBOM
             # A path avoids PowerShell/native argument parsing stripping the

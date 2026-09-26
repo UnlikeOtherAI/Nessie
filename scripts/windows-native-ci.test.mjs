@@ -179,6 +179,18 @@ test("Windows Native builds and smoke-tests unsigned installers without signing"
   );
 });
 
+test("the release gives Tauri an argument-safe Artifact Signing command", () => {
+  const desktopBuild = stepBlock(releaseWorkflow, "Build the desktop bundles");
+  assert.match(desktopBuild, /\$signCommand = @\{/);
+  assert.match(desktopBuild, /cmd = 'pwsh\.exe'/);
+  assert.match(desktopBuild, /'-File', \$signScript/);
+  assert.match(desktopBuild, /'-FilePath', '%1'/);
+  assert.doesNotMatch(
+    desktopBuild,
+    /signCommand = \$env:WINDOWS_SIGN_COMMAND/,
+  );
+});
+
 test(
   "the executor MSI fixture is deterministic and carries the required marker",
   { skip: process.platform !== "win32" },
