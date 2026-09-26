@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import {
   KnowledgePageRevisionConflictError,
   buildNativeSourceRef,
+  canWriteSpace,
   coreDocumentFilename,
   isAgentCoreDocumentPage,
   restoreSpreadsheetVersion,
@@ -493,6 +494,13 @@ export const registerKnowledgeBaseRoutes = (
     if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
+    const space = await provider.getSpace(actorContext.tenant.organizationId, existingPage.spaceId)
+    // Saving an owner's published document is itself the human publication act.
+    // An agent or a share recipient still creates a draft for owner review.
+    const publishOnSave = existingPage.kind === 'document'
+      && existingPage.status === 'published'
+      && actorContext.actor.actorType === 'user'
+      && !!space && canWriteSpace(space, viewer)
     if (!(await requireAgentCoreDocumentEditAuthority(deps, actorContext, pageId, reply))) return reply
     const core = await isAgentCoreDocumentPage(prisma, pageId)
     if (core && body.title !== undefined && body.title !== coreDocumentFilename(core.role)) {
@@ -524,6 +532,7 @@ export const registerKnowledgeBaseRoutes = (
         organizationId: actorContext.tenant.organizationId,
         authorId: actorContext.actor.actorId,
         authorType: actorAuthorType(actorContext),
+        publishOnSave,
       })
     } catch (error) {
       if (error instanceof KnowledgePageRevisionConflictError) {
@@ -550,6 +559,17 @@ export const registerKnowledgeBaseRoutes = (
       metadata: { latestVersionId: page.latestVersion?.id ?? null },
       ...requestIds(request),
     })
+    if (publishOnSave && page.publishedVersionId !== existingPage.publishedVersionId) {
+      await emitAuditEvent(prisma, {
+        actorContext,
+        action: 'kb.page.published',
+        resourceType: 'knowledge_page',
+        resourceId: page.id,
+        outcome: 'success',
+        metadata: { publishedVersionId: page.publishedVersionId },
+        ...requestIds(request),
+      })
+    }
     return createApiResponse(attachPageEnvelope(page, decision))
   })
 
