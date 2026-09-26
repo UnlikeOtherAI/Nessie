@@ -14,6 +14,10 @@ map: Rule zero, workflow and required CI checks, ports, deployment, and the
 invariants that apply wherever you are working. It is **not** imported into
 this file — open it.
 
+Android APKs are built with local Gradle signing on a developer machine or in
+GitHub Actions, never Expo Cloud. Follow [Android signing](docs/standards/build-and-release.md#android-signing);
+iOS distribution is pending the approved Apple account.
+
 For real-provider testing before deployment, follow
 [local CTO verification](docs/testing/local-cto.md).
 

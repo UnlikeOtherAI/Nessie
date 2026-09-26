@@ -233,8 +233,8 @@ Feedback on iPad and the admin Feedback section on every form factor.
 `react-native-webview` and `react-native-bottom-tabs` are native modules, so
 **Expo Go cannot host the app** —
 you need a prebuilt build (`npx expo prebuild` regenerates `mobile/ios` /
-`mobile/android` with autolinking). Building for a physical device requires Apple
-Developer signing.
+`mobile/android` with autolinking). An iOS physical-device build requires Apple
+Developer signing; Android uses the signing setup below.
 
 For **developer work only**, start the local admin/API and build a development
 client. This is deliberately a different path from putting a working Nessie
@@ -271,18 +271,18 @@ completed deployment.
 
 For a connected iPhone or iPad, build the `device` profile, retrieve
 the resulting archive, install its `.app` through `xcrun devicectl`, and launch
-`com.km.nessie`. Use the equivalent direct installer and launch command for
-Android or desktop targets. Confirm that the exact device is connected and
+`com.km.nessie`. For Android, use the locally signed APK and launch
+`com.unlikeotherai.nessie`. Confirm that the exact device is connected and
 provisioned before the build; if it is unavailable or cannot accept the
 signature, report that concrete blocker instead of treating an artifact URL as
 the handoff.
 
 Unless the request explicitly asks for Metro hot reload or an Expo development
-client, an internal physical-device deployment uses the `device` EAS profile.
-It launches the normal Nessie WebView shell directly. The `development` profile
-opens the Expo development launcher and is not a substitute for a usable app
-deployment. This is the default physical-device delivery policy stated at the
-top of this guide.
+client, an Android physical-device deployment uses the local signed release
+APK. iOS currently uses its `device` EAS profile until Apple distribution is
+ready to migrate. Both launch the normal Nessie WebView shell directly. The
+`development` profile opens the Expo development launcher and is not a
+substitute for a usable app deployment.
 
 Treat the deployment as complete only after verifying all of the following:
 
@@ -448,7 +448,7 @@ The remaining prerequisites are:
 
 Android uses the same in-house sender, but Firebase issues the raw FCM token.
 Before an Android production build can register or receive pushes for
-`com.km.nessie`, add the Firebase project's `google-services.json` to the
+`com.unlikeotherai.nessie`, add the Firebase project's `google-services.json` to the
 mobile build configuration and upload the corresponding Firebase
 **service-account JSON** through **Settings → Push credentials**. The first is
 safe client build configuration; the second is the server credential used by
@@ -466,15 +466,15 @@ The build opens Nessie directly at `https://app.nessie.works` and can register
 an APNs token; it does not need Metro. The `development` profile remains
 available only for deliberate debugging work with a running Metro server.
 
-For Android use:
+For Android use the local build described below. It requires an owner-held
+keystore and never calls Expo Cloud:
 
 ```sh
 cd mobile
 pnpm build:device:android
 ```
 
-The legacy `preview` profile extends `device` and remains equivalent for an
-already-running release pipeline.
+The iOS `preview` profile extends `device`; Android distribution uses Gradle.
 
 ### Configure and prove the in-house sender
 
@@ -564,9 +564,28 @@ internal TestFlight distribution.
 
 ## Android
 
-For a standalone installed app:
+The package ID is `com.unlikeotherai.nessie`. A release build requires the
+owner-held app signing keystore. Set `NESSIE_ANDROID_KEYSTORE_PATH`,
+`NESSIE_ANDROID_KEYSTORE_PASSWORD`, `NESSIE_ANDROID_KEY_ALIAS`, and
+`NESSIE_ANDROID_KEY_PASSWORD` in the build process environment. Set
+`EXPO_PUBLIC_ADMIN_URL=https://app.nessie.works` and
+`EXPO_PUBLIC_RELEASE_CHANNEL=direct` for GitHub downloads. The passwords and
+keystore stay outside the repository. No Expo login or paid cloud build is
+involved.
+
+For a standalone installed APK from the repository root:
 
 ```sh
-cd mobile
-pnpm build:device:android
+pnpm --dir mobile build:device:android
+adb install -r mobile/android/app/build/outputs/apk/release/app-release.apk
+adb shell monkey -p com.unlikeotherai.nessie 1
 ```
+
+The script regenerates `mobile/android` with Expo prebuild and runs
+`assembleRelease` locally. GitHub Actions follows the same path, verifies the
+app signing certificate, tests the APK on an emulator, and publishes it as
+`Nessie-Android.apk` in a tagged GitHub Release. A future Play `.aab` can be
+built with `pnpm --dir mobile build:play:android` using the separate Play upload
+key and `EXPO_PUBLIC_RELEASE_CHANNEL=store`. Before the first Play upload,
+transfer the app signing key to Play App Signing and confirm Play's certificate
+matches the direct APK; the Play app currently has no release.
