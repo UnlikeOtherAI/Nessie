@@ -1,0 +1,16 @@
+{
+  "compose": {
+    "close": "Cerrar mensaje nuevo",
+    "chooseRecipient": "Elige al menos un destinatario.",
+    "startError": "No se pudo iniciar el chat.",
+    "back": "Volver a Canales",
+    "title": "Mensaje nuevo",
+    "to": "Para",
+    "searchRecipients": "Buscar personas o agentes",
+    "messagePlaceholder": "Mensaje",
+    "dropFiles": "Suelta los archivos para adjuntarlos"
+  },
+  "channels": {
+    "messagePersonalAssistant": "Escribir al asistente personal"
+  }
+}

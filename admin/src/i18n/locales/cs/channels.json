@@ -1,0 +1,16 @@
+{
+  "compose": {
+    "close": "Zavřít novou zprávu",
+    "chooseRecipient": "Vyberte alespoň jednoho příjemce.",
+    "startError": "Chat se nepodařilo zahájit.",
+    "back": "Zpět na kanály",
+    "title": "Nová zpráva",
+    "to": "Komu",
+    "searchRecipients": "Hledat lidi nebo agenty",
+    "messagePlaceholder": "Zpráva",
+    "dropFiles": "Přetáhněte soubory sem"
+  },
+  "channels": {
+    "messagePersonalAssistant": "Napsat osobnímu asistentovi"
+  }
+}

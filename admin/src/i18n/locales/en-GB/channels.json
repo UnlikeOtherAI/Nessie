@@ -1,0 +1,16 @@
+{
+  "compose": {
+    "close": "Close new message",
+    "chooseRecipient": "Choose at least one recipient.",
+    "startError": "Could not start chat.",
+    "back": "Back to Channels",
+    "title": "New message",
+    "to": "To",
+    "searchRecipients": "Search people or agents",
+    "messagePlaceholder": "Message",
+    "dropFiles": "Drop files to attach"
+  },
+  "channels": {
+    "messagePersonalAssistant": "Message Personal Assistant"
+  }
+}

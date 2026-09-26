@@ -1,0 +1,16 @@
+{
+  "compose": {
+    "close": "Neue Nachricht schließen",
+    "chooseRecipient": "Wähle mindestens einen Empfänger aus.",
+    "startError": "Chat konnte nicht gestartet werden.",
+    "back": "Zurück zu Kanälen",
+    "title": "Neue Nachricht",
+    "to": "An",
+    "searchRecipients": "Personen oder Agents suchen",
+    "messagePlaceholder": "Nachricht",
+    "dropFiles": "Dateien zum Anhängen hier ablegen"
+  },
+  "channels": {
+    "messagePersonalAssistant": "Persönlichem Assistenten schreiben"
+  }
+}

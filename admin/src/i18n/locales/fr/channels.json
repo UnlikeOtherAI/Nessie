@@ -1,0 +1,16 @@
+{
+  "compose": {
+    "close": "Fermer le nouveau message",
+    "chooseRecipient": "Choisissez au moins un destinataire.",
+    "startError": "Impossible de démarrer la conversation.",
+    "back": "Retour aux canaux",
+    "title": "Nouveau message",
+    "to": "À",
+    "searchRecipients": "Rechercher des personnes ou des agents",
+    "messagePlaceholder": "Message",
+    "dropFiles": "Déposez les fichiers à joindre"
+  },
+  "channels": {
+    "messagePersonalAssistant": "Écrire à l’assistant personnel"
+  }
+}

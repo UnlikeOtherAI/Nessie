@@ -1,0 +1,16 @@
+{
+  "compose": {
+    "close": "Chiudi il nuovo messaggio",
+    "chooseRecipient": "Scegli almeno un destinatario.",
+    "startError": "Impossibile avviare la chat.",
+    "back": "Torna ai canali",
+    "title": "Nuovo messaggio",
+    "to": "A",
+    "searchRecipients": "Cerca persone o agenti",
+    "messagePlaceholder": "Messaggio",
+    "dropFiles": "Trascina qui i file da allegare"
+  },
+  "channels": {
+    "messagePersonalAssistant": "Scrivi all’assistente personale"
+  }
+}
