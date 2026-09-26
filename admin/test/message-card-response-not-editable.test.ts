@@ -18,7 +18,8 @@ test('the message row hides edit on a card press and a research card but keeps d
     source,
     /import \{ isAgentCardResponseMessage, isResearchRunRefMessage \} from '@nessie\/schemas'/,
   )
-  assert.match(source, /canEditOwnMessage = canManageOwnMessage\s+&& !isAgentCardResponseMessage\(message\.metadata\)/)
+  assert.match(source, /canEditOwnMessage = canManageOwnMessage\s+&& !message\.requiresConfirmation/)
+  assert.match(source, /!channelAdminOnlyPosting \|\| viewerCanConfigureAnnouncements === true/)
   assert.match(
     source,
     /!isAgentCardResponseMessage\(message\.metadata\)\s+&& !isResearchRunRefMessage\(message\.metadata\)/,

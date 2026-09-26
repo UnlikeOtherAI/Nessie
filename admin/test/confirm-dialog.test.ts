@@ -217,7 +217,8 @@ const source = (path: string) => readFileSync(new URL(`../src/${path}`, import.m
 test('every converted confirm still says exactly what it said', () => {
   const messages = source('components/features/channels/useChannelMessageActions.tsx')
   assert.match(messages, /title="Delete this message\?"/)
-  assert.match(messages, /body="This cannot be undone\."/)
+  assert.match(messages, /: 'This cannot be undone\.'/)
+  assert.match(messages, /Deleting this announcement cancels outstanding acknowledgements and reminders/)
 
   // The four Projects-sidebar dialogs (including this ConfirmDialog) moved
   // to ProjectsNavDialogs.tsx, mirroring SidebarDialogs.tsx (06-F5).

@@ -63,6 +63,8 @@ const createStandalonePrisma = (slugTaken = false) => {
           dmKey: null,
           id: IDS.channel,
           label: 'general',
+          adminOnlyPosting: false,
+          mandatoryAnnouncements: false,
           organizationId: IDS.organization,
           projectId: IDS.project,
           project: { channelRoot: true, id: IDS.project, name: 'Standalone channels' },
@@ -98,9 +100,17 @@ const createStandalonePrisma = (slugTaken = false) => {
     },
     organizationMember: {
       findFirst: async () => ({ role: 'member' }),
+      findUnique: async () => ({ role: 'member' }),
+    },
+    organization: {
+      findUnique: async () => ({ externalOrgId: null }),
+    },
+    team: {
+      findUnique: async () => ({ externalTeamId: null }),
     },
     teamMember: {
       findFirst: async () => null,
+      findUnique: async () => null,
     },
     thread: {
       findFirst: async () => ({ id: IDS.thread }),

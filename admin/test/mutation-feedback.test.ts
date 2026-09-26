@@ -90,6 +90,8 @@ const MUTATION_FEEDBACK_ALLOWLIST: Record<string, string> = {
   'pages/OpsHealthPage.tsx': REASON,
   'pages/WorkflowsPage.tsx': REASON,
   'pages/channels/ThreadInboxCard.tsx': REASON,
+  'pages/channels/ChannelConversationSurface.tsx':
+    'The restricted-message mutation passes its rejected promise to RestrictedMessageCard, which catches it and renders an inline error.',
   'pages/channels/useChannelTitleFavorite.ts': REASON,
   'pages/project/ProjectBacklogTab.tsx': REASON,
   'pages/project/ProjectBoardTab.tsx': REASON,

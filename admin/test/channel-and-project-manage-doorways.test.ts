@@ -44,9 +44,10 @@ test('the settings gear is offered only to somebody the server lets change the r
   )
 })
 
-test('the header and the settings dialog both read viewerCanManage', () => {
+test('the header and settings honor ordinary and announcement management separately', () => {
   assert.match(source('components/features/channels/ChannelHeader.tsx'), /channelRoomControls\(/)
-  assert.match(source('components/shared/ChannelSettingsDialog.tsx'), /if \(!channel\.viewerCanManage\) return null/)
+  assert.match(source('components/shared/ChannelSettingsDialog.tsx'),
+    /if \(!channel\.viewerCanManage && !channel\.viewerCanConfigureAnnouncements\) return null/)
 })
 
 test('a project is created in the session’s active team, with no team picker', () => {
@@ -134,7 +135,9 @@ test('the conversation surface renders the composer behind canPost', () => {
   // A ticket's work thread takes it away from a member who cannot edit the
   // ticket's board, too (docs/standards/ticket-work.md → "The work thread").
   assert.match(surface, /visibleActiveTab === 'messages' && !sessionHome && roomControls\.canPost/)
-  assert.match(surface, /roomControls\.canPost && !workThread\?\.readOnly \? \(\s*<ChannelComposer/)
+  assert.match(surface,
+    /roomControls\.canPost && !workThread\?\.readOnly \? \(\s*<>[\s\S]*?<ChannelComposer/)
+  assert.match(surface, /Requires confirmation/)
   // …and the refusal is drawn in its place, so a person is told why rather
   // than shown a room with no way to type in it.
   assert.match(

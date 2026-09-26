@@ -34,6 +34,7 @@ export const AnnouncementConfirmationControl = ({
     mutationFn: () => api.post(`/api/messages/${messageId}/seen`, {}),
     onSuccess: () => queryClient.setQueryData<OwnReceipt>(ownKey, (current) =>
       current ? { ...current, seen: true } : current),
+    onError: () => { seenSent.current = false },
   })
   const markSeen = seen.mutate
   const acknowledge = useMutation({
@@ -128,6 +129,8 @@ export const AnnouncementConfirmationControl = ({
       {own.data.acknowledged ? 'Acknowledged' : 'Acknowledge'}
     </button>
     <span className="text-[color:var(--tx3)]">Opening this post reports that you have seen it.</span>
+    {seen.isError && !own.data.seen
+      ? <span role="alert">Could not report this post as seen. Reopen it to retry.</span> : null}
     {acknowledge.isError ? <span role="alert">Could not acknowledge. Try again.</span> : null}
     </div> : null}
   </div>
