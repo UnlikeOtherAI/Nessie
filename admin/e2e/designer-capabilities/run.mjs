@@ -150,7 +150,7 @@ const main = async () => {
     await showReply(page, REVOKED_ANSWER)
     await page.screenshot({ path: resolve(screenshots, 'desktop-revoked.png'), fullPage: true })
     phase = 'accounts'
-    await page.goto(`${ADMIN_URL}/channels/${fixture.assistant.channelId}`)
+    await page.goto(`${ADMIN_URL}/channels/${fixture.assistant.channelId}/threads/${fixture.assistant.threadId}`)
     await submit(page, fixture.assistant.threadId, 'hey, got my brwser key n kimi plan already?')
     const assistantRun = await waitForRun(pipeline.prisma, fixture.assistant.agentId, fixture.assistant.threadId)
     runIds.push(assistantRun.id)
@@ -175,7 +175,7 @@ const main = async () => {
     await writeFile(resolve(screenshots, 'verification.json'), JSON.stringify({
       runIds, recoveries: truncatedInvocations, prematureFinalizations, result: 'passed', scriptedInference: true,
     }, null, 2))
-    console.log('Designer browser evaluation passed: private schema lookup, grants, voice, output recovery and revoke.')
+    console.log('Designer browser evaluation passed: account discovery, team settings, grants, voice, recovery and revoke.')
   } catch (error) {
     if (page) {
       await page.screenshot({ path: resolve(screenshots, 'failure.png'), fullPage: true }).catch(() => {})
