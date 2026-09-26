@@ -301,6 +301,20 @@ export const listProjectDirectory = async (
 }
 
 /**
+ * The organisation's teams a person can be in: every non-system team whose
+ * anchor project, or any project it holds, is the organisation's. The one
+ * definition `GET /api/teams` and the people roster (`GET /api/people`) both
+ * read, so a team is never listed on one and missing from the other.
+ */
+export const organizationTeamsWhere = (organizationId: string) => ({
+  systemManaged: false,
+  OR: [
+    { project: { organizationId } },
+    { projects: { some: { organizationId } } },
+  ],
+})
+
+/**
  * The teams `GET /api/teams` returns: every non-system team in the caller's
  * organisation, optionally narrowed to one project. Team reads are org-wide
  * (the route carries only `requireActorContext`), so a caller narrowing this to
@@ -311,13 +325,7 @@ export const listTeamsForOrganization = async (
   input: { organizationId: string; projectIds?: string[]; viewerUserId?: string },
 ): Promise<(TeamRecord & { memberCount: number })[]> => {
   const teams = await prisma.team.findMany({
-    where: {
-      systemManaged: false,
-      OR: [
-        { project: { organizationId: input.organizationId } },
-        { projects: { some: { organizationId: input.organizationId } } },
-      ],
-    },
+    where: organizationTeamsWhere(input.organizationId),
     include: {
       members: { select: { userId: true } },
       projects: { where: { deletedAt: null }, select: { id: true } },

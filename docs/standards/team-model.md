@@ -662,6 +662,47 @@ Other renderers and authorization checks still read the mirrors/projections
 named above, so this slice does not complete the authority migration; the
 audited sequence and upstream blockers are recorded in the unification plan.
 
+### The people read model: `GET /api/people`
+
+Admin › People reads one route at both of its scopes:
+`GET /api/people` (the organisation's roster, each person with their teams and
+their role in each) and `GET /api/people?team=<id>` (one team's roster, each
+person with their role in it) (`api/src/routes/people.ts`). Which source
+answers is the organisation's binding, as everywhere else in this document:
+
+- **Bound:** the provider's roster, relayed with the caller's own subject
+  assertion — the organisation's behind the live administration standing
+  (`requireOrganizationAdministrator`, shared with the member routes in
+  `organization-roster-access.ts`), a team's with no local gate in front, so
+  the provider decides whether this person may read that exact team. The
+  provider's organisation roster carries no teams, so each person's teams are
+  the organisation's team rosters read with the same assertion
+  (`uoa-team-memberships.ts`); a team the caller may not read adds nothing
+  rather than failing the rest, and an outage fails the read rather than
+  answering with fewer teams. That map is held in process memory only, in the
+  one live cache every relayed identity read uses (`uoa-live-cache.ts`, which
+  the `GET /api/users` directory above now shares): keyed by organisation,
+  subject, active team, credential epoch and the team list, 30 seconds,
+  bounded, never an authorization input, and dropped by every roster write on
+  the member routes. A second API instance holds its own and forgets it within
+  the same 30 seconds — the trade-off the identity directory already makes.
+- **Unbound:** the install's own `OrganizationMember` and `TeamMember` rows,
+  its teams being the organisation's non-system ones (`organizationTeamsWhere`,
+  the definition `GET /api/teams` also reads). The organisation's roster
+  answers a local owner or admin; a team's, the team's own members and the
+  organisation's owners and admins. Every local write stays `requireOwner`,
+  which the page's `permissions` say rather than offer.
+
+A team named by `?team=` must be one of the organisation's own, never a
+system team: anything else is `404 TEAM_NOT_FOUND` before a request leaves for
+the provider, never a fall-back to the team the session is working in. The
+team member routes (`/api/team/members*`, `/api/team/invitations*`) take the
+same `?team=<id>`, so a change made from a team's roster reaches that team; the
+provider authorises each target as before, and the audit entry names it
+(`metadata.targetTeamId`), since the entry's own team column is the actor's
+working team. With no team named they act on the working team, as they always
+have.
+
 ### Nessie policy may decide placement; UOA still authorizes it
 
 There is exactly one place where a Nessie-side rule causes someone to join a

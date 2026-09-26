@@ -34,6 +34,9 @@ import {
   type UoaRosterPage,
   type UoaRosterTeam,
 } from '../services/uoa-org-roster.js'
+import { organizationTeamsWhere } from '@nessie/team-admin'
+import { uoaIdentityDirectory } from '../services/uoa-identity-directory.js'
+import { uoaTeamMembershipDirectory } from '../services/uoa-team-memberships.js'
 import { sendMemberManagementError } from './member-management-errors.js'
 import type { RouteDeps } from './types.js'
 
@@ -93,7 +96,16 @@ const AddTeamMemberSchema = z.object({
   teamRole: z.string().trim().min(1).max(100).optional(),
 })
 
-const RosterQuerySchema = z.object({
+// `?team=<id>` names the team a read or a write is about. Admin › People shows
+// any team the viewer may read, so its actions must reach that team rather
+// than whichever one the session is working in. Absent, the working team is
+// meant, as before; a named team that is not the organisation's is a 404,
+// never a quiet fall-back to the working team.
+const TeamTargetSchema = z.object({
+  team: z.string().uuid().optional(),
+})
+
+const RosterQuerySchema = TeamTargetSchema.extend({
   cursor: z.string().optional(),
   direction: z.enum(['forward', 'backward']).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
@@ -101,24 +113,36 @@ const RosterQuerySchema = z.object({
   status: z.enum(['ACTIVE', 'DEACTIVATED', 'REMOVED', 'all']).optional(),
 })
 
+/** The provider team a request targets, and the local team it is. */
+type TargetTeam = UoaRosterTeam & { teamId: string }
+
 const requireTeam = async (
   deps: RouteDeps,
   actorContext: AuthorizedActionContext,
   reply: FastifyReply,
-  options: { cacheableMiss?: boolean } = {},
-): Promise<UoaRosterTeam | null> => {
-  const team = await resolveUoaRosterTeam(deps.prisma, {
-    organizationId: actorContext.tenant.organizationId,
-    teamId: actorContext.tenant.teamId ?? actorContext.actionContext.teamId,
-  })
-  if (!team) {
+  options: { cacheableMiss?: boolean; teamId?: string } = {},
+): Promise<TargetTeam | null> => {
+  const organizationId = actorContext.tenant.organizationId
+  if (options.teamId) {
+    const named = await deps.prisma.team.findFirst({
+      where: { id: options.teamId, ...organizationTeamsWhere(organizationId) },
+      select: { id: true },
+    })
+    if (!named) {
+      sendApiError(reply, 404, 'TEAM_NOT_FOUND', "This team isn't in your organisation.")
+      return null
+    }
+  }
+  const teamId = options.teamId ?? actorContext.tenant.teamId ?? actorContext.actionContext.teamId
+  const team = teamId ? await resolveUoaRosterTeam(deps.prisma, { organizationId, teamId }) : null
+  if (!team || !teamId) {
     // The avatar relay's misses are cacheable like every other avatar relay's:
     // the browser re-asks on each mount and the answer will not change soon.
     if (options.cacheableMiss) reply.header('cache-control', AVATAR_CACHE_CONTROL)
     sendApiError(reply, 404, 'TEAM_NOT_LINKED', NOT_LINKED_MESSAGE)
     return null
   }
-  return team
+  return { ...team, teamId }
 }
 
 /**
@@ -155,10 +179,12 @@ export const registerTeamMembersRoutes = (
   ): Promise<FastifyReply | { data: TResult }> => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
+    const target = parseInput(TeamTargetSchema, request.query ?? {}, reply, 'query')
+    if (!target) return reply
     const body = options.parse ? options.parse() : (undefined as TBody)
     if (body === null) return reply
 
-    const team = await requireTeam(deps, actorContext, reply)
+    const team = await requireTeam(deps, actorContext, reply, { teamId: target.team })
     if (!team) return reply
 
     try {
@@ -172,14 +198,21 @@ export const registerTeamMembersRoutes = (
           rosterDeps,
         ),
       )
+      // A roster write makes this process forget its short-lived display
+      // projections of the organisation at once: who is in it, and which
+      // team each person is in.
+      uoaIdentityDirectory.invalidateOrganization(team.externalOrgId)
+      uoaTeamMembershipDirectory.invalidateOrganization(team.externalOrgId)
       if (options.audit) {
         await emitAuditEvent(deps.prisma, {
           actorContext,
           action: options.audit.action,
+          // The entry's own team column is the actor's working team; the team
+          // the change was made to is named beside it.
+          metadata: { ...options.audit.metadata, targetTeamId: team.teamId },
           outcome: 'success',
           resourceType: options.audit.resourceType,
           ...(options.audit.resourceId ? { resourceId: options.audit.resourceId } : {}),
-          ...(options.audit.metadata ? { metadata: options.audit.metadata } : {}),
         })
       }
       return createApiResponse(result)
@@ -202,7 +235,7 @@ export const registerTeamMembersRoutes = (
     if (!actorContext) return reply
     const query = parseInput(RosterQuerySchema, request.query, reply, 'query')
     if (!query) return reply
-    const team = await requireTeam(deps, actorContext, reply)
+    const team = await requireTeam(deps, actorContext, reply, { teamId: query.team })
     if (!team) return reply
     try {
       const result = await run(

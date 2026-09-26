@@ -8,6 +8,7 @@ import {
   type UoaRosterListQuery,
   type UoaRosterPage,
 } from './uoa-org-roster.js'
+import { createLiveOrganizationCache, liveCacheKey } from './uoa-live-cache.js'
 
 const DEFAULT_TTL_MS = 30_000
 const DEFAULT_MAX_ENTRIES = 100
@@ -43,27 +44,8 @@ export type UoaIdentityDirectoryOptions = {
 
 type LoadDirectoryPage = NonNullable<UoaIdentityDirectoryOptions['loadPage']>
 
-type CacheEntry = {
-  expiresAt: number
-  externalOrgId: string
-  members: TeamMemberRecord[]
-}
-
-type InFlightEntry = {
-  externalOrgId: string
-  invalidated: boolean
-  promise: Promise<TeamMemberRecord[]>
-}
-
 const copyMembers = (members: readonly TeamMemberRecord[]): TeamMemberRecord[] =>
   members.map((member) => ({ ...member }))
-
-const cacheKey = (input: UoaIdentityDirectoryInput): string => [
-  input.externalOrgId,
-  input.identity.subject,
-  input.identity.teamId,
-  input.identity.tokenVersion,
-].join('\u0000')
 
 const defaultLoadPage = (
   rosterDeps: UoaRosterDeps,
@@ -80,49 +62,26 @@ const defaultLoadPage = (
  * Entries are scoped to the exact acting subject, organisation, active team,
  * and credential epoch. They are display data only: no authorization decision
  * may read this cache. An expired entry is discarded before the upstream read,
- * and an upstream failure never serves stale identity or membership data.
+ * and an upstream failure never serves stale identity or membership data. The
+ * cache itself is the shared one (`uoa-live-cache.ts`), which states those
+ * rules once for every relayed identity read.
  */
 export const createUoaIdentityDirectory = (
   options: UoaIdentityDirectoryOptions = {},
 ): UoaIdentityDirectory => {
-  const now = options.now ?? Date.now
-  const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS
-  const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES
-  const maxCachedMembers = options.maxCachedMembers ?? DEFAULT_MAX_CACHED_MEMBERS
-  const maxInFlight = options.maxInFlight ?? DEFAULT_MAX_IN_FLIGHT
   const loadPage: LoadDirectoryPage = options.loadPage ?? defaultLoadPage(options.rosterDeps ?? {})
-  const cache = new Map<string, CacheEntry>()
-  const inFlight = new Map<string, InFlightEntry>()
-  const activeLoads = new Set<InFlightEntry>()
-  let cachedMemberCount = 0
-
-  const deleteCached = (key: string): void => {
-    const cached = cache.get(key)
-    if (!cached) return
-    cachedMemberCount -= cached.members.length
-    cache.delete(key)
-  }
-
-  const setCached = (
-    key: string,
-    input: UoaIdentityDirectoryInput,
-    members: readonly TeamMemberRecord[],
-  ): void => {
-    // Replacement accounting is deliberate: a superseded request may finish
-    // after a newer request for the same key has already populated the cache.
-    deleteCached(key)
-    cache.set(key, {
-      expiresAt: now() + ttlMs,
-      externalOrgId: input.externalOrgId,
-      members: copyMembers(members),
-    })
-    cachedMemberCount += members.length
-    while (cache.size > maxEntries || cachedMemberCount > maxCachedMembers) {
-      const oldest = cache.keys().next()
-      if (oldest.done) break
-      deleteCached(oldest.value)
-    }
-  }
+  const cache = createLiveOrganizationCache<TeamMemberRecord[]>({
+    copy: copyMembers,
+    maxEntries: options.maxEntries ?? DEFAULT_MAX_ENTRIES,
+    maxInFlight: options.maxInFlight ?? DEFAULT_MAX_IN_FLIGHT,
+    maxWeight: options.maxCachedMembers ?? DEFAULT_MAX_CACHED_MEMBERS,
+    ...(options.now ? { now: options.now } : {}),
+    overloaded: () => new UoaRosterUnavailableError(
+      '[uoa] too many organization directory reads are already in progress',
+    ),
+    ttlMs: options.ttlMs ?? DEFAULT_TTL_MS,
+    weigh: (members) => members.length,
+  })
 
   const loadAll = async (input: UoaIdentityDirectoryInput): Promise<TeamMemberRecord[]> => {
     const members = new Map<string, TeamMemberRecord>()
@@ -164,55 +123,12 @@ export const createUoaIdentityDirectory = (
   }
 
   return {
-    async list(input) {
-      const key = cacheKey(input)
-      const cached = cache.get(key)
-      if (cached && cached.expiresAt > now()) {
-        cache.delete(key)
-        cache.set(key, cached)
-        return copyMembers(cached.members)
-      }
-      deleteCached(key)
-
-      const currentLoad = inFlight.get(key)
-      if (currentLoad) return copyMembers(await currentLoad.promise)
-      if (activeLoads.size >= maxInFlight) {
-        throw new UoaRosterUnavailableError(
-          '[uoa] too many organization directory reads are already in progress',
-        )
-      }
-
-      // Defer loadAll until after the entry is registered. That closes the
-      // synchronous invalidation window before loadPage returns its promise.
-      const entry: InFlightEntry = {
-        externalOrgId: input.externalOrgId,
-        invalidated: false,
-        promise: Promise.resolve()
-          .then(() => loadAll(input))
-          .then((members) => {
-            if (!entry.invalidated) setCached(key, input, members)
-            return members
-          })
-          .finally(() => {
-            activeLoads.delete(entry)
-            if (inFlight.get(key) === entry) inFlight.delete(key)
-          }),
-      }
-      inFlight.set(key, entry)
-      activeLoads.add(entry)
-      return copyMembers(await entry.promise)
-    },
-
-    invalidateOrganization(externalOrgId) {
-      for (const [key, entry] of cache) {
-        if (entry.externalOrgId === externalOrgId) deleteCached(key)
-      }
-      for (const [key, entry] of inFlight) {
-        if (entry.externalOrgId !== externalOrgId) continue
-        entry.invalidated = true
-        inFlight.delete(key)
-      }
-    },
+    list: (input) => cache.read(
+      liveCacheKey(input.externalOrgId, input.identity),
+      input.externalOrgId,
+      () => loadAll(input),
+    ),
+    invalidateOrganization: (externalOrgId) => cache.invalidateOrganization(externalOrgId),
   }
 }
 

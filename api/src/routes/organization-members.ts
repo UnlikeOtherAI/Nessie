@@ -6,7 +6,7 @@ import {
   type AuthorizedActionContext,
 } from '@nessie/schemas'
 
-import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { createApiResponse, parseInput } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import {
   addTeamMember,
@@ -26,9 +26,13 @@ import {
   type UoaRosterDeps,
   type UoaRosterPage,
 } from '../services/uoa-org-roster.js'
-import { resolveOrganizationAdministrationAccess } from '../services/uoa-organization-administration.js'
 import { uoaIdentityDirectory } from '../services/uoa-identity-directory.js'
+import { uoaTeamMembershipDirectory } from '../services/uoa-team-memberships.js'
 import { sendMemberManagementError } from './member-management-errors.js'
+import {
+  requireOrganizationAdministrator,
+  resolveOrganizationExternalId,
+} from './organization-roster-access.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -100,57 +104,6 @@ const InvitationActionSchema = z.object({
   teamId: z.string().trim().min(1).max(200),
 })
 
-const resolveOrganizationExternalId = async (
-  deps: RouteDeps,
-  actorContext: AuthorizedActionContext,
-  reply: FastifyReply,
-): Promise<string | null> => {
-  const organization = await deps.prisma.organization.findUnique({
-    where: { id: actorContext.tenant.organizationId },
-    select: { externalOrgId: true },
-  })
-  if (!organization?.externalOrgId) {
-    sendApiError(
-      reply,
-      404,
-      'ORGANIZATION_NOT_LINKED',
-      "This organisation isn't connected to UnlikeOtherAI.",
-    )
-    return null
-  }
-  return organization.externalOrgId
-}
-
-/** The Organization section is one capability, not a local-role convention. */
-const requireOrganizationAdministrator = async (
-  actorContext: AuthorizedActionContext,
-  externalOrgId: string,
-  reply: FastifyReply,
-  rosterDeps: UoaRosterDeps,
-): Promise<boolean> => {
-  const access = await resolveOrganizationAdministrationAccess(
-    { actorContext, organization: { externalOrgId } },
-    rosterDeps,
-  )
-  if (access.status === 'allowed') return true
-  if (access.status === 'unavailable') {
-    sendApiError(
-      reply,
-      503,
-      'UOA_ORGANIZATION_ACCESS_UNAVAILABLE',
-      "We couldn't check whether you're an organisation admin. Try again in a moment.",
-    )
-    return false
-  }
-  sendApiError(
-    reply,
-    403,
-    'ORGANIZATION_ADMIN_REQUIRED',
-    'Only organisation admins can do this.',
-  )
-  return false
-}
-
 /**
  * `rosterDeps` is the injectable egress seam (pinned fetch + DNS), the same
  * one `services/uoa-org-roster.ts` takes. Production passes nothing.
@@ -194,8 +147,10 @@ export const registerOrganizationMembersRoutes = (
         actorContext,
       )
       // A mutation that can change the organisation roster must make this
-      // process forget its short-lived display projection immediately.
+      // process forget its short-lived display projections immediately: the
+      // people directory and who is in which team.
       uoaIdentityDirectory.invalidateOrganization(orgId)
+      uoaTeamMembershipDirectory.invalidateOrganization(orgId)
       if (options.audit) {
         await emitAuditEvent(deps.prisma, {
           actorContext,
