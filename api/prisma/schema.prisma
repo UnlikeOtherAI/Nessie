@@ -2786,6 +2786,10 @@ enum UserAlertKind {
   /// deploy: no push or realtime frame carries it, and an older replica's
   /// visibility predicate has no arm for it, so it never reads the row.
   trigger_machine_access
+  /// A budget crossed its warn threshold, or first stopped work, this period;
+  /// one row per active owner, pointing at the once-per-period marker. Written
+  /// and read in the same deploy for the same reason as the kind above.
+  budget_alert
 }
 
 // Persistent per-user alert records. v1 writes one `mention` row per directly
@@ -2813,6 +2817,7 @@ model UserAlert {
   approvalRequestId         String?                  @map("approval_request_id") @db.Uuid
   localInferenceHostId      String?                  @map("local_inference_host_id") @db.Uuid
   localInferenceBindingId   String?                  @map("local_inference_binding_id") @db.Uuid
+  budgetAlertId             String?                  @map("budget_alert_id") @db.Uuid
   // A source-event generation key. New attention rows must carry one; legacy
   // mention rows predate this field and remain NULL.
   eventKey                  String?                  @map("event_key")
@@ -2843,6 +2848,8 @@ model UserAlert {
   // recipient of local device health, and a binding id is supplemental
   // context rather than a second authority path.
   localInferenceHost        LocalInferenceHost?      @relation("LocalInferenceHealthAlert", fields: [localInferenceHostId], references: [id], onDelete: Cascade)
+  // The once-per-period marker the bell row reports; deleting it removes the row.
+  budgetAlert               BudgetAlert?             @relation("BudgetAlertUserAlert", fields: [budgetAlertId], references: [id], onDelete: Cascade)
   actorUser                 User?                    @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   actorAgent                Agent?                   @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
 
@@ -2855,6 +2862,7 @@ model UserAlert {
   @@index([boardSourceId])
   @@index([workflowRunId])
   @@index([localInferenceHostId])
+  @@index([budgetAlertId])
   @@index([localInferenceBindingId])
   @@map("user_alerts")
 }
@@ -6494,6 +6502,7 @@ model BudgetAlert {
   costLimitUsd   Decimal?        @map("cost_limit_usd") @db.Decimal(14, 4)
   createdAt      DateTime        @default(now()) @map("created_at")
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userAlerts     UserAlert[]     @relation("BudgetAlertUserAlert")
 
   @@unique([scopeType, scopeId, periodStart, kind])
   @@index([organizationId, createdAt])

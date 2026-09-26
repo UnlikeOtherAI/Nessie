@@ -52,8 +52,30 @@ export const UserAlertKindSchema = z.enum([
   // is still the machines' owner's to set up. Written in the deploy that adds
   // it: nothing pushes or streams it, so no older replica is handed one.
   'trigger_machine_access',
+  // A budget crossed its warn threshold, or first stopped work, this period.
+  // It used to be a push alone, so an owner without a registered device never
+  // heard; now it is a bell row too, once per budget, period and kind, exactly
+  // as the push was. Written in the deploy that adds it for the reason above:
+  // no realtime frame carries it, only the owner's next bell read.
+  'budget_alert',
 ])
 export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
+
+/**
+ * What a `budget_alert` row says: which budget, what happened, how far along.
+ * Read from the once-per-period marker the row points at; the scope's name is
+ * read when the bell is, so a renamed team reads by its new name.
+ */
+export const BudgetAlertSummarySchema = z.object({
+  /** `threshold`: spend reached the warn level; `blocked`: the budget stopped work. */
+  kind: z.enum(['threshold', 'blocked']),
+  scopeType: z.enum(['organization', 'team', 'project']),
+  /** Null when the scope no longer exists in this organisation. */
+  scopeName: z.string().nullable(),
+  percentUsed: z.number().int().nullable(),
+  period: z.enum(['weekly', 'monthly', 'yearly']),
+})
+export type BudgetAlertSummary = z.infer<typeof BudgetAlertSummarySchema>
 
 export const TeamInvitationAlertMetadataSchema = z.object({
   inviteId: z.string().min(1),
@@ -104,6 +126,9 @@ export const UserAlertRecordSchema = z.object({
   // a writer must always set the host id so visibility is custodian-bound.
   localInferenceHostId: z.string().uuid().nullable().optional(),
   localInferenceBindingId: z.string().uuid().nullable().optional(),
+  // Present only on a `budget_alert` row. Optional so a replica of the
+  // previous build, which never sets it, still parses every row it sends.
+  budgetAlert: BudgetAlertSummarySchema.nullable().optional(),
   metadata: TeamInvitationAlertMetadataSchema.nullable(),
   actorUserId: z.string().uuid().nullable(),
   actorAgentId: z.string().uuid().nullable(),

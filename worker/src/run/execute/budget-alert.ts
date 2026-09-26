@@ -56,14 +56,16 @@ const resolveScopeLabel = async (
     where: { id: alert.scopeId },
     select: { name: true },
   })
-  return organization?.name ?? 'Organization budget'
+  return organization?.name ?? 'Organisation budget'
 }
 
+// Local spend is an estimate at the active prices, never a charge, so the
+// money figure says so; a token count is exact and needs no qualifier.
 const thresholdReason = (alert: BudgetAlertSnapshot, scopeLabel: string): string => {
   const pct = alert.percentUsed === null ? '' : `${alert.percentUsed}% — `
   const spend =
     alert.costLimitUsd !== null
-      ? `${formatUsd(alert.spentUsd)} of ${formatUsd(alert.costLimitUsd)}`
+      ? `an estimated ${formatUsd(alert.spentUsd)} of ${formatUsd(alert.costLimitUsd)}`
       : `${alert.spentTokens.toLocaleString()} of ${(alert.tokenLimit ?? 0).toLocaleString()} tokens`
   return `${scopeLabel} has used ${pct}${spend} ${periodWord[alert.period]}.`
 }

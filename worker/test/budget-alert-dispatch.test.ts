@@ -27,7 +27,29 @@ const encrypt = (plaintext: string) => encryptWithKeyRing(ENCRYPTION_KEY_RING, A
 type OrgMember = { userId: string; role: 'owner' | 'admin' | 'member'; deactivatedAt: Date | null }
 type ScopeMember = { userId: string; role: 'owner' | 'admin' | 'member' }
 
+type Marker = {
+  id: string
+  organizationId: string
+  scopeType: string
+  scopeId: string
+  periodStart: Date
+  kind: string
+}
+
+type WrittenAlert = {
+  budgetAlertId: string
+  eventKey: string
+  kind: string
+  organizationId: string
+  userId: string
+}
+
 type FakeState = {
+  // The `budget_alerts` markers the enqueue claimed, and the bell rows written.
+  markers?: Marker[]
+  alerts?: WrittenAlert[]
+  // No APNs/FCM credentials and no Web Push: nothing can be pushed.
+  noPushCredentials?: boolean
   orgMembers: OrgMember[]
   teamMembers: ScopeMember[]
   projectMembers: ScopeMember[]
@@ -41,8 +63,35 @@ const makeFakePrisma = (state: FakeState): BudgetAlertDispatchPrisma =>
     // the losing side is proved against the real unique index in
     // `test/db/push-dispatch-idempotency.test.ts`.
     $executeRaw: async () => 1,
+    budgetAlert: {
+      findUnique: async ({
+        where,
+      }: {
+        where: { scopeType_scopeId_periodStart_kind: Omit<Marker, 'id' | 'organizationId'> }
+      }) => {
+        const key = where.scopeType_scopeId_periodStart_kind
+        return (state.markers ?? []).find((marker) =>
+          marker.scopeType === key.scopeType
+          && marker.scopeId === key.scopeId
+          && marker.kind === key.kind
+          && marker.periodStart.getTime() === key.periodStart.getTime()) ?? null
+      },
+    },
+    userAlert: {
+      // Mirrors `skipDuplicates` over the (user_id, event_key) unique index.
+      createMany: async ({ data }: { data: WrittenAlert[] }) => {
+        state.alerts ??= []
+        let count = 0
+        for (const row of data) {
+          if (state.alerts.some((a) => a.userId === row.userId && a.eventKey === row.eventKey)) continue
+          state.alerts.push(row)
+          count += 1
+        }
+        return { count }
+      },
+    },
     pushCredential: {
-      findMany: async () => [
+      findMany: async () => state.noPushCredentials ? [] : [
         {
           provider: 'apns',
           secretRef: 'secret_push_apns',
@@ -238,4 +287,84 @@ test('budget alerts include the Ops usage deep link in native payloads', async (
   )
 
   assert.equal(apnsPayloads[0]?.data?.url, '/admin/usage')
+})
+
+// Plan §10.9: budget alerts reach the bell. The row is written for every active
+// owner before any push, so it does not depend on a registered device or on the
+// owner's push preferences — those silence the push, never the row.
+const PERIOD_START = '2026-09-01T00:00:00.000Z'
+const marker = (over: Partial<Marker> = {}): Marker => ({
+  id: 'marker-1',
+  organizationId: 'org-1',
+  scopeType: 'team',
+  scopeId: 'team-1',
+  periodStart: new Date(PERIOD_START),
+  kind: 'threshold',
+  ...over,
+})
+const ownersState = (over: Partial<FakeState> = {}): FakeState => ({
+  markers: [marker()],
+  orgMembers: [
+    { userId: 'owner-1', role: 'owner', deactivatedAt: null },
+    { userId: 'owner-2', role: 'owner', deactivatedAt: null },
+    { userId: 'owner-gone', role: 'owner', deactivatedAt: new Date() },
+    { userId: 'admin-1', role: 'admin', deactivatedAt: null },
+  ],
+  teamMembers: [],
+  projectMembers: [],
+  users: [
+    { id: 'owner-1', preferences: { pushEnabled: false } },
+    { id: 'owner-2', preferences: null },
+  ],
+  tokens: [tok('owner-2')],
+  ...over,
+})
+
+test('every active owner gets a bell row, even with pushes off and no devices', async () => {
+  const state = ownersState({ noPushCredentials: true })
+  const summary = await handleBudgetAlertDispatch(
+    { prisma: makeFakePrisma(state), encryptionKeyRing: ENCRYPTION_KEY_RING, retryDelayMs: () => 0 },
+    { ...teamPayload(), periodStart: PERIOD_START },
+  )
+
+  assert.equal(summary.sent, 0)
+  assert.deepEqual(
+    (state.alerts ?? []).map((row) => [row.userId, row.kind, row.budgetAlertId]).sort(),
+    [['owner-1', 'budget_alert', 'marker-1'], ['owner-2', 'budget_alert', 'marker-1']],
+  )
+  assert.deepEqual(
+    [...new Set((state.alerts ?? []).map((row) => row.eventKey))],
+    [`budget-alert:team:team-1:${PERIOD_START}:threshold`],
+  )
+})
+
+test('a redelivered job writes no second row, and the push goes only where allowed', async () => {
+  const state = ownersState()
+  const { senders, apnsCalls } = recordingSenders()
+  const deps = { prisma: makeFakePrisma(state), encryptionKeyRing: ENCRYPTION_KEY_RING, senders, retryDelayMs: () => 0 }
+  await handleBudgetAlertDispatch(deps, { ...teamPayload(), periodStart: PERIOD_START })
+  await handleBudgetAlertDispatch(deps, { ...teamPayload(), periodStart: PERIOD_START })
+
+  assert.equal(state.alerts?.length, 2)
+  // owner-1 turned pushes off: a bell row, no push. owner-2 is pushed.
+  assert.ok(apnsCalls.length > 0)
+  assert.ok(apnsCalls.every((call) => call.token === 'device-owner-2'))
+})
+
+test('no bell row without the marker the enqueue claimed', async () => {
+  // A job from a replica of the previous build names no window, so it cannot
+  // name its marker; a marker in another organisation is never this job's.
+  const cases: Array<{ payload: BudgetAlertDispatchJobPayload; markers: Marker[] }> = [
+    { payload: teamPayload(), markers: [marker()] },
+    { payload: { ...teamPayload(), periodStart: PERIOD_START }, markers: [marker({ organizationId: 'org-2' })] },
+    { payload: { ...teamPayload(), periodStart: PERIOD_START, kind: 'blocked' }, markers: [marker()] },
+  ]
+  for (const { payload, markers } of cases) {
+    const state = ownersState({ markers, noPushCredentials: true })
+    await handleBudgetAlertDispatch(
+      { prisma: makeFakePrisma(state), encryptionKeyRing: ENCRYPTION_KEY_RING, retryDelayMs: () => 0 },
+      payload,
+    )
+    assert.deepEqual(state.alerts ?? [], [])
+  }
 })

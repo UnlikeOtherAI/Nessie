@@ -103,6 +103,25 @@ export const visibleUserAlertWhere = (input: {
       ],
     },
     {
+      // A budget crossed its warn threshold or first stopped work this period.
+      // Budgets and the Usage and limits page they are changed on are an
+      // organisation owner's, so the row surfaces while its recipient still is
+      // one: a demoted owner keeps no doorway to a page that refuses them. The
+      // marker it reports is this organisation's; deleting the marker cascades
+      // the row away.
+      kind: 'budget_alert',
+      AND: [
+        { budgetAlert: { is: { organizationId: input.organizationId } } },
+        {
+          user: {
+            organizationMembers: {
+              some: { deactivatedAt: null, organizationId: input.organizationId, role: 'owner' },
+            },
+          },
+        },
+      ],
+    },
+    {
       // An automatic-membership rule that stopped granting. Revalidated against
       // the rule's live health exactly as trigger_health revalidates its
       // trigger: the moment an administrator re-authorizes it, the bell item

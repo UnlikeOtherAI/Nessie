@@ -9,7 +9,10 @@ import {
   type PaginationMeta,
 } from '@nessie/schemas'
 
-import { TeamInvitationAlertMetadataSchema, type UserAlertRecord } from '../contracts/alerts.js'// User alerts (#246): org-scoped, per-user reads of the durable UserAlert
+import { TeamInvitationAlertMetadataSchema, type UserAlertRecord } from '../contracts/alerts.js'
+import { withBudgetScopeNames } from './budget-scope-names.js'
+
+// User alerts (#246): org-scoped, per-user reads of the durable UserAlert
 // store. Every query is pinned to BOTH the caller's organization and the
 // caller's user id — alerts are private to their recipient.
 
@@ -20,6 +23,9 @@ const alertInclude = {
   actorAgent: { select: { name: true } },
   automaticMembershipRule: { select: { team: { select: { name: true } } } },
   trigger: { select: { name: true } },
+  budgetAlert: {
+    select: { kind: true, percentUsed: true, period: true, scopeId: true, scopeType: true },
+  },
 } satisfies Prisma.UserAlertInclude
 
 type AlertWithRelations = Prisma.UserAlertGetPayload<{ include: typeof alertInclude }>
@@ -32,7 +38,43 @@ const alertMetadata = (
   return parsed.success ? parsed.data : null
 }
 
-const mapAlertRecord = (alert: AlertWithRelations): UserAlertRecord => ({
+type BudgetScopeNames = Map<string, string | null>
+
+const budgetScopeKey = (scope: { scopeType: string; scopeId: string }): string =>
+  `${scope.scopeType}:${scope.scopeId}`
+
+// What a budget_alert row says, read from the marker it points at. The marker's
+// kind is a plain column; anything but the two kinds the writer uses reads as
+// no summary rather than a guess.
+const budgetAlertSummary = (
+  alert: AlertWithRelations,
+  names: BudgetScopeNames,
+): UserAlertRecord['budgetAlert'] => {
+  const marker = alert.budgetAlert
+  if (alert.kind !== 'budget_alert' || !marker) return null
+  if (marker.kind !== 'threshold' && marker.kind !== 'blocked') return null
+  return {
+    kind: marker.kind,
+    percentUsed: marker.percentUsed,
+    period: marker.period,
+    scopeName: names.get(budgetScopeKey(marker)) ?? null,
+    scopeType: marker.scopeType,
+  }
+}
+
+/** The names of the budgets a page of alerts reports, read once per page. */
+const budgetScopeNamesFor = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  alerts: readonly AlertWithRelations[],
+): Promise<BudgetScopeNames> => {
+  const scopes = alerts.flatMap((alert) => (alert.budgetAlert ? [alert.budgetAlert] : []))
+  if (scopes.length === 0) return new Map()
+  const named = await withBudgetScopeNames(prisma, organizationId, scopes)
+  return new Map(named.map((scope) => [budgetScopeKey(scope), scope.scopeName]))
+}
+
+const mapAlertRecord = (alert: AlertWithRelations, budgetScopeNames: BudgetScopeNames): UserAlertRecord => ({
   id: alert.id,
   kind: alert.kind,
   messageId: alert.messageId,
@@ -54,6 +96,7 @@ const mapAlertRecord = (alert: AlertWithRelations): UserAlertRecord => ({
   callId: alert.callId ?? null,
   localInferenceHostId: alert.localInferenceHostId ?? null,
   localInferenceBindingId: alert.localInferenceBindingId ?? null,
+  ...(alert.kind === 'budget_alert' ? { budgetAlert: budgetAlertSummary(alert, budgetScopeNames) } : {}),
   metadata: alertMetadata(alert),
   actorUserId: alert.actorUserId,
   actorAgentId: alert.actorAgentId,
@@ -125,8 +168,9 @@ export const listUserAlerts = async (
     total,
   })
 
+  const budgetScopeNames = await budgetScopeNamesFor(prisma, input.organizationId, page.data)
   return {
-    data: page.data.map(mapAlertRecord),
+    data: page.data.map((alert) => mapAlertRecord(alert, budgetScopeNames)),
     meta: page.meta,
   }
 }

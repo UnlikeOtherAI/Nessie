@@ -17,8 +17,13 @@ import {
  * ('blocked') this period; the once-per-period dedupe was already claimed by the
  * `budget_alerts` marker before enqueue. This resolves the people who should
  * know — the organisation owners who can inspect and change operational
- * budgets — filters them by their push preferences, and delivers through the
- * shared {@link deliverToRecipients} core, deep-linking to `/admin/usage`.
+ * budgets — writes each of them a durable `budget_alert` bell row, then filters
+ * them by their push preferences and delivers through the shared
+ * {@link deliverToRecipients} core, deep-linking to `/admin/usage`.
+ *
+ * The bell row comes first and does not depend on a device: an owner with no
+ * registered phone or browser used to never hear of a budget at all. A push
+ * preference silences the push, never the row — the rule mentions follow.
  *
  * This carries ONLY Nessie-local operational budget telemetry; it never touches
  * UOA customer credits/statements, which live on a separate surface.
@@ -26,7 +31,7 @@ import {
 
 /** Minimal Prisma surface this handler touches — keeps tests light. */
 export type BudgetAlertDispatchPrisma = PushDeliveryPrisma &
-  Pick<PrismaClient, 'organizationMember' | 'user'>
+  Pick<PrismaClient, 'budgetAlert' | 'organizationMember' | 'user' | 'userAlert'>
 
 export type BudgetAlertDispatchDeps = {
   prisma: BudgetAlertDispatchPrisma
@@ -83,6 +88,46 @@ const buildBudgetAlertPayload = (payload: BudgetAlertDispatchJobPayload): PushPa
   }
 }
 
+/**
+ * One bell row per owner, pointing at the marker the enqueue claimed. The event
+ * key mirrors the enqueue's idempotency key, so a redelivered job writes
+ * nothing twice (`user_alerts (user_id, event_key)` is unique) while next
+ * period's alert for the same budget is a new row. A job enqueued by a replica
+ * of the previous build carries no `periodStart`, so it cannot name its marker
+ * and rings the push alone, as every budget alert did before.
+ */
+const writeBudgetAlertRows = async (
+  prisma: BudgetAlertDispatchPrisma,
+  payload: BudgetAlertDispatchJobPayload,
+  recipientIds: readonly string[],
+): Promise<number> => {
+  if (!payload.periodStart || recipientIds.length === 0) return 0
+  const marker = await prisma.budgetAlert.findUnique({
+    where: {
+      scopeType_scopeId_periodStart_kind: {
+        kind: payload.kind,
+        periodStart: new Date(payload.periodStart),
+        scopeId: payload.scopeId,
+        scopeType: payload.scopeType,
+      },
+    },
+    select: { id: true, organizationId: true },
+  })
+  if (!marker || marker.organizationId !== payload.organizationId) return 0
+  const eventKey = `budget-alert:${payload.scopeType}:${payload.scopeId}:${payload.periodStart}:${payload.kind}`
+  const written = await prisma.userAlert.createMany({
+    data: recipientIds.map((userId) => ({
+      budgetAlertId: marker.id,
+      eventKey,
+      kind: 'budget_alert' as const,
+      organizationId: payload.organizationId,
+      userId,
+    })),
+    skipDuplicates: true,
+  })
+  return written.count
+}
+
 export const handleBudgetAlertDispatch = async (
   deps: BudgetAlertDispatchDeps,
   payload: BudgetAlertDispatchJobPayload,
@@ -91,13 +136,14 @@ export const handleBudgetAlertDispatch = async (
   const retryDelayMs = deps.retryDelayMs ?? defaultPushRetryDelayMs
   const webPushEnabled = Boolean(deps.webPush)
 
-  const { apnsCreds, fcmCreds } = await loadPushCredentials(deps)
-  if (!apnsCreds && !fcmCreds && !webPushEnabled) {
-    return summary
-  }
-
   const candidateIds = await resolveRecipientUserIds(deps.prisma, payload)
   if (candidateIds.length === 0) {
+    return summary
+  }
+  await writeBudgetAlertRows(deps.prisma, payload, candidateIds)
+
+  const { apnsCreds, fcmCreds } = await loadPushCredentials(deps)
+  if (!apnsCreds && !fcmCreds && !webPushEnabled) {
     return summary
   }
 

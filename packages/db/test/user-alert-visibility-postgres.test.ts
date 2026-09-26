@@ -110,3 +110,53 @@ runDatabaseTest('local inference health remains private to the current host cust
     organizationId: organization.id, userId: custodian.id,
   }) }), 0, 'a repair removes the attention row without a separate delete')
 })
+
+runDatabaseTest('a budget alert surfaces while its recipient is an owner, and goes with its marker', async (t) => {
+  const prisma = new PrismaClient()
+  const suffix = randomUUID()
+  const organization = await prisma.organization.create({ data: { name: `budget alert visibility ${suffix}` } })
+  const owner = await prisma.user.create({
+    data: { displayName: 'Owner', email: `budget-alert-owner-${suffix}@example.com` },
+  })
+  await prisma.organizationMember.create({
+    data: { organizationId: organization.id, role: 'owner', userId: owner.id },
+  })
+  const marker = await prisma.budgetAlert.create({
+    data: {
+      kind: 'threshold',
+      organizationId: organization.id,
+      percentUsed: 85,
+      period: 'monthly',
+      periodStart: new Date('2026-09-01T00:00:00Z'),
+      scopeId: organization.id,
+      scopeType: 'organization',
+    },
+  })
+  await prisma.userAlert.create({
+    data: {
+      budgetAlertId: marker.id,
+      eventKey: `budget-alert:organization:${organization.id}:2026-09-01T00:00:00.000Z:threshold`,
+      kind: 'budget_alert',
+      organizationId: organization.id,
+      userId: owner.id,
+    },
+  })
+  t.after(async () => {
+    await prisma.organization.delete({ where: { id: organization.id } }).catch(() => undefined)
+    await prisma.user.delete({ where: { id: owner.id } }).catch(() => undefined)
+    await prisma.$disconnect()
+  })
+  const where = visibleUserAlertWhere({ organizationId: organization.id, userId: owner.id })
+  const membership = { organizationId_userId: { organizationId: organization.id, userId: owner.id } }
+
+  assert.equal(await prisma.userAlert.count({ where }), 1)
+
+  // Budgets are an owner's: a demoted owner keeps no doorway to Usage and limits.
+  await prisma.organizationMember.update({ where: membership, data: { role: 'admin' } })
+  assert.equal(await prisma.userAlert.count({ where }), 0)
+  await prisma.organizationMember.update({ where: membership, data: { role: 'owner' } })
+  assert.equal(await prisma.userAlert.count({ where }), 1)
+
+  await prisma.budgetAlert.delete({ where: { id: marker.id } })
+  assert.equal(await prisma.userAlert.count({ where: { organizationId: organization.id, userId: owner.id } }), 0)
+})
