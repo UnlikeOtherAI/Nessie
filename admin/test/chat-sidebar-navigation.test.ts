@@ -111,6 +111,7 @@ test('Channels and Knowledge reuse the sidebar tree presentation primitives', ()
   const menuSection = readSource('../src/layouts/admin-shell/SidebarMenuSection.tsx')
   const knowledgeTree = readSource('../src/components/features/knowledge/finder/FinderTreeView.tsx')
   const knowledgeSidebar = readSource('../src/components/features/knowledge/finder/FinderTreeSidebar.tsx')
+  const knowledgePane = readSource('../src/components/features/knowledge/finder/FinderTreePane.tsx')
   const styles = readSource('../src/styles.css')
 
   assert.match(tree, /export const SidebarTreePanel/)
@@ -121,8 +122,9 @@ test('Channels and Knowledge reuse the sidebar tree presentation primitives', ()
   assert.match(knowledgeTree, /SidebarTreeChildren/)
   assert.match(
     styles,
-    /\.knowledge-sidebar-tree-panel\s*\{[\s\S]*?flex: 0 0 280px;[\s\S]*?width: 280px;[\s\S]*?overflow-y: auto;/,
+    /\.knowledge-sidebar-tree-panel\s*\{[\s\S]*?width: 100%;[\s\S]*?overflow-y: auto;/,
   )
+  assert.match(knowledgePane, /<BrowserColumnResizeHandle/)
   assert.match(styles, /\.knowledge-sidebar-tree-panel \.finder-row\s*\{[\s\S]*?min-height: 30px;/)
   assert.match(styles, /\.knowledge-sidebar-tree-panel \.finder-row\[data-finder-kind='folder'\]/)
   assert.ok(styles.includes('.admin-sidebar-menu.admin-sidebar-menu-channel-project [role="button"]'))
