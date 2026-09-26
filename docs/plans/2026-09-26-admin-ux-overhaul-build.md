@@ -403,6 +403,11 @@ including the OAuth landing (`?connected=`, `?error=`, `?provider=`) and the
 `#local-inference-host-<id>` anchor; the connection detail stays at
 `/settings/accounts/:id`.
 
+As built: a connection detail opened from a cold link on a phone Backs to the
+bare Connected accounts address (the Mail and calendar tab), while a warm Back
+returns to the provider's own tab, because the framework's cold fallback is
+page-level and cannot know the provider.
+
 ### T4 Old routes outside `admin/src` (Opus, after T1, parallel with T2)
 
 Every emitter of an admin path outside `admin/src` moves to the new route,
