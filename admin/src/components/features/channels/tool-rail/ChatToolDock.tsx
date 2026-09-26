@@ -27,6 +27,7 @@ type ChatToolDockProps = {
    * order they were bound.
    */
   agents: readonly AgentRecord[]
+  hideConversations: boolean
   /** Which of them the column is about; the rail's state is keyed on it. */
   selectedAgent: AgentRecord
   onSelectAgent: (agentId: string) => void
@@ -101,6 +102,7 @@ export const ChatToolDock = ({
   activeChannelId,
   activeThreadId,
   agents,
+  hideConversations,
   onClose,
   onSelectAgent,
   onToggle,
@@ -117,8 +119,9 @@ export const ChatToolDock = ({
   // Tools page — a missing grant is an unavailable capability, never a browser
   // read that failed. In a room with several agents there is no browser at
   // all, because there is no answer to "whose".
-  const tools = useMemo(() => availableChatTools(agents), [agents])
+  const tools = useMemo(() => availableChatTools(agents, hideConversations), [agents, hideConversations])
   const browserEnabled = tools.some((tool) => tool.id === 'browser')
+  const conversationsEnabled = tools.some((tool) => tool.id === 'conversations')
   // Two 400px panels plus the shell's own 389px of chrome leave a 1280px
   // window 91px of conversation, and below `xl` they are not columns at all —
   // each is a layer over the chat, so a second one means two scrims and a
@@ -128,7 +131,8 @@ export const ChatToolDock = ({
   // must not erase what the reader chose.
   const crowded = otherPanelOpen && !atLeast['2xl'] && !routed
   const browserOpen = browserEnabled && openTool === 'browser' && !crowded
-  const conversationsOpen = openTool === 'conversations' && !crowded
+  // Existing conversation links keep working after the DM doorway moves.
+  const conversationsOpen = (conversationsEnabled || routed) && openTool === 'conversations' && !crowded
 
   // Watching wants a fresh answer; a rail dot does not, and a layout with no
   // rail wants none at all. Both callers share one query key, so a
@@ -148,8 +152,8 @@ export const ChatToolDock = ({
   // `CHAT_TOOL_AGENT_WATCH_LIMIT` only the selected agent is polled: the dot is
   // a hint, and a dozen agents must not become a dozen requests per tick.
   const watched = useMemo(
-    () => chatToolAgentsToWatch(agents, selectedAgent.id),
-    [agents, selectedAgent.id],
+    () => conversationsEnabled ? chatToolAgentsToWatch(agents, selectedAgent.id) : [],
+    [agents, conversationsEnabled, selectedAgent.id],
   )
   const [runningByAgentId, setRunningByAgentId] = useState<Record<string, boolean>>({})
   const reportRunning = useCallback((agentId: string, running: boolean) => {
@@ -157,7 +161,7 @@ export const ChatToolDock = ({
       current[agentId] === running ? current : { ...current, [agentId]: running },
     )
   }, [])
-  const otherConversationRunning = anyConversationRunning(runningByAgentId, agents)
+  const otherConversationRunning = conversationsEnabled && anyConversationRunning(runningByAgentId, agents)
 
   const liveTools = useMemo(() => {
     const live = new Set<ChatToolId>()
@@ -201,7 +205,7 @@ export const ChatToolDock = ({
         down on a phone is the same statement as the header picking them up:
         they can neither double up nor both vanish.
       */}
-      {chatToolDoorway({ hasToolAgents: true, single }) === 'rail' ? (
+      {tools.length > 0 && chatToolDoorway({ hasToolAgents: true, single }) === 'rail' ? (
         <ChatToolRail
           blockedReason={crowded ? CROWDED_REASON : null}
           liveTools={liveTools}

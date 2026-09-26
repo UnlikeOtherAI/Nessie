@@ -128,8 +128,10 @@ scoped API query, with the compact channel-tree presentation. Selecting the
 agent's bare DM opens its session home with a New conversation action and
 example requests; selecting a child opens that exact thread. The existing
 Conversations tool remains a doorway inside shared rooms, where agents do not
-have a dedicated DM row in the sidebar. An agent DM's General thread remains
-in the list, so its older messages stay reachable.
+have a dedicated DM row in the sidebar. In an agent DM the Conversations rail,
+phone header action and info action are hidden; Browser remains available when
+the agent has that grant. An agent DM's General thread remains in the list, so
+its older messages stay reachable.
 
 ## Reply placement + thinking bubbles
 
