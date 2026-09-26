@@ -195,8 +195,9 @@ test('the starred Personal Assistant follows its active direct-message route', (
   const source = readSource('../src/layouts/admin-shell/SidebarStarredSection.tsx')
 
   assert.match(source, /agent\.agentKind === 'personal_assistant'/)
-  assert.match(source, /personalAssistantChannelId === currentChannelId/)
-  assert.match(source, /isActivePersonalAssistant \? 'active' : ''/)
+  assert.match(source, /dmChannelId === currentChannelId/)
+  assert.match(source, /selectedSessionId \? 'active-parent' : 'active'/)
+  assert.match(source, /<SidebarAgentSessions/)
 })
 
 test('the Personal Assistant has the same favorite control as a direct-message user', () => {

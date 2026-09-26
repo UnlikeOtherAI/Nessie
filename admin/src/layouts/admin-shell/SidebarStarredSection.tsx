@@ -12,19 +12,24 @@ import { ChannelGlyph } from '../../components/shared/RoomVisibilityGlyph';
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
-import type { StarredItem, VisibleStarredEntry } from './types';
+import { SidebarAgentSessions } from './SidebarAgentSessions';
+import { useLocation } from 'react-router-dom';
+import { parseThreadIdFromPath } from '../../lib/channel-route';
+import type { SidebarAgentDm, StarredItem, VisibleStarredEntry } from './types';
 
 type SidebarStarredSectionProps = {
   activeDmChannelId?: string;
   currentChannelId?: string;
   currentProjectId?: string;
   entries: VisibleStarredEntry[];
+  sidebarAgentDms: SidebarAgentDm[];
   onNavigateAgent: (agentId: string) => void;
   onNavigateChannel: (channelId: string) => void;
   onNavigateDm: (userId: string) => void;
   onNavigateProject: (projectId: string) => void;
   onToggleStar: (type: StarredItem['type'], id: string) => void;
   personalAssistantChannelId?: string;
+  personalAssistantAgentId?: string;
   starredCollapsed: boolean;
   toggleStarredCollapsed: () => void;
   unreadCountByChannelId: Map<string, number>;
@@ -35,17 +40,21 @@ export const SidebarStarredSection = ({
   currentChannelId,
   currentProjectId,
   entries,
+  sidebarAgentDms,
   onNavigateAgent,
   onNavigateChannel,
   onNavigateDm,
   onNavigateProject,
   onToggleStar,
   personalAssistantChannelId,
+  personalAssistantAgentId,
   starredCollapsed,
   toggleStarredCollapsed,
   unreadCountByChannelId,
 }: SidebarStarredSectionProps) => {
   const { token } = useAuthSession();
+  const { pathname } = useLocation();
+  const selectedSessionId = parseThreadIdFromPath(pathname);
   const prewarm = usePrewarm();
   const getPresence = usePresenceLookup();
   const nativeTouchShell = isReactNativeWebView();
@@ -77,16 +86,17 @@ export const SidebarStarredSection = ({
       {entries.map((item) => {
         if (item.type === 'agent') {
           const { agent } = item;
-          const isActivePersonalAssistant = agent.agentKind === 'personal_assistant'
-            && personalAssistantChannelId === currentChannelId;
-          return (
+          const dmChannelId = agent.agentKind === 'personal_assistant'
+            ? personalAssistantChannelId
+            : agent.homeChannelId ?? sidebarAgentDms.find((dm) => dm.agentId === agent.id)?.dmChannelId;
+          const entry = (
             <button
-              aria-current={sidebarAriaCurrent(isActivePersonalAssistant)}
+              aria-current={sidebarAriaCurrent(Boolean(dmChannelId === currentChannelId && !selectedSessionId))}
               key={`starred-agent-${agent.id}`}
-              className={`admin-sb-item group ${isActivePersonalAssistant ? 'active' : ''}`}
-              onClick={() => onNavigateAgent(agent.id)}
+              className={`admin-sb-item group ${dmChannelId === currentChannelId ? selectedSessionId ? 'active-parent' : 'active' : ''}`}
+              onClick={() => dmChannelId ? onNavigateChannel(dmChannelId) : onNavigateAgent(agent.id)}
               type="button"
-              {...prewarmRowHandlers(prewarm, `/agents/${agent.id}`)}
+              {...prewarmRowHandlers(prewarm, dmChannelId ? `/channels/${dmChannelId}` : `/agents/${agent.id}`)}
             >
               <AgentAvatar agent={agent} size={avatarSize} token={token} />
               <span className="min-w-0 flex-1 truncate">{agent.name}</span>
@@ -101,14 +111,26 @@ export const SidebarStarredSection = ({
               </span>
             </button>
           );
+          return dmChannelId ? <SidebarAgentSessions
+            agentId={agent.id}
+            agentName={agent.name}
+            channelId={dmChannelId}
+            currentChannelId={currentChannelId}
+            entry={entry}
+            key={`starred-agent-${agent.id}`}
+            pathname={pathname}
+          /> : entry;
         }
         if (item.type === 'channel') {
           const { channel } = item;
-          return (
+          const agentId = channel.id === personalAssistantChannelId
+            ? personalAssistantAgentId
+            : sidebarAgentDms.find((dm) => dm.dmChannelId === channel.id)?.agentId;
+          const entry = (
             <button
-              aria-current={sidebarAriaCurrent(channel.id === currentChannelId)}
+              aria-current={sidebarAriaCurrent(channel.id === currentChannelId && !selectedSessionId)}
               key={`starred-ch-${channel.id}`}
-              className={`admin-sb-item group ${(channel.unreadCount ?? 0) > 0 ? 'unread' : ''} ${channel.id === currentChannelId ? 'active' : ''}`}
+              className={`admin-sb-item group ${(channel.unreadCount ?? 0) > 0 ? 'unread' : ''} ${channel.id === currentChannelId ? selectedSessionId ? 'active-parent' : 'active' : ''}`}
               onClick={() => onNavigateChannel(channel.id)}
               type="button"
               {...prewarmRowHandlers(prewarm, `/channels/${channel.id}`)}
@@ -127,6 +149,15 @@ export const SidebarStarredSection = ({
               </span>
             </button>
           );
+          return agentId ? <SidebarAgentSessions
+            agentId={agentId}
+            agentName={channel.label}
+            channelId={channel.id}
+            currentChannelId={currentChannelId}
+            entry={entry}
+            key={`starred-ch-${channel.id}`}
+            pathname={pathname}
+          /> : entry;
         }
         if (item.type === 'project') {
           const { channels: starredProjectChannels, project } = item;

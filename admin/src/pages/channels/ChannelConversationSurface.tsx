@@ -25,6 +25,7 @@ import { agentSelectionLabel } from '../../components/shared/AgentVisibilityPill
 import { Dialog } from '../../components/shared/Dialog'
 import { ChannelTabPanels } from '../../components/features/channels/ChannelTabPanels'
 import { ExternalAgentIntro } from '../../components/features/channels/ExternalAgentIntro'
+import { AgentSessionHome, type AgentSessionHomeProps } from '../../components/features/agents/conversations/AgentSessionHome'
 import type { ChannelTitleFavorite } from '../../components/features/channels/ChannelFavoriteButton'
 import type { ConversationRenameDoorway } from '../../components/features/channels/rename-conversation'
 import { buildFeedItems } from '../../components/features/channels/channel-feed'
@@ -53,8 +54,8 @@ import type { useReplyThread } from '../../components/features/channels/useReply
 import { useResearchComposerButton } from '../../components/features/deep-water/useResearchComposerButton'
 import { ChannelPostRefusal } from '../../components/features/channels/ChannelPostRefusal'
 import type { WorkThreadComposer } from '../../components/features/ticket-work/WorkThreadReadOnlyNotice'
-
 interface ChannelConversationSurfaceProps {
+  sessionHome?: AgentSessionHomeProps | null
   activeCall: CallRecord | null | undefined
   activeChannel: ChannelRecord | null
   /**
@@ -203,6 +204,7 @@ export const ChannelConversationSurface = ({
   triggersTabAvailable,
   todosTabAvailable,
   personalAssistantPresences,
+  sessionHome,
   joinPending,
   mentionEntities,
   messageActions,
@@ -345,7 +347,8 @@ export const ChannelConversationSurface = ({
         ref={feedScroll.containerRef}
       >
         <div ref={feedScroll.contentRef}>
-          {visibleActiveTab === 'messages' ? (
+          {visibleActiveTab === 'messages' && sessionHome ? <AgentSessionHome {...sessionHome} />
+            : visibleActiveTab === 'messages' ? (
             <ChannelMessageFeed
               channelId={activeChannel?.id ?? null}
               documentSessions={documentSessions}
@@ -417,11 +420,11 @@ export const ChannelConversationSurface = ({
       </div>
 
       {/* The composer, or why it is not here (`ChannelPostRefusal`). */}
-      {visibleActiveTab === 'messages' ? (
+      {visibleActiveTab === 'messages' && !sessionHome ? (
         <ChannelPostRefusal postRefusal={roomControls.postRefusal} workThread={workThread} />
       ) : null}
 
-      {visibleActiveTab === 'messages' && roomControls.canPost && !workThread?.readOnly ? (
+      {visibleActiveTab === 'messages' && !sessionHome && roomControls.canPost && !workThread?.readOnly ? (
         <ChannelComposer
           attachments={composer.attachments}
           inviteErrors={composer.inviteErrors}

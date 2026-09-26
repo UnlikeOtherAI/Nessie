@@ -423,12 +423,21 @@ const main = async () => {
     // Agent X's own room with A: one agent, so the rail names it without a
     // strip. The ordinary rooms get their own cases at the end.
     const room = `/channels/${fixture.dmRoom.id}`
+    const dmGeneral = `${room}/threads/${fixture.dmThread.id}`
+
+    await goto(desktop, room)
+    await desktop.getByTestId('agent-session-home').waitFor({ timeout: 60_000 })
+    assert.equal(await desktop.locator('form.admin-compose:visible').count(), 0,
+      'the agent home has no selected session composer')
+    assert.equal(await desktop.getByTestId('agent-session-home').getByRole('button', {
+      name: 'New conversation',
+    }).count(), 1, 'the home offers a new session')
 
     // ---- rail -------------------------------------------------------------
     // The doorway exists, offers only the tools this agent has, and opens onto
     // the room's own General row before any conversation has been started.
     await gallery.capture('rail', async (page, viewport) => {
-      await goto(page, room)
+      await goto(page, dmGeneral)
       await composer(page).waitFor({ timeout: 60_000 })
       if (viewport === 'phone') {
         // The doorway lands with the agent read, which is a second request; a
@@ -467,7 +476,7 @@ const main = async () => {
 
     // ---- start-two --------------------------------------------------------
     // Two presses, two threads, two isolated jobs.
-    await goto(desktop, room)
+    await goto(desktop, dmGeneral)
     await composer(desktop).waitFor({ timeout: 60_000 })
     await openConversationsColumn(desktop, 'desktop', fixture.agent.name)
     const started = []
@@ -616,7 +625,7 @@ const main = async () => {
     // that reads "No messages yet". The rule is the server's
     // (`startAgentConversation` → `reused`), so this is the whole path: press,
     // press again, and count what exists afterwards.
-    await goto(desktop, room)
+    await goto(desktop, dmGeneral)
     await composer(desktop).waitFor({ timeout: 60_000 })
     await openConversationsColumn(desktop, 'desktop', fixture.agent.name)
     const beforeEmpty = desktop.url()
@@ -1034,7 +1043,7 @@ const main = async () => {
     visitorId = ticketSeed.visitor.id
     const ticketTitles = ticketSeed.tickets.map((ticket) => ticket.title)
     await gallery.capture('tickets-fold', async (page, viewport) => {
-      await goto(page, room)
+      await goto(page, dmGeneral)
       await composer(page).waitFor({ timeout: 60_000 })
       await openConversationsColumn(page, viewport, fixture.agent.name)
       const fold = conversationsPanel(page).last().getByTestId('agent-conversation-tickets')

@@ -87,12 +87,13 @@ export const useSidebarDms = ({
         if (!channel) return [];
         return [{
           dmChannelId: channel.id,
+          agentId: systemAgents.find((agent) => agent.channelIds.includes(channel.id))?.id ?? null,
           productSlug: assistant.productSlug,
           label: assistant.label,
           iconGlyph: assistant.iconGlyph,
         }];
       }),
-    [channels, chatAssistants],
+    [channels, chatAssistants, systemAgents],
   );
 
   const productAssistantChannelIds = useMemo(
