@@ -76,9 +76,33 @@ try {
   await page.getByRole('button', { name: 'Account menu' }).first().click()
   const accountMenu = page.getByRole('menu', { name: 'Account menu' })
   await accountMenu.waitFor()
-  assert.deepEqual(await frostedSurface(accountMenu), createSurface,
-    'account and Create menus share the same surface')
-  await page.screenshot({ path: '/private/tmp/nessie-account-menu-frosted.png', fullPage: true })
+  const accountAppearance = await accountMenu.evaluate((element) => {
+    const panelColorProbe = document.createElement('div')
+    panelColorProbe.style.backgroundColor = 'var(--panel)'
+    element.append(panelColorProbe)
+    const panelColor = getComputedStyle(panelColorProbe).backgroundColor
+    panelColorProbe.remove()
+    const styles = getComputedStyle(element)
+    return {
+      background: styles.backgroundColor,
+      blur: styles.backdropFilter,
+      panelColor,
+      radius: styles.borderRadius,
+      width: Math.round(element.getBoundingClientRect().width),
+    }
+  })
+  assert.deepEqual(accountAppearance, {
+    background: accountAppearance.panelColor,
+    blur: 'none',
+    panelColor: accountAppearance.panelColor,
+    radius: '12px',
+    width: 260,
+  }, 'account menu uses the Channels popup surface and compact width')
+  const settingsRow = accountMenu.getByRole('link', { name: 'Your settings' })
+  assert.ok(await settingsRow.locator('svg.lucide').count(), 'account actions use outlined icons')
+  assert.equal(await settingsRow.evaluate((element) => Math.round(element.getBoundingClientRect().height)), 32,
+    'account actions use the Channels menu row height')
+  await page.screenshot({ path: '/private/tmp/nessie-account-menu-channels.png', fullPage: true })
   await page.keyboard.press('Escape')
   await row('virtual:agents').click()
   await page.waitForURL(/\/knowledge-base\/agents\?view=tree/)

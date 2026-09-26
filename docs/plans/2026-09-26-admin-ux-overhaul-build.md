@@ -261,7 +261,9 @@ is retitled Computers), `/knowledge-base/*`, `/documents/*`, `/mail/*`,
   keys, Usage (only when the billing capability read says it is available),
   Security.
 - **Avatar menu:** Availability · Status · Your settings · Send feedback ·
-  Sign out. The Executors rows and Debug leave the menu.
+  Sign out. The Executors rows and Debug leave the menu. The panel shares the
+  Channels project menu's border, radius, surface, shadow and 32px row rhythm;
+  action icons sit on the left as 14px outline glyphs with a 2px stroke.
 - **Roots.** `/admin` and `/settings` are `contextualList` roots: on a phone
   the list is the page; on desktop each redirects to its first page. Back from
   a Your settings page returns to where the person came from (`parent:
