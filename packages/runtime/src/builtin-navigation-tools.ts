@@ -50,7 +50,7 @@ export const CONVERSATION_REFERENCE_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const NESSIE_LINK_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'nessie_link', category: 'conversation', label: 'Link to Nessie',
-  summary: 'Create a named Nessie link from kind, id and name, plus parent context for nested resources.', safe: true,
+  summary: 'Create a named link to a looked-up Nessie resource.', safe: true,
   description: 'Create a Markdown link using a name and identifiers already returned by a lookup tool. '
     + 'Use this when that result has no link. This formats a route; it does not discover resources, '
     + 'verify existence or grant access. A document needs its spaceId; a ticket or board needs projectId; '
