@@ -108,6 +108,13 @@ try {
 
   await stopCto.waitFor()
   await stopResearcher.waitFor()
+  const channel = page.getByRole('region', { name: 'Channel' })
+  const replyThread = page.getByRole('region', { name: 'Reply thread' })
+  await replyThread.getByTestId('thinking-bubble').getByText('Thinking…').waitFor()
+  assert.equal(await channel.locator('.admin-date-pill').count(), 0,
+    'the channel thinking bubble has no Live separator')
+  assert.equal(await replyThread.locator('.admin-date-pill').count(), 0,
+    'the reply-thread thinking bubble has no Live separator')
   const desktopBox = await boxOf(stopCto)
   assert.ok(Math.round(desktopBox.width) === 26 && Math.round(desktopBox.height) === 26,
     `Stop is the 26px action button under a mouse, got ${desktopBox.width}×${desktopBox.height}`)

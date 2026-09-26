@@ -24,6 +24,7 @@ import {
   faVideo,
   type IconDefinition,
 } from '@fortawesome/free-solid-svg-icons'
+import { APP_DOWNLOADS, downloadUrl } from '@nessie/sign-in-surface'
 
 // Everything the homepage says lives here, so copy edits never touch layout.
 // The whole site makes one argument: Nessie's agents are real employees —
@@ -36,6 +37,7 @@ export const signInUrl = 'https://app.nessie.works/login?launch=sso'
 /** Where the top bar sends someone who is already signed in. */
 export const accountUrl = 'https://app.nessie.works/settings/profile'
 export const docsUrl = 'https://github.com/UnlikeOtherAI/nessie'
+export const androidDownloadUrl = downloadUrl(APP_DOWNLOADS.android)
 export const contactUrl = 'mailto:hello@nessie.works'
 
 /**
@@ -476,6 +478,7 @@ export const footerColumns = [
       { href: '#teamwork', label: 'Teamwork' },
       { href: '#people', label: 'Your people' },
       { href: '#pricing', label: 'Pricing' },
+      { href: androidDownloadUrl, label: 'Android app' },
     ],
     title: 'Product',
   },

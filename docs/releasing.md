@@ -46,8 +46,8 @@ monorepo convention rather than one release of everything — is
 
 ## Published assets
 
-- `Nessie-macOS-Apple-Silicon.dmg` and `Nessie-macOS-Intel.dmg` — ad-hoc,
-  non-notarized macOS installers.
+- `Nessie-macOS-Apple-Silicon.dmg` and `Nessie-macOS-Intel.dmg` — Developer ID signed,
+  notarized and stapled macOS installers.
 - `Nessie-Windows-Setup.exe` and `Nessie-Windows.msi` — Windows desktop
   installers, Authenticode-signed by UnlikeOtherAI s.r.o.
 - `Nessie-Executor-Windows.msi` — the standalone Windows executor (service and
@@ -58,10 +58,17 @@ monorepo convention rather than one release of everything — is
 - `latest.json` — signed release metadata for desktop update checks and the
   direct Android APK handoff.
 
-The stable asset names deliberately power the homepage URLs under
-`/releases/latest/download/`; a new published release automatically becomes
-the download without a website change. Mac is two assets because its packaged
-Node executor runtime must match the processor architecture.
+The stable desktop asset names power downloads under
+`/releases/latest/download/`. Mac is two assets because its packaged Node
+executor runtime must match the processor architecture. The Android link on
+the public homepage and admin sign-in currently points at the Android-only
+[`android-v0.1.2-4` release](https://github.com/UnlikeOtherAI/Nessie/releases/tag/android-v0.1.2-4)
+instead. Its signed `Nessie-Android.apk` was built locally from source commit
+`38937d7b78021de385c350720777becd9816d53a` and published as a prerelease,
+so it does not become the desktop `/releases/latest` target or invoke the `v*`
+all-platform workflow. The release page records its SHA-256 checksum and signing
+certificate. Future Android releases must update the shared download URL and
+increase `versionCode`.
 
 The landing page opens a Mac download menu at a reliably detected Apple Silicon
 or Intel choice, while still exposing both installers. It deliberately shows
@@ -88,7 +95,9 @@ choices. **Update** opens the official signed APK in Android's package installer
 where Android asks the person to confirm the replacement. It never silently
 installs a package. The direct Android build sets
 `EXPO_PUBLIC_RELEASE_CHANNEL=direct`; a future Play build must set it to
-`store`, so Google Play handles its updates.
+`store`, so Google Play handles its updates. The Android-only prerelease has no
+`latest.json`, so this first public APK is installed or updated from its GitHub
+download link until an all-platform stable release publishes update metadata.
 The Mac App Store build also omits the `direct-updater` Cargo feature and its
 native commands, not merely the popup.
 
@@ -125,16 +134,13 @@ are repository secrets because the reusable Windows workflow needs them. Keep a
 recoverable owner-controlled backup of that key: losing it prevents every
 already-installed direct desktop client from accepting future releases.
 
-The current GitHub macOS download is deliberately ad-hoc signed because no
-Developer ID identity is available. It is not notarized and cannot pass
-Gatekeeper assessment. A person must open it via Finder's **Open** action (or
-remove the quarantine attribute after inspecting the download). Its Tauri
-updater artifacts remain separately signed. The release workflow applies
-`desktop/src-tauri/tauri.adhoc-macos.conf.json` after the direct-updater
-configuration so that Tauri explicitly uses `codesign -s -`. Replace this
-temporary path with Developer ID signing, hardened runtime, notarization,
-stapling, and Gatekeeper verification as soon as a suitable identity is
-available.
+Mac direct downloads use the shared Developer ID setup and inside-out signer.
+The desktop producer is `desktop/scripts/build-signed-macos.mjs`; the standalone
+executor retains its own DMG producer. Both refuse missing credentials before
+building an installable image. Homebrew casks and the WinGet executor manifest
+are generated from verified installers and attached as
+`package-manager-manifests.tar.gz`. Setup, native checks and submission steps:
+[package distribution](releasing-executor-packages.md).
 
 The Android build runs Expo prebuild and Gradle on the GitHub runner. It does
 not use Expo Cloud or an Expo account. The signing key is backed up outside Git
@@ -172,3 +178,5 @@ begins.
 
 iOS is intentionally not part of this workflow: its button stays marked
 **Coming soon** until an App Store release is available.
+
+The CLI has its own `executor-v*` candidates and signed APT/RPM repositories; see [package distribution](releasing-executor-packages.md).

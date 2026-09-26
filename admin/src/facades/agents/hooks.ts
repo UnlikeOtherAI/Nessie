@@ -6,6 +6,7 @@ export {
   useAgentAvailability,
   useAgentChildren,
   useAgentConversations,
+  useAgentConversationSuggestions,
   useAgentDocuments,
   useAgentModelOptions,
   useAgents,

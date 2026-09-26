@@ -4,6 +4,15 @@
 
 > **Voice layer note:** The brief references both Minimax (in the voice mode section) and OpenAI Realtime API (in the architecture section) — this contradiction reflects the exploratory state of the original brief. The shipping codebase uses OpenAI Realtime API in the legacy macOS client only; voice is not implemented in the `api/` server stack.
 
+## Current executor distribution scope
+
+The executor is installed through Homebrew on Apple Silicon macOS, native APT
+and RPM packages on x86_64 Linux, and WinGet for the signed Windows connector.
+Homebrew also installs the Mac desktop and standalone executor apps. Every team
+has separate resource permissions stored only on the computer; Nessie controls
+access within the team. [Installation](running-the-apps/executor-cli.md) and
+[release operations](releasing-executor-packages.md) own the details.
+
 ## Current SSO identity invariant
 
 For every deployment that uses UnlikeOtherAI (UOA) SSO, UOA is the sole

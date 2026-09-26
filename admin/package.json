@@ -28,6 +28,7 @@
     "test:e2e:executor-local-mcp": "node e2e/executor-local-mcp/run.mjs",
     "test:e2e:visibility-affordances": "node e2e/visibility-affordances/run.mjs",
     "test:e2e:connected-board-sources": "node e2e/connected-board-sources/run.mjs",
+    "test:e2e:agent-suggestions": "node --import tsx e2e/agent-conversations/suggestions.mjs",
     "test:e2e:agent-conversations": "node --import tsx e2e/agent-conversations/run.mjs",
     "test:e2e:disclosure": "node --import tsx e2e/disclosure/run.mjs",
     "test:e2e:document-window": "node e2e/document-window/run.mjs",

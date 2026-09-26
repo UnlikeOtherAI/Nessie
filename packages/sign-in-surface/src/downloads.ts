@@ -11,17 +11,23 @@ export const LATEST_RELEASE_DOWNLOAD_BASE =
  * somebody verifying a checksum or after an older build needs to be able to get
  * there, and nobody else should be sent there to find a download at all.
  */
-export const LATEST_RELEASE_PAGE =
-  'https://github.com/UnlikeOtherAI/Nessie/releases/latest'
+export const RELEASES_PAGE =
+  'https://github.com/UnlikeOtherAI/Nessie/releases'
 
 export type AppDownload = {
   asset: string
   detail: string
   label: string
+  releaseTag?: string
 }
 
 export const APP_DOWNLOADS = {
-  android: { asset: 'Nessie-Android.apk', detail: 'APK', label: 'Android' },
+  android: {
+    asset: 'Nessie-Android.apk',
+    detail: 'GitHub APK',
+    label: 'Android',
+    releaseTag: 'android-v0.1.2-4',
+  },
   linux: { asset: 'Nessie-Linux.AppImage', detail: 'AppImage', label: 'Linux' },
   macAppleSilicon: { asset: 'Nessie-macOS-Apple-Silicon.dmg', detail: 'Apple silicon', label: 'Mac' },
   macIntel: { asset: 'Nessie-macOS-Intel.dmg', detail: 'Intel', label: 'Mac' },
@@ -34,9 +40,8 @@ export const APP_DOWNLOADS = {
  * does local work on. Nessie Desktop already carries a copy, so these downloads
  * are for a Mac that runs only the executor and nothing else.
  *
- * Two images because the app carries its own pinned Node, which is the build
- * host's own binary. Both are Developer ID signed, notarized and stapled, so
- * neither needs a Gatekeeper bypass — see
+ * The Apple Silicon image carries its own pinned Node. It is Developer ID
+ * signed, notarized and stapled, so it needs no Gatekeeper bypass — see
  * docs/running-the-apps/executor-menu-bar-macos.md.
  */
 export const EXECUTOR_DOWNLOADS = {
@@ -45,12 +50,9 @@ export const EXECUTOR_DOWNLOADS = {
     detail: 'Apple silicon',
     label: 'Mac executor',
   },
-  macIntel: {
-    asset: 'Nessie-Executor-macOS-Intel.dmg',
-    detail: 'Intel',
-    label: 'Mac executor',
-  },
 } as const satisfies Record<string, AppDownload>
 
 export const downloadUrl = (download: AppDownload): string =>
-  `${LATEST_RELEASE_DOWNLOAD_BASE}/${download.asset}`
+  download.releaseTag
+    ? `${RELEASES_PAGE}/download/${download.releaseTag}/${download.asset}`
+    : `${LATEST_RELEASE_DOWNLOAD_BASE}/${download.asset}`

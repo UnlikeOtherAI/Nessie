@@ -144,3 +144,10 @@ export const RenameThreadBodySchema = z.object({
   title: z.string().trim().min(1).max(CONVERSATION_TITLE_MAX_CHARS),
 }).strict()
 export type RenameThreadBody = z.infer<typeof RenameThreadBodySchema>
+
+/** Cached private questions on an agent's conversation home. */
+export const AgentConversationSuggestionsSchema = z.object({
+  questions: z.array(z.string().trim().min(1).max(180)).max(3),
+  generatedAt: TimestampSchema.nullable(),
+})
+export type AgentConversationSuggestions = z.infer<typeof AgentConversationSuggestionsSchema>

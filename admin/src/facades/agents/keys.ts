@@ -17,6 +17,8 @@ export const agentKeys = {
   // that is what the list is *of*: the rail beside a conversation and the
   // agent page's own tab read the same rows, so they share one cache entry.
   conversations: (agentId?: string) => ['agents', agentId, 'conversations'] as const,
+  suggestions: (agentId: string, channelId: string) =>
+    ['agents', agentId, 'conversations', 'suggestions', channelId] as const,
   documents: (agentId?: string) => ['agents', agentId, 'documents'] as const,
   messages: (agentId: string) => ['agents', agentId, 'messages'] as const,
   models: ['agents', 'models'] as const,
