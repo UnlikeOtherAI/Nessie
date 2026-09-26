@@ -176,7 +176,7 @@ component moves to the new route with its label changed as noted.
 | `/settings/members`, `/settings/team/members` | `/admin/people?scope=organisation|team:<id>` | `MembersRosterPanel` with the scope switch; the local-install roster (`SettingsMembersPage`'s local sections, each person's agents, the agent buckets, Add member) at organisation scope; Automatic team access as its tab |
 | (new) | `/admin/teams` | Teams list: name, picture, members count, Open |
 | `/settings/team` | `/admin/teams/:teamId?tab=general` | `TeamProfilePage` content, plus the team's call provider (from Organisation › Agents) |
-| `/settings/team` (Agents tab) | `/admin/teams/:teamId?tab=overrides` | `TeamAgentsPage` content (cloud browser, AI on own computers) |
+| `/settings/team` (Agents tab) | `/admin/teams/:teamId?tab=overrides` | T1: `TeamAgentsPage` content (cloud browser, AI on own computers) · T2: the team's effective values with inheritance chips, each opening `/admin/models` or `/admin/connections` at `?scope=team:<id>`, where the controls now live |
 | `/settings/team/models` | T1: `/admin/teams/:teamId?tab=models` · T2: `/admin/models?scope=team:<id>` | `ModelAvailabilitySettings` with `teamId` |
 | `/settings/team/secrets` | T1: `/admin/teams/:teamId?tab=keys` · T2: `/admin/keys?scope=team:<id>` | `SecretsPanel scope="team"` |
 | `/settings/organization?tab=profile` | `/admin/organisation?tab=profile` | `OrganizationProfilePage` |
@@ -304,7 +304,9 @@ components:
   organisation scope on a local install.
 - `/admin/teams`: a list from `useTeams` (name, picture, member count when the
   roster read allows, Open); `/admin/teams/:teamId` with `TabBar` General ·
-  Overrides · AI models · Keys built from the existing team pages' content;
+  Overrides · AI models · Keys built from the existing team pages' content
+  (T2 has since folded AI models and Keys into the scoped pages, leaving
+  General and Overrides);
   the call-provider select from `CallProviderSettingsPanel` for this team on
   General; the team's People is a link to `/admin/people?scope=team:<id>`.
 - `/admin/advanced/debug`: a page rendering the session-debug dialog's content.
@@ -347,6 +349,49 @@ components:
 - `/admin/teams/:teamId`: the AI models and Keys tabs become links into the
   pages above with the team preselected; Overrides shows the effective values
   with "Set by organisation" chips and links.
+
+As built:
+
+- **One switch.** People, AI models, Company connections and Keys share
+  `useAdminScope` (rules in `admin/src/lib/admin-scope.ts`, each page's scopes
+  in `admin/src/pages/admin/scope-entitlements.ts`). People moved onto it, so a
+  member now sees its Organisation scope disabled with the reason instead of
+  absent. An address naming a team the page does not offer is an error on
+  screen; a viewer without the organisation lands on their working team (else
+  the first offered), written into the address with a replacing redirect.
+  `useTabParam` returns the named value as a third element for this.
+- **Scopes follow the API gates.** AI models: the organisation for its owner,
+  every team for any owner or admin; Test is the owner's at either scope and
+  is shown disabled, with the reason, to an admin; the own-computers policy
+  is shown only to the sign-in provider's administration standing its reads
+  need. Keys: the owner at every scope; anybody else is refused with a
+  doorway to Saved keys. Company connections: owner or admin at every scope;
+  a shared cloud browser account (company or team) is the owner's to connect,
+  so an admin sees its form and Disconnect greyed and saying so (`InertGate`,
+  the `ScopedSettingGate` treatment extended as R9 asks) while setting the
+  lock and home page, at the organisation's scope as well as a team's.
+  The team catalogue's pagination no longer writes its own `?scope=`, which
+  collided with the switch, and the page's provider filter is
+  `?modelProvider=`, because T3 made `?provider=` Connected accounts'
+  consumed OAuth return and a name is state or consumed, never both.
+- **Company connections.** The organisation's scope holds the company cloud
+  browser and Locked apps. The lock list is read from the catalogue's
+  Installed view, the only read that reports a lock and can be read whole:
+  `/api/apps` has no lock filter and `/api/mcp/catalog` stops at 500 of the
+  roughly 6,700 entries. So a locked app nobody here connected is not listed,
+  and the section says so; a complete list needs a filtered read, held with
+  the app page's Lock for phase 2. A team's scope holds that team's shared
+  mailboxes (listed and connected for it alone) and its cloud browser; a mail
+  surface's "Open mailbox settings" finds a shared mailbox's team when pressed.
+- **The team page** keeps two tabs, General and Overrides, as the route map
+  names them (the plan's §6.9 would make fewer than three concerns sections).
+  Overrides reads the team's narrowing, own-computers policy, shared
+  mailboxes, cloud browser account and home page, and keys, with "Set by
+  organisation", "Set by this team", "Locked by organisation" and "Locked by
+  this team" chips; each row opens the owning page at `?scope=team:<id>`.
+- **Open, outside T2:** `GET /api/browser-cloud/connections` never returns a
+  team's own connection, so a team's cloud browser panel cannot show a
+  connected team account. It predates this change and needs the backend.
 
 ### T3 Connected accounts re-tab (Opus, after T1, parallel with T2)
 

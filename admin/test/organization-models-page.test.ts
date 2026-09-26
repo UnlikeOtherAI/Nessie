@@ -10,7 +10,8 @@ const source = readFileSync(
 
 test('deployment model filters are server-side URL state', () => {
   assert.match(source, /searchParams\.get\('model'\)/)
-  assert.match(source, /searchParams\.get\('provider'\)/)
+  // Not `provider`: that spelling is Connected accounts' consumed OAuth return.
+  assert.match(source, /searchParams\.get\('modelProvider'\)/)
   assert.match(source, /useDeploymentModelCatalog\(true, filters, teamId\)/)
   assert.match(source, /next\.delete\('cursor'\)/)
   assert.doesNotMatch(source, /catalog\.items\.filter/)
@@ -19,8 +20,16 @@ test('deployment model filters are server-side URL state', () => {
 test('the shared surface uses team-scoped catalogue controls when given a team', () => {
   assert.match(source, /useSetDeploymentModelsEnabled\(teamId\)/)
   assert.match(source, /useSetDeploymentModelEnabled\(teamId\)/)
-  assert.match(source, /eyebrow=\{teamId \? 'Teams' : 'Organisation'\}/)
+  // One page in the Organisation group at either scope; the switch names which.
+  assert.match(source, /eyebrow="Organisation"/)
   assert.doesNotMatch(source, /Every model this deployment can run, as the model service/)
+})
+
+test('each scope carries its own-computers policy, and Test says who may send one', () => {
+  assert.match(source, /<LocalInferenceEnablement scope=\{teamId \? 'team' : 'organization'\}/)
+  // The policy is an administrator-authored key: shown to that standing only.
+  assert.match(source, /administration\.status/)
+  assert.match(source, /testUnavailableReason/)
 })
 
 test('bulk availability acts on the filtered catalogue rather than shown rows', () => {

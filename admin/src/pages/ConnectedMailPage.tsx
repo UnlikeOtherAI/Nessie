@@ -16,7 +16,7 @@ import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader
 import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { mailPath, type MailAddress, useConnectedMailAccounts, useConnectedMailConversation, useConnectedMailThreads } from '../facades/mail/hooks'
-import { connectedMailSettingsPath } from '../facades/mail/settings-path'
+import { useOpenMailSettings } from '../components/features/connected-mail/useOpenMailSettings'
 import { useNavigationLayout } from '../navigation/mobile-shell'
 import { useTabParam } from '../navigation/useTabParam'
 
@@ -83,6 +83,7 @@ export const ConnectedMailPage = () => {
   }>()
   const source = sourceOf(rawSource)
   const navigate = useNavigate()
+  const openMailSettings = useOpenMailSettings()
   const routeLocation = useLocation()
   const layout = useNavigationLayout()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -187,7 +188,7 @@ export const ConnectedMailPage = () => {
       initialDraft={resolvedCardDraft ?? routedCardDraft}
       onClose={() => navigate(mailPath(address))}
       onNewComposeReady={completeNewCompose}
-      onOpenSettings={() => navigate(connectedMailSettingsPath(account))}
+      onOpenSettings={() => openMailSettings(account)}
       onSent={() => navigate(mailPath(address))}
       onStartNewEmail={(id) => navigate(`${mailPath(address)}/compose?compose=${id}&new=1`)}
       open
@@ -206,7 +207,7 @@ export const ConnectedMailPage = () => {
         newCompose={newCompose}
         onNewComposeReady={completeNewCompose}
         key={`${composeId ?? 'default'}:${gmailDraftId ?? replyMessageId ?? 'new'}`}
-        onOpenSettings={() => navigate(connectedMailSettingsPath(account))}
+        onOpenSettings={() => openMailSettings(account)}
         onSent={() => navigate(mailPath(address))}
         onStartNewEmail={(id) => navigate(`${mailPath(address)}/compose?compose=${id}&new=1`)}
         replyTo={replyTo}
@@ -250,7 +251,7 @@ export const ConnectedMailPage = () => {
       <QueryState emptyLabel="No matching conversations." errorLabel="Could not load this mailbox. Check its settings, then refresh." isEmpty={threads.length === 0} loadingLabel="Loading mail…" query={threadQuery}>
         {() => <MailboxThreadList ariaLabel="Mail conversations" onSelect={openThread} selectedId={threadId} threads={threads.map(asMailboxThread)} />}
       </QueryState>
-      {threadQuery.isError && account ? <button className="self-start text-xs font-semibold text-[color:var(--accent)]" onClick={() => navigate(connectedMailSettingsPath(account))} type="button">Check mailbox settings</button> : null}
+      {threadQuery.isError && account ? <button className="self-start text-xs font-semibold text-[color:var(--accent)]" onClick={() => openMailSettings(account)} type="button">Check mailbox settings</button> : null}
       <MailPaging
         canPrevious={cursors.length > 0}
         next={() => {
@@ -324,8 +325,8 @@ const MailUnavailable = ({ account, message }: {
   account: { id: string; scope: 'personal' | 'shared'; source: ConnectedMailSource; status: string }
   message?: string
 }) => {
-  const navigate = useNavigate()
-  return <section className="px-[var(--page-gutter)] py-6"><p className="text-sm text-[color:var(--tx2)]">{message ?? errorCopy(account.status)}</p><button className="mt-3 admin-button admin-button-secondary" onClick={() => navigate(connectedMailSettingsPath(account))} type="button">Open mailbox settings</button></section>
+  const openMailSettings = useOpenMailSettings()
+  return <section className="px-[var(--page-gutter)] py-6"><p className="text-sm text-[color:var(--tx2)]">{message ?? errorCopy(account.status)}</p><button className="mt-3 admin-button admin-button-secondary" onClick={() => openMailSettings(account)} type="button">Open mailbox settings</button></section>
 }
 
 const ConnectedMailAccounts = () => {
@@ -342,10 +343,11 @@ const ConnectedMailAccounts = () => {
 
 const ConnectedMailAccountRow = ({ account }: { account: ConnectedMailAccountRecord }) => {
   const navigate = useNavigate()
+  const openMailSettings = useOpenMailSettings()
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 py-4">
       <div><p className="font-medium text-[color:var(--tx)]">{account.label}</p><p className="text-sm text-[color:var(--tx2)]">{account.address} · {account.scope} · {account.status}</p>{!account.canRead ? <p className="mt-1 text-sm text-[color:var(--tx2)]">{errorCopy(account.status)}</p> : null}</div>
-      {account.canRead ? <button className="admin-button admin-button-secondary" onClick={() => navigate(mailPath({ accountId: account.id, source: account.source }))} type="button">Open mail</button> : <button className="admin-button admin-button-secondary" onClick={() => navigate(connectedMailSettingsPath(account))} type="button">Open mailbox settings</button>}
+      {account.canRead ? <button className="admin-button admin-button-secondary" onClick={() => navigate(mailPath({ accountId: account.id, source: account.source }))} type="button">Open mail</button> : <button className="admin-button admin-button-secondary" onClick={() => openMailSettings(account)} type="button">Open mailbox settings</button>}
     </li>
   )
 }

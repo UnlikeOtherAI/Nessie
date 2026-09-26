@@ -69,6 +69,17 @@ the tabs its cloud browser currently has open, so when the agent closes the tab
 being watched the param no longer validates and the viewer snaps back to the
 first one instead of pointing at a dead frame.
 
+Degrading is wrong in one place: a strip whose value is the **target of a
+write**. The Organisation pages' scope switch (`useAdminScope`,
+`?scope=organisation|team:<id>`, on People, AI models, Company connections and
+Keys) must not show the organisation's catalogue under a team the address
+names but the viewer may not open, so `useTabParam` also returns what the
+address itself names — its third element, `null` when it names nothing — and
+the switch treats a value it does not offer as an error on screen. Where the
+organisation is not the viewer's, the team they land on is written into the
+address with a replacing redirect before anything is shown under it. The rules
+are in [`docs/standards/scoped-settings.md`](../standards/scoped-settings.md).
+
 The exception is a strip that is a **form field** rather than a section of a
 screen. Six today: the app-connect and app-secret scope choosers, and the
 in-thread approval gate's Approve/Reject, whose answer is submitted and thrown
@@ -89,8 +100,8 @@ shrinks.
 | Automations (`AutomationsPage`) | `tab` | `triggers` · `batch-jobs` · `workflows`; a change clears the list's own search, filters, selection and page |
 | Admin › Security (`OrganizationSecurityPage`) | `tab` | `audit` · `programs` (default: `audit` for an owner, `programs` otherwise) |
 | Admin › Organisation (`OrganizationPage`) | `tab` | `profile` · `appearance` |
-| a team (`TeamPage`) | `tab` | `general` · `overrides` · `models` · `keys` (`keys` for an owner) |
-| People (`PeoplePage`) | `scope` | `organisation` · `team:<id>` for each team the viewer is in (as the viewer is entitled); a change clears the roster's `tab` and page |
+| a team (`TeamPage`) | `tab` | `general` · `overrides` |
+| People, AI models, Company connections, Keys (`useAdminScope`) | `scope` | `organisation` · `team:<id>` as each page's API gates allow the viewer, the rest listed disabled with the reason; People offers only the teams the viewer is in, and a change clears its roster's `tab` and page; AI models' change clears its catalogue page |
 | Keys and Saved keys (`SecretsPanel`) | `status` | `active` · `revoked` |
 | Connected accounts (`ConnectionsPage`) | `tab` | `mail` · `chat` · `tickets` · `browsers` · `ai`; an OAuth return selects its provider's tab once its notice has been consumed |
 | an agent (`AgentDetailTabs`) | `agentTab` | `edit` · `to-dos` · `activity` · `sub-agents` · `tools` · `messages` · `documents` · `email` |
@@ -122,8 +133,9 @@ facts that justify it arrive.
 
 A named param is used wherever `tab` would collide: `agentTab` because the
 agent strip also renders inside the quick-view sheet over a conversation that
-owns `?tab=`, and `status` on Keys because a team's page hosts that panel as
-its Keys tab and `tab` is the team page's own strip. A strip that narrows a
+owns `?tab=`, and `status` on Keys and Saved keys because it narrows the list
+rather than switching a section, beside a host that may own `tab` or `scope`
+for its own strip. A strip that narrows a
 list (`role="radiogroup"`) uses the same hook — `filter`, `scope`, `source`,
 `status` are filters, not panel switches. A host whose tabs each carry their
 own list state passes `useTabParam` the params that belong to a tab

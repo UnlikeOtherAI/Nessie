@@ -57,13 +57,11 @@ test('the registry declares the intents the app links with', () => {
 // `code` and `error` on the sign-in routes sit outside the stack and belong to
 // the OAuth protocol rather than to any screen's intent; Security's `?code=` is
 // the pairing link's, and Connected accounts' `?error=` its own OAuth return's,
-// both read through the hooks like every other intent. AI models' `?provider=`
-// is that page's provider filter — state on its own row — not the provider a
-// Connected accounts OAuth return names.
+// both read through the hooks like every other intent. (AI models' provider
+// filter is `?modelProvider=` so that it never shares a consumed spelling.)
 const SAME_SPELLING_READERS: ReadonlyArray<readonly [path: string, name: string]> = [
   ['lib/external-auth-callback.ts', 'code'],
   ['lib/external-auth-callback.ts', 'error'],
-  ['components/features/inference-models/ModelAvailabilitySettings.tsx', 'provider'],
 ]
 
 test('a consumed name is read only through the intent hooks', () => {
