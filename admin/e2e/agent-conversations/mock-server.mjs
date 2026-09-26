@@ -11,14 +11,26 @@
 // embeddings), different selection rule.
 //
 // Selection is structural where it can be and keyed on the suite's own
-// sentinels where it cannot: nothing here inspects a person's phrasing beyond
-// the fixed strings this suite itself sent.
+// sentinels or the platform's own protocol markers where it cannot: nothing
+// here inspects a person's phrasing beyond fixed strings this suite or the
+// worker itself wrote.
 import { createServer } from 'node:http'
 
 /** The block `buildConversationRoutingBlock` writes into the PA's system prompt. */
 export const CONVERSATION_ROUTING_MARKER = 'Conversations with other agents:'
 /** The suite's own instruction to the assistant, matched verbatim. */
 export const START_PHRASE = 'start a conversation with'
+/**
+ * How the worker's completion check opens its system message
+ * (`worker/src/run/follow-up-review.ts`), matched the way `@nessie/mock-llm`
+ * matches it.
+ */
+const FOLLOW_UP_REVIEW_MARKER = '[nessie.follow_up_review.v1]\n'
+/** The check's strict JSON: this answer is finished, nothing to continue. */
+const FOLLOW_UP_REVIEW_DONE = JSON.stringify({
+  needsFollowUp: false,
+  reason: 'The answer is complete.',
+})
 
 const SSE_HEADERS = { 'cache-control': 'no-cache', 'content-type': 'text/event-stream' }
 
@@ -48,7 +60,9 @@ const lastOfRole = (messages, role) => {
  * The single reply this request gets, decided from the request alone.
  *
  * `tools` present ⇒ main inference; absent ⇒ one of the worker's utility
- * judgements, which get a short neutral answer rather than a scripted turn.
+ * judgements, which get a short neutral answer rather than a scripted turn —
+ * except the completion check every plain-text answer is held for, which must
+ * get its strict JSON or the worker fails the run.
  */
 const decide = (body, plan) => {
   const messages = Array.isArray(body.messages) ? body.messages : []
@@ -56,7 +70,11 @@ const decide = (body, plan) => {
   const user = textOf(lastOfRole(messages, 'user'))
   const hasTools = Array.isArray(body.tools) && body.tools.length > 0
 
-  if (!hasTools) return { latencyMs: 0, text: '{}' }
+  if (!hasTools) {
+    const completionCheck = messages[0]?.role === 'system'
+      && textOf(messages[0]).startsWith(FOLLOW_UP_REVIEW_MARKER)
+    return { latencyMs: 0, text: completionCheck ? FOLLOW_UP_REVIEW_DONE : '{}' }
+  }
 
   // A tool result came back: the assistant's next turn is its answer about it.
   // Checked before the start phrase, because the request that carries the
