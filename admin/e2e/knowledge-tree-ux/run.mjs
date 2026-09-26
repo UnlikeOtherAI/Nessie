@@ -29,7 +29,7 @@ const spaces = [
 const browser = await chromium.launch({ headless: true })
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 await page.addInitScript((value) => localStorage.setItem('nessie.admin.token', value), token)
-const treeRow = (id, selected = false) => page.locator('.knowledge-sidebar-tree-panel').first()
+const treeRow = (id, selected = false) => page.locator('[data-knowledge-tree-pane]').last()
   .locator(`${rowSelector(id)}${selected ? '[aria-selected="true"]' : ''}`)
 const checked = []
 let nestedDeepLink
@@ -58,9 +58,12 @@ const selectedContrast = async (row) => row.evaluate((element) => {
 })
 
 const assertTree = async (label) => {
-  await page.locator('.knowledge-sidebar-tree-panel').first().waitFor()
+  await page.locator('[data-knowledge-tree-pane]:visible').last().waitFor()
+  // The navigation shell cross-fades old and new route layers for 300 ms.
+  await page.waitForTimeout(350)
   assert.equal(new URL(page.url()).searchParams.get('view'), 'tree', `${label}: URL preserves Tree`)
   const viewButton = page.getByRole('button', { name: /View: Tree/ })
+  await viewButton.last().waitFor()
   assert.equal(await viewButton.count(), 1, `${label}: toolbar still says Tree`)
   assert.equal(await page.locator('[data-column-browser-track]').count(), 0, `${label}: not Columns`)
   checked.push(label)
@@ -69,7 +72,7 @@ const gotoTree = async (route) => {
   await page.goto(`${adminUrl}${route}${route.includes('?') ? '&' : '?'}view=tree`, {
     waitUntil: 'domcontentloaded',
   })
-  await page.locator('.knowledge-sidebar-tree-panel').first().waitFor()
+  await page.locator('[data-knowledge-tree-pane]').last().waitFor()
 }
 const clickRow = async (id) => {
   const row = treeRow(id)
@@ -114,10 +117,19 @@ try {
   for (const home of agentHomes) {
     await gotoTree('/knowledge-base/agents')
     await assertTree('Agents directory')
-    const row = page.locator(`[data-finder-row="${home.ownerAgentId}"]`).last()
+    const row = treeRow(home.spaceId)
     await row.waitFor()
     await row.click()
+    await page.waitForURL(new RegExp(`/knowledge-base/agents/${home.ownerAgentId}\\?view=tree`))
     await assertTree(`Agent: ${home.name}`)
+    await treeRow(home.spaceId, true).waitFor()
+    assert.equal(await page.locator('[data-knowledge-tree-pane]').last()
+      .locator('.knowledge-sidebar-tree-panel').count(), 1,
+    'agent documents stay in the single Tree hierarchy, without a second column-style tree')
+    const agentPages = await read(`/api/knowledge-base/spaces/${home.spaceId}/pages`)
+    for (const agentPage of agentPages.filter((entry) => !entry.parentPageId)) {
+      await treeRow(agentPage.id).waitFor()
+    }
   }
 
   for (const { name, space } of spaces) {
@@ -188,10 +200,10 @@ try {
     const { child, parentPath, spaceId } = folderDetailPath
     await gotoTree(`/knowledge-base/spaces/${spaceId}`)
     for (const ancestor of parentPath) await clickRow(ancestor.id)
-    const detailRow = page.locator('.knowledge-sidebar-tree-panel').last().locator(rowSelector(child.id))
+    const detailRow = page.locator('[data-knowledge-tree-pane]').last().locator(rowSelector(child.id))
     await detailRow.click()
     await treeRow(child.id, true).waitFor()
-    await assertTree('Folder child opened from detail pane')
+    await assertTree('Nested folder opened from tree')
   }
   await page.screenshot({ path: '/private/tmp/nessie-tree-ux-final.png', fullPage: true })
   console.log(`Knowledge Tree UX audit passed: ${checked.length} route/selection checks, ${spaces.length} spaces, ${agentHomes.length} agent homes`)

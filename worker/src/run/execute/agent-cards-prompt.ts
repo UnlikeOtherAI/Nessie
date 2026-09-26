@@ -19,7 +19,14 @@ export const browserLoginRequestPromptTools = (toolIds: ReadonlySet<string>): bo
   toolIds.has(BROWSER_LOGIN_REQUEST_TOOL_ID)
 
 export const buildAgentCardsBlock = (
-  facts: { hasCardTool: boolean; hasBrowserLoginRequestTool?: boolean },
+  facts: {
+    hasCardTool: boolean
+    hasBrowserLoginRequestTool?: boolean
+    /** `agent_tool_access_set` resolved: this run grants browser tools itself. */
+    canGrantBrowserTools?: boolean
+    /** One of Nessie's own agents, whose toolset the deployment fixes. */
+    ownToolsetFixed?: boolean
+  },
 ): string => {
   const card = facts.hasCardTool
     ? (

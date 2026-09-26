@@ -47,6 +47,7 @@ export type SidebarGroupDm = {
 // external-agent channel; `productSlug` keeps it traceable to its manifest.
 export type SidebarProductAssistant = {
   dmChannelId: string
+  agentId: string | null
   productSlug: string
   label: string
   iconGlyph?: string

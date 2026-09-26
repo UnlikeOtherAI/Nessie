@@ -26,10 +26,11 @@ import { Row, RowList } from '../../shared/RowList'
 import { iconForMime } from '../../shared/file-icons'
 import { firstFileOnly, useFileDrop } from '../../../hooks/useFileDrop'
 import { canViewAttachment, useAttachmentViewer } from '../../shared/AttachmentViewer'
+import { SectionLabel } from '../../primitives/SectionLabel'
 
-// Right-hand attachments drawer: a 360 px sheet on a split layout, covering the
-// page on a single-column one. Drag-and-drop, a button, and a native picker all
-// upload an attachment to the page.
+// Attachment list for a document/file detail tab, or a sheet for callers that
+// need an overlay. Drag-and-drop, a button, and a native picker all upload an
+// attachment to the page.
 export const AttachmentsDrawer = ({
   canWrite,
   pageId,
@@ -104,15 +105,16 @@ export const AttachmentsDrawer = ({
     inline ? (
       <section
         aria-labelledby="knowledge-attachments-title"
-        className="relative mt-8 border-t border-[color:var(--sep)] pt-5"
+        className="relative"
         id="knowledge-page-attachments"
+        tabIndex={-1}
         {...dropHandlers}
       >
         <DropZoneOverlay active={isDragging} progressPct={progress?.pct} uploading={upload.isPending} />
         <div className="mb-3 flex flex-wrap items-center gap-3">
-          <h2 className="flex-1 text-lg font-semibold text-[color:var(--tx)]" id="knowledge-attachments-title">
+          <SectionLabel as="h2" className="flex-1" id="knowledge-attachments-title" size="2xs">
             Attachments {attachments.length ? `(${attachments.length})` : ''}
-          </h2>
+          </SectionLabel>
           <div aria-label="Attachment layout" className="flex items-center gap-1" role="group">
             <button
               aria-label="List view"

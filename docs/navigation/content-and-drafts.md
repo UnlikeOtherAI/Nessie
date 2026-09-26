@@ -54,6 +54,12 @@ for it. Four pieces, plus one cache underneath them all.
   Knowledge backlinks (`admin/src/facades/knowledge/backlinks-hooks.ts`) also
   opt out: their rows describe links to one exact page and must never appear
   under another page while it loads.
+  The Knowledge provider keeps the pages query's previous result cached but
+  treats it as loading until it belongs to the newly selected space. Otherwise
+  opening a folder just after changing spaces briefly paints the previous
+  space's document tree and can resolve its old document into the detail pane.
+  A space-detail placeholder is likewise accepted only when its id matches
+  the selected space, so its old name and write permissions never flash.
   The corollary is that **`isSuccess` no longer means "this entity's data"** —
   a query serving placeholder data reports success — so a consumer that acts
   on identity guards with the id: the thread read marker refuses while its
@@ -161,10 +167,12 @@ const { draft, setDraft, flush, clear, restored, revision, saveError, isSaving }
   form cannot flush before its required fields are valid (the task dialog, a
   new agent, a new page — leaving keeps the local draft); the **knowledge page
   editor** and the **dashboard** each append a durable version per save, so a
-  debounced flush would bury the history their version panels exist for; and
-  the **trigger editor** decides when automation fires, so re-arming a live
-  schedule on every keystroke is not a save. All four still buffer locally, so
-  nothing is lost.
+  debounced flush would bury the history their version panels exist for. A new
+  knowledge document's primary action publishes the created page in the same
+  submit flow; **Save as draft** is the secondary action. Editing an existing
+  page continues to use **Save version**. The **trigger editor** decides when
+  automation fires, so re-arming a live schedule on every keystroke is not a
+  save. All four still buffer locally, so nothing is lost.
 - **A draft is written from a person's edit, never from a mount effect.** The
   agent designer mirrors its reducer into the draft and once did so on mount,
   while the reducer still held the empty baseline: that write counted as

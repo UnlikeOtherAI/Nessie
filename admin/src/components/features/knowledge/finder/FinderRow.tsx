@@ -8,6 +8,7 @@ import {
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgeIndexingState } from '@nessie/schemas'
 import { isDesktopApp } from '../../../../lib/desktop'
+import { Pill } from '../../../primitives/Pill'
 import { MiddleTruncate } from '../../../shared/MiddleTruncate'
 import { Row, type RowDragHandlers, type RowProps } from '../../../shared/RowList'
 import { RenameRow, type FinderRowRename } from './RenameRow'
@@ -101,6 +102,8 @@ export type FinderRowProps = {
   rename?: FinderRowRename
   kind?: 'folder' | 'document' | 'file' | 'spreadsheet' | 'space' | 'virtual' | 'link'
   selected?: boolean
+  /** Published is the quiet default; drafts carry a visible status cue. */
+  status?: 'draft' | 'published' | 'archived'
   /** How many people the page is shared with; 0 or absent shows nothing. */
   shareCount?: number
   subtitle?: ReactNode
@@ -254,6 +257,7 @@ export const FinderRow = ({
   rename,
   selected = false,
   shareCount = 0,
+  status,
   subtitle,
   tabIndex,
   title,
@@ -265,6 +269,13 @@ export const FinderRow = ({
 }: FinderRowProps) => {
   const transferring = Boolean(transfer)
   const opensOn = openGesture ?? finderRowOpenGesture(kind, isDesktopApp())
+  // `KnowledgePageRecord.status` also defaults to draft for uploaded files.
+  // Only pages with a publish workflow can truthfully say “Draft”.
+  const draftBadge = status === 'draft' && (kind === 'document' || kind === 'spreadsheet') ? (
+    <Pill radius="chip" size="sm" title="Draft — not published" tone="warning" uppercase={false}>
+      Draft
+    </Pill>
+  ) : null
 
   // A row being renamed is a field, not a control: it must not stay clickable,
   // draggable or selectable underneath the editor, and the editor keeps the
@@ -354,6 +365,7 @@ export const FinderRow = ({
           {meta ? (
             <span className="finder-row-meta shrink-0 text-xs text-[color:var(--tx3)]">{meta}</span>
           ) : null}
+          {gridTemplate ? null : draftBadge}
           {gridTemplate ? null : trailing}
           {shareCount > 0
             ? glyph(
@@ -375,7 +387,9 @@ export const FinderRow = ({
       }
     >
       {/* The list view's name cell: `trailing` there, beside the title. */}
-      {gridTemplate && trailing ? <span className="flex shrink-0 items-center gap-2">{trailing}</span> : null}
+      {gridTemplate && (draftBadge || trailing) ? (
+        <span className="flex shrink-0 items-center gap-2">{draftBadge}{trailing}</span>
+      ) : null}
     </Row>
   )
 }

@@ -192,7 +192,11 @@ test('agent_create refuses a tool policy that grants an explicit-grant tool', as
     }),
   )
 
-  assert.match(message, /Explicit-grant tools are managed only from the owner/)
+  // The refusal names the path that works — create, then grant with
+  // agent_tool_access_set — rather than an owner surface the Designer would
+  // relay as "not something I can do here".
+  assert.match(message, /Explicit-grant tools are not tool-policy keys/)
+  assert.match(message, /agent_tool_access_set/)
   assert.equal(createCalls, 0)
 })
 

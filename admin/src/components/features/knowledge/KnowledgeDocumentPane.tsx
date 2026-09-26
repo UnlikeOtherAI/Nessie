@@ -1,4 +1,6 @@
 import { lazy, Suspense, useState } from 'react'
+import { getCookie } from '../../../lib/storage'
+import { useTabParam } from '../../../navigation/useTabParam'
 import { useUploadFileVersion } from '../../../facades/knowledge/file-hooks'
 import { useConvertToSpreadsheet } from '../../../facades/knowledge/spreadsheet-hooks'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
@@ -7,6 +9,7 @@ import { FileNodeViewer } from './FileNodeViewer'
 import { FileVersionUploadDialog } from './FileVersionUploadDialog'
 import { useKnowledge } from './KnowledgeProvider'
 import { PagePreview } from './PagePreview'
+import { FINDER_VIEW_COOKIE, FINDER_VIEWS, migrateStoredFinderView } from './finder/finder-view'
 
 // The whole IronCalc surface — the widget JS, its 72 kB stylesheet and the
 // 1.9 MB wasm — sits behind this one dynamic import. Nothing is fetched while a
@@ -57,13 +60,14 @@ export const KnowledgeDocumentPane = ({
   const [versionDialogOpen, setVersionDialogOpen] = useState(false)
   const [versionProgress, setVersionProgress] = useState<UploadProgress | null>(null)
   const [versionError, setVersionError] = useState<string | null>(null)
+  // Tree keeps the hierarchy beside the detail, so an extra Back button in
+  // the detail header would duplicate the navigation already on screen.
+  const [storedView] = useState(() => migrateStoredFinderView(getCookie(FINDER_VIEW_COOKIE)))
+  const [view] = useTabParam('view', FINDER_VIEWS, storedView)
+  const detailBack = view === 'tree' ? undefined : onBack
 
   const convertToSpreadsheet = useConvertToSpreadsheet(selectedSpaceId)
   const fileVersionUpload = useUploadFileVersion(page.id, selectedSpaceId)
-
-  const showAttachments = () => {
-    document.getElementById('knowledge-page-attachments')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
 
   return (
     <div className="relative h-full w-full">
@@ -78,12 +82,12 @@ export const KnowledgeDocumentPane = ({
             </div>
           }
         >
-          <SpreadsheetPane canWrite={canWrite} onBack={onBack} page={page} />
+          <SpreadsheetPane canWrite={canWrite} onBack={detailBack} page={page} />
         </Suspense>
       ) : page.kind === 'file' ? (
         <FileNodeViewer
           canWrite={canWrite}
-          onBack={onBack}
+          onBack={detailBack}
           onOpenAsSpreadsheet={() =>
             convertToSpreadsheet.mutate(page.id, {
               onSuccess: (result) => openPagePath([result.page.id]),
@@ -95,7 +99,6 @@ export const KnowledgeDocumentPane = ({
               file: new File([markdown], page.title, { type: 'text/markdown' }),
             })
           }}
-          onToggleAttachments={showAttachments}
           onUploadVersion={() => setVersionDialogOpen(true)}
           page={page}
         />
@@ -105,7 +108,7 @@ export const KnowledgeDocumentPane = ({
           bodyQuery={bodyQuery}
           breadcrumbPages={breadcrumbPages}
           canWrite={canWrite}
-          onBack={onBack}
+          onBack={detailBack}
           onArchive={() => archivePage(page.id)}
           onBrowseRoot={() => browseTo([])}
           onEdit={() => openEdit(page)}
@@ -115,7 +118,6 @@ export const KnowledgeDocumentPane = ({
             if (index >= 0) openPagePath(breadcrumbPages.slice(0, index + 1).map((item) => item.id))
           }}
           onPublish={() => publishPage(page.id)}
-          onToggleAttachments={showAttachments}
           page={fullPage ?? page}
           publishPending={publishPending}
           spaceName={spaceName}

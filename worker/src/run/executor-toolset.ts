@@ -34,6 +34,7 @@ import {
   type TicketWorkCodingScope,
 } from './ticket-work-coding-sessions.js'
 import { summarizeToolInput } from './tool-util.js'
+import { combineExecutorToolsets } from './executor-machine-toolset.js'
 import type { AgenticToolResult } from './tools.js'
 
 // The descriptors and the command machinery live in their own modules; these
@@ -71,6 +72,7 @@ const codingBridgeNames = (descriptor: unknown): ReadonlySet<string> => {
 }
 
 export type ExecutorToolset = {
+  machines?: Array<{ executorId: string; label: string; toolNames: ReadonlySet<string> }>
   /**
    * The first-class coding-session tools, when this run is offered them
    * (`executor-coding-sessions.ts`); `dispatch` answers their names too, and
@@ -84,7 +86,7 @@ export type ExecutorToolset = {
    * A local program's whole catalog, walked page by page through `mcp.tools`
    * the first time this run asks and kept for the rest of it.
    */
-  mcpCatalog: (server: string, providerToolCallId: string) => Promise<ExecutorMcpCatalogAnswer>
+  mcpCatalog: (server: string, providerToolCallId: string, executorId?: unknown) => Promise<ExecutorMcpCatalogAnswer>
   /**
    * Fatal and replay-safe for this run's executor tools, naming the ToolCall
    * the provider call's command was recorded under; null for any other name.
@@ -108,6 +110,8 @@ export const buildExecutorToolset = async (
     hostOutput: ExecutorHostOutputDisclosure | null
     organizationId: string
     runId: string
+    /** Internal partition of a live chat run's machine bindings. */
+    executorId?: string
     /**
      * A `ticket.work` run the standing binder bound: its coding tools are the
      * ticket's own (`ticket-work-coding-sessions.ts`).
@@ -130,7 +134,7 @@ export const buildExecutorToolset = async (
   const [logicalTools, bindings] = await Promise.all([
     ensureExecutorLogicalTools(prisma, input.organizationId),
     prisma.executorBinding.findMany({
-      where: { runId: input.runId },
+      where: { runId: input.runId, ...(input.executorId ? { executorId: input.executorId } : {}) },
       select: {
         // The bound revision's reviewed policy names the local programs the
         // two mcp tools may reach, and the model is told exactly those.
@@ -139,7 +143,7 @@ export const buildExecutorToolset = async (
         // tools are offered only to a private executor's pairing owner.
         candidateHandleDigest: true,
         executorId: true,
-        executor: { select: { pairingOwnerUserId: true, scopeKind: true } },
+        executor: { select: { label: true, pairingOwnerUserId: true, scopeKind: true } },
         id: true,
         operationKey: true,
         session: { select: { id: true, profile: true, status: true } },
@@ -148,12 +152,23 @@ export const buildExecutorToolset = async (
       },
     }),
   ])
+  if (!input.executorId) {
+    const machines = [...new Map(bindings.map((entry) => [entry.executorId, entry])).values()]
+    if (machines.length > 1) {
+      const toolsets = await Promise.all(machines.map(async (machine) => ({
+        executorId: machine.executorId,
+        label: machine.executor.label,
+        toolset: await buildExecutorToolset(prisma, { ...input, executorId: machine.executorId }),
+      })))
+      return combineExecutorToolsets(toolsets)
+    }
+  }
   // A ticket's work bound through a standing policy gets the coding-session
   // tools and nothing else: the author's card consented to Claude Code
   // sessions on these machines, not to the machine's other reviewed programs.
   // So the generic pair is never offered to it, and the dispatch fence
   // refuses it too (`standingProgramRefusal`). Standing whenever a binding of
-  // the run says so, whether or not the ticket's coding scope loaded — and
+  // the run says so, whether or not the ticket's coding scope loaded â€” and
   // with no scope, not even the coding tools are offered.
   const standing = Boolean(input.ticketWork)
     || bindings.some((binding) => Boolean(binding.standingPolicyId || binding.ticketWorkId))

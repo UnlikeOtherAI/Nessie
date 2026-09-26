@@ -17,6 +17,16 @@ while and did not work: a routine hardware sweep still came back as ~400 words
 with a table. This is prompt guidance and never an output cap — depth has to
 stay one request away.
 
+All agents refer to resources by name and clickable link, withholding internal
+IDs/GUIDs unless asked. Existing lookup links are preferred; `nessie_link`
+formats a named product link from identifiers a lookup already returned. It
+does not discover resources, read new data or grant access. Its argument schema
+is always available, and malformed arguments remain correctable. Knowledge
+listings, search and page reads include canonical resource links directly. The shared prompt uses two
+short instructions for this, replacing the longer message-link paragraph.
+Machine-reach facts define executors as connected computers with command and
+local-app tools, so an agent never has to infer that meaning from the name.
+
 For action requests, the shared prompt explicitly explains that a text-only
 reply ends the turn: a promise does not schedule execution. Agents must use
 available tools, follow their results through to the requested outcome, or

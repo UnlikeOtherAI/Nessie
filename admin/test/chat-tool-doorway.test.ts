@@ -88,6 +88,23 @@ describe('chat tool doorway', () => {
     )
   })
 
+  it('keeps the browser doorway in an agent DM while conversations live in the sidebar', () => {
+    assert.deepEqual(
+      availableChatTools([agent()], true).map((tool) => tool.id),
+      ['browser'],
+    )
+    assert.deepEqual(
+      chatToolHeaderActions({
+        agents: [agent()],
+        hideConversations: true,
+        onOpenTool: () => undefined,
+        single: true,
+      }).map((action) => action.id),
+      ['chat-tool-browser'],
+    )
+    assert.deepEqual(availableChatTools([agent({ browserEnabled: false })], true), [])
+  })
+
   it('a multi-agent room is offered conversations, and no browser', () => {
     // The list says which agent it is showing; a browser column cannot, because
     // a session belongs to one agent — so it is withheld rather than guessed.

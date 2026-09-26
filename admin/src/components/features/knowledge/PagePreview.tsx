@@ -1,11 +1,17 @@
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   faBoxArchive,
   faClockRotateLeft,
+  faComment,
   faEllipsis,
+  faFileLines,
   faPaperclip,
+  faPen,
 } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { useTabParam } from '../../../navigation/useTabParam'
 import { toFormErrors } from '../../../facades/forms/form-errors'
+import { usePageAttachments } from '../../../facades/knowledge/file-hooks'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { Pill } from '../../primitives/Pill'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
@@ -19,6 +25,15 @@ import { isAgentDraft, pageStatusPillTone } from './page-status'
 import { ReviewPanel } from './ReviewPanel'
 import { AttachmentsDrawer } from './AttachmentsDrawer'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
+import { TabBar, type TabBarItem } from '../../primitives/TabBar'
+
+type DocumentTab = 'content' | 'attachments' | 'comments'
+const DOCUMENT_TABS: ReadonlyArray<TabBarItem<DocumentTab>> = [
+  { icon: <FontAwesomeIcon icon={faFileLines} />, label: 'Content', value: 'content' },
+  { icon: <FontAwesomeIcon icon={faPaperclip} />, label: 'Attachments', value: 'attachments' },
+  { icon: <FontAwesomeIcon icon={faComment} />, label: 'Comments', value: 'comments' },
+]
+const DOCUMENT_TAB_VALUES: readonly DocumentTab[] = ['content', 'attachments', 'comments']
 
 type PagePreviewProps = {
   // The on-demand full-body fetch (the pages list omits bodies): loading gets
@@ -36,7 +51,6 @@ type PagePreviewProps = {
   onOpenHistory: () => void
   onOpenBreadcrumb: (pageId: string) => void
   onPublish: () => void
-  onToggleAttachments: () => void
   page: KnowledgePageRecord
   publishPending?: boolean
   spaceName: string
@@ -54,83 +68,94 @@ export const PagePreview = ({
   onOpenHistory,
   onOpenBreadcrumb,
   onPublish,
-  onToggleAttachments,
   page,
   publishPending,
   spaceName,
 }: PagePreviewProps) => {
   const commentsComposerRef = useRef<HTMLTextAreaElement>(null)
+  const focusCommentsOnOpen = useRef(false)
+  const [activeTab, setActiveTab] = useTabParam('detail', DOCUMENT_TAB_VALUES, 'content')
+  const { data: attachments = [] } = usePageAttachments(page.id)
+  const tabs = useMemo(() => DOCUMENT_TABS.map((tab) => tab.value === 'attachments'
+    ? { ...tab, count: attachments.length || undefined }
+    : tab), [attachments.length])
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const [archiveError, setArchiveError] = useState<string | null>(null)
   const focusComments = () => {
+    focusCommentsOnOpen.current = true
+    setActiveTab('comments')
+  }
+  useEffect(() => {
+    if (activeTab !== 'comments' || !focusCommentsOnOpen.current) return
+    focusCommentsOnOpen.current = false
     commentsComposerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     commentsComposerRef.current?.focus()
-  }
+  }, [activeTab])
   const headerActions: PageHeaderAction[] = [
-    {
-      icon: faPaperclip,
-      id: 'attachments',
-      label: 'Attachments',
-      onSelect: onToggleAttachments,
-      priority: 60,
-    },
     ...(canWrite
-      ? [
-          {
-            id: 'edit',
-            label: 'Edit',
-            onSelect: onEdit,
-            priority: 40,
-          },
-          ...(page.status !== 'published'
-            ? [{
-                disabled: publishPending,
-                id: 'publish',
-                label: 'Publish',
-                onSelect: onPublish,
-                primary: true,
-                priority: 100,
-              } satisfies PageHeaderAction]
-            : []),
-        ] satisfies PageHeaderAction[]
+      ? [{
+          compact: true,
+          icon: faPen,
+          id: 'edit',
+          label: 'Edit',
+          onSelect: onEdit,
+          priority: 50,
+          title: 'Edit document',
+        } satisfies PageHeaderAction]
       : []),
     {
       compact: true,
-      icon: faEllipsis,
-      id: 'page-actions',
-      items: [
-        {
-          icon: faClockRotateLeft,
-          id: 'history',
-          label: 'History',
-          onSelect: onOpenHistory,
-        },
-        ...(canWrite
-          ? [{
-              disabled: archivePending,
-              icon: faBoxArchive,
-              id: 'archive-page',
-              label: 'Archive document',
-              onSelect: () => {
-                setArchiveError(null)
-                setArchiveConfirmOpen(true)
-              },
-            }]
-          : []),
-      ],
-      kind: 'menu',
-      label: 'Document actions',
-      priority: 10,
+      icon: faClockRotateLeft,
+      id: 'history',
+      label: 'History',
+      onSelect: onOpenHistory,
+      priority: 40,
+      title: 'Version history',
     },
+    ...(canWrite
+      ? [{
+          compact: true,
+          icon: faEllipsis,
+          id: 'document-actions',
+          items: [{
+            disabled: archivePending,
+            icon: faBoxArchive,
+            id: 'archive-page',
+            label: 'Archive document',
+            onSelect: () => {
+              setArchiveError(null)
+              setArchiveConfirmOpen(true)
+            },
+          }],
+          kind: 'menu',
+          label: 'More document actions',
+          priority: 10,
+          title: 'More document actions',
+        } satisfies PageHeaderAction]
+      : []),
+    ...(canWrite && page.status !== 'published'
+      ? [{
+          disabled: publishPending,
+          id: 'publish',
+          label: 'Publish',
+          onSelect: onPublish,
+          primary: true,
+          priority: 100,
+        } satisfies PageHeaderAction]
+      : []),
   ]
 
   return (
     <KnowledgePane
       actions={headerActions}
+      below={(
+        <TabBar ariaLabel="Document sections" idPrefix="knowledge-document" items={tabs} onChange={setActiveTab} value={activeTab} />
+      )}
       onBack={onBack}
       title={page.title}
     >
-      <div className="kb-reader mx-auto my-8 w-full max-w-3xl rounded-xl px-8 py-8 shadow-sm">
+      {activeTab === 'content' ? (
+        <div aria-labelledby="knowledge-document-tab-content" id="knowledge-document-tabpanel-content" role="tabpanel" className="kb-reader mx-auto my-8 w-full max-w-3xl rounded-xl px-8 py-8 shadow-sm">
         <nav aria-label="Page breadcrumbs" className="mb-5 flex flex-wrap items-center gap-1 text-xs text-[color:var(--tx3)]">
           <button className="hover:text-[color:var(--tx)]" onClick={onBrowseRoot} type="button">
             {spaceName}
@@ -199,6 +224,10 @@ export const PagePreview = ({
           </QueryState>
         </div>
 
+        <BacklinksPanel pageId={page.id} />
+        </div>
+      ) : activeTab === 'attachments' ? (
+        <div aria-labelledby="knowledge-document-tab-attachments" id="knowledge-document-tabpanel-attachments" role="tabpanel" className="mx-auto my-8 w-full max-w-4xl px-4">
         <AttachmentsDrawer
           canWrite={canWrite}
           inline
@@ -206,11 +235,12 @@ export const PagePreview = ({
           open
           pageId={page.id}
         />
-
-        <BacklinksPanel pageId={page.id} />
-
+        </div>
+      ) : (
+        <div aria-labelledby="knowledge-document-tab-comments" id="knowledge-document-tabpanel-comments" role="tabpanel" className="mx-auto my-8 w-full max-w-3xl px-8">
         <CommentsSection canResolve={canWrite} composerRef={commentsComposerRef} pageId={page.id} />
-      </div>
+        </div>
+      )}
       <ConfirmDialog
         body={
           <>

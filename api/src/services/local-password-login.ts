@@ -9,10 +9,9 @@ import {
   buildMeResponse,
   createActorContextFromClaims,
 } from './auth.js'
-import { attemptGlobalAgentsBootstrap } from './global-agents.js'
 import { attemptPersonalAssistantAvatar } from './personal-assistant-avatar.js'
-import { ensurePersonalAssistantBootstrap } from './personal-assistant.js'
 import { RefreshTokenIssuanceError } from './refresh-token.js'
+import { ensureSystemAgentsForMember } from './system-agents-bootstrap.js'
 import { loadSessionUserByEmail } from './users.js'
 
 type LocalPasswordCredentials = {
@@ -74,12 +73,7 @@ export const authenticateLocalPassword = async (
     { userAgent: request.headers['user-agent'] ?? null },
   )
   const actorContext = createActorContextFromClaims(session.claims)
-  await ensurePersonalAssistantBootstrap(deps.prisma, {
-    organizationId: actorContext.tenant.organizationId,
-    teamId: actorContext.tenant.teamId!,
-    userId: user.id,
-  })
-  await attemptGlobalAgentsBootstrap(
+  await ensureSystemAgentsForMember(
     deps.prisma,
     {
       organizationId: actorContext.tenant.organizationId,
