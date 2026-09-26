@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { readConversationRef } from '@nessie/schemas'
 
 import { useConversation } from '../../../facades/threads/hooks'
@@ -45,6 +46,7 @@ export const ConversationCard = ({
 }
 
 const ResolvedConversationCard = ({ threadId }: { threadId: string }) => {
+  const { t } = useTranslation('agentConversations')
   const { token } = useAuthSession()
   // The cadence follows the newest answer: watch a run closely, let a finished
   // conversation settle to the rail's slower beat.
@@ -82,7 +84,7 @@ const ResolvedConversationCard = ({ threadId }: { threadId: string }) => {
           color: 'var(--text-muted)',
         }}
       >
-        {notVisible ? 'A conversation you can’t see.' : 'Couldn’t load this conversation'}
+        {notVisible ? t('card.hidden') : t('card.loadFailed')}
       </div>
     )
   }
@@ -125,7 +127,7 @@ const ResolvedConversationCard = ({ threadId }: { threadId: string }) => {
           {age ? <span>{age}</span> : null}
           <UnreadBadge value={record.unreadCount} />
           <span className="ml-auto flex-shrink-0 font-semibold text-[color:var(--accent)]">
-            Open →
+            {t('card.open')}
           </span>
         </span>
       </Link>

@@ -17,7 +17,12 @@
     "recordingBadge": "Recording routine · structural tool steps only",
     "recordingDescription": "Teach an agent by doing a routine together once. Only completed, redacted structural tool calls are kept; a recording never runs automatically.",
     "recordingTitle": "Routine recording",
-    "recordTitle": "Record a routine"
+    "recordTitle": "Record a routine",
+    "visibleToChannel": "Recording is visible to everyone in this channel.",
+    "stopAndGeneralise": "Stop and generalize to a draft Workflow",
+    "startedByAnother": "Another channel member started this recording.",
+    "agentToTeach": "Agent to teach",
+    "startRecording": "Start recording"
   },
   "search": {
     "placeholder": "Search messages in this channel",
@@ -110,7 +115,8 @@
     "addReaction": "Add emoji reaction",
     "reply": "Reply in thread",
     "edit": "Edit message",
-    "delete": "Delete message"
+    "delete": "Delete message",
+    "editMarkdown": "Edit message Markdown"
   },
   "messageFeed": {
     "deleted": "Message has been deleted",
@@ -310,6 +316,10 @@
     "mentionChannel": "Mention channel",
     "runOnExecutor": "Run on executor",
     "attachFiles": "Attach files",
-    "sendMessage": "Send message"
+    "sendMessage": "Send message",
+    "insertEmoji": "Insert emoji",
+    "removeAttachment": "Remove {{name}}",
+    "removeAttachmentTitle": "Remove",
+    "uploadFailed": "Upload failed"
   }
 }

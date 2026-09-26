@@ -17,7 +17,12 @@
     "recordingBadge": "Enregistrement de routine · étapes structurelles uniquement",
     "recordingDescription": "Apprenez une routine à un agent en la réalisant ensemble une fois. Seuls les appels structurels terminés et expurgés sont conservés ; l’enregistrement ne s’exécute jamais automatiquement.",
     "recordingTitle": "Enregistrement de routine",
-    "recordTitle": "Enregistrer une routine"
+    "recordTitle": "Enregistrer une routine",
+    "visibleToChannel": "L’enregistrement est visible par tous dans ce canal.",
+    "stopAndGeneralise": "Arrêter et généraliser en brouillon de workflow",
+    "startedByAnother": "Un autre membre du canal a lancé cet enregistrement.",
+    "agentToTeach": "Agent à former",
+    "startRecording": "Démarrer l’enregistrement"
   },
   "search": {
     "placeholder": "Rechercher des messages dans ce canal",
@@ -110,7 +115,8 @@
     "addReaction": "Ajouter une réaction emoji",
     "reply": "Répondre dans le fil",
     "edit": "Modifier le message",
-    "delete": "Supprimer le message"
+    "delete": "Supprimer le message",
+    "editMarkdown": "Modifier le Markdown du message"
   },
   "messageFeed": {
     "deleted": "Le message a été supprimé",
@@ -310,6 +316,10 @@
     "mentionChannel": "Mentionner un canal",
     "runOnExecutor": "Exécuter sur l’exécuteur",
     "attachFiles": "Joindre des fichiers",
-    "sendMessage": "Envoyer le message"
+    "sendMessage": "Envoyer le message",
+    "insertEmoji": "Insérer un emoji",
+    "removeAttachment": "Supprimer {{name}}",
+    "removeAttachmentTitle": "Supprimer",
+    "uploadFailed": "Échec du téléversement"
   }
 }

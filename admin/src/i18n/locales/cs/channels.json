@@ -17,7 +17,12 @@
     "recordingBadge": "Nahrávání postupu · pouze strukturální kroky nástrojů",
     "recordingDescription": "Naučte agenta postup společným provedením. Ukládají se pouze dokončená a anonymizovaná strukturální volání nástrojů; nahrávání se nikdy nespouští automaticky.",
     "recordingTitle": "Nahrávání postupu",
-    "recordTitle": "Nahrát postup"
+    "recordTitle": "Nahrát postup",
+    "visibleToChannel": "Záznam je viditelný všem v tomto kanálu.",
+    "stopAndGeneralise": "Zastavit a převést na koncept workflow",
+    "startedByAnother": "Tento záznam spustil jiný člen kanálu.",
+    "agentToTeach": "Agent k zaučení",
+    "startRecording": "Spustit záznam"
   },
   "search": {
     "placeholder": "Hledat zprávy v tomto kanálu",
@@ -110,7 +115,8 @@
     "addReaction": "Přidat reakci emoji",
     "reply": "Odpovědět ve vlákně",
     "edit": "Upravit zprávu",
-    "delete": "Odstranit zprávu"
+    "delete": "Odstranit zprávu",
+    "editMarkdown": "Upravit formátování zprávy Markdown"
   },
   "messageFeed": {
     "deleted": "Zpráva byla odstraněna",
@@ -310,6 +316,10 @@
     "mentionChannel": "Zmínit kanál",
     "runOnExecutor": "Spustit na exekutoru",
     "attachFiles": "Připojit soubory",
-    "sendMessage": "Odeslat zprávu"
+    "sendMessage": "Odeslat zprávu",
+    "insertEmoji": "Vložit emoji",
+    "removeAttachment": "Odebrat {{name}}",
+    "removeAttachmentTitle": "Odebrat",
+    "uploadFailed": "Nahrání se nezdařilo"
   }
 }

@@ -17,7 +17,12 @@
     "recordingBadge": "Grabando rutina · solo pasos estructurales de herramientas",
     "recordingDescription": "Enseña una rutina a un agente realizándola juntos una vez. Solo se guardan las llamadas estructurales completadas y depuradas; la grabación nunca se ejecuta automáticamente.",
     "recordingTitle": "Grabación de rutina",
-    "recordTitle": "Grabar una rutina"
+    "recordTitle": "Grabar una rutina",
+    "visibleToChannel": "La grabación es visible para todos en este canal.",
+    "stopAndGeneralise": "Detener y generalizar como borrador de flujo de trabajo",
+    "startedByAnother": "Otro miembro del canal inició esta grabación.",
+    "agentToTeach": "Agente que se va a entrenar",
+    "startRecording": "Iniciar grabación"
   },
   "search": {
     "placeholder": "Buscar mensajes en este canal",
@@ -110,7 +115,8 @@
     "addReaction": "Añadir reacción con emoji",
     "reply": "Responder en el hilo",
     "edit": "Editar mensaje",
-    "delete": "Eliminar mensaje"
+    "delete": "Eliminar mensaje",
+    "editMarkdown": "Editar Markdown del mensaje"
   },
   "messageFeed": {
     "deleted": "El mensaje se ha eliminado",
@@ -310,6 +316,10 @@
     "mentionChannel": "Mencionar un canal",
     "runOnExecutor": "Ejecutar en el executor",
     "attachFiles": "Adjuntar archivos",
-    "sendMessage": "Enviar mensaje"
+    "sendMessage": "Enviar mensaje",
+    "insertEmoji": "Insertar emoji",
+    "removeAttachment": "Quitar {{name}}",
+    "removeAttachmentTitle": "Quitar",
+    "uploadFailed": "Error al subir"
   }
 }

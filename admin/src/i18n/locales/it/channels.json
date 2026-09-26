@@ -17,7 +17,12 @@
     "recordingBadge": "Registrazione routine · solo passaggi strutturali degli strumenti",
     "recordingDescription": "Insegna una routine a un agente svolgendola insieme una volta. Vengono conservate solo le chiamate strutturali completate e ripulite; la registrazione non viene mai eseguita automaticamente.",
     "recordingTitle": "Registrazione routine",
-    "recordTitle": "Registra una routine"
+    "recordTitle": "Registra una routine",
+    "visibleToChannel": "La registrazione è visibile a tutti in questo canale.",
+    "stopAndGeneralise": "Interrompi e generalizza in una bozza di workflow",
+    "startedByAnother": "Un altro membro del canale ha avviato questa registrazione.",
+    "agentToTeach": "Agente da addestrare",
+    "startRecording": "Avvia registrazione"
   },
   "search": {
     "placeholder": "Cerca messaggi in questo canale",
@@ -110,7 +115,8 @@
     "addReaction": "Aggiungi una reazione emoji",
     "reply": "Rispondi nel thread",
     "edit": "Modifica messaggio",
-    "delete": "Elimina messaggio"
+    "delete": "Elimina messaggio",
+    "editMarkdown": "Modifica il Markdown del messaggio"
   },
   "messageFeed": {
     "deleted": "Il messaggio è stato eliminato",
@@ -310,6 +316,10 @@
     "mentionChannel": "Menziona un canale",
     "runOnExecutor": "Esegui nell’executor",
     "attachFiles": "Allega file",
-    "sendMessage": "Invia messaggio"
+    "sendMessage": "Invia messaggio",
+    "insertEmoji": "Inserisci emoji",
+    "removeAttachment": "Rimuovi {{name}}",
+    "removeAttachmentTitle": "Rimuovi",
+    "uploadFailed": "Caricamento non riuscito"
   }
 }
