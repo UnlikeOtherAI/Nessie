@@ -1,0 +1,69 @@
+{
+  "starting": "Iniciando…",
+  "newConversation": "Nueva conversación",
+  "home": {
+    "personalIdeaPlan": "Ayúdame a planificar mis próximos pasos",
+    "personalIdeaSummary": "Resume lo que necesito saber",
+    "personalIdeaProjects": "Busca una respuesta en mis proyectos",
+    "agentIdeaRole": "¿En qué puedes ayudarme como {{role}}?",
+    "agentIdeaPlan": "Ayúdame a elaborar un plan",
+    "agentIdeaSummary": "Resume el contexto relevante",
+    "talkWith": "Hablar con {{name}}",
+    "description": "Elige una conversación a la izquierda o inicia una nueva. Cada conversación conserva su propio contexto.",
+    "tryAsking": "Prueba a preguntar"
+  },
+  "panel": {
+    "back": "Volver a la conversación",
+    "title": "Conversaciones",
+    "startFailed": "No se pudo iniciar una conversación. Inténtalo de nuevo.",
+    "withAgent": "Conversaciones con {{name}}",
+    "close": "Cerrar panel de conversaciones",
+    "agent": "Agente",
+    "emptyNudge": "Esta conversación sigue vacía: prueba a escribir aquí primero."
+  },
+  "sidebar": {
+    "startFailed": "No se pudo iniciar una conversación.",
+    "collapse": "Contraer conversaciones con {{name}}",
+    "expand": "Expandir conversaciones con {{name}}",
+    "newWith": "Nueva conversación con {{name}}"
+  },
+  "room": {
+    "personalAssistant": "Asistente personal",
+    "directMessage": "Mensaje directo"
+  },
+  "time": {
+    "now": "ahora",
+    "minutes": "{{value}} min",
+    "hours": "{{value}} h"
+  },
+  "status": {
+    "running": "En curso",
+    "queued": "En cola",
+    "waitingApproval": "Esperando aprobación",
+    "needsReply": "Necesita respuesta",
+    "done": "Hecho",
+    "failed": "Fallido",
+    "cancelled": "Cancelado",
+    "notStarted": "Sin iniciar"
+  },
+  "body": {
+    "nothingYet": "Aún no se ha dicho nada",
+    "noMessagesYet": "Todavía no hay mensajes"
+  },
+  "list": {
+    "loadFailed": "No se pudieron cargar estas conversaciones.",
+    "tryAgain": "Reintentar",
+    "empty": "Todavía no hay conversaciones",
+    "runningNow": "En curso ahora",
+    "loadedSoFar": "Cargadas hasta ahora: {{value}}",
+    "tickets": "Tickets",
+    "documents": "Documentos",
+    "loading": "Cargando…",
+    "showOlder": "Mostrar anteriores"
+  },
+  "card": {
+    "hidden": "Una conversación que no puedes ver.",
+    "loadFailed": "No se pudo cargar esta conversación",
+    "open": "Abrir →"
+  }
+}

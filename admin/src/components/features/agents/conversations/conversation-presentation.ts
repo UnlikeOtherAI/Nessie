@@ -1,4 +1,8 @@
 import type { AgentConversationChannel } from '@nessie/schemas'
+import i18n from '../../../../i18n/i18n'
+
+const conversationText = (key: string, fallback: string): string =>
+  i18n.isInitialized ? i18n.t(key, { ns: 'agentConversations' }) : fallback
 
 /**
  * How a conversation names the room it lives in, and how old it is.
@@ -14,8 +18,10 @@ import type { AgentConversationChannel } from '@nessie/schemas'
  * name for its own DM (whose channel label is an internal one).
  */
 export const conversationRoomLabel = (channel: AgentConversationChannel): string => {
-  if (channel.systemChannelType === 'personal_assistant') return 'Personal Assistant'
-  if (channel.type === 'dm') return channel.label || 'Direct message'
+  if (channel.systemChannelType === 'personal_assistant') {
+    return conversationText('room.personalAssistant', 'Personal Assistant')
+  }
+  if (channel.type === 'dm') return channel.label || conversationText('room.directMessage', 'Direct message')
   return `#${channel.label}`
 }
 
@@ -33,12 +39,6 @@ const MINUTE_MS = 60_000
 const HOUR_MS = 60 * MINUTE_MS
 const DAY_MS = 24 * HOUR_MS
 const WEEK_MS = 7 * DAY_MS
-
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
-const MONTHS = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-] as const
 
 /**
  * A list row's trailing age: "now", "4m", "2h", "Tue", "3 Sep".
@@ -64,9 +64,20 @@ export const formatConversationTime = (
 
   // A clock skew ahead of us is "now", never a negative age.
   const age = Math.max(0, now - ms)
-  if (age < MINUTE_MS) return 'now'
-  if (age < HOUR_MS) return `${Math.floor(age / MINUTE_MS)}m`
-  if (age < DAY_MS) return `${Math.floor(age / HOUR_MS)}h`
-  if (age < WEEK_MS) return WEEKDAYS[at.getDay()] ?? null
-  return `${at.getDate()} ${MONTHS[at.getMonth()] ?? ''}`.trim()
+  if (age < MINUTE_MS) return conversationText('time.now', 'now')
+  if (age < HOUR_MS) {
+    const count = Math.floor(age / MINUTE_MS)
+    return i18n.isInitialized
+      ? i18n.t('time.minutes', { ns: 'agentConversations', value: count })
+      : `${count}m`
+  }
+  if (age < DAY_MS) {
+    const count = Math.floor(age / HOUR_MS)
+    return i18n.isInitialized
+      ? i18n.t('time.hours', { ns: 'agentConversations', value: count })
+      : `${count}h`
+  }
+  const locale = i18n.isInitialized ? i18n.resolvedLanguage ?? i18n.language : 'en-GB'
+  if (age < WEEK_MS) return new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(at)
+  return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' }).format(at)
 }

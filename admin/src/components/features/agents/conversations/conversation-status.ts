@@ -1,5 +1,9 @@
 import type { AgentConversationRecord } from '@nessie/schemas'
 import type { PillTone } from '../../../primitives/Pill'
+import i18n from '../../../../i18n/i18n'
+
+const conversationText = (key: string, fallback: string): string =>
+  i18n.isInitialized ? i18n.t(key, { ns: 'agentConversations' }) : fallback
 
 /**
  * What a conversation's status chip says, decided from the record alone.
@@ -31,26 +35,26 @@ export const conversationStatus = ({
   if (activeRun) {
     switch (activeRun.status) {
       case 'running':
-        return { dot: 'success', label: 'Running', tone: 'success' }
+        return { dot: 'success', label: conversationText('status.running', 'Running'), tone: 'success' }
       case 'pending':
-        return { dot: 'muted', label: 'Queued', tone: 'muted' }
+        return { dot: 'muted', label: conversationText('status.queued', 'Queued'), tone: 'muted' }
       case 'waiting_approval':
-        return { dot: null, label: 'Waiting for approval', tone: 'warning' }
+        return { dot: null, label: conversationText('status.waitingApproval', 'Waiting for approval'), tone: 'warning' }
       case 'waiting_input':
-        return { dot: null, label: 'Needs a reply', tone: 'warning' }
+        return { dot: null, label: conversationText('status.needsReply', 'Needs a reply'), tone: 'warning' }
     }
   }
   switch (lastRunOutcome) {
     case 'completed':
-      return { dot: null, label: 'Done', tone: 'muted' }
+      return { dot: null, label: conversationText('status.done', 'Done'), tone: 'muted' }
     case 'failed':
-      return { dot: null, label: 'Failed', tone: 'danger' }
+      return { dot: null, label: conversationText('status.failed', 'Failed'), tone: 'danger' }
     case 'cancelled':
-      return { dot: null, label: 'Cancelled', tone: 'muted' }
+      return { dot: null, label: conversationText('status.cancelled', 'Cancelled'), tone: 'muted' }
     // A conversation nobody has run yet — the ordinary state of one that was
     // opened empty from the rail.
     case null:
-      return { dot: null, label: 'Not started', tone: 'muted' }
+      return { dot: null, label: conversationText('status.notStarted', 'Not started'), tone: 'muted' }
   }
 }
 
@@ -70,8 +74,9 @@ export const conversationBodyLine = (
   // A list row and a card say the empty case differently — "No messages yet"
   // in a list of rooms, "Nothing said yet" on a card about one conversation —
   // so the caller supplies the words and the precedence stays here.
-  empty = 'Nothing said yet',
-): string => activeRun?.progressLine || lastMessagePreview || empty
+  empty?: string,
+): string => activeRun?.progressLine || lastMessagePreview
+  || empty || conversationText('body.nothingYet', 'Nothing said yet')
 
 /**
  * How often a list of conversations asks again.

@@ -1,0 +1,69 @@
+{
+  "starting": "Démarrage…",
+  "newConversation": "Nouvelle conversation",
+  "home": {
+    "personalIdeaPlan": "Aide-moi à planifier les prochaines étapes",
+    "personalIdeaSummary": "Résume ce que je dois savoir",
+    "personalIdeaProjects": "Trouve une réponse dans mes projets",
+    "agentIdeaRole": "Comment peux-tu m’aider en tant que {{role}} ?",
+    "agentIdeaPlan": "Aide-moi à faire un plan",
+    "agentIdeaSummary": "Résume le contexte pertinent",
+    "talkWith": "Parler à {{name}}",
+    "description": "Choisissez une conversation à gauche ou commencez-en une nouvelle. Chaque conversation garde son propre contexte.",
+    "tryAsking": "Essayez de demander"
+  },
+  "panel": {
+    "back": "Retour à la conversation",
+    "title": "Conversations",
+    "startFailed": "Impossible de démarrer une conversation. Réessayez.",
+    "withAgent": "Conversations avec {{name}}",
+    "close": "Fermer le panneau des conversations",
+    "agent": "Agent",
+    "emptyNudge": "Cette conversation est encore vide — essayez d’écrire ici d’abord."
+  },
+  "sidebar": {
+    "startFailed": "Impossible de démarrer une conversation.",
+    "collapse": "Replier les conversations avec {{name}}",
+    "expand": "Déplier les conversations avec {{name}}",
+    "newWith": "Nouvelle conversation avec {{name}}"
+  },
+  "room": {
+    "personalAssistant": "Assistant personnel",
+    "directMessage": "Message privé"
+  },
+  "time": {
+    "now": "maintenant",
+    "minutes": "{{value}} min",
+    "hours": "{{value}} h"
+  },
+  "status": {
+    "running": "En cours",
+    "queued": "En attente",
+    "waitingApproval": "En attente d’approbation",
+    "needsReply": "Réponse nécessaire",
+    "done": "Terminé",
+    "failed": "Échec",
+    "cancelled": "Annulé",
+    "notStarted": "Non démarré"
+  },
+  "body": {
+    "nothingYet": "Rien n’a encore été dit",
+    "noMessagesYet": "Aucun message pour le moment"
+  },
+  "list": {
+    "loadFailed": "Impossible de charger ces conversations.",
+    "tryAgain": "Réessayer",
+    "empty": "Aucune conversation pour le moment",
+    "runningNow": "En cours actuellement",
+    "loadedSoFar": "Déjà chargées : {{value}}",
+    "tickets": "Tickets",
+    "documents": "Documents",
+    "loading": "Chargement…",
+    "showOlder": "Afficher les plus anciennes"
+  },
+  "card": {
+    "hidden": "Une conversation que vous ne pouvez pas voir.",
+    "loadFailed": "Impossible de charger cette conversation",
+    "open": "Ouvrir →"
+  }
+}

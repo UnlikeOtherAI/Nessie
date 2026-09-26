@@ -1,0 +1,69 @@
+{
+  "starting": "Starting…",
+  "newConversation": "New conversation",
+  "home": {
+    "personalIdeaPlan": "Help me plan my next steps",
+    "personalIdeaSummary": "Summarize what I need to know",
+    "personalIdeaProjects": "Find an answer in my projects",
+    "agentIdeaRole": "What can you help me with as {{role}}?",
+    "agentIdeaPlan": "Help me make a plan",
+    "agentIdeaSummary": "Summarize the relevant context",
+    "talkWith": "Talk with {{name}}",
+    "description": "Pick a conversation on the left, or start a new one. Each conversation keeps its own context.",
+    "tryAsking": "Try asking"
+  },
+  "panel": {
+    "back": "Back to conversation",
+    "title": "Conversations",
+    "startFailed": "Could not start a conversation. Please try again.",
+    "withAgent": "Conversations with {{name}}",
+    "close": "Close conversations panel",
+    "agent": "Agent",
+    "emptyNudge": "This one is still empty — try talking to me here first."
+  },
+  "sidebar": {
+    "startFailed": "Could not start a conversation.",
+    "collapse": "Collapse conversations with {{name}}",
+    "expand": "Expand conversations with {{name}}",
+    "newWith": "New conversation with {{name}}"
+  },
+  "room": {
+    "personalAssistant": "Personal Assistant",
+    "directMessage": "Direct message"
+  },
+  "time": {
+    "now": "now",
+    "minutes": "{{value}}m",
+    "hours": "{{value}}h"
+  },
+  "status": {
+    "running": "Running",
+    "queued": "Queued",
+    "waitingApproval": "Waiting for approval",
+    "needsReply": "Needs a reply",
+    "done": "Done",
+    "failed": "Failed",
+    "cancelled": "Canceled",
+    "notStarted": "Not started"
+  },
+  "body": {
+    "nothingYet": "Nothing said yet",
+    "noMessagesYet": "No messages yet"
+  },
+  "list": {
+    "loadFailed": "Couldn’t load these conversations.",
+    "tryAgain": "Try again",
+    "empty": "No conversations yet",
+    "runningNow": "Running now",
+    "loadedSoFar": "{{value}} loaded so far",
+    "tickets": "Tickets",
+    "documents": "Documents",
+    "loading": "Loading…",
+    "showOlder": "Show older"
+  },
+  "card": {
+    "hidden": "A conversation you can’t see.",
+    "loadFailed": "Couldn’t load this conversation",
+    "open": "Open →"
+  }
+}

@@ -53,6 +53,8 @@ imports the shared `i18n` singleton and calls
 variables consistent across translations.
 Format dates and relative times with the active locale through `Intl`;
 `admin/src/i18n/formatters.ts` provides the shared short relative-time form.
+Conversation list timestamps use the same active locale for weekday and date
+labels; model-written conversation text and suggested questions remain data.
 
 All user-visible application text belongs in catalogs: navigation, forms,
 validation, empty/loading/error states, dialogs, notifications and accessible

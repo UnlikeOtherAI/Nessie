@@ -1,7 +1,7 @@
 /** Feature-owned catalogs loaded by the shared i18next instance. */
 export const translationNamespaces = [
   'accountMenu', 'shell', 'projects', 'settings', 'nativeShell', 'common', 'feedback', 'inbox',
-  'auth', 'search', 'knowledgeFinder', 'channels',
+  'auth', 'search', 'knowledgeFinder', 'channels', 'agentConversations',
 ] as const
 
 export type TranslationNamespace = (typeof translationNamespaces)[number]
