@@ -168,7 +168,10 @@ from starting the worker and made every PDF show the generic preview error.
 Because that incorrect response was cached as immutable for a year, fixing the
 header alone could not repair existing browsers. The worker URL includes a
 one-time query revision so they fetch the corrected response instead of reusing
-the cached headers.
+the cached headers. PDF.js itself also loads from a versioned URL: Safari can
+retain a failed module import after an interrupted asset request. The preview's
+Retry action changes both URLs, allowing a fresh request without reloading the
+whole app.
 
 Signed URLs stay out of scope. Auth is bearer-only, so `<img src>` cannot carry
 credentials and the blob/object-URL approach stands. With immutable cache headers
