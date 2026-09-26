@@ -1,0 +1,15 @@
+{
+  "agents": "Agents",
+  "latest": "Latest",
+  "latestDocuments": "Latest documents",
+  "sharedWithMe": "Shared with me",
+  "myDocuments": "My Documents",
+  "loading": "Loading documents…",
+  "loadError": "Couldn’t load your documents.",
+  "browse": "Browse",
+  "agentsLoadError": "Couldn’t load agent documents.",
+  "agentsLoading": "Loading agents…",
+  "noAgentHomes": "No agent document homes are available.",
+  "agentsLimit": "Showing the first 200 accessible agents.",
+  "currentFolder": "Current folder"
+}

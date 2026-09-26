@@ -1,4 +1,5 @@
 import { Fragment } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   faBook,
   faClockRotateLeft,
@@ -129,6 +130,7 @@ export const FinderRootColumn = ({
   root,
   rowProps,
 }: FinderRootColumnProps) => {
+  const { t } = useTranslation('knowledgeFinder')
   const { token } = useAuthSession()
   const { documentsSections } = useProductSurfaces()
   const prewarm = usePrewarm()
@@ -201,19 +203,19 @@ export const FinderRootColumn = ({
             iconTone="--accent"
             key={row.id}
             kind="virtual"
-            title="Agents"
+            title={t('agents')}
           />
         )
       case 'latest':
         return (
           <FinderRow
             {...shared}
-            ariaLabel="Latest documents"
+            ariaLabel={t('latestDocuments')}
             icon={faClockRotateLeft}
             iconTone="--accent"
             key={row.id}
             kind="virtual"
-            title="Latest"
+            title={t('latest')}
           />
         )
       case 'shared-with-me':
@@ -224,7 +226,7 @@ export const FinderRootColumn = ({
             iconTone="--accent"
             key={row.id}
             kind="virtual"
-            title="Shared with me"
+            title={t('sharedWithMe')}
             trailing={row.count > 0
               ? <Pill size="sm" tone="accent">{row.count}</Pill>
               : undefined}
@@ -240,7 +242,7 @@ export const FinderRootColumn = ({
               iconTone="--accent"
               key={row.id}
               kind="space"
-              title="My Documents"
+              title={t('myDocuments')}
             />
           )
         }
@@ -312,15 +314,15 @@ export const FinderRootColumn = ({
     <div className="h-full" {...backgroundProps}>
       <QueryState
         className="py-6"
-        errorLabel="Couldn’t load your documents."
-        loadingLabel="Loading documents…"
+        errorLabel={t('loadError')}
+        loadingLabel={t('loading')}
         query={query}
       >
         {() =>
           root === undefined ? (
             <Skeleton count={5} variant="list" />
           ) : (
-            <RowList label="Browse" role="listbox" variant="finder">
+            <RowList label={t('browse')} role="listbox" variant="finder">
               {rendered.map((group, index) => (
                 <Fragment key={index}>
                   {index > 0 ? <Separator /> : null}

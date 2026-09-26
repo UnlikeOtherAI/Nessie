@@ -1,4 +1,5 @@
 import type { ComponentProps } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { KnowledgeRoot, KnowledgeRootSpace } from '@nessie/schemas'
 import { ColumnBrowserColumn } from '../../../shared/column-browser/ColumnBrowserColumn'
 import { FinderAgentsColumn } from './FinderAgentsColumn'
@@ -22,7 +23,9 @@ export const FinderAgentsBrowserColumn = ({
   query,
   resize,
   root,
-}: FinderAgentsBrowserColumnProps) => (
+}: FinderAgentsBrowserColumnProps) => {
+  const { t } = useTranslation('knowledgeFinder')
+  return (
   <ColumnBrowserColumn
     key="virtual:agents"
     onBack={backToRoot}
@@ -30,7 +33,7 @@ export const FinderAgentsBrowserColumn = ({
     screen
     scrollKey="finder:agents"
     showBack={Boolean(backToRoot)}
-    title="Agents"
+    title={t('agents')}
   >
     <FinderAgentsColumn
       activeAgentId={activeAgentId}
@@ -40,4 +43,5 @@ export const FinderAgentsBrowserColumn = ({
       root={root}
     />
   </ColumnBrowserColumn>
-)
+  )
+}

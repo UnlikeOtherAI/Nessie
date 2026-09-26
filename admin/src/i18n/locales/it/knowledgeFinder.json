@@ -1,0 +1,15 @@
+{
+  "agents": "Agenti",
+  "latest": "Recenti",
+  "latestDocuments": "Documenti recenti",
+  "sharedWithMe": "Condivisi con me",
+  "myDocuments": "I miei documenti",
+  "loading": "Caricamento dei documenti…",
+  "loadError": "Impossibile caricare i documenti.",
+  "browse": "Sfoglia",
+  "agentsLoadError": "Impossibile caricare i documenti degli agenti.",
+  "agentsLoading": "Caricamento agenti…",
+  "noAgentHomes": "Non è disponibile alcuna area documenti degli agenti.",
+  "agentsLimit": "Sono visualizzati i primi 200 agenti accessibili.",
+  "currentFolder": "Cartella attuale"
+}

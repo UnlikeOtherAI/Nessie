@@ -1,0 +1,15 @@
+{
+  "agents": "Agenti",
+  "latest": "Nejnovější",
+  "latestDocuments": "Nejnovější dokumenty",
+  "sharedWithMe": "Sdílené se mnou",
+  "myDocuments": "Moje dokumenty",
+  "loading": "Načítání dokumentů…",
+  "loadError": "Dokumenty se nepodařilo načíst.",
+  "browse": "Procházet",
+  "agentsLoadError": "Dokumenty agentů se nepodařilo načíst.",
+  "agentsLoading": "Načítání agentů…",
+  "noAgentHomes": "Nejsou k dispozici žádné domovské složky dokumentů agentů.",
+  "agentsLimit": "Zobrazuje se prvních 200 dostupných agentů.",
+  "currentFolder": "Aktuální složka"
+}

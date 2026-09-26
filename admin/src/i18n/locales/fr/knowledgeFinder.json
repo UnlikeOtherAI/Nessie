@@ -1,0 +1,15 @@
+{
+  "agents": "Agents",
+  "latest": "Récents",
+  "latestDocuments": "Documents récents",
+  "sharedWithMe": "Partagés avec moi",
+  "myDocuments": "Mes documents",
+  "loading": "Chargement des documents…",
+  "loadError": "Impossible de charger vos documents.",
+  "browse": "Parcourir",
+  "agentsLoadError": "Impossible de charger les documents des agents.",
+  "agentsLoading": "Chargement des agents…",
+  "noAgentHomes": "Aucun espace documentaire d’agent n’est disponible.",
+  "agentsLimit": "Les 200 premiers agents accessibles sont affichés.",
+  "currentFolder": "Dossier actuel"
+}

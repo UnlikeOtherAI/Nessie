@@ -1,4 +1,5 @@
 import type { KnowledgeRoot, KnowledgeRootSpace } from '@nessie/schemas'
+import { useTranslation } from 'react-i18next'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
 import { prewarmRowHandlers, usePrewarm } from '../../../../navigation/prewarm'
 import { AgentAvatar } from '../../../shared/AgentAvatar'
@@ -29,6 +30,7 @@ export const FinderAgentsColumn = ({
   query,
   root,
 }: FinderAgentsColumnProps) => {
+  const { t } = useTranslation('knowledgeFinder')
   const { token } = useAuthSession()
   const prewarm = usePrewarm()
   const homes = root?.agentHomes ?? []
@@ -36,17 +38,17 @@ export const FinderAgentsColumn = ({
   return (
     <QueryState
       className="py-6"
-      errorLabel="Couldn’t load agent documents."
-      loadingLabel="Loading agents…"
+      errorLabel={t('agentsLoadError')}
+      loadingLabel={t('agentsLoading')}
       query={query}
     >
       {() => root === undefined ? (
         <Skeleton count={5} variant="list" />
       ) : homes.length === 0 ? (
-        <EmptyState>No agent document homes are available.</EmptyState>
+        <EmptyState>{t('noAgentHomes')}</EmptyState>
       ) : (
         <>
-          <RowList label="Agents" role="listbox" variant="finder">
+          <RowList label={t('agents')} role="listbox" variant="finder">
             {homes.map((space) => {
               const agentId = space.ownerAgentId
               if (!agentId) return null
@@ -73,7 +75,7 @@ export const FinderAgentsColumn = ({
           </RowList>
           {root.agentHomesTruncated ? (
             <p className="px-3 py-2 text-xs text-[color:var(--tx3)]">
-              Showing the first 200 accessible agents.
+              {t('agentsLimit')}
             </p>
           ) : null}
         </>
